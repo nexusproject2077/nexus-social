@@ -165,7 +165,8 @@ class SocialNetworkAPITester:
 
     def test_create_text_post(self):
         """Test creating a text-only post"""
-        post_data = {
+        # Posts endpoint expects form data, not JSON
+        data = {
             "content": "This is a test post with text only!"
         }
         
@@ -174,7 +175,8 @@ class SocialNetworkAPITester:
             "POST",
             "posts",
             200,
-            data={"content": post_data["content"]}
+            data=data,
+            files={}  # Empty files dict to trigger form data
         )
         
         if result and 'id' in result:
