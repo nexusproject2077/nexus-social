@@ -65,6 +65,9 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
       <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-xl">Modifier le profil</DialogTitle>
+          <DialogDescription className="text-slate-400">
+            Mettez à jour votre photo de profil et votre bio
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
