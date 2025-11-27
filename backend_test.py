@@ -176,7 +176,7 @@ class SocialNetworkAPITester:
             "posts",
             200,
             data=data,
-            files={}  # Empty files dict to trigger form data
+            form_data=True
         )
         
         if result and 'id' in result:
