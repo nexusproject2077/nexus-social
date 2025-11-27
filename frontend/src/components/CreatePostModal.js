@@ -85,6 +85,9 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
       <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-xl">Créer une publication</DialogTitle>
+          <DialogDescription className="text-slate-400">
+            Partagez vos pensées, images ou vidéos avec la communauté
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
