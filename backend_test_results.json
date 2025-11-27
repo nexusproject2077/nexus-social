@@ -1,8 +1,8 @@
 {
-  "timestamp": "2025-11-27T11:00:10.892824",
-  "total_tests": 19,
-  "passed_tests": 18,
-  "success_rate": 94.73684210526315,
+  "timestamp": "2025-11-27T11:00:34.258711",
+  "total_tests": 25,
+  "passed_tests": 25,
+  "success_rate": 100.0,
   "test_details": [
     {
       "name": "User Registration",
@@ -26,8 +26,8 @@
     },
     {
       "name": "Create Text Post",
-      "success": false,
-      "details": "Status: 422, Expected: 200, Error: [{'type': 'missing', 'loc': ['body', 'content'], 'msg': 'Field required', 'input': None, 'url': 'https://errors.pydantic.dev/2.12/v/missing'}]"
+      "success": true,
+      "details": "Status: 200"
     },
     {
       "name": "Create Post with Image",
@@ -36,6 +36,36 @@
     },
     {
       "name": "Get User Feed",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get Post Details",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Like Post",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Unlike Post",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Share Post",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Comment on Post",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get Post Comments",
       "success": true,
       "details": "Status: 200"
     },
