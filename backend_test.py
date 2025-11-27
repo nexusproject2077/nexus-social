@@ -30,7 +30,7 @@ class SocialNetworkAPITester:
             "details": details
         })
 
-    def run_test(self, name, method, endpoint, expected_status, data=None, files=None):
+    def run_test(self, name, method, endpoint, expected_status, data=None, files=None, form_data=False):
         """Run a single API test"""
         url = f"{self.base_url}/{endpoint}"
         headers = {}
@@ -43,13 +43,13 @@ class SocialNetworkAPITester:
             if method == 'GET':
                 response = requests.get(url, headers=headers)
             elif method == 'POST':
-                if files:
+                if files or form_data:
                     response = requests.post(url, data=data, files=files, headers=headers)
                 else:
                     headers['Content-Type'] = 'application/json'
                     response = requests.post(url, json=data, headers=headers)
             elif method == 'PUT':
-                if files:
+                if files or form_data:
                     response = requests.put(url, data=data, files=files, headers=headers)
                 else:
                     headers['Content-Type'] = 'application/json'
