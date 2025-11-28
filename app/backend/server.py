@@ -14,19 +14,28 @@ from datetime import datetime, timezone
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+# --- 1. CONFIGURATION DE LA BASE DE DONNÉES ---
 # MongoDB connection
+# Utilise les variables d'environnement MONGO_URL et DB_NAME
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# --- 2. INITIALISATION DE L'APPLICATION ET DES ROUTEURS ---
 # Create the main app without a prefix
 app = FastAPI()
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
+# --- 3. ROUTE DE VÉRIFICATION DE SANTÉ (HEALTH CHECK) ---
+@app.get("/healthz")
+async def health_check():
+    """Endpoint de vérification de santé utilisé par Render pour s'assurer que l'application est en cours d'exécution."""
+    return {"status": "ok", "message": "API est démarrée et le check Render est validé."}
 
-# Define Models
+
+# --- 4. DÉFINITION DES MODÈLES ---
 class StatusCheck(BaseModel):
     model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
     
@@ -37,7 +46,8 @@ class StatusCheck(BaseModel):
 class StatusCheckCreate(BaseModel):
     client_name: str
 
-# Add your routes to the router instead of directly to app
+
+# --- 5. ROUTES DE L'API (/api/...) ---
 @api_router.get("/")
 async def root():
     return {"message": "Hello World"}
@@ -66,6 +76,7 @@ async def get_status_checks():
     
     return status_checks
 
+# --- 6. MIDDLEWARES ET FINALISATION ---
 # Include the router in the main app
 app.include_router(api_router)
 
@@ -87,4 +98,3 @@ logger = logging.getLogger(__name__)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-
