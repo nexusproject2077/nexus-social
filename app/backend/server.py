@@ -29,6 +29,12 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production'
 ALGORITHM = "HS256"
 
 app = FastAPI()
+
+# Health check pour Render
+@app.get("/healthz")
+async def health_check():
+    return {"status": "ok"}
+
 api_router = APIRouter(prefix="/api")
 
 # ==================== MODELS ====================
