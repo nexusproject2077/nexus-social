@@ -10,6 +10,9 @@ from typing import List
 import uuid
 from datetime import datetime, timezone
 
+# --- AJOUT CRUCIAL pour les utilisateurs ---
+from .routers.users import user_router 
+
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -48,10 +51,13 @@ class StatusCheckCreate(BaseModel):
 
 
 # --- 5. ROUTES DE L'API (/api/...) ---
+
+# Route de test simple (Hello World)
 @api_router.get("/")
 async def root():
     return {"message": "Hello World"}
 
+# Route de création de StatusCheck
 @api_router.post("/status", response_model=StatusCheck)
 async def create_status_check(input: StatusCheckCreate):
     status_dict = input.model_dump()
@@ -64,6 +70,7 @@ async def create_status_check(input: StatusCheckCreate):
     _ = await db.status_checks.insert_one(doc)
     return status_obj
 
+# Route de récupération des StatusChecks
 @api_router.get("/status", response_model=List[StatusCheck])
 async def get_status_checks():
     # Exclude MongoDB's _id field from the query results
@@ -75,6 +82,11 @@ async def get_status_checks():
             check['timestamp'] = datetime.fromisoformat(check['timestamp'])
     
     return status_checks
+
+# --- INCLUSION CRUCIALE pour les utilisateurs ---
+# Ceci ajoute toutes les routes définies dans routers/users.py (e.g., /api/users/register)
+api_router.include_router(user_router)
+
 
 # --- 6. MIDDLEWARES ET FINALISATION ---
 # Include the router in the main app
