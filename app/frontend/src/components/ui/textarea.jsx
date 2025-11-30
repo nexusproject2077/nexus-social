@@ -1,46 +1,18 @@
-/app/frontend/src/components/ui/accordion.jsx
-/app/frontend/src/components/ui/alert-dialog.jsx
-/app/frontend/src/components/ui/alert.jsx
-/app/frontend/src/components/ui/aspect-ratio.jsx
-/app/frontend/src/components/ui/avatar.jsx
-/app/frontend/src/components/ui/badge.jsx
-/app/frontend/src/components/ui/breadcrumb.jsx
-/app/frontend/src/components/ui/button.jsx
-/app/frontend/src/components/ui/calendar.jsx
-/app/frontend/src/components/ui/card.jsx
-/app/frontend/src/components/ui/carousel.jsx
-/app/frontend/src/components/ui/checkbox.jsx
-/app/frontend/src/components/ui/collapsible.jsx
-/app/frontend/src/components/ui/command.jsx
-/app/frontend/src/components/ui/context-menu.jsx
-/app/frontend/src/components/ui/dialog.jsx
-/app/frontend/src/components/ui/drawer.jsx
-/app/frontend/src/components/ui/dropdown-menu.jsx
-/app/frontend/src/components/ui/form.jsx
-/app/frontend/src/components/ui/hover-card.jsx
-/app/frontend/src/components/ui/input-otp.jsx
-/app/frontend/src/components/ui/input.jsx
-/app/frontend/src/components/ui/label.jsx
-/app/frontend/src/components/ui/menubar.jsx
-/app/frontend/src/components/ui/navigation-menu.jsx
-/app/frontend/src/components/ui/pagination.jsx
-/app/frontend/src/components/ui/popover.jsx
-/app/frontend/src/components/ui/progress.jsx
-/app/frontend/src/components/ui/radio-group.jsx
-/app/frontend/src/components/ui/resizable.jsx
-/app/frontend/src/components/ui/scroll-area.jsx
-/app/frontend/src/components/ui/select.jsx
-/app/frontend/src/components/ui/separator.jsx
-/app/frontend/src/components/ui/sheet.jsx
-/app/frontend/src/components/ui/skeleton.jsx
-/app/frontend/src/components/ui/slider.jsx
-/app/frontend/src/components/ui/sonner.jsx
-/app/frontend/src/components/ui/switch.jsx
-/app/frontend/src/components/ui/table.jsx
-/app/frontend/src/components/ui/tabs.jsx
-/app/frontend/src/components/ui/textarea.jsx
-/app/frontend/src/components/ui/toast.jsx
-/app/frontend/src/components/ui/toaster.jsx
-/app/frontend/src/components/ui/toggle-group.jsx
-/app/frontend/src/components/ui/toggle.jsx
-/app/frontend/src/components/ui/tooltip.jsx
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+const Textarea = React.forwardRef(({ className, ...props }, ref) => {
+  return (
+    <textarea
+      className={cn(
+        "flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        className
+      )}
+      ref={ref}
+      {...props} />
+  );
+})
+Textarea.displayName = "Textarea"
+
+export { Textarea }
