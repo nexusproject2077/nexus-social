@@ -35,6 +35,15 @@ const webpackConfig = {
       '@': path.resolve(__dirname, 'src'),
     },
     configure: (webpackConfig) => {
+      configure: (webpackConfig) => {
+
+// Force proper ES module resolution
+
+webpackConfig.resolve = webpackConfig.resolve || {};
+
+webpackConfig.resolve.fullySpecified = false;
+
+// Disable hot reload... 
 
       // Disable hot reload completely if environment variable is set
       if (config.disableHotReload) {
