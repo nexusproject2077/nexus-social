@@ -1,9 +1,8 @@
-import clsx from "clsx";
-
+// Importation de clsx via require pour une meilleure compatibilité Webpack/ESM
+const clsx = require('clsx'); 
 import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs) {
-
-return twMerge(clsx(inputs));
-
+  // clsx(inputs) est la fonction elle-même
+  return twMerge(clsx(inputs));
 }
