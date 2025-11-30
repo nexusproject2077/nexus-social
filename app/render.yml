@@ -1,0 +1,8 @@
+"services:
+  - type: web
+    name: nexus-social
+    env: static
+    buildCommand: cd frontend && yarn install && yarn build
+    staticPublishPath: ./frontend/build
+    pullRequestPreviewsEnabled: true
+"
