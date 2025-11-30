@@ -40,6 +40,15 @@ const webpackConfig = {
       webpackConfig.resolve = webpackConfig.resolve || {};
       webpackConfig.resolve.fullySpecified = false;
 
+      // Force proper ES module resolution
+  webpackConfig.resolve = webpackConfig.resolve || {};
+  webpackConfig.resolve.fullySpecified = false;
+  
+  // Forcer le traitement des .js comme modules ES6
+  webpackConfig.resolve.extensions = ['.js', '.jsx', '.ts', '.tsx', '.json'];
+  webpackConfig.module = webpackConfig.module || {};
+  webpackConfig.module.rules = webpackConfig.module.rules || [];
+
       // Disable hot reload completely if environment variable is set
       if (config.disableHotReload) {
         // Remove hot reload related plugins
