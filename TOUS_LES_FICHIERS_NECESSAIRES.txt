@@ -1,0 +1,102 @@
+=================================================================
+LISTE COMPLÈTE DES FICHIERS À UPLOADER SUR GITHUB
+=================================================================
+
+STRUCTURE REQUISE :
+app/
+└── frontend/
+    ├── public/
+    │   └── index.html
+    ├── src/
+    │   ├── App.js
+    │   ├── App.css
+    │   ├── index.js
+    │   ├── index.css
+    │   ├── components/
+    │   │   ├── Layout.js
+    │   │   ├── PostCard.js
+    │   │   ├── CommentCard.js
+    │   │   ├── CreatePostModal.js
+    │   │   ├── EditProfileModal.js
+    │   │   └── ui/
+    │   │       ├── accordion.jsx
+    │   │       ├── alert-dialog.jsx
+    │   │       ├── alert.jsx
+    │   │       ├── aspect-ratio.jsx
+    │   │       ├── avatar.jsx
+    │   │       ├── badge.jsx
+    │   │       ├── breadcrumb.jsx
+    │   │       ├── button.jsx
+    │   │       ├── calendar.jsx
+    │   │       ├── card.jsx
+    │   │       ├── carousel.jsx
+    │   │       ├── chart.jsx
+    │   │       ├── checkbox.jsx
+    │   │       ├── collapsible.jsx
+    │   │       ├── command.jsx
+    │   │       ├── context-menu.jsx
+    │   │       ├── dialog.jsx
+    │   │       ├── drawer.jsx
+    │   │       ├── dropdown-menu.jsx
+    │   │       ├── form.jsx
+    │   │       ├── hover-card.jsx
+    │   │       ├── input-otp.jsx
+    │   │       ├── input.jsx
+    │   │       ├── label.jsx
+    │   │       ├── menubar.jsx
+    │   │       ├── navigation-menu.jsx
+    │   │       ├── pagination.jsx
+    │   │       ├── popover.jsx
+    │   │       ├── progress.jsx
+    │   │       ├── radio-group.jsx
+    │   │       ├── resizable.jsx
+    │   │       ├── scroll-area.jsx
+    │   │       ├── select.jsx
+    │   │       ├── separator.jsx
+    │   │       ├── sheet.jsx
+    │   │       ├── sidebar.jsx
+    │   │       ├── skeleton.jsx
+    │   │       ├── slider.jsx
+    │   │       ├── sonner.jsx
+    │   │       ├── switch.jsx
+    │   │       ├── table.jsx
+    │   │       ├── tabs.jsx
+    │   │       ├── textarea.jsx
+    │   │       ├── toast.jsx
+    │   │       ├── toaster.jsx
+    │   │       ├── toggle-group.jsx
+    │   │       ├── toggle.jsx
+    │   │       └── tooltip.jsx
+    │   ├── pages/
+    │   │   ├── AuthPage.js
+    │   │   ├── HomePage.js
+    │   │   ├── ProfilePage.js
+    │   │   ├── MessagesPage.js
+    │   │   ├── NotificationsPage.js
+    │   │   ├── SearchPage.js
+    │   │   └── PostDetailPage.js
+    │   ├── hooks/
+    │   │   └── use-toast.js
+    │   └── lib/
+    │       └── utils.js
+    ├── package.json
+    ├── craco.config.js
+    ├── postcss.config.js
+    ├── tailwind.config.js
+    └── .env
+
+=================================================================
+TOTAL: 64 fichiers dans src/ + 5 fichiers de config
+=================================================================
+
+FICHIERS CRITIQUES (à vérifier en priorité) :
+☐ app/frontend/src/lib/utils.js           ← IMPORTANT
+☐ app/frontend/src/hooks/use-toast.js     ← IMPORTANT
+☐ app/frontend/src/components/ui/sonner.jsx
+☐ app/frontend/src/components/ui/button.jsx
+☐ app/frontend/src/components/ui/input.jsx
+☐ app/frontend/src/components/ui/dialog.jsx
+☐ app/frontend/src/components/ui/avatar.jsx
+☐ app/frontend/src/components/ui/card.jsx
+
+=================================================================
