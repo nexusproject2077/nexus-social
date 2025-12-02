@@ -7,5 +7,5 @@ function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-// 💥 CHANGEMENT CLÉ : Exportation par défaut
+// ✅ EXPORTATION PAR DÉFAUT
 export default cn;
