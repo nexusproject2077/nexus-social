@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { API } from "@/App";
-import Layout from "@/components/Layout";
-import PostCard from "@/components/PostCard";
-import CreatePostModal from "@/components/CreatePostModal";
-import { Button } from "@/components/ui/button";
+import { API } from "../App";
+import Layout from "../components/Layout";
+import PostCard from "../components/PostCard";
+import CreatePostModal from "../components/CreatePostModal";
+import { Button } from "../components/ui/button";
 import { PenSquare } from "lucide-react";
 import { toast } from "sonner";
 
