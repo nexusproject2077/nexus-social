@@ -3,7 +3,7 @@ import * as AvatarPrimitive from "@radix-ui/react-avatar"
 
 // ❌ Ligne Incorrecte : import { cn } from "@/lib/utils"
 // ✅ Ligne Corrigée :
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 const Avatar = React.forwardRef(({ className, ...props }, ref) => (
   <AvatarPrimitive.Root
