@@ -5,5 +5,5 @@
       "@/*": ["*"]
     }
   },
-  "include": ["src"]
+  "include": ["app/frontend/src"]
 }
