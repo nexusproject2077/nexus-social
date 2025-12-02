@@ -1,0 +1,10 @@
+services:
+- type: web
+name: nexus-social-frontend
+env: static
+buildCommand: yarn build
+startCommand: yarn start
+routes:
+- type: rewrite
+source: /*
+destination: /index.html
