@@ -1,10 +1,10 @@
 import { useState } from "react";
 import axios from "axios";
-import { API } from "@/App";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { API } from "../App";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Card } from "../components/ui/card";
 import { toast } from "sonner";
 import { User, Mail, Lock, UserCircle } from "lucide-react";
 
