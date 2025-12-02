@@ -3,9 +3,9 @@
 import clsx from "clsx";
 import { twMerge } from "tailwind-merge";
 
-function cn(...inputs) {
+// 🏆 CORRECTION DÉFINITIVE : Utilisez export function
+export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-// ✅ EXPORTATION PAR DÉFAUT
-export default cn;
+// Assurez-vous qu'il n'y ait AUCUN "export default"
