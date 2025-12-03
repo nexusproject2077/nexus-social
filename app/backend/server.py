@@ -13,8 +13,11 @@ from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext
 import jwt
 import base64
-
-from app.backend.routers.users import user_router
+app = FastAPI()
+app.include_router(user_router)
+@app.get("/")
+async def root():
+    return{"message": "API fonctionne !"}
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -27,10 +30,10 @@ db = client[os.environ['DB_NAME']]
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
-SECRET_KEY = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
+SECRET_KEY = os.environ.get('SECRET_KEY', '76f267dbc69c6b4e639a50a7ccdd3783')
 ALGORITHM = "HS256"
 
-app = FastAPI()
+
 
 # Health check pour Render
 @app.get("/healthz")
