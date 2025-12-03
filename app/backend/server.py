@@ -14,10 +14,8 @@ from passlib.context import CryptContext
 import jwt
 import base64
 app = FastAPI()
-app.include_router(user_router)
-@app.get("/")
-async def root():
-    return{"message": "API fonctionne !"}
+from app.backend.routers.users import user_router
+app.include_router(user_router,prefix="/api")
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -33,7 +31,9 @@ security = HTTPBearer()
 SECRET_KEY = os.environ.get('SECRET_KEY', '76f267dbc69c6b4e639a50a7ccdd3783')
 ALGORITHM = "HS256"
 
-
+@app.get("/")
+async def root():
+    return{"message": "API fonctionne !"}
 
 # Health check pour Render
 @app.get("/healthz")
