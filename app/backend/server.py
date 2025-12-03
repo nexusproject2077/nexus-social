@@ -13,9 +13,10 @@ from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext
 import jwt
 import base64
-app = FastAPI()
 from app.backend.routers.users import user_router
-app.include_router(user_router,prefix="/api")
+app = FastAPI()
+app.include_router(user_router , prefix="/api")
+api_router = APIRouter(prefix="/api")
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
