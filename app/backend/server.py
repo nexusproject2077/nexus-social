@@ -13,10 +13,6 @@ from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext
 import jwt
 import base64
-from app.backend.routers.users import user_router
-app = FastAPI()
-app.include_router(user_router , prefix="/api")
-api_router = APIRouter(prefix="/api")
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -32,6 +28,9 @@ security = HTTPBearer()
 SECRET_KEY = os.environ.get('SECRET_KEY', '76f267dbc69c6b4e639a50a7ccdd3783')
 ALGORITHM = "HS256"
 
+# Create the main app
+app = FastAPI()
+
 @app.get("/")
 async def root():
     return{"message": "API fonctionne !"}
@@ -41,6 +40,7 @@ async def root():
 async def health_check():
     return {"status": "ok"}
 
+# Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
 # ==================== MODELS ====================
@@ -728,4 +728,3 @@ logger = logging.getLogger(__name__)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-
