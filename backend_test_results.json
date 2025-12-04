@@ -1,0 +1,133 @@
+{
+  "timestamp": "2025-11-27T11:00:34.258711",
+  "total_tests": 25,
+  "passed_tests": 25,
+  "success_rate": 100.0,
+  "test_details": [
+    {
+      "name": "User Registration",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "User Registration for Login Test",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "User Login",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get Current User",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Create Text Post",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Create Post with Image",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get User Feed",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get Post Details",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Like Post",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Unlike Post",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Share Post",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Comment on Post",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get Post Comments",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Update Profile",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get User Profile",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get User Posts",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Follow User (Self - Should Fail)",
+      "success": true,
+      "details": "Status: 400"
+    },
+    {
+      "name": "Search Users",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Search Posts",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Create Recipient User",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Send Direct Message",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get Conversations",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get Messages with User",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Get Notifications",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "name": "Mark All Notifications Read",
+      "success": true,
+      "details": "Status: 200"
+    }
+  ]
+}
