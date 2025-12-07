@@ -1,3 +1,9 @@
+# app/backend/server.py   ← ouvre ce fichier
+import sys
+from pathlib import Path
+# Cette ligne magique règle TOUT le problème Render
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
