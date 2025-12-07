@@ -1,4 +1,3 @@
-tsx
 // src/components/StoryViewer.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Avatar } from "@/components/ui/avatar";
