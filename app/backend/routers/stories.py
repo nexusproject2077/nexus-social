@@ -1,18 +1,24 @@
+# app/backend/routers/stories.py  ← REMPLACE TOUT LE FICHIER PAR ÇA
 from fastapi import APIRouter, Depends, File, UploadFile
 from datetime import datetime, timedelta
 import base64
 import uuid
+from backend.dependencies import get_current_user   # ← on importe SEULEMENT get_current_user
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
-# ✅ Import depuis dependencies pour éviter circular import
-from backend.dependencies import get_current_user, db
+router = APIRouter(tags=["stories"])   # ← pas de prefix
 
-router = APIRouter(
-    prefix="/stories",
-    tags=["stories"]
-)
+# On récupère db depuis server.py sans créer d'import circulaire
+def get_db():
+    from backend.server import db
+    return db
 
 @router.post("/")
-async def create_story(file: UploadFile = File(...), current_user = Depends(get_current_user)):
+async def create_story(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)   # ← C’EST LA LIGNE MAGIQUE
+):
     contents = await file.read()
     base64_media = base64.b64encode(contents).decode('utf-8')
     media_url = f"data:{file.content_type};base64,{base64_media}"
@@ -28,12 +34,16 @@ async def create_story(file: UploadFile = File(...), current_user = Depends(get_
         "created_at": datetime.utcnow().isoformat(),
         "expires_at": (datetime.utcnow() + timedelta(hours=24)).isoformat()
     }
-
+    
     await db.stories.insert_one(story)
     return story
 
+
 @router.get("/feed")
-async def get_stories_feed(current_user = Depends(get_current_user)):
+async def get_stories_feed(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
     follows = await db.follows.find({"follower_id": current_user["id"]}).to_list(1000)
     following_ids = [f["following_id"] for f in follows] + [current_user["id"]]
 
