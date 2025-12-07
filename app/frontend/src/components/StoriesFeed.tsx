@@ -1,9 +1,9 @@
 // src/components/StoriesFeed.tsx
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/ui/avatar";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import StoryViewer from "./StoryViewer";
-import { API_URL } from "@/lib/constants"; // vérifie que tu as cette constante ou remplace par ton URL
+import { API } from "../App";   // ← CORRIGÉ ICI
 
 interface StoryGroup {
   user: { id: number; username: string; avatar?: string };
@@ -15,7 +15,7 @@ export default function StoriesFeed() {
   const [selectedGroup, setSelectedGroup] = useState<StoryGroup | null>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/stories/feed`, { credentials: "include" })
+    fetch(`${API}/stories/feed`, { credentials: "include" })
       .then(r => r.json())
       .then(setStories)
       .catch(() => {});
@@ -24,7 +24,7 @@ export default function StoriesFeed() {
   return (
     <>
       <div className="flex gap-4 overflow-x-auto py-4 px-4 bg-background border-b scrollbar-hide">
-        {/* Ta story à toi */}
+        {/* Ta story */}
         <button className="flex flex-col items-center gap-1 flex-shrink-0">
           <div className="relative">
             <Avatar className="w-16 h-16 ring-2 ring-border">
@@ -37,7 +37,6 @@ export default function StoriesFeed() {
           <span className="text-xs text-muted-foreground">Toi</span>
         </button>
 
-        {/* Stories des autres */}
         {stories.map((group) => (
           <button
             key={group.user.id}
@@ -55,7 +54,6 @@ export default function StoriesFeed() {
         ))}
       </div>
 
-      {/* Modal viewer */}
       {selectedGroup && (
         <StoryViewer group={selectedGroup} onClose={() => setSelectedGroup(null)} />
       )}
