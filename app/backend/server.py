@@ -1,18 +1,15 @@
-# app/backend/server.py   ← ouvre ce fichier
 import sys
 from pathlib import Path
 # Cette ligne magique règle TOUT le problème Render
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response # Ajout de Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
-from backend.routers import stories
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
-from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional
 import uuid
@@ -20,6 +17,7 @@ from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext
 import jwt
 import base64
+from bson import ObjectId # Import de ObjectId
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -38,39 +36,63 @@ ALGORITHM = "HS256"
 # Create the main app
 app = FastAPI()
 
-  # --- Configuration CORS (doit être ICI) ---
-    origins = [
-        "https://nexus-social-3ta5.onrender.com",  # L'URL de votre frontend
-        "http://localhost:3000",                   # Pour le développement local de votre frontend
-        "https://nexus-social-4k3v.onrender.com"   # L'URL de votre backend lui-même
-    ]
+# --- Configuration CORS (correctement placée et utilisant la variable 'origins') ---
+origins = [
+    "https://nexus-social-3ta5.onrender.com",  # L'URL de votre frontend
+    "http://localhost:3000",                   # Pour le développement local de votre frontend
+    "https://nexus-social-4k3v.onrender.com"   # L'URL de votre backend lui-même
+]
 
 app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins, # Utilisez la variable 'origins' ici
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=origins, # <-- CORRIGÉ : utilise la variable 'origins'
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+# --- FIN Configuration CORS ---
 
-@app.get("/")
-async def root():
-    return{"message": "API fonctionne !"}
 
 # Health check pour Render
 @app.get("/healthz")
 async def health_check():
     return {"status": "ok"}
 
+@app.get("/")
+async def root():
+    return {"message": "API fonctionne !"}
+
+
+# --- FONCTION UTILITAIRE POUR CONVERTIR LES OBJECTID EN STR ---
+# Déplacée ici car elle est utilisée dans ce fichier également
+def convert_mongo_doc_to_dict(doc: dict) -> dict:
+    if doc is None:
+        return None
+    new_doc = doc.copy()
+    if "_id" in new_doc:
+        new_doc["id"] = str(new_doc["_id"])
+        del new_doc["_id"]
+
+    for key, value in new_doc.items():
+        if isinstance(value, ObjectId):
+            new_doc[key] = str(value)
+        elif isinstance(value, dict):
+            new_doc[key] = convert_mongo_doc_to_dict(value)
+        elif isinstance(value, list):
+            new_doc[key] = [convert_mongo_doc_to_dict(item) if isinstance(item, dict) else (str(item) if isinstance(item, ObjectId) else item) for item in value]
+    return new_doc
+# --- FIN FONCTION UTILITAIRE ---
+
+
 # Create a router with the /api prefix
-from backend.routers import stories
+from backend.routers import stories # Importe le routeur stories APRÈS la création de 'app' et 'db'
 
 api_router = APIRouter(prefix="/api")
-api_router.include_router(stories.router, prefix="/stories")
-app.include_router(api_router)   # ← un seul include_router
+api_router.include_router(stories.router, prefix="/stories") # Inclut le routeur stories avec son préfixe
+
 
 # ==================== MODELS ====================
-
+# (Vos modèles Pydantic)
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
@@ -173,6 +195,7 @@ class Notification(BaseModel):
     read: bool = False
     created_at: str
 
+
 # ==================== AUTH HELPERS ====================
 
 def create_access_token(data: dict):
@@ -189,10 +212,10 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-        user = await db.users.find_one({"id": user_id}, {"_id": 0})
-        if user is None:
+        user_raw = await db.users.find_one({"id": user_id}) # Récupère le document brut
+        if user_raw is None:
             raise HTTPException(status_code=401, detail="User not found")
-        return user
+        return convert_mongo_doc_to_dict(user_raw) # CONVERTIT AVANT DE RETOURNER
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except:
@@ -202,15 +225,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate):
-    # Check if user exists
-    existing_user = await db.users.find_one({"$or": [{"email": user_data.email}, {"username": user_data.username}]})
-    if existing_user:
+    existing_user_raw = await db.users.find_one({"$or": [{"email": user_data.email}, {"username": user_data.username}]})
+    if existing_user_raw:
         raise HTTPException(status_code=400, detail="Email or username already registered")
     
     # Create user
     hashed_password = pwd_context.hash(user_data.password)
     user_id = str(uuid.uuid4())
-    user = {
+    user_to_insert = {
         "id": user_id,
         "username": user_data.username,
         "email": user_data.email,
@@ -221,11 +243,12 @@ async def register(user_data: UserCreate):
         "following_count": 0,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.users.insert_one(user)
+    await db.users.insert_one(user_to_insert)
     
     # Create token
     token = create_access_token({"sub": user_id})
     
+    # Pas besoin de convertir ici si on construit le dict manuellement
     return {
         "token": token,
         "user": {
@@ -236,16 +259,17 @@ async def register(user_data: UserCreate):
             "profile_pic": None,
             "followers_count": 0,
             "following_count": 0,
-            "created_at": user["created_at"]
+            "created_at": user_to_insert["created_at"]
         }
     }
 
 @api_router.post("/auth/login")
 async def login(credentials: UserLogin):
-    user = await db.users.find_one({"email": credentials.email}, {"_id": 0})
-    if not user or not pwd_context.verify(credentials.password, user["password"]):
+    user_raw = await db.users.find_one({"email": credentials.email})
+    if not user_raw or not pwd_context.verify(credentials.password, user_raw["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
+    user = convert_mongo_doc_to_dict(user_raw) # CONVERTIT ICI
     token = create_access_token({"sub": user["id"]})
     
     return {
@@ -286,7 +310,8 @@ async def update_profile(
     if update_data:
         await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
     
-    updated_user = await db.users.find_one({"id": current_user["id"]}, {"_id": 0})
+    updated_user_raw = await db.users.find_one({"id": current_user["id"]})
+    updated_user = convert_mongo_doc_to_dict(updated_user_raw) # CONVERTIT ICI
     return User(**updated_user)
 
 # ==================== POST ROUTES ====================
@@ -297,7 +322,6 @@ async def create_post(
     media: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
-    post_id = str(uuid.uuid4())
     media_type = None
     media_url = None
     
@@ -310,8 +334,7 @@ async def create_post(
         elif media.content_type.startswith('video'):
             media_type = 'video'
     
-    post = {
-        "id": post_id,
+    post_to_insert = { # Renommé pour l'insertion
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
@@ -323,30 +346,37 @@ async def create_post(
         "shares_count": 0,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.posts.insert_one(post)
+    result = await db.posts.insert_one(post_to_insert)
     
-    post_response = Post(**post)
+    inserted_post_raw = await db.posts.find_one({"_id": result.inserted_id})
+    if not inserted_post_raw:
+        raise HTTPException(status_code=500, detail="Failed to retrieve inserted post")
+    
+    converted_post = convert_mongo_doc_to_dict(inserted_post_raw) # CONVERTIT ICI
+    
+    post_response = Post(**converted_post)
     post_response.is_liked = False
     return post_response
 
 @api_router.get("/posts/feed", response_model=List[Post])
 async def get_feed(current_user: dict = Depends(get_current_user)):
     # Get users that current user is following
-    follows = await db.follows.find({"follower_id": current_user["id"]}, {"_id": 0}).to_list(1000)
-    following_ids = [f["following_id"] for f in follows]
-    following_ids.append(current_user["id"])  # Include own posts
-    
-    # Get posts from followed users
-    posts = await db.posts.find(
+    follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(1000)
+    # Convertir les ObjectIds potentiels dans les résultats de follows
+    follows = [convert_mongo_doc_to_dict(f) for f in follows_raw]
+    following_ids = [f["following_id"] for f in follows] + [current_user["id"]]
+
+    posts_raw = await db.posts.find(
         {"author_id": {"$in": following_ids}}
     ).sort("created_at", -1).to_list(100)
     
     # Check which posts are liked by current user
-    liked_posts = await db.likes.find({"user_id": current_user["id"]}, {"_id": 0}).to_list(1000)
-    liked_post_ids = {like["post_id"] for like in liked_posts}
-    
+    liked_posts_raw = await db.likes.find({"user_id": current_user["id"]}).to_list(1000)
+    liked_post_ids = {like["post_id"] for like in [convert_mongo_doc_to_dict(l) for l in liked_posts_raw]} # CONVERTIT LIKED_POSTS
+
     result = []
-    for post in posts:
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw) # CONVERTIT ICI
         post_obj = Post(**post)
         post_obj.is_liked = post["id"] in liked_post_ids
         result.append(post_obj)
@@ -355,9 +385,11 @@ async def get_feed(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/posts/{post_id}", response_model=Post)
 async def get_post(post_id: str, current_user: dict = Depends(get_current_user)):
-    post = await db.posts.find_one({"id": post_id}, {"_id": 0})
-    if not post:
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
+    
+    post = convert_mongo_doc_to_dict(post_raw) # CONVERTIT ICI
     
     # Check if liked
     like = await db.likes.find_one({"user_id": current_user["id"], "post_id": post_id})
@@ -367,9 +399,11 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
 
 @api_router.post("/posts/{post_id}/like")
 async def like_post(post_id: str, current_user: dict = Depends(get_current_user)):
-    post = await db.posts.find_one({"id": post_id})
-    if not post:
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
+    
+    post = convert_mongo_doc_to_dict(post_raw) # CONVERTIT ICI
     
     # Check if already liked
     existing_like = await db.likes.find_one({"user_id": current_user["id"], "post_id": post_id})
@@ -408,14 +442,15 @@ async def like_post(post_id: str, current_user: dict = Depends(get_current_user)
 
 @api_router.post("/posts/{post_id}/share")
 async def share_post(post_id: str, current_user: dict = Depends(get_current_user)):
-    original_post = await db.posts.find_one({"id": post_id})
-    if not original_post:
+    original_post_raw = await db.posts.find_one({"id": post_id})
+    if not original_post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
+
+    original_post = convert_mongo_doc_to_dict(original_post_raw) # CONVERTIT ICI
     
     # Create a shared post
     shared_post_id = str(uuid.uuid4())
-    shared_post = {
-        "id": shared_post_id,
+    shared_post_to_insert = {
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
@@ -428,7 +463,7 @@ async def share_post(post_id: str, current_user: dict = Depends(get_current_user
         "shares_count": 0,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.posts.insert_one(shared_post)
+    await db.posts.insert_one(shared_post_to_insert)
     
     # Increment shares count
     await db.posts.update_one({"id": post_id}, {"$inc": {"shares_count": 1}})
@@ -452,9 +487,11 @@ async def share_post(post_id: str, current_user: dict = Depends(get_current_user
 
 @api_router.delete("/posts/{post_id}")
 async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
-    post = await db.posts.find_one({"id": post_id})
-    if not post:
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
+    
+    post = convert_mongo_doc_to_dict(post_raw) # CONVERTIT ICI
     if post["author_id"] != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
     
@@ -467,13 +504,13 @@ async def delete_post(post_id: str, current_user: dict = Depends(get_current_use
 
 @api_router.post("/posts/{post_id}/comments", response_model=Comment)
 async def create_comment(post_id: str, comment_data: CommentCreate, current_user: dict = Depends(get_current_user)):
-    post = await db.posts.find_one({"id": post_id})
-    if not post:
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    comment_id = str(uuid.uuid4())
-    comment = {
-        "id": comment_id,
+    post = convert_mongo_doc_to_dict(post_raw) # CONVERTIT ICI
+    
+    comment_to_insert = {
         "post_id": post_id,
         "author_id": current_user["id"],
         "author_username": current_user["username"],
@@ -481,8 +518,13 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
         "content": comment_data.content,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.comments.insert_one(comment)
-    await db.posts.update_one({"id": post_id}, {"$inc": {"comments_count": 1}})
+    result = await db.comments.insert_one(comment_to_insert)
+    
+    inserted_comment_raw = await db.comments.find_one({"_id": result.inserted_id})
+    if not inserted_comment_raw:
+        raise HTTPException(status_code=500, detail="Failed to retrieve inserted comment")
+    
+    converted_comment = convert_mongo_doc_to_dict(inserted_comment_raw) # CONVERTIT ICI
     
     # Create notification
     if post["author_id"] != current_user["id"]:
@@ -499,12 +541,12 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
             "created_at": datetime.now(timezone.utc).isoformat()
         })
     
-    return Comment(**comment)
+    return Comment(**converted_comment)
 
 @api_router.get("/posts/{post_id}/comments", response_model=List[Comment])
 async def get_comments(post_id: str, current_user: dict = Depends(get_current_user)):
-    comments = await db.comments.find({"post_id": post_id}, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    return [Comment(**c) for c in comments]
+    comments_raw = await db.comments.find({"post_id": post_id}).sort("created_at", -1).to_list(1000)
+    return [Comment(**convert_mongo_doc_to_dict(c)) for c in comments_raw]
 
 # ==================== USER ROUTES ====================
 
@@ -513,21 +555,23 @@ async def search_users(q: str, current_user: dict = Depends(get_current_user)):
     if not q:
         return []
     
-    users = await db.users.find(
+    users_raw = await db.users.find(
         {"$or": [
             {"username": {"$regex": q, "$options": "i"}},
             {"bio": {"$regex": q, "$options": "i"}}
-        ]},
-        {"_id": 0, "password": 0}
+        ]}
+        # N'incluez pas {"_id": 0} ici, la conversion gérera la transformation
     ).limit(20).to_list(20)
     
-    return users
+    return [UserProfile(**convert_mongo_doc_to_dict(u)) for u in users_raw] # CONVERTIT ET UTILISE USERPROFILE
 
 @api_router.get("/users/{user_id}", response_model=UserProfile)
 async def get_user_profile(user_id: str, current_user: dict = Depends(get_current_user)):
-    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
-    if not user:
+    user_raw = await db.users.find_one({"id": user_id}) # Enlève {"_id": 0, "password": 0} pour la conversion
+    if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    user = convert_mongo_doc_to_dict(user_raw) # CONVERTIT ICI
     
     # Check if following
     follow = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
@@ -538,14 +582,15 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
 
 @api_router.get("/users/{user_id}/posts", response_model=List[Post])
 async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_user)):
-    posts = await db.posts.find({"author_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    posts_raw = await db.posts.find({"author_id": user_id}).sort("created_at", -1).to_list(100)
     
     # Check which posts are liked by current user
-    liked_posts = await db.likes.find({"user_id": current_user["id"]}, {"_id": 0}).to_list(1000)
-    liked_post_ids = {like["post_id"] for like in liked_posts}
+    liked_posts_raw = await db.likes.find({"user_id": current_user["id"]}).to_list(1000)
+    liked_post_ids = {like["post_id"] for like in [convert_mongo_doc_to_dict(l) for l in liked_posts_raw]} # CONVERTIT LIKED_POSTS
     
     result = []
-    for post in posts:
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw) # CONVERTIT ICI
         post_obj = Post(**post)
         post_obj.is_liked = post["id"] in liked_post_ids
         result.append(post_obj)
@@ -557,10 +602,12 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
     if user_id == current_user["id"]:
         raise HTTPException(status_code=400, detail="Cannot follow yourself")
     
-    target_user = await db.users.find_one({"id": user_id})
-    if not target_user:
+    target_user_raw = await db.users.find_one({"id": user_id})
+    if not target_user_raw:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
+    target_user = convert_mongo_doc_to_dict(target_user_raw) # CONVERTIT ICI
+
     # Check if already following
     existing_follow = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
     
@@ -573,7 +620,7 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
     else:
         # Follow
         await db.follows.insert_one({
-            "id": str(uuid.uuid4()),
+            "id": str(uuid.uuid4()), # UUID pour l'ID du document de suivi
             "follower_id": current_user["id"],
             "following_id": user_id,
             "created_at": datetime.now(timezone.utc).isoformat()
@@ -584,7 +631,7 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
         # Create notification
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()),
-            "user_id": user_id,
+            "user_id": user_id, # C'est target_user["id"]
             "type": "follow",
             "from_user_id": current_user["id"],
             "from_username": current_user["username"],
@@ -601,13 +648,13 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
 
 @api_router.post("/messages", response_model=Message)
 async def send_message(message_data: MessageCreate, current_user: dict = Depends(get_current_user)):
-    recipient = await db.users.find_one({"id": message_data.recipient_id})
-    if not recipient:
+    recipient_raw = await db.users.find_one({"id": message_data.recipient_id})
+    if not recipient_raw:
         raise HTTPException(status_code=404, detail="Recipient not found")
     
-    message_id = str(uuid.uuid4())
-    message = {
-        "id": message_id,
+    recipient = convert_mongo_doc_to_dict(recipient_raw) # CONVERTIT ICI
+    
+    message_to_insert = {
         "sender_id": current_user["id"],
         "sender_username": current_user["username"],
         "sender_profile_pic": current_user.get("profile_pic"),
@@ -617,7 +664,13 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.messages.insert_one(message)
+    result = await db.messages.insert_one(message_to_insert)
+    
+    inserted_message_raw = await db.messages.find_one({"_id": result.inserted_id})
+    if not inserted_message_raw:
+        raise HTTPException(status_code=500, detail="Failed to retrieve inserted message")
+    
+    converted_message = convert_mongo_doc_to_dict(inserted_message_raw) # CONVERTIT ICI
     
     # Create notification
     await db.notifications.insert_one({
@@ -633,22 +686,24 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     
-    return Message(**message)
+    return Message(**converted_message)
 
 @api_router.get("/messages/conversations", response_model=List[Conversation])
 async def get_conversations(current_user: dict = Depends(get_current_user)):
-    # Get all messages where user is sender or recipient
-    messages = await db.messages.find(
+    messages_raw = await db.messages.find(
         {"$or": [{"sender_id": current_user["id"]}, {"recipient_id": current_user["id"]}]}
     ).sort("created_at", -1).to_list(1000)
     
-    # Group by conversation
     conversations_map = {}
-    for msg in messages:
+    for msg_raw in messages_raw:
+        msg = convert_mongo_doc_to_dict(msg_raw) # CONVERTIT CHAQUE MESSAGE
+        
         other_user_id = msg["recipient_id"] if msg["sender_id"] == current_user["id"] else msg["sender_id"]
         
         if other_user_id not in conversations_map:
-            other_user = await db.users.find_one({"id": other_user_id}, {"_id": 0})
+            other_user_raw = await db.users.find_one({"id": other_user_id})
+            other_user = convert_mongo_doc_to_dict(other_user_raw) # CONVERTIT ICI
+            
             if other_user:
                 unread_count = await db.messages.count_documents({
                     "sender_id": other_user_id,
@@ -669,7 +724,7 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/messages/{other_user_id}", response_model=List[Message])
 async def get_messages_with_user(other_user_id: str, current_user: dict = Depends(get_current_user)):
-    messages = await db.messages.find(
+    messages_raw = await db.messages.find(
         {"$or": [
             {"sender_id": current_user["id"], "recipient_id": other_user_id},
             {"sender_id": other_user_id, "recipient_id": current_user["id"]}
@@ -682,20 +737,21 @@ async def get_messages_with_user(other_user_id: str, current_user: dict = Depend
         {"$set": {"read": True}}
     )
     
-    return [Message(**m) for m in messages]
+    return [Message(**convert_mongo_doc_to_dict(m_raw)) for m_raw in messages_raw]
 
 # ==================== NOTIFICATION ROUTES ====================
 
 @api_router.get("/notifications", response_model=List[Notification])
 async def get_notifications(current_user: dict = Depends(get_current_user)):
-    notifications = await db.notifications.find(
+    notifications_raw = await db.notifications.find(
         {"user_id": current_user["id"]}
     ).sort("created_at", -1).limit(50).to_list(50)
     
-    return [Notification(**n) for n in notifications]
+    return [Notification(**convert_mongo_doc_to_dict(n_raw)) for n_raw in notifications_raw]
 
 @api_router.put("/notifications/{notification_id}/read")
 async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
+    # Pas besoin de convertir le résultat si ce n'est pas retourné directement et si les IDs sont des str
     await db.notifications.update_one(
         {"id": notification_id, "user_id": current_user["id"]},
         {"$set": {"read": True}}
@@ -704,6 +760,7 @@ async def mark_notification_read(notification_id: str, current_user: dict = Depe
 
 @api_router.put("/notifications/read-all")
 async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
+    # Pas besoin de convertir le résultat
     await db.notifications.update_many(
         {"user_id": current_user["id"], "read": False},
         {"$set": {"read": True}}
@@ -717,24 +774,25 @@ async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
     if not q:
         return []
     
-    posts = await db.posts.find(
-        {"content": {"$regex": q, "$options": "i"}},
-        {"_id": 0}
+    posts_raw = await db.posts.find(
+        {"content": {"$regex": q, "$options": "i"}}
     ).sort("created_at", -1).limit(50).to_list(50)
     
     # Check which posts are liked by current user
-    liked_posts = await db.likes.find({"user_id": current_user["id"]}, {"_id": 0}).to_list(1000)
-    liked_post_ids = {like["post_id"] for like in liked_posts}
+    liked_posts_raw = await db.likes.find({"user_id": current_user["id"]}).to_list(1000)
+    liked_post_ids = {like["post_id"] for like in [convert_mongo_doc_to_dict(l) for l in liked_posts_raw]}
     
     result = []
-    for post in posts:
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
         post_obj = Post(**post)
         post_obj.is_liked = post["id"] in liked_post_ids
         result.append(post_obj)
     
     return result
 
-# Include the router in the main app
+
+# Inclure le routeur principal de l'application (doit être après tous les @api_router)
 app.include_router(api_router)
 
 logging.basicConfig(
@@ -746,3 +804,4 @@ logger = logging.getLogger(__name__)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
