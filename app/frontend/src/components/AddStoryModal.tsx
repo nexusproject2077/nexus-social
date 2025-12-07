@@ -1,4 +1,3 @@
-tsx
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -15,11 +14,10 @@ export default function AddStoryModal({ onClose, onSuccess }: { onClose: () => v
       return;
     }
 
-    // MODIFIÉ : Récupère le token JWT sous la clé 'token'
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('token'); // Récupère le token JWT
     if (!token) {
       toast.error("Vous devez être connecté pour publier une story.");
-      onClose(); // Ferme la modale si non connecté
+      onClose();
       return;
     }
 
@@ -31,10 +29,8 @@ export default function AddStoryModal({ onClose, onSuccess }: { onClose: () => v
       const res = await fetch(`${API}/stories/`, {
         method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}` // AJOUT DE L'EN-TÊTE D'AUTHENTIFICATION
-          // 'Content-Type': 'multipart/form-data' n'est pas nécessaire avec FormData, le navigateur le définit automatiquement
+          'Authorization': `Bearer ${token}`
         },
-        // MODIFIÉ : credentials: "include" est supprimé
         body: formData,
       });
 
@@ -44,12 +40,9 @@ export default function AddStoryModal({ onClose, onSuccess }: { onClose: () => v
       } else {
         const errorText = await res.text();
         console.error("Erreur serveur:", res.status, errorText);
-        toast.error(`Erreur upload – ${res.status}: ${errorText.substring(0, 100)}...`); // Affiche un extrait de l'erreur
-        // Gérer spécifiquement le cas 401/403 pour un token expiré ou invalide
+        toast.error(`Erreur upload – ${res.status}: ${errorText.substring(0, 100)}...`);
         if (res.status === 401 || res.status === 403) {
-            // MODIFIÉ : Efface le token invalide en utilisant la bonne clé
             localStorage.removeItem('token');
-            // Optionnel : Rediriger l'utilisateur pour qu'il se reconnecte
         }
       }
     } catch (err) {
