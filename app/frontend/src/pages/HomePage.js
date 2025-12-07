@@ -4,6 +4,7 @@ import { API } from "../App";
 import Layout from "../components/Layout";
 import PostCard from "../components/PostCard";
 import CreatePostModal from "../components/CreatePostModal";
+import StoriesFeed from "../components/StoriesFeed"; // ← AJOUTÉ
 import { Button } from "../components/ui/button";
 import { PenSquare } from "lucide-react";
 import { toast } from "sonner";
@@ -44,15 +45,22 @@ export default function HomePage({ user, setUser }) {
   return (
     <Layout user={user} setUser={setUser}>
       <div className="max-w-2xl mx-auto">
-        <div className="sticky top-0 z-10 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800 p-4">
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Fil d'actualité</h1>
+        {/* Header sticky */}
+        <div className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800 p-4">
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+            Fil d'actualité
+          </h1>
         </div>
 
-        <div className="p-4">
+        {/* STORIES BANDEAU – NOUVEL AJOUT */}
+        <StoriesFeed />
+
+        {/* Bouton créer post + feed */}
+        <div className="p-4 pt-2">
           <Button
             data-testid="create-post-button"
             onClick={() => setShowCreatePost(true)}
-            className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold py-6 mb-6"
+            className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold py-6 mb-6 rounded-2xl shadow-lg"
           >
             <PenSquare className="w-5 h-5 mr-2" />
             Créer une publication
