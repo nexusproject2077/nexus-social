@@ -1,4 +1,3 @@
-// src/components/AddStoryModal.tsx
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -10,7 +9,7 @@ export default function AddStoryModal({ onClose, onSuccess }: { onClose: () => v
   const [uploading, setUploading] = useState(false);
 
   const handleUpload = async () => {
-    if (!file) return toast.error("Choisis une image/vidéo");
+    if (!file) return toast.error("Choisis une image ou vidéo");
 
     setUploading(true);
     const formData = new FormData();
@@ -24,12 +23,15 @@ export default function AddStoryModal({ onClose, onSuccess }: { onClose: () => v
       });
 
       if (res.ok) {
-        toast.success("Story publiée ! Visible 24h");
+        toast.success("Story publiée !");
         onSuccess();
       } else {
-        toast.error("Erreur upload");
+        const errorText = await res.text();
+        console.error("Erreur serveur:", res.status, errorText);
+        toast.error("Erreur upload – vérifie la console");
       }
-    } catch {
+    } catch (err) {
+      console.error("Erreur réseau:", err);
       toast.error("Erreur réseau");
     } finally {
       setUploading(false);
@@ -43,17 +45,21 @@ export default function AddStoryModal({ onClose, onSuccess }: { onClose: () => v
           <DialogTitle className="text-white">Ajouter une story</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-6 py-4">
           <input
             type="file"
             accept="image/*,video/*"
             onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])}
-            className="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-500 file:text-white hover:file:bg-cyan-600"
+            className="block w-full text-sm text-slate-400 file:mr-4 file:py-3 file:px-6 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-500 file:text-white hover:file:bg-cyan-600"
           />
 
           {file && (
             <div className="text-center">
-              <Button onClick={handleUpload} disabled={uploading} className="bg-gradient-to-r from-cyan-500 to-blue-500">
+              <Button
+                onClick={handleUpload}
+                disabled={uploading}
+                className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
+              >
                 {uploading ? "Publication..." : "Publier la story"}
               </Button>
             </div>
