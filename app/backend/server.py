@@ -49,9 +49,9 @@ async def health_check():
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
-# AJOUTE CES 2 LIGNES
 from backend.routers import stories
-api_router.include_router(stories.router)   # ← C’EST ÇA QUI MANQUAIT !
+api_router.include_router(stories.router)
+app.include_router(api_router)
 
 # ==================== MODELS ====================
 
