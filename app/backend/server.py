@@ -725,8 +725,8 @@ app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
+allow_origins=["https://nexus-social-3ta5.onrender.com"],  # TON FRONTEND EXACT
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
