@@ -51,8 +51,7 @@ async def health_check():
 from backend.routers import stories
 
 api_router = APIRouter(prefix="/api")
-api_router.include_router(stories.router)   # ← stories à la racine de /api
-
+api_router.include_router(stories.router, prefix="/stories")
 app.include_router(api_router)   # ← un seul include_router
 
 # ==================== MODELS ====================
