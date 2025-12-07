@@ -1,5 +1,5 @@
 // src/components/StoriesFeed.tsx
-import { Avatar, AvatarFallback, AvatarImage } from "@/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import StoryViewer from "./StoryViewer";
