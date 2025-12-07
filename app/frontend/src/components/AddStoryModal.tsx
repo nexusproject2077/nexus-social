@@ -9,7 +9,18 @@ export default function AddStoryModal({ onClose, onSuccess }: { onClose: () => v
   const [uploading, setUploading] = useState(false);
 
   const handleUpload = async () => {
-    if (!file) return toast.error("Choisis une image ou vidéo");
+    if (!file) {
+      toast.error("Choisis une image ou vidéo");
+      return;
+    }
+
+    const token = localStorage.getItem('access_token'); // Récupère le token JWT
+    if (!token) {
+      toast.error("Vous devez être connecté pour publier une story.");
+      // Optionnel : Rediriger l'utilisateur vers la page de connexion
+      onClose(); // Ferme la modale si non connecté
+      return;
+    }
 
     setUploading(true);
     const formData = new FormData();
@@ -18,7 +29,11 @@ export default function AddStoryModal({ onClose, onSuccess }: { onClose: () => v
     try {
       const res = await fetch(`${API}/stories/`, {
         method: "POST",
-        credentials: "include",
+        headers: {
+          'Authorization': `Bearer ${token}` // AJOUT DE L'EN-TÊTE D'AUTHENTIFICATION
+          // 'Content-Type': 'multipart/form-data' n'est pas nécessaire avec FormData, le navigateur le définit automatiquement
+        },
+        // credentials: "include" n'est pas nécessaire ici car nous utilisons un token
         body: formData,
       });
 
@@ -28,11 +43,16 @@ export default function AddStoryModal({ onClose, onSuccess }: { onClose: () => v
       } else {
         const errorText = await res.text();
         console.error("Erreur serveur:", res.status, errorText);
-        toast.error("Erreur upload – vérifie la console");
+        toast.error(`Erreur upload – ${res.status}: ${errorText.substring(0, 100)}...`); // Affiche un extrait de l'erreur
+        // Gérer spécifiquement le cas 401/403 pour un token expiré ou invalide
+        if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('access_token'); // Efface le token invalide
+            // Optionnel : Rediriger l'utilisateur pour qu'il se reconnecte
+        }
       }
     } catch (err) {
       console.error("Erreur réseau:", err);
-      toast.error("Erreur réseau");
+      toast.error("Erreur réseau lors de la publication de la story.");
     } finally {
       setUploading(false);
     }
