@@ -1,4 +1,4 @@
-From fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from datetime import datetime, timedelta
 import base64
 import uuid
