@@ -7,7 +7,7 @@ import uuid
 router = APIRouter(tags=["stories"])   # ← SANS prefix DU TOUT  # ← ajoute /api ici
 
 # Import de ton helper d'auth (tu l'as déjà dans server.py)
-from backend.server import get_current_user, db  # LÀ C'EST LA CLÉ
+from app.backend.server import get_current_user, db  # LÀ C'EST LA CLÉ
 
 # POST : Créer une story (base64 comme tes posts)
 @router.post("/")
