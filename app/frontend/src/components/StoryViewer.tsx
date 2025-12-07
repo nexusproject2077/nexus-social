@@ -24,7 +24,8 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
   const [currentGroupIndex, setCurrentGroupIndex] = useState(initialGroupIndex);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const viewerRef = useRef<HTMLDivElement>(null); // Ref pour le conteneur du viewer
+  // viewerRef n'est plus nécessaire pour le onClick global car nous utilisons les overlays
+  // const viewerRef = useRef<HTMLDivElement>(null);
 
   const currentGroup = allStories[currentGroupIndex];
   const currentStory = currentGroup?.stories[currentStoryIndex];
@@ -40,10 +41,11 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
       if (currentStory?.media_type === 'video') {
         videoRef.current.play().catch(e => console.error("Video autoplay blocked:", e));
       } else {
+        // Pause if it was a video and now it's an image
         videoRef.current.pause();
       }
     }
-  }, [currentStory]);
+  }, [currentStory]); // Re-déclenche quand la story change
 
   const handleNextStory = useCallback(() => {
     if (currentGroup) {
@@ -73,25 +75,13 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
           const prevGroup = allStories[currentGroupIndex - 1];
           setCurrentStoryIndex(prevGroup ? prevGroup.stories.length - 1 : 0);
         } else {
-          // Début du premier groupe, ne rien faire ou fermer
+          // Si on est déjà sur la première story du premier groupe, ne rien faire
+          // ou fermer si c'est le comportement souhaité. Pour l'instant, on ne fait rien.
         }
       }
     }
   }, [currentGroup, currentStoryIndex, currentGroupIndex, allStories]);
 
-  // Gestion des clics sur l'écran pour la navigation
-  const handleScreenClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (viewerRef.current) {
-      const rect = viewerRef.current.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-
-      if (clickX < rect.width / 3) { // Clic sur le tiers gauche de l'écran
-        handlePrevStory();
-      } else if (clickX > (rect.width * 2) / 3) { // Clic sur le tiers droit de l'écran
-        handleNextStory();
-      }
-    }
-  }, [handlePrevStory, handleNextStory]);
 
   // Si aucun groupe ou story n'est trouvé, fermer
   if (!currentGroup || !currentStory) {
@@ -102,9 +92,8 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
   return (
     <div className="fixed inset-0 z-50 bg-black flex items-center justify-center p-4">
       <div
-        ref={viewerRef}
+        // Supprimé: ref={viewerRef} et onClick={handleScreenClick} du conteneur principal
         className="relative w-full max-w-md h-full max-h-[80vh] bg-slate-900 rounded-lg overflow-hidden flex flex-col"
-        onClick={handleScreenClick}
       >
         {/* Bouton Fermer */}
         <button onClick={onClose} className="absolute top-4 right-4 z-10 text-white bg-black/50 rounded-full p-2 hover:bg-black/70 transition">
@@ -145,16 +134,18 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
           )}
         </div>
 
-        {/* Overlay pour les clics de navigation */}
-        <div className="absolute inset-y-0 left-0 w-1/3 cursor-pointer" onClick={handlePrevStory} />
-        <div className="absolute inset-y-0 right-0 w-1/3 cursor-pointer" onClick={handleNextStory} />
-
-        {/* Flèches de navigation (optionnel, le clic sur l'écran est plus Insta-like) */}
+        {/* Overlays pour les clics de navigation : couvre toute la hauteur */}
+        {/* Important: Ces overlays doivent être positionnés au-dessus du contenu de la story */}
+        <div className="absolute inset-y-0 left-0 w-1/2 cursor-pointer z-10" onClick={handlePrevStory} />
+        <div className="absolute inset-y-0 right-0 w-1/2 cursor-pointer z-10" onClick={handleNextStory} />
+        
+        {/* Flèches de navigation (désactivées car le clic sur l'écran est plus Insta-like) */}
+        {/* Si vous voulez les flèches, assurez-vous qu'elles ont un z-index plus élevé que les overlays */}
         {/*
-        <button onClick={handlePrevStory} className="absolute left-4 top-1/2 -translate-y-1/2 z-10 text-white bg-black/50 rounded-full p-2 hover:bg-black/70 transition">
+        <button onClick={handlePrevStory} className="absolute left-4 top-1/2 -translate-y-1/2 z-20 text-white bg-black/50 rounded-full p-2 hover:bg-black/70 transition">
           <ChevronLeft size={24} />
         </button>
-        <button onClick={handleNextStory} className="absolute right-4 top-1/2 -translate-y-1/2 z-10 text-white bg-black/50 rounded-full p-2 hover:bg-black/70 transition">
+        <button onClick={handleNextStory} className="absolute right-4 top-1/2 -translate-y-1/2 z-20 text-white bg-black/50 rounded-full p-2 hover:bg-black/70 transition">
           <ChevronRight size={24} />
         </button>
         */}
