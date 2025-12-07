@@ -1,17 +1,16 @@
-# app/backend/routers/stories.py
-from fastapi import APIRouter, Depends, File, UploadFile
+From fastapi import APIRouter, Depends, File, UploadFile
 from datetime import datetime, timedelta
 import base64
 import uuid
 
+from backend.auth import get_current_user
+from backend.server import db
+
 router = APIRouter(
     prefix="/stories",
-    tags=["stories"])   # ← SANS prefix DU TOUT  # ← ajoute /api ici
+    tags=["stories"]
+)
 
-# Import de ton helper d'auth (tu l'as déjà dans server.py)
-from app.backend.server import get_current_user, db  # LÀ C'EST LA CLÉ
-
-# POST : Créer une story (base64 comme tes posts)
 @router.post("/")
 async def create_story(file: UploadFile = File(...), current_user = Depends(get_current_user)):
     contents = await file.read()
@@ -29,26 +28,21 @@ async def create_story(file: UploadFile = File(...), current_user = Depends(get_
         "created_at": datetime.utcnow().isoformat(),
         "expires_at": (datetime.utcnow() + timedelta(hours=24)).isoformat()
     }
-    
+
     await db.stories.insert_one(story)
     return story
 
-
-# GET : Feed des stories
 @router.get("/feed")
 async def get_stories_feed(current_user = Depends(get_current_user)):
-    # Récupère les IDs des gens suivis + soi-même
     follows = await db.follows.find({"follower_id": current_user["id"]}).to_list(1000)
     following_ids = [f["following_id"] for f in follows] + [current_user["id"]]
 
-    # Stories non expirées
     now = datetime.utcnow().isoformat()
     raw_stories = await db.stories.find({
         "user_id": {"$in": following_ids},
         "expires_at": {"$gt": now}
     }).sort("created_at", -1).to_list(1000)
 
-    # Regroupe par utilisateur
     grouped = {}
     for s in raw_stories:
         uid = s["user_id"]
