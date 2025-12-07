@@ -38,6 +38,21 @@ ALGORITHM = "HS256"
 # Create the main app
 app = FastAPI()
 
+  # --- Configuration CORS (doit être ICI) ---
+    origins = [
+        "https://nexus-social-3ta5.onrender.com",  # L'URL de votre frontend
+        "http://localhost:3000",                   # Pour le développement local de votre frontend
+        "https://nexus-social-4k3v.onrender.com"   # L'URL de votre backend lui-même
+    ]
+
+app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins, # Utilisez la variable 'origins' ici
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+)
+
 @app.get("/")
 async def root():
     return{"message": "API fonctionne !"}
@@ -721,14 +736,6 @@ async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
 
 # Include the router in the main app
 app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-allow_origins=["https://nexus-social-3ta5.onrender.com"],  # TON FRONTEND EXACT
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 logging.basicConfig(
     level=logging.INFO,
