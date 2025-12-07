@@ -1,4 +1,4 @@
-// src/components/StoriesFeed.tsx  ← remplace tout le fichier par ÇA
+// src/components/StoriesFeed.tsx
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -16,23 +16,59 @@ export default function StoriesFeed() {
   const [selectedGroup, setSelectedGroup] = useState<StoryGroup | null>(null);
   const [showAddStory, setShowAddStory] = useState(false);
 
-  useEffect(() => {
-    fetch(`${API}/stories/feed`, { credentials: "include" })
-      .then(r => r.json())
-      .then(data => {
-        // PROTECTION CONTRE TOUT CE QUI N'EST PAS UN TABLEAU
-        if (Array.isArray(data)) {
-          setStories(data);
-        } else {
-          console.warn("Stories feed pas un tableau :", data);
-          setStories([]);
+  // Fonction pour récupérer les histoires avec le token d'authentification
+  const fetchStories = async () => {
+    const token = localStorage.getItem('access_token'); // Récupère le token JWT
+
+    if (!token) {
+      console.warn("Utilisateur non connecté. Impossible de récupérer les stories.");
+      setStories([]); // Vide les stories si non connecté
+      // Optionnel : Gérer la redirection ou afficher un message à l'utilisateur
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API}/stories/feed`, {
+        method: "GET", // Préciser la méthode GET
+        headers: {
+          'Authorization': `Bearer ${token}` // AJOUT DE L'EN-TÊTE D'AUTHENTIFICATION
         }
-      })
-      .catch(err => {
-        console.error("Erreur fetch stories :", err);
-        setStories([]);
+        // credentials: "include" n'est plus nécessaire ici car nous utilisons un token
+        // Ne pas l'inclure pour éviter toute confusion avec une authentification basée sur les cookies
       });
+
+      if (!response.ok) {
+        // Gérer les erreurs, par exemple si le token est expiré (401 Unauthorized)
+        if (response.status === 401 || response.status === 403) {
+          console.error("Authentification échouée ou token expiré. Veuillez vous reconnecter.");
+          // Optionnel : Effacer le token et rediriger vers la page de connexion
+          localStorage.removeItem('access_token');
+        }
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setStories(data);
+      } else {
+        console.warn("Stories feed pas un tableau :", data);
+        setStories([]);
+      }
+    } catch (err) {
+      console.error("Erreur fetch stories :", err);
+      setStories([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchStories(); // Appelle la fonction de récupération des histoires au montage
   }, []);
+
+  // Fonction de rappel pour rafraîchir les stories après l'ajout d'une nouvelle
+  const handleStoryAdded = () => {
+    setShowAddStory(false); // Ferme la modale
+    fetchStories(); // Rafraîchit la liste des stories
+  };
 
   return (
     <>
@@ -71,11 +107,7 @@ export default function StoriesFeed() {
       </div>
 
       {selectedGroup && <StoryViewer group={selectedGroup} onClose={() => setSelectedGroup(null)} />}
-      {showAddStory && <AddStoryModal onClose={() => setShowAddStory(false)} onSuccess={() => {
-        setShowAddStory(false);
-        // refresh
-        fetch(`${API}/stories/feed`, { credentials: "include" }).then(r => r.json()).then(d => Array.isArray(d) && setStories(d));
-      }} />}
+      {showAddStory && <AddStoryModal onClose={() => setShowAddStory(false)} onSuccess={handleStoryAdded} />}
     </>
   );
 }
