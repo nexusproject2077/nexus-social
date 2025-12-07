@@ -48,7 +48,6 @@ async def health_check():
     return {"status": "ok"}
 
 # Create a router with the /api prefix
-from backend.routers import stories
 api_router = APIRouter(prefix="/api")
 api_router.include_router(stories.router)
 app.include_router(api_router)
