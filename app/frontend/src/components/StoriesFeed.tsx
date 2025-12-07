@@ -16,33 +16,29 @@ export default function StoriesFeed() {
   const [selectedGroup, setSelectedGroup] = useState<StoryGroup | null>(null);
   const [showAddStory, setShowAddStory] = useState(false);
 
-  // Fonction pour récupérer les histoires avec le token d'authentification
   const fetchStories = async () => {
-    const token = localStorage.getItem('access_token'); // Récupère le token JWT
+    const token = localStorage.getItem('token'); // MODIFIÉ : Utilise 'token'
 
     if (!token) {
       console.warn("Utilisateur non connecté. Impossible de récupérer les stories.");
-      setStories([]); // Vide les stories si non connecté
-      // Optionnel : Gérer la redirection ou afficher un message à l'utilisateur
+      setStories([]);
       return;
     }
 
     try {
       const response = await fetch(`${API}/stories/feed`, {
-        method: "GET", // Préciser la méthode GET
+        method: "GET",
         headers: {
-          'Authorization': `Bearer ${token}` // AJOUT DE L'EN-TÊTE D'AUTHENTIFICATION
-        }
-        // credentials: "include" n'est plus nécessaire ici car nous utilisons un token
-        // Ne pas l'inclure pour éviter toute confusion avec une authentification basée sur les cookies
+          'Authorization': `Bearer ${token}`
+        },
+        // credentials: "include" est supprimé
       });
 
       if (!response.ok) {
-        // Gérer les erreurs, par exemple si le token est expiré (401 Unauthorized)
         if (response.status === 401 || response.status === 403) {
           console.error("Authentification échouée ou token expiré. Veuillez vous reconnecter.");
-          // Optionnel : Effacer le token et rediriger vers la page de connexion
-          localStorage.removeItem('access_token');
+          localStorage.removeItem('token'); // MODIFIÉ : Supprime 'token'
+          // Optionnel : Rediriger l'utilisateur vers la page de connexion
         }
         throw new Error(`Erreur HTTP: ${response.status}`);
       }
@@ -61,13 +57,12 @@ export default function StoriesFeed() {
   };
 
   useEffect(() => {
-    fetchStories(); // Appelle la fonction de récupération des histoires au montage
+    fetchStories();
   }, []);
 
-  // Fonction de rappel pour rafraîchir les stories après l'ajout d'une nouvelle
   const handleStoryAdded = () => {
-    setShowAddStory(false); // Ferme la modale
-    fetchStories(); // Rafraîchit la liste des stories
+    setShowAddStory(false);
+    fetchStories();
   };
 
   return (
