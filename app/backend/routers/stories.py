@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+From fastapi import APIRouter, Depends, File, UploadFile
 from datetime import datetime, timedelta
 import base64
 import uuid
 
-from backend.auth import get_current_user
-from backend.server import db
+# ✅ Import depuis dependencies pour éviter circular import
+from backend.dependencies import get_current_user, db
 
 router = APIRouter(
     prefix="/stories",
