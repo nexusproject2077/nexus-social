@@ -1,3 +1,5 @@
+tsx
+// src/components/StoriesFeed.tsx
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -12,7 +14,7 @@ interface StoryGroup {
 
 export default function StoriesFeed() {
   const [stories, setStories] = useState<StoryGroup[]>([]);
-  const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null); // Change: stocke l'index
+  const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null);
   const [showAddStory, setShowAddStory] = useState(false);
 
   // Fonction pour récupérer les histoires avec le token d'authentification
@@ -21,7 +23,7 @@ export default function StoriesFeed() {
 
     if (!token) {
       console.warn("Utilisateur non connecté. Impossible de récupérer les stories.");
-      setStories([]); // Vide les stories si non connecté
+      setStories([]);
       return;
     }
 
@@ -63,12 +65,10 @@ export default function StoriesFeed() {
     fetchStories();
   };
 
-  // Fonction pour ouvrir le StoryViewer sur un groupe spécifique
   const openStoryViewer = (index: number) => {
     setSelectedGroupIndex(index);
   };
 
-  // Fonction pour fermer le StoryViewer
   const closeStoryViewer = () => {
     setSelectedGroupIndex(null);
   };
@@ -94,10 +94,11 @@ export default function StoriesFeed() {
         {Array.isArray(stories) && stories.map((group, index) => (
           <button
             key={group.user.id}
-            onClick={() => openStoryViewer(index)} // Change: passe l'index du groupe
+            onClick={() => openStoryViewer(index)}
             className="flex flex-col items-center gap-1 flex-shrink-0 group"
           >
-            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-pink-500 via-red-500 to-yellow-500 p-0.5">
+            {/* MODIFICATION ICI pour la bordure de l'avatar */}
+            <div className="w-16 h-16 rounded-full ring-2 ring-cyan-500 p-0.5"> 
               <div className="w-full h-full rounded-full overflow-hidden">
                 <Avatar className="w-full h-full">
                   <AvatarImage src={group.user.avatar} />
@@ -110,12 +111,12 @@ export default function StoriesFeed() {
         ))}
       </div>
 
-      {/* Affiche le StoryViewer si un groupe est sélectionné */}
       {selectedGroupIndex !== null && (
         <StoryViewer
-          allStories={stories} // Change: passe TOUS les groupes d'histoires
-          initialGroupIndex={selectedGroupIndex} // Change: passe l'index initial
+          allStories={stories}
+          initialGroupIndex={selectedGroupIndex}
           onClose={closeStoryViewer}
+          onDeleteStory={fetchStories} // Passe la fonction de rafraîchissement après suppression
         />
       )}
       {showAddStory && <AddStoryModal onClose={() => setShowAddStory(false)} onSuccess={handleStoryAdded} />}
