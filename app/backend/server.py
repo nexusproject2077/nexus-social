@@ -3,7 +3,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 app.include_router(stories.router)
 from backend.routers import stories
-app.include_router(stories.router)
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -45,6 +44,8 @@ async def health_check():
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
+
+app.include_router(stories.router)
 
 # ==================== MODELS ====================
 
