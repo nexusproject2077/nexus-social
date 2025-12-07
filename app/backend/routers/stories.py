@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import base64
 import uuid
 
-router = APIRouter(prefix="/api/stories", tags=["stories"])  # ← ajoute /api ici
+router = APIRouter(tags=["stories"])   # ← SANS prefix DU TOUT  # ← ajoute /api ici
 
 # Import de ton helper d'auth (tu l'as déjà dans server.py)
 from backend.server import get_current_user, db  # LÀ C'EST LA CLÉ
