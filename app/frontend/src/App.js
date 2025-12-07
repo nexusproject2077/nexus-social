@@ -12,7 +12,7 @@ import SearchPage from "./pages/SearchPage";
 import PostDetailPage from "./pages/PostDetailPage";
 
 const BACKEND_URL = "https://nexus-social-4k3v.onrender.com";
-export const API = `${BACKEND_URL}/api`;
+export const API = "https://nexus-social-4k3v.onrender.com/api";
 
 // Axios interceptor for auth token
 axios.interceptors.request.use((config) => {
