@@ -40,7 +40,7 @@ axios.interceptors.response.use(
 );
 
 function App() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const checkAuth = async () => {
