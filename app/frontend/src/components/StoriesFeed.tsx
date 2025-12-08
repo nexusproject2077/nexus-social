@@ -1,14 +1,14 @@
 // src/components/StoriesFeed.tsx
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Plus } from "lucide-react";
-import { useEffect, useState, useCallback } from "react"; // Ajout de useCallback
+import { useEffect, useState, useCallback } from "react";
 import StoryViewer from "./StoryViewer";
 import AddStoryModal from "./AddStoryModal";
 import { API } from "../App";
 
 interface StoryGroup {
   user: { id: string; username: string; avatar?: string };
-  stories: { id: string; media_url: string; media_type: "image" | "video"; user_id: string }[]; // Ajout de user_id
+  stories: { id: string; media_url: string; media_type: "image" | "video"; user_id: string }[]; // Ajout de user_id pour le StoryViewer
 }
 
 export default function StoriesFeed() {
@@ -17,7 +17,7 @@ export default function StoriesFeed() {
   const [showAddStory, setShowAddStory] = useState(false);
 
   // Fonction pour récupérer les histoires avec le token d'authentification
-  const fetchStories = useCallback(async () => { // useCallback pour optimiser et éviter des re-créations
+  const fetchStories = useCallback(async () => {
     const token = localStorage.getItem('token'); // Récupère le token JWT
 
     if (!token) {
@@ -55,7 +55,7 @@ export default function StoriesFeed() {
       console.error("Erreur fetch stories :", err);
       setStories([]);
     }
-  }, []); // Dépendances vides car API et localStorage sont stables ou gérés autrement
+  }, []); // Dépendances vides pour le useCallback (si API est constante)
 
   useEffect(() => {
     fetchStories(); // Appelle la fonction de récupération des histoires au montage
@@ -79,7 +79,7 @@ export default function StoriesFeed() {
   return (
     <>
       <div className="flex gap-4 overflow-x-auto py-4 px-4 bg-slate-950 border-b border-slate-800 scrollbar-hide">
-        {/* Toi */}
+        {/* Bouton pour ajouter une story */}
         <button onClick={() => setShowAddStory(true)} className="flex flex-col items-center gap-1 flex-shrink-0 group">
           <div className="relative">
             <Avatar className="w-16 h-16 ring-2 ring-slate-700 group-hover:ring-cyan-500 transition">
@@ -92,7 +92,7 @@ export default function StoriesFeed() {
           <span className="text-xs text-slate-400">Toi</span>
         </button>
 
-        {/* Les autres – PROTECTION .map() */}
+        {/* Les autres histoires (groupes) */}
         {Array.isArray(stories) && stories.map((group, index) => (
           <button
             key={group.user.id}
@@ -100,7 +100,7 @@ export default function StoriesFeed() {
             className="flex flex-col items-center gap-1 flex-shrink-0 group"
           >
             {/* MODIFICATION ICI pour la bordure de l'avatar */}
-            <div className="w-16 h-16 rounded-full ring-2 ring-cyan-500 p-0.5"> 
+            <div className="w-16 h-16 rounded-full ring-2 ring-cyan-500 p-0.5">
               <div className="w-full h-full rounded-full overflow-hidden">
                 <Avatar className="w-full h-full">
                   <AvatarImage src={group.user.avatar} />
