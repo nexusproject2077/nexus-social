@@ -212,7 +212,24 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-        user_raw = await db.users.find_one({"id": user_id}) # Récupère le document brut
+        async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # ON CHERCHE AVEC LE CHAMP "id" QUE TU AS CRÉÉ
+        user_raw = await db.users.find_one({"id": user_id})
+        if user_raw is None:
+            raise HTTPException(status_code=401, detail="User not found")
+        
+        return convert_mongo_doc_to_dict(user_raw)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
         if user_raw is None:
             raise HTTPException(status_code=401, detail="User not found")
         return convert_mongo_doc_to_dict(user_raw) # CONVERTIT AVANT DE RETOURNER
