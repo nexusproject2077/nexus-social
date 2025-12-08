@@ -1,4 +1,3 @@
-tsx
 // src/components/AddStoryModal.tsx
 // ... (imports) ...
 
