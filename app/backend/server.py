@@ -1,3 +1,4 @@
+# app/backend/server.py
 import sys
 from pathlib import Path
 # Cette ligne magique règle TOUT le problème Render
@@ -8,7 +9,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os
 import logging
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional
@@ -83,13 +83,11 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
     return new_doc
 # --- FIN FONCTION UTILITAIRE ---
 
-
 # Create a router with the /api prefix
 from backend.routers import stories # Importe le routeur stories APRÈS la création de 'app' et 'db'
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(stories.router, prefix="/stories") # Inclut le routeur stories avec son préfixe
-
 
 # ==================== MODELS ====================
 # (Vos modèles Pydantic)
@@ -195,7 +193,6 @@ class Notification(BaseModel):
     read: bool = False
     created_at: str
 
-
 # ==================== AUTH HELPERS ====================
 
 def create_access_token(data: dict):
@@ -212,27 +209,12 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-        async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        token = credentials.credentials
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
         
-        # ON CHERCHE AVEC LE CHAMP "id" QUE TU AS CRÉÉ
         user_raw = await db.users.find_one({"id": user_id})
         if user_raw is None:
             raise HTTPException(status_code=401, detail="User not found")
         
         return convert_mongo_doc_to_dict(user_raw)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
-        if user_raw is None:
-            raise HTTPException(status_code=401, detail="User not found")
-        return convert_mongo_doc_to_dict(user_raw) # CONVERTIT AVANT DE RETOURNER
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except:
@@ -587,12 +569,12 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
     user_raw = await db.users.find_one({"id": user_id}) # Enlève {"_id": 0, "password": 0} pour la conversion
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
-    
+   
     user = convert_mongo_doc_to_dict(user_raw) # CONVERTIT ICI
-    
+   
     # Check if following
     follow = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
-    
+   
     profile = UserProfile(**user)
     profile.is_following = follow is not None
     return profile
@@ -600,34 +582,33 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
 @api_router.get("/users/{user_id}/posts", response_model=List[Post])
 async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_user)):
     posts_raw = await db.posts.find({"author_id": user_id}).sort("created_at", -1).to_list(100)
-    
+   
     # Check which posts are liked by current user
     liked_posts_raw = await db.likes.find({"user_id": current_user["id"]}).to_list(1000)
     liked_post_ids = {like["post_id"] for like in [convert_mongo_doc_to_dict(l) for l in liked_posts_raw]} # CONVERTIT LIKED_POSTS
-    
+   
     result = []
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw) # CONVERTIT ICI
         post_obj = Post(**post)
         post_obj.is_liked = post["id"] in liked_post_ids
         result.append(post_obj)
-    
+   
     return result
 
 @api_router.post("/users/{user_id}/follow")
 async def follow_user(user_id: str, current_user: dict = Depends(get_current_user)):
     if user_id == current_user["id"]:
         raise HTTPException(status_code=400, detail="Cannot follow yourself")
-    
+   
     target_user_raw = await db.users.find_one({"id": user_id})
     if not target_user_raw:
         raise HTTPException(status_code=404, detail="User not found")
-
     target_user = convert_mongo_doc_to_dict(target_user_raw) # CONVERTIT ICI
-
+   
     # Check if already following
     existing_follow = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
-    
+   
     if existing_follow:
         # Unfollow
         await db.follows.delete_one({"follower_id": current_user["id"], "following_id": user_id})
@@ -644,11 +625,11 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
         })
         await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": 1}})
         await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": 1}})
-        
+       
         # Create notification
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()),
-            "user_id": user_id, # C'est target_user["id"]
+            "user_id": user_id, # C’est target_user["id"]
             "type": "follow",
             "from_user_id": current_user["id"],
             "from_username": current_user["username"],
@@ -658,19 +639,17 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
             "read": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-        
+       
         return {"following": True}
-
 # ==================== MESSAGE ROUTES ====================
-
 @api_router.post("/messages", response_model=Message)
 async def send_message(message_data: MessageCreate, current_user: dict = Depends(get_current_user)):
     recipient_raw = await db.users.find_one({"id": message_data.recipient_id})
     if not recipient_raw:
         raise HTTPException(status_code=404, detail="Recipient not found")
-    
+   
     recipient = convert_mongo_doc_to_dict(recipient_raw) # CONVERTIT ICI
-    
+   
     message_to_insert = {
         "sender_id": current_user["id"],
         "sender_username": current_user["username"],
@@ -682,13 +661,13 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     result = await db.messages.insert_one(message_to_insert)
-    
+   
     inserted_message_raw = await db.messages.find_one({"_id": result.inserted_id})
     if not inserted_message_raw:
         raise HTTPException(status_code=500, detail="Failed to retrieve inserted message")
-    
+   
     converted_message = convert_mongo_doc_to_dict(inserted_message_raw) # CONVERTIT ICI
-    
+   
     # Create notification
     await db.notifications.insert_one({
         "id": str(uuid.uuid4()),
@@ -702,32 +681,31 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     })
-    
+   
     return Message(**converted_message)
-
 @api_router.get("/messages/conversations", response_model=List[Conversation])
 async def get_conversations(current_user: dict = Depends(get_current_user)):
     messages_raw = await db.messages.find(
         {"$or": [{"sender_id": current_user["id"]}, {"recipient_id": current_user["id"]}]}
     ).sort("created_at", -1).to_list(1000)
-    
+   
     conversations_map = {}
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw) # CONVERTIT CHAQUE MESSAGE
-        
+       
         other_user_id = msg["recipient_id"] if msg["sender_id"] == current_user["id"] else msg["sender_id"]
-        
+       
         if other_user_id not in conversations_map:
             other_user_raw = await db.users.find_one({"id": other_user_id})
             other_user = convert_mongo_doc_to_dict(other_user_raw) # CONVERTIT ICI
-            
+           
             if other_user:
                 unread_count = await db.messages.count_documents({
                     "sender_id": other_user_id,
                     "recipient_id": current_user["id"],
                     "read": False
                 })
-                
+               
                 conversations_map[other_user_id] = Conversation(
                     user_id=other_user_id,
                     username=other_user["username"],
@@ -736,9 +714,8 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     last_message_time=msg["created_at"],
                     unread_count=unread_count
                 )
-    
+   
     return list(conversations_map.values())
-
 @api_router.get("/messages/{other_user_id}", response_model=List[Message])
 async def get_messages_with_user(other_user_id: str, current_user: dict = Depends(get_current_user)):
     messages_raw = await db.messages.find(
@@ -747,25 +724,22 @@ async def get_messages_with_user(other_user_id: str, current_user: dict = Depend
             {"sender_id": other_user_id, "recipient_id": current_user["id"]}
         ]}
     ).sort("created_at", 1).to_list(1000)
-    
+   
     # Mark messages as read
     await db.messages.update_many(
         {"sender_id": other_user_id, "recipient_id": current_user["id"], "read": False},
         {"$set": {"read": True}}
     )
-    
+   
     return [Message(**convert_mongo_doc_to_dict(m_raw)) for m_raw in messages_raw]
-
 # ==================== NOTIFICATION ROUTES ====================
-
 @api_router.get("/notifications", response_model=List[Notification])
 async def get_notifications(current_user: dict = Depends(get_current_user)):
     notifications_raw = await db.notifications.find(
         {"user_id": current_user["id"]}
     ).sort("created_at", -1).limit(50).to_list(50)
-    
+   
     return [Notification(**convert_mongo_doc_to_dict(n_raw)) for n_raw in notifications_raw]
-
 @api_router.put("/notifications/{notification_id}/read")
 async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
     # Pas besoin de convertir le résultat si ce n'est pas retourné directement et si les IDs sont des str
@@ -774,7 +748,6 @@ async def mark_notification_read(notification_id: str, current_user: dict = Depe
         {"$set": {"read": True}}
     )
     return {"message": "Notification marked as read"}
-
 @api_router.put("/notifications/read-all")
 async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
     # Pas besoin de convertir le résultat
@@ -783,42 +756,35 @@ async def mark_all_notifications_read(current_user: dict = Depends(get_current_u
         {"$set": {"read": True}}
     )
     return {"message": "All notifications marked as read"}
-
 # ==================== SEARCH ROUTES ====================
-
 @api_router.get("/search/posts")
 async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
     if not q:
         return []
-    
+   
     posts_raw = await db.posts.find(
         {"content": {"$regex": q, "$options": "i"}}
     ).sort("created_at", -1).limit(50).to_list(50)
-    
+   
     # Check which posts are liked by current user
     liked_posts_raw = await db.likes.find({"user_id": current_user["id"]}).to_list(1000)
     liked_post_ids = {like["post_id"] for like in [convert_mongo_doc_to_dict(l) for l in liked_posts_raw]}
-    
+   
     result = []
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         post_obj = Post(**post)
         post_obj.is_liked = post["id"] in liked_post_ids
         result.append(post_obj)
-    
+   
     return result
-
-
 # Inclure le routeur principal de l'application (doit être après tous les @api_router)
 app.include_router(api_router)
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-
