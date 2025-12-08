@@ -1,9 +1,9 @@
 // src/components/StoryViewer.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Avatar } from "@/components/ui/avatar";
-import { X, ChevronLeft, ChevronRight, MoreVertical, Trash2 } from 'lucide-react'; // Ajout MoreVertical, Trash2
-import { toast } from "sonner"; // Pour les notifications
-import { API } from "../App"; // Assurez-vous que l'API est importée
+import { X, ChevronLeft, ChevronRight, MoreVertical, Trash2 } from 'lucide-react';
+import { toast } from "sonner";
+import { API } from "../App";
 
 interface Story {
   id: string;
@@ -27,10 +27,10 @@ interface StoryViewerProps {
 const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex, onClose, onDeleteStory }) => {
   const [currentGroupIndex, setCurrentGroupIndex] = useState(initialGroupIndex);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
-  const [showOptions, setShowOptions] = useState(false); // État pour afficher/masquer les options
-  const [showConfirmModal, setShowConfirmModal] = useState(false); // État pour la modale de confirmation
+  const [showOptions, setShowOptions] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const optionsButtonRef = useRef<HTMLButtonElement>(null); // Ref pour le bouton d'options
+  const optionsButtonRef = useRef<HTMLButtonElement>(null);
 
   const currentGroup = allStories[currentGroupIndex];
   const currentStory = currentGroup?.stories[currentStoryIndex];
@@ -38,11 +38,12 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    // Ceci est un exemple simple, dans une vraie app, utilisez un contexte d'authentification
     const token = localStorage.getItem('token');
     if (token) {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        setCurrentUserId(payload.sub);
+        setCurrentUserId(payload.sub); // 'sub' est généralement l'id de l'utilisateur dans les JWT
       } catch (e) {
         console.error("Failed to decode token:", e);
         setCurrentUserId(null);
@@ -76,7 +77,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
           setCurrentGroupIndex(prev => prev + 1);
           setCurrentStoryIndex(0);
         } else {
-          onClose();
+          onClose(); // Plus d'histoires, fermer le viewer
         }
       }
     }
@@ -119,8 +120,8 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
         toast.success("Story supprimée avec succès !");
         setShowConfirmModal(false);
         setShowOptions(false);
-        onDeleteStory();
-        onClose();
+        onDeleteStory(); // Rafraîchit les stories dans StoriesFeed
+        onClose(); // Ferme le viewer après suppression
       } else {
         const errorText = await response.text();
         console.error("Erreur serveur lors de la suppression:", response.status, errorText);
@@ -135,6 +136,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
   // Fermer les options si l'on clique en dehors
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // S'assure que optionsButtonRef et son contenu existent et que le clic n'était pas sur eux
       if (optionsButtonRef.current && !optionsButtonRef.current.contains(event.target as Node)) {
         setShowOptions(false);
       }
@@ -158,12 +160,12 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
         className="relative w-full max-w-lg h-full max-h-[90vh] bg-slate-900 rounded-lg overflow-hidden flex flex-col shadow-lg"
       >
         {/* Conteneur pour les boutons en haut à droite (X et Options) */}
-        <div className="absolute top-3 right-3 z-20 flex gap-2"> {/* MODIFIÉ ICI */}
+        <div className="absolute top-3 right-3 z-20 flex gap-2">
           {isAuthor && (
             <div className="relative">
               <button
-                ref={optionsButtonRef} {/* Ajout de la référence */}
-                onClick={(e) => { e.stopPropagation(); setShowOptions(prev => !prev); }} {/* Empêche la propagation pour la navigation */}
+                ref={optionsButtonRef}
+                onClick={(e) => { e.stopPropagation(); setShowOptions(prev => !prev); }}
                 className="text-white bg-black/40 rounded-full p-1 hover:bg-black/60 transition focus:outline-none"
               >
                 <MoreVertical size={20} />
@@ -171,7 +173,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
               {showOptions && (
                 <div className="absolute top-full right-0 mt-2 w-32 bg-slate-800 rounded-md shadow-lg z-30">
                   <button
-                    onClick={(e) => { e.stopPropagation(); setShowConfirmModal(true); setShowOptions(false); }} {/* Empêche la propagation */}
+                    onClick={(e) => { e.stopPropagation(); setShowConfirmModal(true); setShowOptions(false); }}
                     className="flex items-center w-full px-3 py-2 text-sm text-red-400 hover:bg-slate-700 rounded-md"
                   >
                     <Trash2 size={16} className="mr-2" /> Supprimer
@@ -191,7 +193,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
 
         {/* Header de l'histoire (utilisateur et progression) */}
         <div className="absolute top-0 left-0 right-0 p-4 flex items-center bg-gradient-to-b from-black/60 to-transparent z-10">
-          <Avatar className="w-8 h-8 mr-2 ring-1 ring-cyan-500">
+          <Avatar className="w-8 h-8 mr-2 ring-1 ring-cyan-500"> {/* Couleur bordure avatar */}
             <img src={currentGroup.user.avatar || "https://placehold.co/150"} alt={currentGroup.user.username} /> {/* Utilisation de placehold.co */}
           </Avatar>
           <span className="text-white font-semibold text-sm">{currentGroup.user.username}</span>
@@ -260,4 +262,3 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ allStories, initialGroupIndex
 };
 
 export default StoryViewer;
-
