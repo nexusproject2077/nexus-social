@@ -11,38 +11,58 @@ import NotificationsPage from "./pages/NotificationsPage";
 import SearchPage from "./pages/SearchPage";
 import PostDetailPage from "./pages/PostDetailPage";
 
+// URL du backend (NE CHANGE PLUS JAMAIS)
 const BACKEND_URL = "https://nexus-social-4k3v.onrender.com";
-export const API = "https://nexus-social-4k3v.onrender.com/api";
+export const API = `${BACKEND_URL}/api`;
 
-// Axios interceptor for auth token
-axios.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+// INTERCEPTOR AXIOS – ENVOIE LE TOKEN À CHAQUE REQUÊTE (LA CLÉ DE LA VICTOIRE)
+axios.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Intercepteur de réponse pour gérer les 401 (session expirée)
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("token");
+      window.location.href = "/auth";
+    }
+    return Promise.reject(error);
   }
-  return config;
-});
+);
 
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  const checkAuth = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await axios.get(`${API}/auth/me`);
+      setUser(response.data);
+    } catch (error) {
+      localStorage.removeItem("token");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     checkAuth();
   }, []);
-
-  const checkAuth = async () => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      try {
-        const response = await axios.get(`${API}/auth/me`);
-        setUser(response.data);
-      } catch (error) {
-        localStorage.removeItem("token");
-      }
-    }
-    setLoading(false);
-  };
 
   if (loading) {
     return (
