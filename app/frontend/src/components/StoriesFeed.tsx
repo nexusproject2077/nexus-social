@@ -1,77 +1,55 @@
 // src/components/StoriesFeed.tsx
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Plus } from "lucide-react";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
+import axios from "axios";
 import StoryViewer from "./StoryViewer";
 import AddStoryModal from "./AddStoryModal";
 import { API } from "../App";
+import { toast } from "sonner";
 
 interface StoryGroup {
   user: { id: string; username: string; avatar?: string };
-  stories: { id: string; media_url: string; media_type: "image" | "video"; user_id: string }[]; // Ajout de user_id pour le StoryViewer
+  stories: { id: string; media_url: string; media_type: "image" | "video" }[];
 }
 
 export default function StoriesFeed() {
   const [stories, setStories] = useState<StoryGroup[]>([]);
-  const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null); // Change: stocke l'index
+  const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null);
   const [showAddStory, setShowAddStory] = useState(false);
 
-  // Fonction pour récupérer les histoires avec le token d'authentification
-  const fetchStories = useCallback(async () => {
-    const token = localStorage.getItem('token'); // Récupère le token JWT
-
-    if (!token) {
-      console.warn("Utilisateur non connecté. Impossible de récupérer les stories.");
-      setStories([]); // Vide les stories si non connecté
-      return;
-    }
-
+  const fetchStories = async () => {
     try {
-      const response = await fetch(`${API}/stories/feed`, {
-        method: "GET",
-        headers: {
-          'Authorization': `Bearer ${token}` // AJOUT DE L'EN-TÊTE D'AUTHENTIFICATION
-        }
-        // credentials: "include" est supprimé
-      });
-
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          console.error("Authentification échouée ou token expiré. Veuillez vous reconnecter.");
-          localStorage.removeItem('token'); // Supprime le token invalide
-          // Optionnel : Rediriger l'utilisateur vers la page de connexion
-        }
-        throw new Error(`Erreur HTTP: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setStories(data);
+      const response = await axios.get(`${API}/stories/feed`);
+      if (Array.isArray(response.data)) {
+        setStories(response.data);
       } else {
-        console.warn("Stories feed pas un tableau :", data);
         setStories([]);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erreur fetch stories :", err);
+      if (err.response?.status === 401) {
+        toast.error("Session expirée");
+        localStorage.removeItem("token");
+        window.location.href = "/auth";
+      }
       setStories([]);
     }
-  }, []); // Dépendances vides pour le useCallback (si API est constante)
-
-  useEffect(() => {
-    fetchStories(); // Appelle la fonction de récupération des histoires au montage
-  }, [fetchStories]); // Ajout de fetchStories aux dépendances de useEffect
-
-  const handleStoryAdded = () => {
-    setShowAddStory(false); // Ferme la modale
-    fetchStories(); // Rafraîchit la liste des stories
   };
 
-  // Fonction pour ouvrir le StoryViewer sur un groupe spécifique
+  useEffect(() => {
+    fetchStories();
+  }, []);
+
+  const handleStoryAdded = () => {
+    setShowAddStory(false);
+    fetchStories(); // Rafraîchit après ajout
+  };
+
   const openStoryViewer = (index: number) => {
     setSelectedGroupIndex(index);
   };
 
-  // Fonction pour fermer le StoryViewer
   const closeStoryViewer = () => {
     setSelectedGroupIndex(null);
   };
@@ -79,8 +57,11 @@ export default function StoriesFeed() {
   return (
     <>
       <div className="flex gap-4 overflow-x-auto py-4 px-4 bg-slate-950 border-b border-slate-800 scrollbar-hide">
-        {/* Bouton pour ajouter une story */}
-        <button onClick={() => setShowAddStory(true)} className="flex flex-col items-center gap-1 flex-shrink-0 group">
+        {/* Toi */}
+        <button
+          onClick={() => setShowAddStory(true)}
+          className="flex flex-col items-center gap-1 flex-shrink-0 group"
+        >
           <div className="relative">
             <Avatar className="w-16 h-16 ring-2 ring-slate-700 group-hover:ring-cyan-500 transition">
               <AvatarFallback className="bg-slate-800 text-2xl">+</AvatarFallback>
@@ -92,25 +73,27 @@ export default function StoriesFeed() {
           <span className="text-xs text-slate-400">Toi</span>
         </button>
 
-        {/* Les autres histoires (groupes) */}
-        {Array.isArray(stories) && stories.map((group, index) => (
-          <button
-            key={group.user.id}
-            onClick={() => openStoryViewer(index)} // Change: passe l'index du groupe
-            className="flex flex-col items-center gap-1 flex-shrink-0 group"
-          >
-            {/* MODIFICATION ICI pour la bordure de l'avatar */}
-            <div className="w-16 h-16 rounded-full ring-2 ring-cyan-500 p-0.5">
-              <div className="w-full h-full rounded-full overflow-hidden">
-                <Avatar className="w-full h-full">
-                  <AvatarImage src={group.user.avatar} />
-                  <AvatarFallback>{group.user.username[0].toUpperCase()}</AvatarFallback>
-                </Avatar>
+        {/* Autres stories */}
+        {Array.isArray(stories) &&
+          stories.map((group, index) => (
+            <button
+              key={group.user.id}
+              onClick={() => openStoryViewer(index)}
+              className="flex flex-col items-center gap-1 flex-shrink-0 group"
+            >
+              <div className="w-16 h-16 rounded-full ring-2 ring-cyan-500 p-0.5">
+                <div className="w-full h-full rounded-full overflow-hidden">
+                  <Avatar className="w-full h-full">
+                    <AvatarImage src={group.user.avatar} />
+                    <AvatarFallback>{group.user.username[0].toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                </div>
               </div>
-            </div>
-            <span className="text-xs max-w-16 truncate text-slate-300">{group.user.username}</span>
-          </button>
-        ))}
+              <span className="text-xs max-w-16 truncate text-slate-300">
+                {group.user.username}
+              </span>
+            </button>
+          ))}
       </div>
 
       {selectedGroupIndex !== null && (
@@ -118,10 +101,16 @@ export default function StoriesFeed() {
           allStories={stories}
           initialGroupIndex={selectedGroupIndex}
           onClose={closeStoryViewer}
-          onDeleteStory={fetchStories} // Passe la fonction de rafraîchissement après suppression
+          onDeleteStory={fetchStories}
         />
       )}
-      {showAddStory && <AddStoryModal onClose={() => setShowAddStory(false)} onSuccess={handleStoryAdded} />}
+
+      {showAddStory && (
+        <AddStoryModal
+          onClose={() => setShowAddStory(false)}
+          onSuccess={handleStoryAdded}
+        />
+      )}
     </>
   );
 }
