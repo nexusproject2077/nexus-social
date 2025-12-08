@@ -125,7 +125,7 @@ class UserProfile(BaseModel):
 
 class PostCreate(BaseModel):
     content: str
-    media_type: Optional[str] = None  # 'image' or 'video'
+    media_type: Optional[str] = None # 'image' or 'video'
     media_url: Optional[str] = None
 
 class Post(BaseModel):
@@ -184,7 +184,7 @@ class Notification(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     user_id: str
-    type: str  # 'like', 'comment', 'follow', 'share'
+    type: str # 'like', 'comment', 'follow', 'share'
     from_user_id: str
     from_username: str
     from_profile_pic: Optional[str] = None
@@ -444,9 +444,8 @@ async def share_post(post_id: str, current_user: dict = Depends(get_current_user
     original_post_raw = await db.posts.find_one({"id": post_id})
     if not original_post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
-
     original_post = convert_mongo_doc_to_dict(original_post_raw) # CONVERTIT ICI
-    
+   
     # Create a shared post
     shared_post_id = str(uuid.uuid4())
     shared_post_to_insert = {
@@ -463,10 +462,10 @@ async def share_post(post_id: str, current_user: dict = Depends(get_current_user
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.posts.insert_one(shared_post_to_insert)
-    
+   
     # Increment shares count
     await db.posts.update_one({"id": post_id}, {"$inc": {"shares_count": 1}})
-    
+   
     # Create notification
     if original_post["author_id"] != current_user["id"]:
         await db.notifications.insert_one({
@@ -481,34 +480,31 @@ async def share_post(post_id: str, current_user: dict = Depends(get_current_user
             "read": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-    
+   
     return {"message": "Post shared successfully", "post_id": shared_post_id}
-
 @api_router.delete("/posts/{post_id}")
 async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
-    
+   
     post = convert_mongo_doc_to_dict(post_raw) # CONVERTIT ICI
     if post["author_id"] != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
+   
     await db.posts.delete_one({"id": post_id})
     await db.comments.delete_many({"post_id": post_id})
     await db.likes.delete_many({"post_id": post_id})
     return {"message": "Post deleted successfully"}
-
 # ==================== COMMENT ROUTES ====================
-
 @api_router.post("/posts/{post_id}/comments", response_model=Comment)
 async def create_comment(post_id: str, comment_data: CommentCreate, current_user: dict = Depends(get_current_user)):
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
-    
+   
     post = convert_mongo_doc_to_dict(post_raw) # CONVERTIT ICI
-    
+   
     comment_to_insert = {
         "post_id": post_id,
         "author_id": current_user["id"],
@@ -518,13 +514,13 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     result = await db.comments.insert_one(comment_to_insert)
-    
+   
     inserted_comment_raw = await db.comments.find_one({"_id": result.inserted_id})
     if not inserted_comment_raw:
         raise HTTPException(status_code=500, detail="Failed to retrieve inserted comment")
-    
+   
     converted_comment = convert_mongo_doc_to_dict(inserted_comment_raw) # CONVERTIT ICI
-    
+   
     # Create notification
     if post["author_id"] != current_user["id"]:
         await db.notifications.insert_one({
@@ -539,21 +535,18 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
             "read": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-    
+   
     return Comment(**converted_comment)
-
 @api_router.get("/posts/{post_id}/comments", response_model=List[Comment])
 async def get_comments(post_id: str, current_user: dict = Depends(get_current_user)):
     comments_raw = await db.comments.find({"post_id": post_id}).sort("created_at", -1).to_list(1000)
     return [Comment(**convert_mongo_doc_to_dict(c)) for c in comments_raw]
-
 # ==================== USER ROUTES ====================
-
 @api_router.get("/users/search")
 async def search_users(q: str, current_user: dict = Depends(get_current_user)):
     if not q:
         return []
-    
+   
     users_raw = await db.users.find(
         {"$or": [
             {"username": {"$regex": q, "$options": "i"}},
@@ -561,9 +554,8 @@ async def search_users(q: str, current_user: dict = Depends(get_current_user)):
         ]}
         # N'incluez pas {"_id": 0} ici, la conversion gérera la transformation
     ).limit(20).to_list(20)
-    
+   
     return [UserProfile(**convert_mongo_doc_to_dict(u)) for u in users_raw] # CONVERTIT ET UTILISE USERPROFILE
-
 @api_router.get("/users/{user_id}", response_model=UserProfile)
 async def get_user_profile(user_id: str, current_user: dict = Depends(get_current_user)):
     user_raw = await db.users.find_one({"id": user_id}) # Enlève {"_id": 0, "password": 0} pour la conversion
@@ -578,7 +570,6 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
     profile = UserProfile(**user)
     profile.is_following = follow is not None
     return profile
-
 @api_router.get("/users/{user_id}/posts", response_model=List[Post])
 async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_user)):
     posts_raw = await db.posts.find({"author_id": user_id}).sort("created_at", -1).to_list(100)
@@ -595,7 +586,6 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
         result.append(post_obj)
    
     return result
-
 @api_router.post("/users/{user_id}/follow")
 async def follow_user(user_id: str, current_user: dict = Depends(get_current_user)):
     if user_id == current_user["id"]:
