@@ -82,7 +82,7 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
         elif isinstance(value, list):
             new_doc[key] = [convert_mongo_doc_to_dict(item) if isinstance(item, dict) else (str(item) if isinstance(item, ObjectId) else item) for item in value]
     return new_doc
-# --- FIN FONCTION UTILITAIRE ---
+# --- FIN FONCTION utilitaire ---
 
 
 # Create a router with the /api prefix
@@ -213,11 +213,20 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        user_raw = await db.users.find_one({"id": user_id})
-        if user_raw is None:
+        # Cherche dans "id", puis "_id" string, puis ObjectId
+        user = await db.users.find_one({"id": user_id})
+        if not user:
+            user = await db.users.find_one({"_id": user_id})
+        if not user:
+            try:
+                user = await db.users.find_one({"_id": ObjectId(user_id)})
+            except:
+                pass
+
+        if not user:
             raise HTTPException(status_code=401, detail="User not found")
-        
-        return convert_mongo_doc_to_dict(user_raw)
+
+        return convert_mongo_doc_to_dict(user)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except:
@@ -362,8 +371,9 @@ async def create_post(
 
 @api_router.get("/posts/feed", response_model=List[Post])
 async def get_feed(current_user: dict = Depends(get_current_user)):
-    # Get users that current_user is following
+    # Get users that current user is following
     follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(1000)
+    # Convertir les ObjectIds potentiels dans les résultats de follows
     follows = [convert_mongo_doc_to_dict(f) for f in follows_raw]
     following_ids = [f["following_id"] for f in follows] + [current_user["id"]]
 
