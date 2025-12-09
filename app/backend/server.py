@@ -88,7 +88,7 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
 # Create a router with the /api prefix
 from backend.routers import stories # Importe le routeur stories APRÈS la création de 'app' et 'db'
 
-api_router = APIRouter(prefix="/api")
+api_router = APIRouter()
 api_router.include_router(stories.router) # Inclut le routeur stories avec son préfixe
 
 
