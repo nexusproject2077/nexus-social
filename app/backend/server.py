@@ -10,7 +10,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 import jwt
 import base64
@@ -18,6 +18,7 @@ from bson import ObjectId
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr, ConfigDict
 
+# ==================== ENV & DB ====================
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -25,20 +26,22 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# ==================== SECURITY ====================
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 SECRET_KEY = os.environ.get('SECRET_KEY', '76f267dbc69c6b4e639a50a7ccdd3783')
 ALGORITHM = "HS256"
 
+# ==================== APP ====================
 app = FastAPI()
 
-# CORS – TOUT EST AUTORISÉ (frontend + backend + localhost)
+# ==================== CORS – TOUT EST AUTORISÉ ====================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://nexus-social-3ta5.onrender.com",
-        "https://nexus-social-4k3v.onrender.com",
-        "http://localhost:3000",
+        "https://nexus-social-3ta5.onrender.com",  # ton frontend
+        "https://nexus-social-4k3v.onrender.com",  # ton backend
+        "http://localhost:3000",                   # dev local
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -49,7 +52,7 @@ app.add_middleware(
 async def health_check():
     return {"status": "ok"}
 
-# Convert ObjectId → str
+# ==================== UTILS ====================
 def convert_mongo_doc_to_dict(doc: dict) -> dict:
     if not doc:
         return None
@@ -71,14 +74,15 @@ def create_access_token(data: dict):
     to_encode.update({"exp": datetime.now(timezone.utc) + timedelta(days=7)})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# Auth – accepte anciens + nouveaux utilisateurs
+# ==================== AUTH – FIX TOTAL ====================
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM)
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401)
 
+        # Cherche partout : id, _id string, ObjectId
         user = await db.users.find_one({"id": user_id})
         if not user:
             user = await db.users.find_one({"_id": user_id})
@@ -94,7 +98,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# MODELS – TOUT EST ICI
+# ==================== MODELS ====================
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
@@ -132,7 +136,7 @@ class Post(BaseModel):
     created_at: str
 
 class CommentCreate(BaseModel):
-    content: str  # C’ÉTAIT ÇA QUI MANQUAIT
+    content: str
 
 class Comment(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -144,15 +148,15 @@ class Comment(BaseModel):
     content: str
     created_at: str
 
-# ROUTERS
+# ==================== ROUTERS ====================
 from backend.routers import stories
 
 api_router = APIRouter(prefix="/api")
-api_router.include_router(stories.router)  # Stories → /api/stories/
 
-app.include_router(api_router)
+# Stories
+api_router.include_router(stories.router)  # → /api/stories/
 
-# AUTH
+# ==================== AUTH ====================
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate):
     if await db.users.find_one({"$or": [{"email": user_data.email}, {"username": user_data.username}]}):
@@ -166,13 +170,13 @@ async def register(user_data: UserCreate):
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     token = create_access_token({"sub": user_id})
-    return {"token": token, "user": {"id": user_id, "username": user_data.username}}
+    return {"token": token, "user": {"id": user_id, "username": user_data.username, "email": user_data.email}}
 
 @api_router.post("/auth/login")
 async def login(credentials: UserLogin):
     user = await db.users.find_one({"email": credentials.email})
     if not user or not pwd_context.verify(credentials.password, user["password"]):
-        raise HTTPException(status_code=401)
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     user_dict = convert_mongo_doc_to_dict(user)
     token = create_access_token({"sub": user_dict["id"]})
     return {"token": token, "user": user_dict}
@@ -181,10 +185,10 @@ async def login(credentials: UserLogin):
 async def get_me(current_user: dict = Depends(get_current_user)):
     return User(**current_user)
 
-# POSTS (simplifié mais fonctionnel)
+# ==================== POSTS & COMMENTS ====================
 @api_router.get("/posts/feed", response_model=List[Post])
 async def get_feed(current_user: dict = Depends(get_current_user)):
-    posts = await db.posts.find({}).sort("created_at", -1).to_list(50)
+    posts = await db.posts.find({}).sort("created_at", -1).to_list(100)
     return [Post(**convert_mongo_doc_to_dict(p)) for p in posts]
 
 @api_router.post("/posts/{post_id}/comments")
@@ -198,6 +202,10 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
     await db.comments.insert_one(comment)
     return Comment(**comment)
 
+# ==================== ATTACHE TOUT ====================
+app.include_router(api_router)
+
+# ==================== SHUTDOWN ====================
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
