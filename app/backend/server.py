@@ -269,7 +269,9 @@ async def register(user_data: UserCreate):
 @api_router.post("/auth/login")
 async def login(credentials: UserLogin):
     user_raw = await db.users.find_one({"email": credentials.email})
-    if not user_raw or not pwd_context.verify(credentials.password, user_raw["password"]):
+    
+    # Correction : Ajout de la vérification "password" not in user_raw pour éviter le crash 500
+    if not user_raw or "password" not in user_raw or not pwd_context.verify(credentials.password, user_raw["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
    
     user = convert_mongo_doc_to_dict(user_raw)
