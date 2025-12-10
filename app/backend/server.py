@@ -35,13 +35,13 @@ ALGORITHM = "HS256"
 # ==================== APP ====================
 app = FastAPI()
 
-# ==================== CORS – TOUT EST AUTORISÉ ====================
+# ==================== CORS ====================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://nexus-social-3ta5.onrender.com",  # ton frontend
-        "https://nexus-social-4k3v.onrender.com",  # ton backend
-        "http://localhost:3000",                   # dev local
+        "https://nexus-social-3ta5.onrender.com",
+        "https://nexus-social-4k3v.onrender.com",
+        "http://localhost:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -74,15 +74,14 @@ def create_access_token(data: dict):
     to_encode.update({"exp": datetime.now(timezone.utc) + timedelta(days=7)})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# ==================== AUTH – FIX TOTAL ====================
+# ==================== AUTH – FIXÉ LA PARENTHÈSE ====================
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM)
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])  # ← CORRIGÉ ICI
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401)
 
-        # Cherche partout : id, _id string, ObjectId
         user = await db.users.find_one({"id": user_id})
         if not user:
             user = await db.users.find_one({"_id": user_id})
@@ -120,41 +119,14 @@ class User(BaseModel):
     following_count: int = 0
     created_at: str
 
-class Post(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    author_id: str
-    author_username: str
-    author_profile_pic: Optional[str] = None
-    content: str
-    media_type: Optional[str] = None
-    media_url: Optional[str] = None
-    likes_count: int = 0
-    comments_count: int = 0
-    shares_count: int = 0
-    is_liked: bool = False
-    created_at: str
-
 class CommentCreate(BaseModel):
     content: str
-
-class Comment(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    post_id: str
-    author_id: str
-    author_username: str
-    author_profile_pic: Optional[str] = None
-    content: str
-    created_at: str
 
 # ==================== ROUTERS ====================
 from backend.routers import stories
 
 api_router = APIRouter(prefix="/api")
-
-# Stories
-api_router.include_router(stories.router)  # → /api/stories/
+api_router.include_router(stories.router)
 
 # ==================== AUTH ====================
 @api_router.post("/auth/register")
@@ -170,7 +142,7 @@ async def register(user_data: UserCreate):
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     token = create_access_token({"sub": user_id})
-    return {"token": token, "user": {"id": user_id, "username": user_data.username, "email": user_data.email}}
+    return {"token": token, "user": {"id": user_id, "username": user_data.username}}
 
 @api_router.post("/auth/login")
 async def login(credentials: UserLogin):
@@ -185,27 +157,15 @@ async def login(credentials: UserLogin):
 async def get_me(current_user: dict = Depends(get_current_user)):
     return User(**current_user)
 
-# ==================== POSTS & COMMENTS ====================
-@api_router.get("/posts/feed", response_model=List[Post])
+# ==================== POSTS & FEED ====================
+@api_router.get("/posts/feed", response_model=List[dict])
 async def get_feed(current_user: dict = Depends(get_current_user)):
     posts = await db.posts.find({}).sort("created_at", -1).to_list(100)
-    return [Post(**convert_mongo_doc_to_dict(p)) for p in posts]
-
-@api_router.post("/posts/{post_id}/comments")
-async def create_comment(post_id: str, comment_data: CommentCreate, current_user: dict = Depends(get_current_user)):
-    comment_id = str(uuid.uuid4())
-    comment = {
-        "id": comment_id, "post_id": post_id, "author_id": current_user["id"],
-        "author_username": current_user["username"], "content": comment_data.content,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.comments.insert_one(comment)
-    return Comment(**comment)
+    return [convert_mongo_doc_to_dict(p) for p in posts]
 
 # ==================== ATTACHE TOUT ====================
 app.include_router(api_router)
 
-# ==================== SHUTDOWN ====================
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
