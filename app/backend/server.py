@@ -36,15 +36,18 @@ ALGORITHM = "HS256"
 app = FastAPI()
 
 # ==================== CORS ====================
+# CORS – VERSION PARFAITE QUI MARCHE À 100%
+from starlette.middleware.cors import CORSMiddleware
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://nexus-social-3ta5.onrender.com",
-        "https://nexus-social-4k3v.onrender.com",
-        "http://localhost:3000",
+        "https://nexus-social-3ta5.onrender.com",  # TON FRONTEND (OBLIGATOIRE)
+        "https://nexus-social-4k3v.onrender.com",  # ton backend
+        "http://localhost:3000",                   # dev local
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -169,3 +172,4 @@ app.include_router(api_router)
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
+
