@@ -35,13 +35,13 @@ ALGORITHM = "HS256"
 
 app = FastAPI()
 
-# CORS
+# CORS – AUTORISE TON FRONTEND À PARLER AU BACKEND
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://nexus-social-3ta5.onrender.com",
-        "http://localhost:3000",
-        "https://nexus-social-4k3v.onrender.com"
+        "https://nexus-social-3ta5.onrender.com",   # TON FRONTEND (OBLIGATOIRE)
+        "https://nexus-social-4k3v.onrender.com",   # ton backend (déjà là)
+        "http://localhost:3000",                    # dev local
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -692,3 +692,4 @@ logging.basicConfig(level=logging.INFO)
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
+
