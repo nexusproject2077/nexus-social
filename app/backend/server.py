@@ -270,7 +270,8 @@ async def register(user_data: UserCreate):
 async def login(credentials: UserLogin):
     user_raw = await db.users.find_one({"email": credentials.email})
     
-    # Correction : Ajout de la vérification "password" not in user_raw pour éviter le crash 500
+    # <<< --- CORRECTION APPORTÉE ICI --- >>>
+    # On vérifie si l'utilisateur existe ET si le champ "password" est présent
     if not user_raw or "password" not in user_raw or not pwd_context.verify(credentials.password, user_raw["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
    
