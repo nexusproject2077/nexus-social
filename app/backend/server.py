@@ -250,6 +250,31 @@ class Notification(BaseModel):
     read: bool = False
     created_at: str
 
+# ==================== STORIES MODELS ====================
+class StoryCreate(BaseModel):
+    media_type: str  # "image" or "video"
+    media_url: str
+
+class Story(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    author_id: str
+    author_username: str
+    author_profile_pic: Optional[str] = None
+    media_type: str
+    media_url: str
+    views_count: int = 0
+    created_at: str
+    expires_at: str
+    has_viewed: bool = False
+
+class StoryGroup(BaseModel):
+    user_id: str
+    username: str
+    profile_pic: Optional[str] = None
+    stories: List[Story]
+    last_story_time: str
+
 # ==================== AUTH HELPERS ====================
 def create_access_token(data: dict):
     """Crée un token JWT avec expiration de 7 jours"""
@@ -972,6 +997,185 @@ async def search(q: str, current_user: dict = Depends(get_current_user)):
         posts.append(Post(**post))
     
     return {"users": users, "posts": posts}
+
+# ==================== STORIES ROUTES ====================
+@api_router.post("/stories", response_model=Story)
+async def create_story(story_data: StoryCreate, current_user: dict = Depends(get_current_user)):
+    """Créer une nouvelle story"""
+    story_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=24)
+    
+    story_to_insert = {
+        "id": story_id,
+        "author_id": current_user["id"],
+        "author_username": current_user["username"],
+        "author_profile_pic": current_user.get("profile_pic"),
+        "media_type": story_data.media_type,
+        "media_url": story_data.media_url,
+        "views_count": 0,
+        "created_at": now.isoformat(),
+        "expires_at": expires_at.isoformat()
+    }
+    
+    await db.stories.insert_one(story_to_insert)
+    
+    story = convert_mongo_doc_to_dict(story_to_insert)
+    story["has_viewed"] = False
+    return Story(**story)
+
+@api_router.get("/stories/feed", response_model=List[StoryGroup])
+async def get_stories_feed(current_user: dict = Depends(get_current_user)):
+    """Récupère les stories du feed (utilisateurs suivis + propres stories)"""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Récupère les utilisateurs suivis + l'utilisateur actuel
+    follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(length=100)
+    followed_user_ids = [convert_mongo_doc_to_dict(f)["following_id"] for f in follows_raw]
+    followed_user_ids.append(current_user["id"])  # Ajoute l'utilisateur actuel
+    
+    # Récupère toutes les stories non expirées des utilisateurs suivis
+    stories_raw = await db.stories.find({
+        "author_id": {"$in": followed_user_ids},
+        "expires_at": {"$gt": now}
+    }).sort("created_at", -1).to_list(length=1000)
+    
+    # Groupe les stories par auteur
+    stories_by_user = {}
+    for story_raw in stories_raw:
+        story = convert_mongo_doc_to_dict(story_raw)
+        author_id = story["author_id"]
+        
+        # Vérifie si l'utilisateur a vu cette story
+        view_raw = await db.story_views.find_one({
+            "story_id": story["id"],
+            "user_id": current_user["id"]
+        })
+        story["has_viewed"] = bool(view_raw)
+        
+        if author_id not in stories_by_user:
+            stories_by_user[author_id] = {
+                "user_id": author_id,
+                "username": story["author_username"],
+                "profile_pic": story.get("author_profile_pic"),
+                "stories": [],
+                "last_story_time": story["created_at"]
+            }
+        
+        stories_by_user[author_id]["stories"].append(Story(**story))
+    
+    # Convertit en liste et trie par dernière story
+    story_groups = [
+        StoryGroup(**group_data) 
+        for group_data in stories_by_user.values()
+    ]
+    story_groups.sort(key=lambda x: x.last_story_time, reverse=True)
+    
+    return story_groups
+
+@api_router.get("/stories/user/{user_id}", response_model=List[Story])
+async def get_user_stories(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Récupère les stories d'un utilisateur spécifique"""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    user_raw = await db.users.find_one({"id": user_id})
+    if not user_raw:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    stories_raw = await db.stories.find({
+        "author_id": user_id,
+        "expires_at": {"$gt": now}
+    }).sort("created_at", 1).to_list(length=100)
+    
+    stories = []
+    for story_raw in stories_raw:
+        story = convert_mongo_doc_to_dict(story_raw)
+        
+        # Vérifie si l'utilisateur a vu cette story
+        view_raw = await db.story_views.find_one({
+            "story_id": story["id"],
+            "user_id": current_user["id"]
+        })
+        story["has_viewed"] = bool(view_raw)
+        
+        stories.append(Story(**story))
+    
+    return stories
+
+@api_router.post("/stories/{story_id}/view")
+async def view_story(story_id: str, current_user: dict = Depends(get_current_user)):
+    """Marque une story comme vue"""
+    story_raw = await db.stories.find_one({"id": story_id})
+    if not story_raw:
+        raise HTTPException(status_code=404, detail="Story not found")
+    
+    # Vérifie si déjà vue
+    existing_view = await db.story_views.find_one({
+        "story_id": story_id,
+        "user_id": current_user["id"]
+    })
+    
+    if not existing_view:
+        # Ajoute une vue
+        view_id = str(uuid.uuid4())
+        await db.story_views.insert_one({
+            "id": view_id,
+            "story_id": story_id,
+            "user_id": current_user["id"],
+            "viewed_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Incrémente le compteur de vues
+        await db.stories.update_one(
+            {"id": story_id},
+            {"$inc": {"views_count": 1}}
+        )
+    
+    return {"message": "Story viewed successfully"}
+
+@api_router.delete("/stories/{story_id}")
+async def delete_story(story_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprime une story"""
+    story_raw = await db.stories.find_one({"id": story_id})
+    if not story_raw:
+        raise HTTPException(status_code=404, detail="Story not found")
+    
+    story = convert_mongo_doc_to_dict(story_raw)
+    if story["author_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    await db.stories.delete_one({"id": story_id})
+    await db.story_views.delete_many({"story_id": story_id})
+    
+    return {"message": "Story deleted successfully"}
+
+@api_router.get("/stories/{story_id}/viewers")
+async def get_story_viewers(story_id: str, current_user: dict = Depends(get_current_user)):
+    """Récupère la liste des utilisateurs qui ont vu une story"""
+    story_raw = await db.stories.find_one({"id": story_id})
+    if not story_raw:
+        raise HTTPException(status_code=404, detail="Story not found")
+    
+    story = convert_mongo_doc_to_dict(story_raw)
+    if story["author_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    views_raw = await db.story_views.find({"story_id": story_id}).to_list(length=1000)
+    
+    viewers = []
+    for view_raw in views_raw:
+        view = convert_mongo_doc_to_dict(view_raw)
+        user_raw = await db.users.find_one({"id": view["user_id"]})
+        if user_raw:
+            user = convert_mongo_doc_to_dict(user_raw)
+            viewers.append({
+                "user_id": user["id"],
+                "username": user["username"],
+                "profile_pic": user.get("profile_pic"),
+                "viewed_at": view["viewed_at"]
+            })
+    
+    return viewers
 
 # Inclure le routeur principal
 app.include_router(api_router)
