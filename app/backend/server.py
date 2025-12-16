@@ -30,14 +30,19 @@ mongo_url = os.environ.get('MONGODB_URI') or os.environ.get('MONGO_URL') or os.e
 # Validation de l'URL MongoDB
 if not mongo_url:
     raise ValueError(
-        "MongoDB URL not configured! "
+        "❌ MongoDB URL not configured! "
         "Please set MONGODB_URI, MONGO_URL, or DATABASE_URL environment variable"
     )
 
 # Vérification du schéma de l'URL
 if not (mongo_url.startswith('mongodb://') or mongo_url.startswith('mongodb+srv://')):
-    print(f"❌ ERREUR: MongoDB URL doesn't start with 'mongodb://' or 'mongodb+srv://'")
-    print(f"URL actuelle: {mongo_url[:30]}...")
+    print(f"❌ ERREUR CRITIQUE: MongoDB URL doesn't start with 'mongodb://' or 'mongodb+srv://'")
+    print(f"❌ URL actuelle: {mongo_url[:30]}...")
+    print(f"")
+    print(f"✅ Exemples d'URL valides:")
+    print(f"   mongodb+srv://user:pass@cluster.mongodb.net/dbname")
+    print(f"   mongodb://user:pass@host:27017/dbname")
+    print(f"")
     raise InvalidURI(
         f"Invalid MongoDB URI scheme. "
         f"URI must begin with 'mongodb://' or 'mongodb+srv://'. "
@@ -49,6 +54,7 @@ try:
     client = AsyncIOMotorClient(mongo_url)
     db = client[os.environ.get('DB_NAME', 'nexus_social')]
     print("✅ MongoDB client initialized successfully")
+    print(f"✅ Database: {os.environ.get('DB_NAME', 'nexus_social')}")
 except InvalidURI as e:
     print(f"❌ Invalid MongoDB URI: {e}")
     raise
@@ -63,7 +69,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', '76f267dbc69c6b4e639a50a7ccdd3783')
 ALGORITHM = "HS256"
 
 # Create the main app
-app = FastAPI()
+app = FastAPI(title="Nexus Social API", version="1.0.0")
 
 # ==================== CORS ====================
 app.add_middleware(
@@ -73,6 +79,7 @@ app.add_middleware(
         "https://nexus-social-4k3v.onrender.com",
         "http://localhost:3000",
         "http://localhost:5173",
+        "http://localhost:5174",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -85,17 +92,37 @@ async def health_check():
     try:
         # Test de connexion MongoDB
         await client.admin.command('ping')
-        return {"status": "ok", "database": "connected"}
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "service": "nexus-social-api",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
     except Exception as e:
-        return {"status": "error", "database": "disconnected", "error": str(e)}
+        return {
+            "status": "unhealthy",
+            "database": "disconnected",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }, 500
 
 @app.get("/")
 async def root():
-    return {"message": "API Nexus Social fonctionne!", "version": "1.0"}
+    return {
+        "message": "🚀 API Nexus Social fonctionne!",
+        "version": "1.0.0",
+        "status": "operational",
+        "endpoints": {
+            "health": "/healthz",
+            "api": "/api",
+            "docs": "/docs"
+        }
+    }
 
 
 # --- FONCTION UTILITAIRE POUR CONVERTIR LES OBJECTID EN STR ---
 def convert_mongo_doc_to_dict(doc: dict) -> dict:
+    """Convertit un document MongoDB en dictionnaire Python avec ObjectId → str"""
     if doc is None:
         return None
     new_doc = doc.copy()
@@ -109,7 +136,11 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
         elif isinstance(value, dict):
             new_doc[key] = convert_mongo_doc_to_dict(value)
         elif isinstance(value, list):
-            new_doc[key] = [convert_mongo_doc_to_dict(item) if isinstance(item, dict) else (str(item) if isinstance(item, ObjectId) else item) for item in value]
+            new_doc[key] = [
+                convert_mongo_doc_to_dict(item) if isinstance(item, dict) 
+                else (str(item) if isinstance(item, ObjectId) else item) 
+                for item in value
+            ]
     return new_doc
 
 
@@ -221,6 +252,7 @@ class Notification(BaseModel):
 
 # ==================== AUTH HELPERS ====================
 def create_access_token(data: dict):
+    """Crée un token JWT avec expiration de 7 jours"""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(days=7)
     to_encode.update({"exp": expire})
@@ -228,6 +260,7 @@ def create_access_token(data: dict):
     return encoded_jwt
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Récupère l'utilisateur actuel depuis le token JWT"""
     try:
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -235,7 +268,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        # Cherche partout
+        # Cherche l'utilisateur avec plusieurs stratégies
         user = await db.users.find_one({"id": user_id})
         if not user:
             user = await db.users.find_one({"_id": user_id})
@@ -251,13 +284,21 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         return convert_mongo_doc_to_dict(user)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except:
+    except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Authentication error: {str(e)}")
 
 # ==================== AUTH ROUTES ====================
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate):
-    existing_user_raw = await db.users.find_one({"$or": [{"email": user_data.email}, {"username": user_data.username}]})
+    """Enregistre un nouvel utilisateur"""
+    existing_user_raw = await db.users.find_one({
+        "$or": [
+            {"email": user_data.email},
+            {"username": user_data.username}
+        ]
+    })
     if existing_user_raw:
         raise HTTPException(status_code=400, detail="Email or username already registered")
    
@@ -294,8 +335,10 @@ async def register(user_data: UserCreate):
 
 @api_router.post("/auth/login")
 async def login(credentials: UserLogin):
+    """Connecte un utilisateur existant"""
     user_raw = await db.users.find_one({"email": credentials.email})
     
+    # Vérification avec protection contre les utilisateurs sans mot de passe
     if not user_raw or "password" not in user_raw or not pwd_context.verify(credentials.password, user_raw["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
    
@@ -318,6 +361,7 @@ async def login(credentials: UserLogin):
 
 @api_router.get("/auth/me", response_model=User)
 async def get_me(current_user: dict = Depends(get_current_user)):
+    """Récupère le profil de l'utilisateur actuel"""
     return User(**current_user)
 
 @api_router.put("/auth/profile")
@@ -326,6 +370,7 @@ async def update_profile(
     profile_pic: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
+    """Met à jour le profil de l'utilisateur"""
     update_data = {}
    
     if bio is not None:
@@ -346,6 +391,7 @@ async def update_profile(
 # ==================== POSTS ROUTES ====================
 @api_router.post("/posts", response_model=Post)
 async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
+    """Crée un nouveau post"""
     post_id = str(uuid.uuid4())
     post_to_insert = {
         "id": post_id,
@@ -368,6 +414,7 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
 
 @api_router.get("/posts/feed", response_model=List[Post])
 async def get_feed(skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
+    """Récupère le feed de posts"""
     posts_raw = await db.posts.find().sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
     posts = []
     
@@ -381,6 +428,7 @@ async def get_feed(skip: int = 0, limit: int = 20, current_user: dict = Depends(
 
 @api_router.get("/posts/{post_id}", response_model=Post)
 async def get_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Récupère un post spécifique"""
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -393,6 +441,7 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
 
 @api_router.delete("/posts/{post_id}")
 async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprime un post"""
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -409,6 +458,7 @@ async def delete_post(post_id: str, current_user: dict = Depends(get_current_use
 
 @api_router.post("/posts/{post_id}/like")
 async def like_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Like un post"""
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -448,6 +498,7 @@ async def like_post(post_id: str, current_user: dict = Depends(get_current_user)
 
 @api_router.delete("/posts/{post_id}/like")
 async def unlike_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Unlike un post"""
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -463,6 +514,7 @@ async def unlike_post(post_id: str, current_user: dict = Depends(get_current_use
 
 @api_router.post("/posts/{post_id}/share")
 async def share_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Partage un post"""
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -491,6 +543,7 @@ async def share_post(post_id: str, current_user: dict = Depends(get_current_user
 # ==================== COMMENTS ROUTES ====================
 @api_router.get("/posts/{post_id}/comments", response_model=List[Comment])
 async def get_comments(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Récupère les commentaires d'un post"""
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -502,6 +555,7 @@ async def get_comments(post_id: str, current_user: dict = Depends(get_current_us
 
 @api_router.post("/posts/{post_id}/comments", response_model=Comment)
 async def create_comment(post_id: str, comment_data: CommentCreate, current_user: dict = Depends(get_current_user)):
+    """Ajoute un commentaire à un post"""
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -541,6 +595,7 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
 
 @api_router.delete("/comments/{comment_id}")
 async def delete_comment(comment_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprime un commentaire"""
     comment_raw = await db.comments.find_one({"id": comment_id})
     if not comment_raw:
         raise HTTPException(status_code=404, detail="Comment not found")
@@ -557,6 +612,7 @@ async def delete_comment(comment_id: str, current_user: dict = Depends(get_curre
 # ==================== USERS ROUTES ====================
 @api_router.get("/users/{user_id}", response_model=UserProfile)
 async def get_user_profile(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Récupère le profil d'un utilisateur"""
     user_raw = await db.users.find_one({"id": user_id})
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
@@ -577,6 +633,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
 
 @api_router.get("/users/{user_id}/posts", response_model=List[Post])
 async def get_user_posts(user_id: str, skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
+    """Récupère les posts d'un utilisateur"""
     user_raw = await db.users.find_one({"id": user_id})
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
@@ -594,6 +651,7 @@ async def get_user_posts(user_id: str, skip: int = 0, limit: int = 20, current_u
 
 @api_router.post("/users/{user_id}/follow")
 async def follow_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Suivre un utilisateur"""
     if user_id == current_user["id"]:
         raise HTTPException(status_code=400, detail="Cannot follow yourself")
     
@@ -634,6 +692,7 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
 
 @api_router.delete("/users/{user_id}/follow")
 async def unfollow_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Ne plus suivre un utilisateur"""
     user_raw = await db.users.find_one({"id": user_id})
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
@@ -650,6 +709,7 @@ async def unfollow_user(user_id: str, current_user: dict = Depends(get_current_u
 
 @api_router.get("/users/{user_id}/followers", response_model=List[UserProfile])
 async def get_followers(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Récupère la liste des followers"""
     user_raw = await db.users.find_one({"id": user_id})
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
@@ -678,6 +738,7 @@ async def get_followers(user_id: str, current_user: dict = Depends(get_current_u
 
 @api_router.get("/users/{user_id}/following", response_model=List[UserProfile])
 async def get_following(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Récupère la liste des abonnements"""
     user_raw = await db.users.find_one({"id": user_id})
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
@@ -707,6 +768,7 @@ async def get_following(user_id: str, current_user: dict = Depends(get_current_u
 # ==================== MESSAGES ROUTES ====================
 @api_router.get("/messages/conversations", response_model=List[Conversation])
 async def get_conversations(current_user: dict = Depends(get_current_user)):
+    """Récupère la liste des conversations"""
     messages_raw = await db.messages.find({
         "$or": [
             {"sender_id": current_user["id"]},
@@ -743,6 +805,7 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/messages/{user_id}", response_model=List[Message])
 async def get_messages(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Récupère les messages avec un utilisateur"""
     user_raw = await db.users.find_one({"id": user_id})
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
@@ -785,6 +848,7 @@ async def get_messages(user_id: str, current_user: dict = Depends(get_current_us
 
 @api_router.post("/messages", response_model=Message)
 async def send_message(message_data: MessageCreate, current_user: dict = Depends(get_current_user)):
+    """Envoie un message"""
     recipient_raw = await db.users.find_one({"id": message_data.recipient_id})
     if not recipient_raw:
         raise HTTPException(status_code=404, detail="Recipient not found")
@@ -831,12 +895,14 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
 # ==================== NOTIFICATIONS ROUTES ====================
 @api_router.get("/notifications", response_model=List[Notification])
 async def get_notifications(current_user: dict = Depends(get_current_user)):
+    """Récupère les notifications"""
     notifications_raw = await db.notifications.find({"user_id": current_user["id"]}).sort("created_at", -1).limit(50).to_list(length=50)
     notifications = [Notification(**convert_mongo_doc_to_dict(notif)) for notif in notifications_raw]
     return notifications
 
 @api_router.put("/notifications/{notification_id}/read")
 async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Marque une notification comme lue"""
     notification_raw = await db.notifications.find_one({"id": notification_id})
     if not notification_raw:
         raise HTTPException(status_code=404, detail="Notification not found")
@@ -850,6 +916,7 @@ async def mark_notification_read(notification_id: str, current_user: dict = Depe
 
 @api_router.put("/notifications/read-all")
 async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
+    """Marque toutes les notifications comme lues"""
     await db.notifications.update_many(
         {"user_id": current_user["id"], "read": False},
         {"$set": {"read": True}}
@@ -858,12 +925,14 @@ async def mark_all_notifications_read(current_user: dict = Depends(get_current_u
 
 @api_router.get("/notifications/unread-count")
 async def get_unread_notifications_count(current_user: dict = Depends(get_current_user)):
+    """Récupère le nombre de notifications non lues"""
     count = await db.notifications.count_documents({"user_id": current_user["id"], "read": False})
     return {"count": count}
 
 # ==================== SEARCH ROUTE ====================
 @api_router.get("/search")
 async def search(q: str, current_user: dict = Depends(get_current_user)):
+    """Recherche des utilisateurs et posts"""
     if not q or len(q.strip()) == 0:
         return {"users": [], "posts": []}
     
@@ -914,7 +983,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Event handlers
+@app.on_event("startup")
+async def startup_db_client():
+    """Vérifie la connexion MongoDB au démarrage"""
+    try:
+        await client.admin.command('ping')
+        logger.info("✅ MongoDB connection successful")
+    except Exception as e:
+        logger.error(f"❌ MongoDB connection failed: {e}")
+        raise
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    """Ferme la connexion MongoDB à l'arrêt"""
     client.close()
     logger.info("MongoDB connection closed")
