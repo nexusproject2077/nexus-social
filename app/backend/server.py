@@ -9,6 +9,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import InvalidURI, ConnectionFailure
 import os
 import logging
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
@@ -23,10 +24,37 @@ from bson import ObjectId
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-mongo_url = os.environ['MONGODB_URI']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# ==================== MONGODB CONNECTION AVEC VALIDATION ====================
+mongo_url = os.environ.get('MONGODB_URI') or os.environ.get('MONGO_URL') or os.environ.get('DATABASE_URL')
+
+# Validation de l'URL MongoDB
+if not mongo_url:
+    raise ValueError(
+        "MongoDB URL not configured! "
+        "Please set MONGODB_URI, MONGO_URL, or DATABASE_URL environment variable"
+    )
+
+# Vérification du schéma de l'URL
+if not (mongo_url.startswith('mongodb://') or mongo_url.startswith('mongodb+srv://')):
+    print(f"❌ ERREUR: MongoDB URL doesn't start with 'mongodb://' or 'mongodb+srv://'")
+    print(f"URL actuelle: {mongo_url[:30]}...")
+    raise InvalidURI(
+        f"Invalid MongoDB URI scheme. "
+        f"URI must begin with 'mongodb://' or 'mongodb+srv://'. "
+        f"Current URI starts with: {mongo_url[:20]}"
+    )
+
+# Création du client MongoDB
+try:
+    client = AsyncIOMotorClient(mongo_url)
+    db = client[os.environ.get('DB_NAME', 'nexus_social')]
+    print("✅ MongoDB client initialized successfully")
+except InvalidURI as e:
+    print(f"❌ Invalid MongoDB URI: {e}")
+    raise
+except Exception as e:
+    print(f"❌ Error initializing MongoDB client: {e}")
+    raise
 
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -37,13 +65,14 @@ ALGORITHM = "HS256"
 # Create the main app
 app = FastAPI()
 
-# ==================== CORS – CORRIGÉ UNE FOIS POUR TOUTES ====================
+# ==================== CORS ====================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://nexus-social-3ta5.onrender.com",  # TON FRONTEND
+        "https://nexus-social-3ta5.onrender.com",
         "https://nexus-social-4k3v.onrender.com",
         "http://localhost:3000",
+        "http://localhost:5173",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -53,11 +82,16 @@ app.add_middleware(
 # Health check pour Render
 @app.get("/healthz")
 async def health_check():
-    return {"status": "ok"}
+    try:
+        # Test de connexion MongoDB
+        await client.admin.command('ping')
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        return {"status": "error", "database": "disconnected", "error": str(e)}
 
 @app.get("/")
 async def root():
-    return {"message": "API fonctionne !"}
+    return {"message": "API Nexus Social fonctionne!", "version": "1.0"}
 
 
 # --- FONCTION UTILITAIRE POUR CONVERTIR LES OBJECTID EN STR ---
@@ -79,14 +113,8 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
     return new_doc
 
 
-# Import stories APRÈS db et app
-from backend.routers import stories
-
 # Router principal
 api_router = APIRouter(prefix="/api")
-
-# STORIES – CORRIGÉ : pas de prefix supplémentaire
-api_router.include_router(stories.router)
 
 # ==================== MODELS ====================
 class UserCreate(BaseModel):
@@ -202,7 +230,7 @@ def create_access_token(data: dict):
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])  # ← CORRIGÉ LA PARENTHÈSE
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
@@ -226,9 +254,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# ==================== TOUTES TES ROUTES ORIGINALES (RIEN N'A ÉTÉ SUPPRIMÉ) ====================
-# (auth, posts, users, messages, notifications, search – tout est là, exactement comme avant)
-
+# ==================== AUTH ROUTES ====================
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate):
     existing_user_raw = await db.users.find_one({"$or": [{"email": user_data.email}, {"username": user_data.username}]})
@@ -270,8 +296,6 @@ async def register(user_data: UserCreate):
 async def login(credentials: UserLogin):
     user_raw = await db.users.find_one({"email": credentials.email})
     
-    # <<< --- CORRECTION APPORTÉE ICI --- >>>
-    # On vérifie si l'utilisateur existe ET si le champ "password" est présent
     if not user_raw or "password" not in user_raw or not pwd_context.verify(credentials.password, user_raw["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
    
@@ -319,14 +343,571 @@ async def update_profile(
     updated_user = convert_mongo_doc_to_dict(updated_user_raw)
     return User(**updated_user)
 
-# TOUTES LES AUTRES ROUTES (posts, comments, users, messages, notifications, search) 
-# SONT EXACTEMENT COMME TU LES AVAIS – JE NE LES AI PAS TOUCHÉES
+# ==================== POSTS ROUTES ====================
+@api_router.post("/posts", response_model=Post)
+async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
+    post_id = str(uuid.uuid4())
+    post_to_insert = {
+        "id": post_id,
+        "author_id": current_user["id"],
+        "author_username": current_user["username"],
+        "author_profile_pic": current_user.get("profile_pic"),
+        "content": post_data.content,
+        "media_type": post_data.media_type,
+        "media_url": post_data.media_url,
+        "likes_count": 0,
+        "comments_count": 0,
+        "shares_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.posts.insert_one(post_to_insert)
+    
+    post = convert_mongo_doc_to_dict(post_to_insert)
+    post["is_liked"] = False
+    return Post(**post)
 
-# ... (tes 600+ lignes de routes posts/users/messages/notifications/search inchangées) ...
+@api_router.get("/posts/feed", response_model=List[Post])
+async def get_feed(skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
+    posts_raw = await db.posts.find().sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    posts = []
+    
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        posts.append(Post(**post))
+    
+    return posts
 
-# Inclure le routeur principal (doit être après toutes les décorations @api_router)
+@api_router.get("/posts/{post_id}", response_model=Post)
+async def get_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    post = convert_mongo_doc_to_dict(post_raw)
+    like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
+    post["is_liked"] = bool(like_raw)
+    
+    return Post(**post)
+
+@api_router.delete("/posts/{post_id}")
+async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    post = convert_mongo_doc_to_dict(post_raw)
+    if post["author_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    await db.posts.delete_one({"id": post_id})
+    await db.likes.delete_many({"post_id": post_id})
+    await db.comments.delete_many({"post_id": post_id})
+    
+    return {"message": "Post deleted successfully"}
+
+@api_router.post("/posts/{post_id}/like")
+async def like_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    existing_like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
+    if existing_like_raw:
+        raise HTTPException(status_code=400, detail="Already liked")
+    
+    like_id = str(uuid.uuid4())
+    await db.likes.insert_one({
+        "id": like_id,
+        "post_id": post_id,
+        "user_id": current_user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await db.posts.update_one({"id": post_id}, {"$inc": {"likes_count": 1}})
+    
+    # Create notification
+    post = convert_mongo_doc_to_dict(post_raw)
+    if post["author_id"] != current_user["id"]:
+        notification_id = str(uuid.uuid4())
+        await db.notifications.insert_one({
+            "id": notification_id,
+            "user_id": post["author_id"],
+            "type": "like",
+            "from_user_id": current_user["id"],
+            "from_username": current_user["username"],
+            "from_profile_pic": current_user.get("profile_pic"),
+            "post_id": post_id,
+            "message": f"{current_user['username']} liked your post",
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    return {"message": "Post liked successfully"}
+
+@api_router.delete("/posts/{post_id}/like")
+async def unlike_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    existing_like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
+    if not existing_like_raw:
+        raise HTTPException(status_code=400, detail="Not liked yet")
+    
+    await db.likes.delete_one({"post_id": post_id, "user_id": current_user["id"]})
+    await db.posts.update_one({"id": post_id}, {"$inc": {"likes_count": -1}})
+    
+    return {"message": "Post unliked successfully"}
+
+@api_router.post("/posts/{post_id}/share")
+async def share_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    await db.posts.update_one({"id": post_id}, {"$inc": {"shares_count": 1}})
+    
+    # Create notification
+    post = convert_mongo_doc_to_dict(post_raw)
+    if post["author_id"] != current_user["id"]:
+        notification_id = str(uuid.uuid4())
+        await db.notifications.insert_one({
+            "id": notification_id,
+            "user_id": post["author_id"],
+            "type": "share",
+            "from_user_id": current_user["id"],
+            "from_username": current_user["username"],
+            "from_profile_pic": current_user.get("profile_pic"),
+            "post_id": post_id,
+            "message": f"{current_user['username']} shared your post",
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    return {"message": "Post shared successfully"}
+
+# ==================== COMMENTS ROUTES ====================
+@api_router.get("/posts/{post_id}/comments", response_model=List[Comment])
+async def get_comments(post_id: str, current_user: dict = Depends(get_current_user)):
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    comments_raw = await db.comments.find({"post_id": post_id}).sort("created_at", -1).to_list(length=100)
+    comments = [Comment(**convert_mongo_doc_to_dict(comment)) for comment in comments_raw]
+    
+    return comments
+
+@api_router.post("/posts/{post_id}/comments", response_model=Comment)
+async def create_comment(post_id: str, comment_data: CommentCreate, current_user: dict = Depends(get_current_user)):
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    comment_id = str(uuid.uuid4())
+    comment_to_insert = {
+        "id": comment_id,
+        "post_id": post_id,
+        "author_id": current_user["id"],
+        "author_username": current_user["username"],
+        "author_profile_pic": current_user.get("profile_pic"),
+        "content": comment_data.content,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.comments.insert_one(comment_to_insert)
+    await db.posts.update_one({"id": post_id}, {"$inc": {"comments_count": 1}})
+    
+    # Create notification
+    post = convert_mongo_doc_to_dict(post_raw)
+    if post["author_id"] != current_user["id"]:
+        notification_id = str(uuid.uuid4())
+        await db.notifications.insert_one({
+            "id": notification_id,
+            "user_id": post["author_id"],
+            "type": "comment",
+            "from_user_id": current_user["id"],
+            "from_username": current_user["username"],
+            "from_profile_pic": current_user.get("profile_pic"),
+            "post_id": post_id,
+            "message": f"{current_user['username']} commented on your post",
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    comment = convert_mongo_doc_to_dict(comment_to_insert)
+    return Comment(**comment)
+
+@api_router.delete("/comments/{comment_id}")
+async def delete_comment(comment_id: str, current_user: dict = Depends(get_current_user)):
+    comment_raw = await db.comments.find_one({"id": comment_id})
+    if not comment_raw:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    comment = convert_mongo_doc_to_dict(comment_raw)
+    if comment["author_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    await db.comments.delete_one({"id": comment_id})
+    await db.posts.update_one({"id": comment["post_id"]}, {"$inc": {"comments_count": -1}})
+    
+    return {"message": "Comment deleted successfully"}
+
+# ==================== USERS ROUTES ====================
+@api_router.get("/users/{user_id}", response_model=UserProfile)
+async def get_user_profile(user_id: str, current_user: dict = Depends(get_current_user)):
+    user_raw = await db.users.find_one({"id": user_id})
+    if not user_raw:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user = convert_mongo_doc_to_dict(user_raw)
+    follow_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
+    
+    return UserProfile(
+        id=user["id"],
+        username=user["username"],
+        bio=user.get("bio", ""),
+        profile_pic=user.get("profile_pic"),
+        followers_count=user.get("followers_count", 0),
+        following_count=user.get("following_count", 0),
+        is_following=bool(follow_raw),
+        created_at=user["created_at"]
+    )
+
+@api_router.get("/users/{user_id}/posts", response_model=List[Post])
+async def get_user_posts(user_id: str, skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
+    user_raw = await db.users.find_one({"id": user_id})
+    if not user_raw:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    posts_raw = await db.posts.find({"author_id": user_id}).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    posts = []
+    
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        posts.append(Post(**post))
+    
+    return posts
+
+@api_router.post("/users/{user_id}/follow")
+async def follow_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot follow yourself")
+    
+    user_raw = await db.users.find_one({"id": user_id})
+    if not user_raw:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    existing_follow_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
+    if existing_follow_raw:
+        raise HTTPException(status_code=400, detail="Already following")
+    
+    follow_id = str(uuid.uuid4())
+    await db.follows.insert_one({
+        "id": follow_id,
+        "follower_id": current_user["id"],
+        "following_id": user_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": 1}})
+    await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": 1}})
+    
+    # Create notification
+    notification_id = str(uuid.uuid4())
+    await db.notifications.insert_one({
+        "id": notification_id,
+        "user_id": user_id,
+        "type": "follow",
+        "from_user_id": current_user["id"],
+        "from_username": current_user["username"],
+        "from_profile_pic": current_user.get("profile_pic"),
+        "message": f"{current_user['username']} started following you",
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {"message": "User followed successfully"}
+
+@api_router.delete("/users/{user_id}/follow")
+async def unfollow_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    user_raw = await db.users.find_one({"id": user_id})
+    if not user_raw:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    existing_follow_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
+    if not existing_follow_raw:
+        raise HTTPException(status_code=400, detail="Not following")
+    
+    await db.follows.delete_one({"follower_id": current_user["id"], "following_id": user_id})
+    await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": -1}})
+    await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": -1}})
+    
+    return {"message": "User unfollowed successfully"}
+
+@api_router.get("/users/{user_id}/followers", response_model=List[UserProfile])
+async def get_followers(user_id: str, current_user: dict = Depends(get_current_user)):
+    user_raw = await db.users.find_one({"id": user_id})
+    if not user_raw:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    follows_raw = await db.follows.find({"following_id": user_id}).to_list(length=100)
+    followers = []
+    
+    for follow_raw in follows_raw:
+        follow = convert_mongo_doc_to_dict(follow_raw)
+        follower_raw = await db.users.find_one({"id": follow["follower_id"]})
+        if follower_raw:
+            follower = convert_mongo_doc_to_dict(follower_raw)
+            is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": follower["id"]})
+            followers.append(UserProfile(
+                id=follower["id"],
+                username=follower["username"],
+                bio=follower.get("bio", ""),
+                profile_pic=follower.get("profile_pic"),
+                followers_count=follower.get("followers_count", 0),
+                following_count=follower.get("following_count", 0),
+                is_following=bool(is_following_raw),
+                created_at=follower["created_at"]
+            ))
+    
+    return followers
+
+@api_router.get("/users/{user_id}/following", response_model=List[UserProfile])
+async def get_following(user_id: str, current_user: dict = Depends(get_current_user)):
+    user_raw = await db.users.find_one({"id": user_id})
+    if not user_raw:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    follows_raw = await db.follows.find({"follower_id": user_id}).to_list(length=100)
+    following = []
+    
+    for follow_raw in follows_raw:
+        follow = convert_mongo_doc_to_dict(follow_raw)
+        following_user_raw = await db.users.find_one({"id": follow["following_id"]})
+        if following_user_raw:
+            following_user = convert_mongo_doc_to_dict(following_user_raw)
+            is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": following_user["id"]})
+            following.append(UserProfile(
+                id=following_user["id"],
+                username=following_user["username"],
+                bio=following_user.get("bio", ""),
+                profile_pic=following_user.get("profile_pic"),
+                followers_count=following_user.get("followers_count", 0),
+                following_count=following_user.get("following_count", 0),
+                is_following=bool(is_following_raw),
+                created_at=following_user["created_at"]
+            ))
+    
+    return following
+
+# ==================== MESSAGES ROUTES ====================
+@api_router.get("/messages/conversations", response_model=List[Conversation])
+async def get_conversations(current_user: dict = Depends(get_current_user)):
+    messages_raw = await db.messages.find({
+        "$or": [
+            {"sender_id": current_user["id"]},
+            {"recipient_id": current_user["id"]}
+        ]
+    }).sort("created_at", -1).to_list(length=1000)
+    
+    conversations_dict = {}
+    
+    for message_raw in messages_raw:
+        message = convert_mongo_doc_to_dict(message_raw)
+        other_user_id = message["recipient_id"] if message["sender_id"] == current_user["id"] else message["sender_id"]
+        
+        if other_user_id not in conversations_dict:
+            other_user_raw = await db.users.find_one({"id": other_user_id})
+            if other_user_raw:
+                other_user = convert_mongo_doc_to_dict(other_user_raw)
+                unread_count = await db.messages.count_documents({
+                    "sender_id": other_user_id,
+                    "recipient_id": current_user["id"],
+                    "read": False
+                })
+                
+                conversations_dict[other_user_id] = Conversation(
+                    user_id=other_user["id"],
+                    username=other_user["username"],
+                    profile_pic=other_user.get("profile_pic"),
+                    last_message=message["content"],
+                    last_message_time=message["created_at"],
+                    unread_count=unread_count
+                )
+    
+    return list(conversations_dict.values())
+
+@api_router.get("/messages/{user_id}", response_model=List[Message])
+async def get_messages(user_id: str, current_user: dict = Depends(get_current_user)):
+    user_raw = await db.users.find_one({"id": user_id})
+    if not user_raw:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    messages_raw = await db.messages.find({
+        "$or": [
+            {"sender_id": current_user["id"], "recipient_id": user_id},
+            {"sender_id": user_id, "recipient_id": current_user["id"]}
+        ]
+    }).sort("created_at", 1).to_list(length=1000)
+    
+    # Mark messages as read
+    await db.messages.update_many(
+        {"sender_id": user_id, "recipient_id": current_user["id"], "read": False},
+        {"$set": {"read": True}}
+    )
+    
+    messages = []
+    for message_raw in messages_raw:
+        message = convert_mongo_doc_to_dict(message_raw)
+        sender_raw = await db.users.find_one({"id": message["sender_id"]})
+        recipient_raw = await db.users.find_one({"id": message["recipient_id"]})
+        
+        if sender_raw and recipient_raw:
+            sender = convert_mongo_doc_to_dict(sender_raw)
+            recipient = convert_mongo_doc_to_dict(recipient_raw)
+            messages.append(Message(
+                id=message["id"],
+                sender_id=message["sender_id"],
+                sender_username=sender["username"],
+                sender_profile_pic=sender.get("profile_pic"),
+                recipient_id=message["recipient_id"],
+                recipient_username=recipient["username"],
+                content=message["content"],
+                read=message.get("read", False),
+                created_at=message["created_at"]
+            ))
+    
+    return messages
+
+@api_router.post("/messages", response_model=Message)
+async def send_message(message_data: MessageCreate, current_user: dict = Depends(get_current_user)):
+    recipient_raw = await db.users.find_one({"id": message_data.recipient_id})
+    if not recipient_raw:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    
+    message_id = str(uuid.uuid4())
+    message_to_insert = {
+        "id": message_id,
+        "sender_id": current_user["id"],
+        "recipient_id": message_data.recipient_id,
+        "content": message_data.content,
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.messages.insert_one(message_to_insert)
+    
+    recipient = convert_mongo_doc_to_dict(recipient_raw)
+    
+    # Create notification
+    notification_id = str(uuid.uuid4())
+    await db.notifications.insert_one({
+        "id": notification_id,
+        "user_id": message_data.recipient_id,
+        "type": "message",
+        "from_user_id": current_user["id"],
+        "from_username": current_user["username"],
+        "from_profile_pic": current_user.get("profile_pic"),
+        "message": f"{current_user['username']} sent you a message",
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return Message(
+        id=message_id,
+        sender_id=current_user["id"],
+        sender_username=current_user["username"],
+        sender_profile_pic=current_user.get("profile_pic"),
+        recipient_id=message_data.recipient_id,
+        recipient_username=recipient["username"],
+        content=message_data.content,
+        read=False,
+        created_at=message_to_insert["created_at"]
+    )
+
+# ==================== NOTIFICATIONS ROUTES ====================
+@api_router.get("/notifications", response_model=List[Notification])
+async def get_notifications(current_user: dict = Depends(get_current_user)):
+    notifications_raw = await db.notifications.find({"user_id": current_user["id"]}).sort("created_at", -1).limit(50).to_list(length=50)
+    notifications = [Notification(**convert_mongo_doc_to_dict(notif)) for notif in notifications_raw]
+    return notifications
+
+@api_router.put("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
+    notification_raw = await db.notifications.find_one({"id": notification_id})
+    if not notification_raw:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    notification = convert_mongo_doc_to_dict(notification_raw)
+    if notification["user_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    await db.notifications.update_one({"id": notification_id}, {"$set": {"read": True}})
+    return {"message": "Notification marked as read"}
+
+@api_router.put("/notifications/read-all")
+async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
+    await db.notifications.update_many(
+        {"user_id": current_user["id"], "read": False},
+        {"$set": {"read": True}}
+    )
+    return {"message": "All notifications marked as read"}
+
+@api_router.get("/notifications/unread-count")
+async def get_unread_notifications_count(current_user: dict = Depends(get_current_user)):
+    count = await db.notifications.count_documents({"user_id": current_user["id"], "read": False})
+    return {"count": count}
+
+# ==================== SEARCH ROUTE ====================
+@api_router.get("/search")
+async def search(q: str, current_user: dict = Depends(get_current_user)):
+    if not q or len(q.strip()) == 0:
+        return {"users": [], "posts": []}
+    
+    # Search users
+    users_raw = await db.users.find({
+        "$or": [
+            {"username": {"$regex": q, "$options": "i"}},
+            {"bio": {"$regex": q, "$options": "i"}}
+        ]
+    }).limit(10).to_list(length=10)
+    
+    users = []
+    for user_raw in users_raw:
+        user = convert_mongo_doc_to_dict(user_raw)
+        is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user["id"]})
+        users.append(UserProfile(
+            id=user["id"],
+            username=user["username"],
+            bio=user.get("bio", ""),
+            profile_pic=user.get("profile_pic"),
+            followers_count=user.get("followers_count", 0),
+            following_count=user.get("following_count", 0),
+            is_following=bool(is_following_raw),
+            created_at=user["created_at"]
+        ))
+    
+    # Search posts
+    posts_raw = await db.posts.find({
+        "content": {"$regex": q, "$options": "i"}
+    }).sort("created_at", -1).limit(20).to_list(length=20)
+    
+    posts = []
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        posts.append(Post(**post))
+    
+    return {"users": users, "posts": posts}
+
+# Inclure le routeur principal
 app.include_router(api_router)
 
+# Logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -336,3 +917,4 @@ logger = logging.getLogger(__name__)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+    logger.info("MongoDB connection closed")
