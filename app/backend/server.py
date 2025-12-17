@@ -293,8 +293,16 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        # Cherche UNIQUEMENT avec le champ "id" personnalisé
+        # Essaie d'abord avec le champ "id" personnalisé (nouveau format)
         user = await db.users.find_one({"id": user_id})
+        
+        # Si pas trouvé, essaie avec _id (pour les anciens tokens)
+        if not user:
+            try:
+                # Convertit l'ID en ObjectId si c'est un ancien token MongoDB
+                user = await db.users.find_one({"_id": ObjectId(user_id)})
+            except:
+                pass
 
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
