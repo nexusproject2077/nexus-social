@@ -29,10 +29,28 @@ export default function AuthPage({ setUser }) {
         : formData;
 
       const response = await axios.post(`${API}${endpoint}`, payload);
-      localStorage.setItem("token", response.data.token);
-      setUser(response.data.user);
-      toast.success(isLogin ? "Connexion réussie!" : "Inscription réussie!");
+      const token = response.data.token;
+      localStorage.setItem("token", token);
+
+      // ✅ CORRECTION : Récupère toujours les infos utilisateur fraîches depuis /auth/me
+      try {
+        const userResponse = await axios.get(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        // Stocke les bonnes infos utilisateur
+        localStorage.setItem("user", JSON.stringify(userResponse.data));
+        setUser(userResponse.data);
+        toast.success(isLogin ? "Connexion réussie!" : "Inscription réussie!");
+      } catch (userError) {
+        console.error("Erreur lors de la récupération du profil:", userError);
+        // En cas d'erreur, utilise les données de la réponse login/register
+        localStorage.setItem("user", JSON.stringify(response.data.user));
+        setUser(response.data.user);
+        toast.success(isLogin ? "Connexion réussie!" : "Inscription réussie!");
+      }
     } catch (error) {
+      console.error("Erreur d'authentification:", error);
       toast.error(
         error.response?.data?.detail || "Une erreur s'est produite"
       );
