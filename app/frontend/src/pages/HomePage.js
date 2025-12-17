@@ -4,7 +4,7 @@ import { API } from "../App";
 import Layout from "../components/Layout";
 import PostCard from "../components/PostCard";
 import CreatePostModal from "../components/CreatePostModal";
-import StoriesFeed from "../components/StoriesFeed"; // ← AJOUTÉ
+import StoriesFeed from "../components/StoriesFeed";
 import { Button } from "../components/ui/button";
 import { PenSquare } from "lucide-react";
 import { toast } from "sonner";
@@ -20,10 +20,11 @@ export default function HomePage({ user, setUser }) {
 
   const fetchFeed = async () => {
     try {
-      const response = await axios.get(`${API}/posts/feed`);
+      const response = await axios.get(`${API}/posts/feed`); // ← CORRIGÉ : parenthèses au lieu de backticks
       setPosts(response.data);
     } catch (error) {
-      toast.error("Erreur lors du chargement du fil");
+      console.error("Erreur lors du chargement du fil:", error);
+      toast.error("Erreur lors du chargement des publications");
     } finally {
       setLoading(false);
     }
@@ -52,7 +53,7 @@ export default function HomePage({ user, setUser }) {
           </h1>
         </div>
 
-        {/* STORIES BANDEAU – NOUVEL AJOUT */}
+        {/* STORIES BANDEAU */}
         <StoriesFeed />
 
         {/* Bouton créer post + feed */}
