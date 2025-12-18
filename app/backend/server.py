@@ -122,12 +122,21 @@ async def root():
 
 # --- FONCTION UTILITAIRE POUR CONVERTIR LES OBJECTID EN STR ---
 def convert_mongo_doc_to_dict(doc: dict) -> dict:
-    """Convertit un document MongoDB en dictionnaire Python avec ObjectId → str"""
+    """Convertit un document MongoDB en dictionnaire Python avec ObjectId → str
+    
+    IMPORTANT: Si le document a déjà un champ 'id' (UUID), on le garde !
+    On supprime juste le '_id' MongoDB pour éviter les conflits.
+    """
     if doc is None:
         return None
     new_doc = doc.copy()
+    
+    # ✅ CORRECTION: Ne pas écraser 'id' s'il existe déjà (UUID)
     if "_id" in new_doc:
-        new_doc["id"] = str(new_doc["_id"])
+        # Si le document n'a pas de champ 'id', on utilise _id
+        if "id" not in new_doc:
+            new_doc["id"] = str(new_doc["_id"])
+        # Supprime toujours _id pour éviter les conflits
         del new_doc["_id"]
 
     for key, value in new_doc.items():
