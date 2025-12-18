@@ -29,6 +29,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     const reader = new FileReader();
     reader.onloadend = () => {
       setMediaPreview(reader.result);
+      // Le reader.result est déjà en base64
     };
     reader.readAsDataURL(file);
 
@@ -54,15 +55,16 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
     setLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('content', content);
-      if (media) {
-        formData.append('media', media);
-      }
+      // ✅ IMPORTANT: Envoie du JSON au lieu de FormData
+      const postData = {
+        content: content,
+        media_type: mediaType || null,
+        media_url: mediaPreview || null, // Base64 string
+      };
 
-      const response = await axios.post(`${API}/posts`, formData, {
+      const response = await axios.post(`${API}/posts`, postData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type': 'application/json',
         },
       });
 
@@ -73,7 +75,8 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
       setMediaType(null);
       toast.success("Publication créée avec succès");
     } catch (error) {
-      toast.error("Erreur lors de la création de la publication");
+      console.error("Erreur création post:", error);
+      toast.error(error.response?.data?.detail || "Erreur lors de la création de la publication");
     } finally {
       setLoading(false);
     }
