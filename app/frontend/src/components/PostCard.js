@@ -1,195 +1,179 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Image, Video, X } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Heart, MessageCircle, Share2, MoreVertical } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { fr } from "date-fns/locale";
 import { toast } from "sonner";
 
-export default function CreatePostModal({ open, onClose, onPostCreated }) {
-  const [content, setContent] = useState("");
-  const [media, setMedia] = useState(null);
-  const [mediaPreview, setMediaPreview] = useState(null);
-  const [mediaType, setMediaType] = useState(null);
-  const [loading, setLoading] = useState(false);
+export default function PostCard({ post, onUpdate, onDelete }) {
+  const [isLiked, setIsLiked] = useState(post.is_liked || false);
+  const [likesCount, setLikesCount] = useState(post.likes_count || 0);
+  const [showComments, setShowComments] = useState(false);
 
-  const handleMediaChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setMedia(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setMediaPreview(reader.result);
-      // Le reader.result est déjà en base64
-    };
-    reader.readAsDataURL(file);
-
-    if (file.type.startsWith('image')) {
-      setMediaType('image');
-    } else if (file.type.startsWith('video')) {
-      setMediaType('video');
+  const handleLike = async () => {
+    try {
+      const response = await axios.post(`${API}/posts/${post.id}/like`);
+      setIsLiked(response.data.liked);
+      setLikesCount(prev => response.data.liked ? prev + 1 : prev - 1);
+    } catch (error) {
+      console.error("Erreur lors du like:", error);
+      toast.error("Erreur lors du like");
     }
   };
 
-  const handleRemoveMedia = () => {
-    setMedia(null);
-    setMediaPreview(null);
-    setMediaType(null);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!content.trim()) {
-      toast.error("Le contenu ne peut pas être vide");
+  const handleDelete = async () => {
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer ce post ?")) {
       return;
     }
 
-    setLoading(true);
     try {
-      // Prépare les données au format JSON attendu par le backend
-      const postData = {
-        content: content,
-        media_type: mediaType || null,
-        media_url: mediaPreview || null, // Base64 string
-      };
-
-      const response = await axios.post(`${API}/posts`, postData, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      onPostCreated(response.data);
-      setContent("");
-      setMedia(null);
-      setMediaPreview(null);
-      setMediaType(null);
-      toast.success("Publication créée avec succès");
+      await axios.delete(`${API}/posts/${post.id}`);
+      toast.success("Post supprimé avec succès");
+      if (onDelete) {
+        onDelete(post.id);
+      }
     } catch (error) {
-      console.error("Erreur création post:", error);
-      toast.error(error.response?.data?.detail || "Erreur lors de la création de la publication");
-    } finally {
-      setLoading(false);
+      console.error("Erreur lors de la suppression:", error);
+      toast.error("Erreur lors de la suppression");
     }
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="text-xl">Créer une publication</DialogTitle>
-        </DialogHeader>
+  const getInitials = (username) => {
+    return username ? username.substring(0, 2).toUpperCase() : "??";
+  };
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+  const formatDate = (dateString) => {
+    try {
+      return formatDistanceToNow(new Date(dateString), {
+        addSuffix: true,
+        locale: fr,
+      });
+    } catch (error) {
+      return "Il y a quelques instants";
+    }
+  };
+
+  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isOwnPost = currentUser.id === post.author_id;
+
+  return (
+    <Card className="bg-slate-900 border-slate-800 text-white mb-4">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <div className="flex items-center space-x-3">
+          <Link to={`/profile/${post.author_id}`}>
+            <Avatar className="h-10 w-10">
+              {post.author_profile_pic ? (
+                <AvatarImage src={post.author_profile_pic} alt={post.author_username} />
+              ) : (
+                <AvatarFallback className="bg-gradient-to-r from-cyan-500 to-blue-500">
+                  {getInitials(post.author_username)}
+                </AvatarFallback>
+              )}
+            </Avatar>
+          </Link>
           <div>
-            <Label htmlFor="content">Contenu</Label>
-            <Textarea
-              id="content"
-              data-testid="create-post-content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Que voulez-vous partager?"
-              className="bg-slate-800 border-slate-700 text-white min-h-32"
-              rows={5}
+            <Link 
+              to={`/profile/${post.author_id}`}
+              className="font-semibold hover:underline"
+            >
+              {post.author_username}
+            </Link>
+            <p className="text-xs text-slate-400">
+              {formatDate(post.created_at)}
+            </p>
+          </div>
+        </div>
+        {isOwnPost && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleDelete}
+            className="text-slate-400 hover:text-red-500"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        )}
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        {/* Contenu du post */}
+        <p className="text-slate-100 whitespace-pre-wrap">{post.content}</p>
+
+        {/* Image ou vidéo */}
+        {post.media_url && post.media_type === "image" && (
+          <div className="rounded-lg overflow-hidden">
+            <img
+              src={post.media_url}
+              alt="Post media"
+              className="w-full object-cover max-h-96"
             />
           </div>
+        )}
 
-          {mediaPreview && (
-            <div className="relative">
-              {mediaType === 'image' ? (
-                <img
-                  src={mediaPreview}
-                  alt="Preview"
-                  className="w-full rounded-lg max-h-64 object-cover"
-                />
-              ) : mediaType === 'video' ? (
-                <video
-                  src={mediaPreview}
-                  controls
-                  className="w-full rounded-lg max-h-64"
-                />
-              ) : null}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={handleRemoveMedia}
-                className="absolute top-2 right-2 bg-slate-900/80 hover:bg-slate-800"
-                data-testid="remove-media-button"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <div>
-              <Input
-                id="image-upload"
-                data-testid="upload-image-input"
-                type="file"
-                accept="image/*"
-                onChange={handleMediaChange}
-                className="hidden"
-              />
-              <Label
-                htmlFor="image-upload"
-                className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-md"
-              >
-                <Image className="w-4 h-4" />
-                Image
-              </Label>
-            </div>
-
-            <div>
-              <Input
-                id="video-upload"
-                data-testid="upload-video-input"
-                type="file"
-                accept="video/*"
-                onChange={handleMediaChange}
-                className="hidden"
-              />
-              <Label
-                htmlFor="video-upload"
-                className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-md"
-              >
-                <Video className="w-4 h-4" />
-                Vidéo
-              </Label>
-            </div>
+        {post.media_url && post.media_type === "video" && (
+          <div className="rounded-lg overflow-hidden">
+            <video
+              src={post.media_url}
+              controls
+              className="w-full max-h-96"
+            />
           </div>
+        )}
+      </CardContent>
 
-          <div className="flex gap-2 justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="border-slate-700"
-              data-testid="cancel-post-button"
-            >
-              Annuler
-            </Button>
-            <Button
-              type="submit"
-              disabled={loading || !content.trim()}
-              className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
-              data-testid="submit-post-button"
-            >
-              {loading ? "Publication..." : "Publier"}
-            </Button>
+      <CardFooter className="flex flex-col space-y-3">
+        {/* Stats */}
+        <div className="flex items-center justify-between w-full text-sm text-slate-400">
+          <span>{likesCount} j'aime</span>
+          <span>{post.comments_count || 0} commentaires</span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-around w-full border-t border-slate-800 pt-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLike}
+            className={`flex items-center space-x-2 ${
+              isLiked ? "text-red-500" : "text-slate-400"
+            } hover:text-red-500`}
+          >
+            <Heart className={`h-5 w-5 ${isLiked ? "fill-current" : ""}`} />
+            <span>J'aime</span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowComments(!showComments)}
+            className="flex items-center space-x-2 text-slate-400 hover:text-blue-500"
+          >
+            <MessageCircle className="h-5 w-5" />
+            <span>Commenter</span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex items-center space-x-2 text-slate-400 hover:text-green-500"
+          >
+            <Share2 className="h-5 w-5" />
+            <span>Partager</span>
+          </Button>
+        </div>
+
+        {/* Section commentaires (à implémenter plus tard) */}
+        {showComments && (
+          <div className="w-full pt-3 border-t border-slate-800">
+            <p className="text-sm text-slate-400">Commentaires à venir...</p>
           </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        )}
+      </CardFooter>
+    </Card>
   );
 }
