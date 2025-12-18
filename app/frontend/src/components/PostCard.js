@@ -1,184 +1,195 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Heart, MessageCircle, Share2, MoreVertical, Trash2 } from "lucide-react";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Image, Video, X } from "lucide-react";
 import { toast } from "sonner";
 
-export default function PostCard({ post, currentUser, onUpdate, onDelete, showFullContent }) {
-  const navigate = useNavigate();
-  const [isLiking, setIsLiking] = useState(false);
+export default function CreatePostModal({ open, onClose, onPostCreated }) {
+  const [content, setContent] = useState("");
+  const [media, setMedia] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
+  const [mediaType, setMediaType] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleLike = async (e) => {
-    e.stopPropagation();
-    if (isLiking) return;
-    setIsLiking(true);
+  const handleMediaChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
+    setMedia(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setMediaPreview(reader.result);
+      // Le reader.result est déjà en base64
+    };
+    reader.readAsDataURL(file);
+
+    if (file.type.startsWith('image')) {
+      setMediaType('image');
+    } else if (file.type.startsWith('video')) {
+      setMediaType('video');
+    }
+  };
+
+  const handleRemoveMedia = () => {
+    setMedia(null);
+    setMediaPreview(null);
+    setMediaType(null);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!content.trim()) {
+      toast.error("Le contenu ne peut pas être vide");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const response = await axios.post(`${API}/posts/${post.id}/like`);
-      const newLikesCount = post.likes_count + (response.data.liked ? 1 : -1);
-      onUpdate({
-        ...post,
-        is_liked: response.data.liked,
-        likes_count: newLikesCount,
+      // Prépare les données au format JSON attendu par le backend
+      const postData = {
+        content: content,
+        media_type: mediaType || null,
+        media_url: mediaPreview || null, // Base64 string
+      };
+
+      const response = await axios.post(`${API}/posts`, postData, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
+
+      onPostCreated(response.data);
+      setContent("");
+      setMedia(null);
+      setMediaPreview(null);
+      setMediaType(null);
+      toast.success("Publication créée avec succès");
     } catch (error) {
-      toast.error("Erreur lors de l'action");
+      console.error("Erreur création post:", error);
+      toast.error(error.response?.data?.detail || "Erreur lors de la création de la publication");
     } finally {
-      setIsLiking(false);
+      setLoading(false);
     }
-  };
-
-  const handleShare = async (e) => {
-    e.stopPropagation();
-    try {
-      await axios.post(`${API}/posts/${post.id}/share`);
-      toast.success("Publication partagée");
-    } catch (error) {
-      toast.error("Erreur lors du partage");
-    }
-  };
-
-  const handleDelete = async (e) => {
-    e.stopPropagation();
-    if (!window.confirm("Voulez-vous vraiment supprimer cette publication?")) return;
-
-    try {
-      await axios.delete(`${API}/posts/${post.id}`);
-      if (onDelete) onDelete(post.id);
-      toast.success("Publication supprimée");
-    } catch (error) {
-      toast.error("Erreur lors de la suppression");
-    }
-  };
-
-  const handlePostClick = () => {
-    navigate(`/post/${post.id}`);
-  };
-
-  const handleProfileClick = (e) => {
-    e.stopPropagation();
-    navigate(`/profile/${post.author_id}`);
   };
 
   return (
-    <div
-      data-testid={`post-${post.id}`}
-      onClick={showFullContent ? undefined : handlePostClick}
-      className={`bg-slate-900 rounded-lg p-4 border border-slate-800 ${
-        !showFullContent ? 'cursor-pointer hover:bg-slate-900/80' : ''
-      }`}
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={handleProfileClick}>
-          <Avatar>
-            <AvatarImage src={post.author_profile_pic} />
-            <AvatarFallback className="bg-slate-700">
-              {post.author_username[0].toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div>
-            <p className="font-semibold">{post.author_username}</p>
-            <p className="text-xs text-slate-400">
-              {new Date(post.created_at).toLocaleString('fr-FR')}
-            </p>
-          </div>
-        </div>
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-xl">Créer une publication</DialogTitle>
+        </DialogHeader>
 
-        {currentUser.id === post.author_id && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Label htmlFor="content">Contenu</Label>
+            <Textarea
+              id="content"
+              data-testid="create-post-content"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Que voulez-vous partager?"
+              className="bg-slate-800 border-slate-700 text-white min-h-32"
+              rows={5}
+            />
+          </div>
+
+          {mediaPreview && (
+            <div className="relative">
+              {mediaType === 'image' ? (
+                <img
+                  src={mediaPreview}
+                  alt="Preview"
+                  className="w-full rounded-lg max-h-64 object-cover"
+                />
+              ) : mediaType === 'video' ? (
+                <video
+                  src={mediaPreview}
+                  controls
+                  className="w-full rounded-lg max-h-64"
+                />
+              ) : null}
               <Button
+                type="button"
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
-                onClick={(e) => e.stopPropagation()}
-                data-testid={`post-menu-${post.id}`}
+                onClick={handleRemoveMedia}
+                className="absolute top-2 right-2 bg-slate-900/80 hover:bg-slate-800"
+                data-testid="remove-media-button"
               >
-                <MoreVertical className="w-4 h-4" />
+                <X className="w-4 h-4" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-slate-900 border-slate-700">
-              <DropdownMenuItem
-                data-testid={`delete-post-${post.id}`}
-                onClick={handleDelete}
-                className="text-red-400 cursor-pointer"
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <div>
+              <Input
+                id="image-upload"
+                data-testid="upload-image-input"
+                type="file"
+                accept="image/*"
+                onChange={handleMediaChange}
+                className="hidden"
+              />
+              <Label
+                htmlFor="image-upload"
+                className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-md"
               >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Supprimer
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+                <Image className="w-4 h-4" />
+                Image
+              </Label>
+            </div>
 
-      <p className="text-white mb-3 whitespace-pre-wrap">{post.content}</p>
+            <div>
+              <Input
+                id="video-upload"
+                data-testid="upload-video-input"
+                type="file"
+                accept="video/*"
+                onChange={handleMediaChange}
+                className="hidden"
+              />
+              <Label
+                htmlFor="video-upload"
+                className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-md"
+              >
+                <Video className="w-4 h-4" />
+                Vidéo
+              </Label>
+            </div>
+          </div>
 
-      {post.media_url && (
-        <div className="mb-3">
-          {post.media_type === 'image' ? (
-            <img
-              src={post.media_url}
-              alt="Post media"
-              className="post-image w-full rounded-lg max-h-96 object-cover"
-            />
-          ) : post.media_type === 'video' ? (
-            <video
-              src={post.media_url}
-              controls
-              className="post-video w-full rounded-lg"
-            />
-          ) : null}
-        </div>
-      )}
-
-      <div className="flex items-center gap-6 text-slate-400">
-        <Button
-          data-testid={`like-button-${post.id}`}
-          variant="ghost"
-          size="sm"
-          onClick={handleLike}
-          className={`gap-2 ${
-            post.is_liked ? 'text-red-500' : 'hover:text-red-500'
-          }`}
-        >
-          <Heart className="w-5 h-5" fill={post.is_liked ? 'currentColor' : 'none'} />
-          <span>{post.likes_count}</span>
-        </Button>
-
-        <Button
-          data-testid={`comment-button-${post.id}`}
-          variant="ghost"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/post/${post.id}`);
-          }}
-          className="gap-2 hover:text-blue-500"
-        >
-          <MessageCircle className="w-5 h-5" />
-          <span>{post.comments_count}</span>
-        </Button>
-
-        <Button
-          data-testid={`share-button-${post.id}`}
-          variant="ghost"
-          size="sm"
-          onClick={handleShare}
-          className="gap-2 hover:text-green-500"
-        >
-          <Share2 className="w-5 h-5" />
-          <span>{post.shares_count}</span>
-        </Button>
-      </div>
-    </div>
+          <div className="flex gap-2 justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="border-slate-700"
+              data-testid="cancel-post-button"
+            >
+              Annuler
+            </Button>
+            <Button
+              type="submit"
+              disabled={loading || !content.trim()}
+              className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
+              data-testid="submit-post-button"
+            >
+              {loading ? "Publication..." : "Publier"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
