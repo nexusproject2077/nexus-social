@@ -246,13 +246,12 @@ class Notification(BaseModel):
     from_username: str
     from_profile_pic: Optional[str] = None
     post_id: Optional[str] = None
-    message: str
+    comment_content: Optional[str] = None
     read: bool = False
     created_at: str
 
-# ==================== STORIES MODELS ====================
 class StoryCreate(BaseModel):
-    media_type: str  # "image" or "video"
+    media_type: str
     media_url: str
 
 class Story(BaseModel):
@@ -417,8 +416,10 @@ async def update_profile(
 # ==================== POSTS ROUTES ====================
 @api_router.post("/posts", response_model=Post)
 async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
-    """Crée un nouveau post"""
+    """Créer un nouveau post"""
     post_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
     post_to_insert = {
         "id": post_id,
         "author_id": current_user["id"],
@@ -430,8 +431,9 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
         "likes_count": 0,
         "comments_count": 0,
         "shares_count": 0,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": now.isoformat()
     }
+    
     await db.posts.insert_one(post_to_insert)
     
     post = convert_mongo_doc_to_dict(post_to_insert)
@@ -439,11 +441,19 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
     return Post(**post)
 
 @api_router.get("/posts/feed", response_model=List[Post])
-async def get_feed(skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
+async def get_posts_feed(current_user: dict = Depends(get_current_user)):
     """Récupère le feed de posts"""
-    posts_raw = await db.posts.find().sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
-    posts = []
+    # Récupère les utilisateurs suivis
+    follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(length=100)
+    followed_user_ids = [convert_mongo_doc_to_dict(f)["following_id"] for f in follows_raw]
+    followed_user_ids.append(current_user["id"])
     
+    # Récupère les posts
+    posts_raw = await db.posts.find({
+        "author_id": {"$in": followed_user_ids}
+    }).sort("created_at", -1).limit(50).to_list(length=50)
+    
+    posts = []
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
@@ -460,9 +470,8 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
         raise HTTPException(status_code=404, detail="Post not found")
     
     post = convert_mongo_doc_to_dict(post_raw)
-    like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
+    like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
     post["is_liked"] = bool(like_raw)
-    
     return Post(**post)
 
 @api_router.delete("/posts/{post_id}")
@@ -484,98 +493,56 @@ async def delete_post(post_id: str, current_user: dict = Depends(get_current_use
 
 @api_router.post("/posts/{post_id}/like")
 async def like_post(post_id: str, current_user: dict = Depends(get_current_user)):
-    """Like un post"""
+    """Like/unlike un post"""
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    existing_like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
-    if existing_like_raw:
-        raise HTTPException(status_code=400, detail="Already liked")
+    like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
     
-    like_id = str(uuid.uuid4())
-    await db.likes.insert_one({
-        "id": like_id,
-        "post_id": post_id,
-        "user_id": current_user["id"],
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    
-    await db.posts.update_one({"id": post_id}, {"$inc": {"likes_count": 1}})
-    
-    # Create notification
-    post = convert_mongo_doc_to_dict(post_raw)
-    if post["author_id"] != current_user["id"]:
-        notification_id = str(uuid.uuid4())
-        await db.notifications.insert_one({
-            "id": notification_id,
-            "user_id": post["author_id"],
-            "type": "like",
-            "from_user_id": current_user["id"],
-            "from_username": current_user["username"],
-            "from_profile_pic": current_user.get("profile_pic"),
+    if like_raw:
+        # Unlike
+        await db.likes.delete_one({"post_id": post_id, "user_id": current_user["id"]})
+        await db.posts.update_one({"id": post_id}, {"$inc": {"likes_count": -1}})
+        return {"liked": False}
+    else:
+        # Like
+        like_id = str(uuid.uuid4())
+        await db.likes.insert_one({
+            "id": like_id,
             "post_id": post_id,
-            "message": f"{current_user['username']} liked your post",
-            "read": False,
+            "user_id": current_user["id"],
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-    
-    return {"message": "Post liked successfully"}
+        await db.posts.update_one({"id": post_id}, {"$inc": {"likes_count": 1}})
+        
+        # Créer une notification
+        post = convert_mongo_doc_to_dict(post_raw)
+        if post["author_id"] != current_user["id"]:
+            notif_id = str(uuid.uuid4())
+            await db.notifications.insert_one({
+                "id": notif_id,
+                "user_id": post["author_id"],
+                "type": "like",
+                "from_user_id": current_user["id"],
+                "from_username": current_user["username"],
+                "from_profile_pic": current_user.get("profile_pic"),
+                "post_id": post_id,
+                "read": False,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        
+        return {"liked": True}
 
-@api_router.delete("/posts/{post_id}/like")
-async def unlike_post(post_id: str, current_user: dict = Depends(get_current_user)):
-    """Unlike un post"""
-    post_raw = await db.posts.find_one({"id": post_id})
-    if not post_raw:
-        raise HTTPException(status_code=404, detail="Post not found")
-    
-    existing_like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
-    if not existing_like_raw:
-        raise HTTPException(status_code=400, detail="Not liked yet")
-    
-    await db.likes.delete_one({"post_id": post_id, "user_id": current_user["id"]})
-    await db.posts.update_one({"id": post_id}, {"$inc": {"likes_count": -1}})
-    
-    return {"message": "Post unliked successfully"}
-
-@api_router.post("/posts/{post_id}/share")
-async def share_post(post_id: str, current_user: dict = Depends(get_current_user)):
-    """Partage un post"""
-    post_raw = await db.posts.find_one({"id": post_id})
-    if not post_raw:
-        raise HTTPException(status_code=404, detail="Post not found")
-    
-    await db.posts.update_one({"id": post_id}, {"$inc": {"shares_count": 1}})
-    
-    # Create notification
-    post = convert_mongo_doc_to_dict(post_raw)
-    if post["author_id"] != current_user["id"]:
-        notification_id = str(uuid.uuid4())
-        await db.notifications.insert_one({
-            "id": notification_id,
-            "user_id": post["author_id"],
-            "type": "share",
-            "from_user_id": current_user["id"],
-            "from_username": current_user["username"],
-            "from_profile_pic": current_user.get("profile_pic"),
-            "post_id": post_id,
-            "message": f"{current_user['username']} shared your post",
-            "read": False,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-    
-    return {"message": "Post shared successfully"}
-
-# ==================== COMMENTS ROUTES ====================
 @api_router.get("/posts/{post_id}/comments", response_model=List[Comment])
-async def get_comments(post_id: str, current_user: dict = Depends(get_current_user)):
+async def get_post_comments(post_id: str, current_user: dict = Depends(get_current_user)):
     """Récupère les commentaires d'un post"""
-    post_raw = await db.posts.find_one({"id": post_id})
-    if not post_raw:
-        raise HTTPException(status_code=404, detail="Post not found")
-    
     comments_raw = await db.comments.find({"post_id": post_id}).sort("created_at", -1).to_list(length=100)
-    comments = [Comment(**convert_mongo_doc_to_dict(comment)) for comment in comments_raw]
+    
+    comments = []
+    for comment_raw in comments_raw:
+        comment = convert_mongo_doc_to_dict(comment_raw)
+        comments.append(Comment(**comment))
     
     return comments
 
@@ -596,22 +563,23 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
         "content": comment_data.content,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    
     await db.comments.insert_one(comment_to_insert)
     await db.posts.update_one({"id": post_id}, {"$inc": {"comments_count": 1}})
     
-    # Create notification
+    # Créer une notification
     post = convert_mongo_doc_to_dict(post_raw)
     if post["author_id"] != current_user["id"]:
-        notification_id = str(uuid.uuid4())
+        notif_id = str(uuid.uuid4())
         await db.notifications.insert_one({
-            "id": notification_id,
+            "id": notif_id,
             "user_id": post["author_id"],
             "type": "comment",
             "from_user_id": current_user["id"],
             "from_username": current_user["username"],
             "from_profile_pic": current_user.get("profile_pic"),
             "post_id": post_id,
-            "message": f"{current_user['username']} commented on your post",
+            "comment_content": comment_data.content,
             "read": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
@@ -619,23 +587,37 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
     comment = convert_mongo_doc_to_dict(comment_to_insert)
     return Comment(**comment)
 
-@api_router.delete("/comments/{comment_id}")
-async def delete_comment(comment_id: str, current_user: dict = Depends(get_current_user)):
-    """Supprime un commentaire"""
-    comment_raw = await db.comments.find_one({"id": comment_id})
-    if not comment_raw:
-        raise HTTPException(status_code=404, detail="Comment not found")
-    
-    comment = convert_mongo_doc_to_dict(comment_raw)
-    if comment["author_id"] != current_user["id"]:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    await db.comments.delete_one({"id": comment_id})
-    await db.posts.update_one({"id": comment["post_id"]}, {"$inc": {"comments_count": -1}})
-    
-    return {"message": "Comment deleted successfully"}
-
 # ==================== USERS ROUTES ====================
+@api_router.get("/users/search")
+async def search_users(q: str, current_user: dict = Depends(get_current_user)):
+    """Recherche des utilisateurs"""
+    if not q or len(q.strip()) == 0:
+        return []
+    
+    users_raw = await db.users.find({
+        "$or": [
+            {"username": {"$regex": q, "$options": "i"}},
+            {"bio": {"$regex": q, "$options": "i"}}
+        ]
+    }).limit(20).to_list(length=20)
+    
+    users = []
+    for user_raw in users_raw:
+        user = convert_mongo_doc_to_dict(user_raw)
+        is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user["id"]})
+        users.append(UserProfile(
+            id=user["id"],
+            username=user["username"],
+            bio=user.get("bio", ""),
+            profile_pic=user.get("profile_pic"),
+            followers_count=user.get("followers_count", 0),
+            following_count=user.get("following_count", 0),
+            is_following=bool(is_following_raw),
+            created_at=user["created_at"]
+        ))
+    
+    return users
+
 @api_router.get("/users/{user_id}", response_model=UserProfile)
 async def get_user_profile(user_id: str, current_user: dict = Depends(get_current_user)):
     """Récupère le profil d'un utilisateur"""
@@ -644,7 +626,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         raise HTTPException(status_code=404, detail="User not found")
     
     user = convert_mongo_doc_to_dict(user_raw)
-    follow_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
+    is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
     
     return UserProfile(
         id=user["id"],
@@ -653,20 +635,16 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         profile_pic=user.get("profile_pic"),
         followers_count=user.get("followers_count", 0),
         following_count=user.get("following_count", 0),
-        is_following=bool(follow_raw),
+        is_following=bool(is_following_raw),
         created_at=user["created_at"]
     )
 
 @api_router.get("/users/{user_id}/posts", response_model=List[Post])
-async def get_user_posts(user_id: str, skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
+async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_user)):
     """Récupère les posts d'un utilisateur"""
-    user_raw = await db.users.find_one({"id": user_id})
-    if not user_raw:
-        raise HTTPException(status_code=404, detail="User not found")
+    posts_raw = await db.posts.find({"author_id": user_id}).sort("created_at", -1).to_list(length=50)
     
-    posts_raw = await db.posts.find({"author_id": user_id}).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
     posts = []
-    
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
@@ -677,7 +655,7 @@ async def get_user_posts(user_id: str, skip: int = 0, limit: int = 20, current_u
 
 @api_router.post("/users/{user_id}/follow")
 async def follow_user(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Suivre un utilisateur"""
+    """Follow/unfollow un utilisateur"""
     if user_id == current_user["id"]:
         raise HTTPException(status_code=400, detail="Cannot follow yourself")
     
@@ -686,115 +664,71 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
         raise HTTPException(status_code=404, detail="User not found")
     
     existing_follow_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
+    
     if existing_follow_raw:
-        raise HTTPException(status_code=400, detail="Already following")
-    
-    follow_id = str(uuid.uuid4())
-    await db.follows.insert_one({
-        "id": follow_id,
-        "follower_id": current_user["id"],
-        "following_id": user_id,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    
-    await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": 1}})
-    await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": 1}})
-    
-    # Create notification
-    notification_id = str(uuid.uuid4())
-    await db.notifications.insert_one({
-        "id": notification_id,
-        "user_id": user_id,
-        "type": "follow",
-        "from_user_id": current_user["id"],
-        "from_username": current_user["username"],
-        "from_profile_pic": current_user.get("profile_pic"),
-        "message": f"{current_user['username']} started following you",
-        "read": False,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    
-    return {"message": "User followed successfully"}
+        # Unfollow
+        await db.follows.delete_one({"follower_id": current_user["id"], "following_id": user_id})
+        await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": -1}})
+        await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": -1}})
+        return {"following": False}
+    else:
+        # Follow
+        follow_id = str(uuid.uuid4())
+        await db.follows.insert_one({
+            "id": follow_id,
+            "follower_id": current_user["id"],
+            "following_id": user_id,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": 1}})
+        await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": 1}})
+        
+        # Créer une notification
+        notif_id = str(uuid.uuid4())
+        await db.notifications.insert_one({
+            "id": notif_id,
+            "user_id": user_id,
+            "type": "follow",
+            "from_user_id": current_user["id"],
+            "from_username": current_user["username"],
+            "from_profile_pic": current_user.get("profile_pic"),
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        return {"following": True}
 
-@api_router.delete("/users/{user_id}/follow")
-async def unfollow_user(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Ne plus suivre un utilisateur"""
-    user_raw = await db.users.find_one({"id": user_id})
-    if not user_raw:
-        raise HTTPException(status_code=404, detail="User not found")
+# ==================== NOTIFICATIONS ROUTES ====================
+@api_router.get("/notifications", response_model=List[Notification])
+async def get_notifications(current_user: dict = Depends(get_current_user)):
+    """Récupère les notifications de l'utilisateur"""
+    notifications_raw = await db.notifications.find({"user_id": current_user["id"]}).sort("created_at", -1).limit(50).to_list(length=50)
     
-    existing_follow_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
-    if not existing_follow_raw:
-        raise HTTPException(status_code=400, detail="Not following")
+    notifications = []
+    for notif_raw in notifications_raw:
+        notif = convert_mongo_doc_to_dict(notif_raw)
+        notifications.append(Notification(**notif))
     
-    await db.follows.delete_one({"follower_id": current_user["id"], "following_id": user_id})
-    await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": -1}})
-    await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": -1}})
-    
-    return {"message": "User unfollowed successfully"}
+    return notifications
 
-@api_router.get("/users/{user_id}/followers", response_model=List[UserProfile])
-async def get_followers(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Récupère la liste des followers"""
-    user_raw = await db.users.find_one({"id": user_id})
-    if not user_raw:
-        raise HTTPException(status_code=404, detail="User not found")
+@api_router.put("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Marque une notification comme lue"""
+    notif_raw = await db.notifications.find_one({"id": notification_id})
+    if not notif_raw:
+        raise HTTPException(status_code=404, detail="Notification not found")
     
-    follows_raw = await db.follows.find({"following_id": user_id}).to_list(length=100)
-    followers = []
+    notif = convert_mongo_doc_to_dict(notif_raw)
+    if notif["user_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
     
-    for follow_raw in follows_raw:
-        follow = convert_mongo_doc_to_dict(follow_raw)
-        follower_raw = await db.users.find_one({"id": follow["follower_id"]})
-        if follower_raw:
-            follower = convert_mongo_doc_to_dict(follower_raw)
-            is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": follower["id"]})
-            followers.append(UserProfile(
-                id=follower["id"],
-                username=follower["username"],
-                bio=follower.get("bio", ""),
-                profile_pic=follower.get("profile_pic"),
-                followers_count=follower.get("followers_count", 0),
-                following_count=follower.get("following_count", 0),
-                is_following=bool(is_following_raw),
-                created_at=follower["created_at"]
-            ))
-    
-    return followers
-
-@api_router.get("/users/{user_id}/following", response_model=List[UserProfile])
-async def get_following(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Récupère la liste des abonnements"""
-    user_raw = await db.users.find_one({"id": user_id})
-    if not user_raw:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    follows_raw = await db.follows.find({"follower_id": user_id}).to_list(length=100)
-    following = []
-    
-    for follow_raw in follows_raw:
-        follow = convert_mongo_doc_to_dict(follow_raw)
-        following_user_raw = await db.users.find_one({"id": follow["following_id"]})
-        if following_user_raw:
-            following_user = convert_mongo_doc_to_dict(following_user_raw)
-            is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": following_user["id"]})
-            following.append(UserProfile(
-                id=following_user["id"],
-                username=following_user["username"],
-                bio=following_user.get("bio", ""),
-                profile_pic=following_user.get("profile_pic"),
-                followers_count=following_user.get("followers_count", 0),
-                following_count=following_user.get("following_count", 0),
-                is_following=bool(is_following_raw),
-                created_at=following_user["created_at"]
-            ))
-    
-    return following
+    await db.notifications.update_one({"id": notification_id}, {"$set": {"read": True}})
+    return {"message": "Notification marked as read"}
 
 # ==================== MESSAGES ROUTES ====================
 @api_router.get("/messages/conversations", response_model=List[Conversation])
 async def get_conversations(current_user: dict = Depends(get_current_user)):
-    """Récupère la liste des conversations"""
+    """Récupère les conversations de l'utilisateur"""
     messages_raw = await db.messages.find({
         "$or": [
             {"sender_id": current_user["id"]},
@@ -803,10 +737,9 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     }).sort("created_at", -1).to_list(length=1000)
     
     conversations_dict = {}
-    
-    for message_raw in messages_raw:
-        message = convert_mongo_doc_to_dict(message_raw)
-        other_user_id = message["recipient_id"] if message["sender_id"] == current_user["id"] else message["sender_id"]
+    for msg_raw in messages_raw:
+        msg = convert_mongo_doc_to_dict(msg_raw)
+        other_user_id = msg["recipient_id"] if msg["sender_id"] == current_user["id"] else msg["sender_id"]
         
         if other_user_id not in conversations_dict:
             other_user_raw = await db.users.find_one({"id": other_user_id})
@@ -822,53 +755,33 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     user_id=other_user["id"],
                     username=other_user["username"],
                     profile_pic=other_user.get("profile_pic"),
-                    last_message=message["content"],
-                    last_message_time=message["created_at"],
+                    last_message=msg["content"],
+                    last_message_time=msg["created_at"],
                     unread_count=unread_count
                 )
     
     return list(conversations_dict.values())
 
 @api_router.get("/messages/{user_id}", response_model=List[Message])
-async def get_messages(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Récupère les messages avec un utilisateur"""
-    user_raw = await db.users.find_one({"id": user_id})
-    if not user_raw:
-        raise HTTPException(status_code=404, detail="User not found")
-    
+async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Récupère les messages avec un utilisateur spécifique"""
     messages_raw = await db.messages.find({
         "$or": [
             {"sender_id": current_user["id"], "recipient_id": user_id},
             {"sender_id": user_id, "recipient_id": current_user["id"]}
         ]
-    }).sort("created_at", 1).to_list(length=1000)
+    }).sort("created_at", 1).to_list(length=100)
     
-    # Mark messages as read
+    messages = []
+    for msg_raw in messages_raw:
+        msg = convert_mongo_doc_to_dict(msg_raw)
+        messages.append(Message(**msg))
+    
+    # Marquer les messages reçus comme lus
     await db.messages.update_many(
         {"sender_id": user_id, "recipient_id": current_user["id"], "read": False},
         {"$set": {"read": True}}
     )
-    
-    messages = []
-    for message_raw in messages_raw:
-        message = convert_mongo_doc_to_dict(message_raw)
-        sender_raw = await db.users.find_one({"id": message["sender_id"]})
-        recipient_raw = await db.users.find_one({"id": message["recipient_id"]})
-        
-        if sender_raw and recipient_raw:
-            sender = convert_mongo_doc_to_dict(sender_raw)
-            recipient = convert_mongo_doc_to_dict(recipient_raw)
-            messages.append(Message(
-                id=message["id"],
-                sender_id=message["sender_id"],
-                sender_username=sender["username"],
-                sender_profile_pic=sender.get("profile_pic"),
-                recipient_id=message["recipient_id"],
-                recipient_username=recipient["username"],
-                content=message["content"],
-                read=message.get("read", False),
-                created_at=message["created_at"]
-            ))
     
     return messages
 
@@ -879,86 +792,30 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     if not recipient_raw:
         raise HTTPException(status_code=404, detail="Recipient not found")
     
+    recipient = convert_mongo_doc_to_dict(recipient_raw)
     message_id = str(uuid.uuid4())
+    
     message_to_insert = {
         "id": message_id,
         "sender_id": current_user["id"],
+        "sender_username": current_user["username"],
+        "sender_profile_pic": current_user.get("profile_pic"),
         "recipient_id": message_data.recipient_id,
+        "recipient_username": recipient["username"],
         "content": message_data.content,
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    
     await db.messages.insert_one(message_to_insert)
     
-    recipient = convert_mongo_doc_to_dict(recipient_raw)
-    
-    # Create notification
-    notification_id = str(uuid.uuid4())
-    await db.notifications.insert_one({
-        "id": notification_id,
-        "user_id": message_data.recipient_id,
-        "type": "message",
-        "from_user_id": current_user["id"],
-        "from_username": current_user["username"],
-        "from_profile_pic": current_user.get("profile_pic"),
-        "message": f"{current_user['username']} sent you a message",
-        "read": False,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    
-    return Message(
-        id=message_id,
-        sender_id=current_user["id"],
-        sender_username=current_user["username"],
-        sender_profile_pic=current_user.get("profile_pic"),
-        recipient_id=message_data.recipient_id,
-        recipient_username=recipient["username"],
-        content=message_data.content,
-        read=False,
-        created_at=message_to_insert["created_at"]
-    )
+    message = convert_mongo_doc_to_dict(message_to_insert)
+    return Message(**message)
 
-# ==================== NOTIFICATIONS ROUTES ====================
-@api_router.get("/notifications", response_model=List[Notification])
-async def get_notifications(current_user: dict = Depends(get_current_user)):
-    """Récupère les notifications"""
-    notifications_raw = await db.notifications.find({"user_id": current_user["id"]}).sort("created_at", -1).limit(50).to_list(length=50)
-    notifications = [Notification(**convert_mongo_doc_to_dict(notif)) for notif in notifications_raw]
-    return notifications
-
-@api_router.put("/notifications/{notification_id}/read")
-async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
-    """Marque une notification comme lue"""
-    notification_raw = await db.notifications.find_one({"id": notification_id})
-    if not notification_raw:
-        raise HTTPException(status_code=404, detail="Notification not found")
-    
-    notification = convert_mongo_doc_to_dict(notification_raw)
-    if notification["user_id"] != current_user["id"]:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    await db.notifications.update_one({"id": notification_id}, {"$set": {"read": True}})
-    return {"message": "Notification marked as read"}
-
-@api_router.put("/notifications/read-all")
-async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
-    """Marque toutes les notifications comme lues"""
-    await db.notifications.update_many(
-        {"user_id": current_user["id"], "read": False},
-        {"$set": {"read": True}}
-    )
-    return {"message": "All notifications marked as read"}
-
-@api_router.get("/notifications/unread-count")
-async def get_unread_notifications_count(current_user: dict = Depends(get_current_user)):
-    """Récupère le nombre de notifications non lues"""
-    count = await db.notifications.count_documents({"user_id": current_user["id"], "read": False})
-    return {"count": count}
-
-# ==================== SEARCH ROUTE ====================
+# ==================== SEARCH ROUTES ====================
 @api_router.get("/search")
 async def search(q: str, current_user: dict = Depends(get_current_user)):
-    """Recherche des utilisateurs et posts"""
+    """Recherche globale (utilisateurs et posts)"""
     if not q or len(q.strip()) == 0:
         return {"users": [], "posts": []}
     
