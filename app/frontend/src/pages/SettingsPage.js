@@ -78,7 +78,7 @@ export default function SettingsPage({ user, setUser }) {
       const response = await axios.get(`${API}/users/me/liked-posts`);
       setLikedPosts(response.data);
     } catch (error) {
-      console.error("Erreur lors du chargement des posts aimés:", error);
+      console.error("Erreur chargement posts aimés:", error);
     }
   };
 
@@ -87,7 +87,7 @@ export default function SettingsPage({ user, setUser }) {
       const response = await axios.get(`${API}/users/me/comments`);
       setUserComments(response.data);
     } catch (error) {
-      console.error("Erreur lors du chargement des commentaires:", error);
+      console.error("Erreur chargement commentaires:", error);
     }
   };
 
@@ -96,7 +96,7 @@ export default function SettingsPage({ user, setUser }) {
       const response = await axios.get(`${API}/users/me/deleted-items`);
       setDeletedItems(response.data);
     } catch (error) {
-      console.error("Erreur lors du chargement des éléments supprimés:", error);
+      console.error("Erreur chargement supprimés:", error);
     }
   };
 
@@ -105,7 +105,7 @@ export default function SettingsPage({ user, setUser }) {
       const response = await axios.get(`${API}/users/me/time-stats`);
       setTimeStats(response.data);
     } catch (error) {
-      console.error("Erreur lors du chargement des statistiques:", error);
+      console.error("Erreur chargement stats:", error);
     }
   };
 
@@ -121,14 +121,14 @@ export default function SettingsPage({ user, setUser }) {
         new_email: newEmail,
         current_password: currentPassword,
       });
-      toast.success("Email mis à jour avec succès");
+      toast.success("Email mis à jour");
       setShowEmailModal(false);
       setNewEmail("");
       setCurrentPassword("");
       const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Erreur lors de la mise à jour");
+      toast.error(error.response?.data?.detail || "Erreur");
     } finally {
       setLoading(false);
     }
@@ -146,7 +146,7 @@ export default function SettingsPage({ user, setUser }) {
     }
 
     if (newPassword.length < 6) {
-      toast.error("Le mot de passe doit contenir au moins 6 caractères");
+      toast.error("Minimum 6 caractères");
       return;
     }
 
@@ -156,13 +156,13 @@ export default function SettingsPage({ user, setUser }) {
         current_password: currentPassword,
         new_password: newPassword,
       });
-      toast.success("Mot de passe mis à jour avec succès");
+      toast.success("Mot de passe mis à jour");
       setShowPasswordModal(false);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Erreur lors de la mise à jour");
+      toast.error(error.response?.data?.detail || "Erreur");
     } finally {
       setLoading(false);
     }
@@ -180,14 +180,14 @@ export default function SettingsPage({ user, setUser }) {
         new_username: newUsername,
         current_password: currentPassword,
       });
-      toast.success("Nom d'utilisateur mis à jour avec succès");
+      toast.success("Nom d'utilisateur mis à jour");
       setShowUsernameModal(false);
       setNewUsername("");
       setCurrentPassword("");
       const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Erreur lors de la mise à jour");
+      toast.error(error.response?.data?.detail || "Erreur");
     } finally {
       setLoading(false);
     }
@@ -195,19 +195,19 @@ export default function SettingsPage({ user, setUser }) {
 
   const handleDeleteAccount = async () => {
     if (deleteConfirmation !== "SUPPRIMER") {
-      toast.error('Veuillez taper "SUPPRIMER" pour confirmer');
+      toast.error('Tapez "SUPPRIMER"');
       return;
     }
 
     setLoading(true);
     try {
       await axios.delete(`${API}/users/me`);
-      toast.success("Compte supprimé avec succès");
+      toast.success("Compte supprimé");
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       navigate("/auth");
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Erreur lors de la suppression");
+      toast.error("Erreur");
     } finally {
       setLoading(false);
     }
@@ -215,279 +215,242 @@ export default function SettingsPage({ user, setUser }) {
 
   const handleTogglePrivacy = async (checked) => {
     try {
-      await axios.put(`${API}/users/me/privacy`, {
-        is_private: checked,
-      });
+      await axios.put(`${API}/users/me/privacy`, { is_private: checked });
       setIsPrivate(checked);
       setUser({ ...user, is_private: checked });
-      toast.success(checked ? "Compte privé activé" : "Compte public activé");
+      toast.success(checked ? "Compte privé" : "Compte public");
     } catch (error) {
-      toast.error("Erreur lors de la modification de la confidentialité");
+      toast.error("Erreur");
     }
   };
 
   const renderAccountSection = () => (
-    <div className="space-y-4">
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader>
-          <CardTitle className="text-white text-lg sm:text-xl">Informations du compte</CardTitle>
-          <CardDescription className="text-slate-400 text-sm">
-            Gérez vos informations personnelles
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Email */}
-          <div
-            onClick={() => setShowEmailModal(true)}
-            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
-          >
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <Mail className="h-5 w-5 text-cyan-500 flex-shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-white">Adresse email</p>
-                <p className="text-xs text-slate-400 truncate">{user?.email}</p>
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+    <div className="space-y-3">
+      {/* Email */}
+      <div
+        onClick={() => setShowEmailModal(true)}
+        className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl cursor-pointer active:bg-slate-800 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex-shrink-0 w-10 h-10 bg-cyan-500/10 rounded-full flex items-center justify-center">
+            <Mail className="h-5 w-5 text-cyan-500" />
           </div>
-
-          {/* Username */}
-          <div
-            onClick={() => setShowUsernameModal(true)}
-            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
-          >
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <User className="h-5 w-5 text-cyan-500 flex-shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-white">Nom d'utilisateur</p>
-                <p className="text-xs text-slate-400 truncate">@{user?.username}</p>
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-white">Adresse email</p>
+            <p className="text-xs text-slate-400 truncate">{user?.email}</p>
           </div>
+        </div>
+        <ChevronRight className="h-5 w-5 text-slate-500 flex-shrink-0" />
+      </div>
 
-          {/* Password */}
-          <div
-            onClick={() => setShowPasswordModal(true)}
-            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
-          >
-            <div className="flex items-center gap-3">
-              <Lock className="h-5 w-5 text-cyan-500 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-white">Mot de passe</p>
-                <p className="text-xs text-slate-400">••••••••</p>
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+      {/* Username */}
+      <div
+        onClick={() => setShowUsernameModal(true)}
+        className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl cursor-pointer active:bg-slate-800 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex-shrink-0 w-10 h-10 bg-cyan-500/10 rounded-full flex items-center justify-center">
+            <User className="h-5 w-5 text-cyan-500" />
           </div>
-
-          <Separator className="bg-slate-800" />
-
-          {/* Delete Account */}
-          <div
-            onClick={() => setShowDeleteModal(true)}
-            className="flex items-center justify-between p-3 sm:p-4 bg-red-950/20 border border-red-900/50 rounded-lg cursor-pointer hover:bg-red-950/30 transition-colors active:bg-red-950/40"
-          >
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <Trash2 className="h-5 w-5 text-red-500 flex-shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-red-500">Supprimer le compte</p>
-                <p className="text-xs text-slate-400">Cette action est irréversible</p>
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 text-red-500 flex-shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-white">Nom d'utilisateur</p>
+            <p className="text-xs text-slate-400 truncate">@{user?.username}</p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <ChevronRight className="h-5 w-5 text-slate-500 flex-shrink-0" />
+      </div>
+
+      {/* Password */}
+      <div
+        onClick={() => setShowPasswordModal(true)}
+        className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl cursor-pointer active:bg-slate-800 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex-shrink-0 w-10 h-10 bg-cyan-500/10 rounded-full flex items-center justify-center">
+            <Lock className="h-5 w-5 text-cyan-500" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-white">Mot de passe</p>
+            <p className="text-xs text-slate-400">••••••••</p>
+          </div>
+        </div>
+        <ChevronRight className="h-5 w-5 text-slate-500 flex-shrink-0" />
+      </div>
+
+      <div className="h-4"></div>
+
+      {/* Delete Account */}
+      <div
+        onClick={() => setShowDeleteModal(true)}
+        className="flex items-center justify-between p-4 bg-red-950/20 border border-red-900/50 rounded-xl cursor-pointer active:bg-red-950/30 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex-shrink-0 w-10 h-10 bg-red-500/10 rounded-full flex items-center justify-center">
+            <Trash2 className="h-5 w-5 text-red-500" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-red-500">Supprimer le compte</p>
+            <p className="text-xs text-slate-400">Action irréversible</p>
+          </div>
+        </div>
+        <ChevronRight className="h-5 w-5 text-red-500 flex-shrink-0" />
+      </div>
     </div>
   );
 
   const renderActivitySection = () => (
-    <div className="space-y-4">
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader>
-          <CardTitle className="text-white text-lg sm:text-xl">Vos activités</CardTitle>
-          <CardDescription className="text-slate-400 text-sm">
-            Consultez vos interactions sur Nexus
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div
-            onClick={() => setActiveSection("liked")}
-            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
-          >
-            <div className="flex items-center gap-3">
-              <Heart className="h-5 w-5 text-red-500 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-white">Publications aimées</p>
-                <p className="text-xs text-slate-400">Voir tous vos likes</p>
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+    <div className="space-y-3">
+      <div
+        onClick={() => setActiveSection("liked")}
+        className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl cursor-pointer active:bg-slate-800"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-red-500/10 rounded-full flex items-center justify-center flex-shrink-0">
+            <Heart className="h-5 w-5 text-red-500" />
           </div>
+          <div>
+            <p className="text-sm font-medium text-white">Publications aimées</p>
+            <p className="text-xs text-slate-400">Tous vos likes</p>
+          </div>
+        </div>
+        <ChevronRight className="h-5 w-5 text-slate-500" />
+      </div>
 
-          <div
-            onClick={() => setActiveSection("comments")}
-            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
-          >
-            <div className="flex items-center gap-3">
-              <MessageCircle className="h-5 w-5 text-blue-500 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-white">Mes commentaires</p>
-                <p className="text-xs text-slate-400">Tous vos commentaires</p>
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+      <div
+        onClick={() => setActiveSection("comments")}
+        className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl cursor-pointer active:bg-slate-800"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-blue-500/10 rounded-full flex items-center justify-center flex-shrink-0">
+            <MessageCircle className="h-5 w-5 text-blue-500" />
           </div>
+          <div>
+            <p className="text-sm font-medium text-white">Mes commentaires</p>
+            <p className="text-xs text-slate-400">Tous vos commentaires</p>
+          </div>
+        </div>
+        <ChevronRight className="h-5 w-5 text-slate-500" />
+      </div>
 
-          <div
-            onClick={() => setActiveSection("deleted")}
-            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
-          >
-            <div className="flex items-center gap-3">
-              <Trash2 className="h-5 w-5 text-slate-400 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-white">Récemment supprimés</p>
-                <p className="text-xs text-slate-400">Éléments supprimés (30 jours)</p>
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+      <div
+        onClick={() => setActiveSection("deleted")}
+        className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl cursor-pointer active:bg-slate-800"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-slate-600/10 rounded-full flex items-center justify-center flex-shrink-0">
+            <Trash2 className="h-5 w-5 text-slate-400" />
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <p className="text-sm font-medium text-white">Récemment supprimés</p>
+            <p className="text-xs text-slate-400">30 derniers jours</p>
+          </div>
+        </div>
+        <ChevronRight className="h-5 w-5 text-slate-500" />
+      </div>
     </div>
   );
 
   const renderTimeManagementSection = () => (
     <div className="space-y-4">
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2 text-lg sm:text-xl">
-            <Clock className="h-5 w-5 text-cyan-500" />
-            Gestion du temps
-          </CardTitle>
-          <CardDescription className="text-slate-400 text-sm">
-            Suivez le temps passé sur Nexus
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {timeStats ? (
-            <div className="space-y-6">
-              {/* Aujourd'hui */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-white">Aujourd'hui</p>
-                  <p className="text-xl sm:text-2xl font-bold text-cyan-500">
-                    {Math.floor(timeStats.today / 60)}h {timeStats.today % 60}min
-                  </p>
-                </div>
-                <div className="w-full bg-slate-800 rounded-full h-2">
-                  <div
-                    className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full transition-all"
-                    style={{ width: `${Math.min((timeStats.today / 180) * 100, 100)}%` }}
-                  />
-                </div>
-                <p className="text-xs text-slate-400 mt-1">Limite recommandée: 3h/jour</p>
-              </div>
-
-              {/* Cette semaine */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-white">Cette semaine</p>
-                  <p className="text-xl sm:text-2xl font-bold text-purple-500">
-                    {Math.floor(timeStats.week / 60)}h {timeStats.week % 60}min
-                  </p>
-                </div>
-                <div className="w-full bg-slate-800 rounded-full h-2">
-                  <div
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all"
-                    style={{ width: `${Math.min((timeStats.week / 1260) * 100, 100)}%` }}
-                  />
-                </div>
-                <p className="text-xs text-slate-400 mt-1">Limite recommandée: 21h/semaine</p>
-              </div>
-
-              {/* Statistiques en grille */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mt-6">
-                <div className="bg-slate-800/50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-slate-400">Moy. quotidienne</p>
-                  <p className="text-base sm:text-lg font-bold text-white mt-1">
-                    {Math.floor(timeStats.average / 60)}h {timeStats.average % 60}m
-                  </p>
-                </div>
-                <div className="bg-slate-800/50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-slate-400">Jour le + actif</p>
-                  <p className="text-base sm:text-lg font-bold text-white mt-1 truncate">{timeStats.most_active_day}</p>
-                </div>
-                <div className="bg-slate-800/50 rounded-lg p-3 text-center col-span-2 sm:col-span-1">
-                  <p className="text-xs text-slate-400">Total ce mois</p>
-                  <p className="text-base sm:text-lg font-bold text-white mt-1">
-                    {Math.floor(timeStats.month / 60)}h
-                  </p>
-                </div>
-              </div>
+      {timeStats ? (
+        <>
+          <div className="bg-slate-800/50 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-white">Aujourd'hui</p>
+              <p className="text-2xl font-bold text-cyan-500">
+                {Math.floor(timeStats.today / 60)}h {timeStats.today % 60}min
+              </p>
             </div>
-          ) : (
-            <div className="text-center py-8">
-              <Clock className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-              <p className="text-slate-400">Chargement des statistiques...</p>
+            <div className="w-full bg-slate-700 rounded-full h-2">
+              <div
+                className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full"
+                style={{ width: `${Math.min((timeStats.today / 180) * 100, 100)}%` }}
+              />
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <p className="text-xs text-slate-400 mt-2">Limite: 3h/jour</p>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-white">Cette semaine</p>
+              <p className="text-2xl font-bold text-purple-500">
+                {Math.floor(timeStats.week / 60)}h {timeStats.week % 60}min
+              </p>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-2">
+              <div
+                className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full"
+                style={{ width: `${Math.min((timeStats.week / 1260) * 100, 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-400 mt-2">Limite: 21h/semaine</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-slate-800/50 rounded-xl p-3 text-center">
+              <p className="text-xs text-slate-400">Moyenne/jour</p>
+              <p className="text-lg font-bold text-white mt-1">
+                {Math.floor(timeStats.average / 60)}h {timeStats.average % 60}m
+              </p>
+            </div>
+            <div className="bg-slate-800/50 rounded-xl p-3 text-center">
+              <p className="text-xs text-slate-400">Total mois</p>
+              <p className="text-lg font-bold text-white mt-1">
+                {Math.floor(timeStats.month / 60)}h
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-xl p-3 text-center">
+            <p className="text-xs text-slate-400">Jour le plus actif</p>
+            <p className="text-lg font-bold text-white mt-1">{timeStats.most_active_day}</p>
+          </div>
+        </>
+      ) : (
+        <div className="text-center py-12">
+          <Clock className="h-12 w-12 text-slate-600 mx-auto mb-3" />
+          <p className="text-slate-400 text-sm">Chargement...</p>
+        </div>
+      )}
     </div>
   );
 
   const renderPrivacySection = () => (
     <div className="space-y-4">
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2 text-lg sm:text-xl">
-            <Shield className="h-5 w-5 text-cyan-500" />
-            Confidentialité
-          </CardTitle>
-          <CardDescription className="text-slate-400 text-sm">
-            Contrôlez qui peut voir votre contenu
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              {isPrivate ? (
-                <EyeOff className="h-5 w-5 text-orange-500 flex-shrink-0" />
-              ) : (
-                <Eye className="h-5 w-5 text-green-500 flex-shrink-0" />
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white">
-                  Compte {isPrivate ? "privé" : "public"}
-                </p>
-                <p className="text-xs text-slate-400">
-                  {isPrivate
-                    ? "Seuls vos abonnés peuvent voir vos publications"
-                    : "Tout le monde peut voir vos publications"}
-                </p>
-              </div>
-            </div>
-            <Switch checked={isPrivate} onCheckedChange={handleTogglePrivacy} className="flex-shrink-0" />
+      <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isPrivate ? 'bg-orange-500/10' : 'bg-green-500/10'}`}>
+            {isPrivate ? (
+              <EyeOff className="h-5 w-5 text-orange-500" />
+            ) : (
+              <Eye className="h-5 w-5 text-green-500" />
+            )}
           </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white">
+              Compte {isPrivate ? "privé" : "public"}
+            </p>
+            <p className="text-xs text-slate-400">
+              {isPrivate ? "Abonnés uniquement" : "Visible par tous"}
+            </p>
+          </div>
+        </div>
+        <Switch checked={isPrivate} onCheckedChange={handleTogglePrivacy} />
+      </div>
 
-          {isPrivate && (
-            <div className="bg-orange-950/20 border border-orange-900/50 rounded-lg p-3 sm:p-4">
-              <div className="flex gap-3">
-                <AlertTriangle className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-orange-500">Compte privé activé</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Les nouveaux abonnés devront demander à vous suivre. Vous pouvez accepter ou
-                    refuser leurs demandes.
-                  </p>
-                </div>
-              </div>
+      {isPrivate && (
+        <div className="bg-orange-950/20 border border-orange-900/50 rounded-xl p-4">
+          <div className="flex gap-3">
+            <AlertTriangle className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-orange-500">Compte privé</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Les nouveaux abonnés doivent demander à vous suivre
+              </p>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -496,33 +459,21 @@ export default function SettingsPage({ user, setUser }) {
       <Button
         variant="ghost"
         onClick={() => setActiveSection("activity")}
-        className="text-cyan-500 hover:text-cyan-400 mb-2"
+        className="text-cyan-500 -ml-2"
       >
         <ArrowLeft className="h-4 w-4 mr-2" />
-        Retour aux activités
+        Retour
       </Button>
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2 text-lg sm:text-xl">
-            <Heart className="h-5 w-5 text-red-500 fill-current" />
-            Publications aimées
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {likedPosts.length === 0 ? (
-            <div className="text-center py-12">
-              <Heart className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-400">Aucune publication aimée</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {likedPosts.map((post) => (
-                <PostCard key={post.id} post={post} currentUser={user} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {likedPosts.length === 0 ? (
+        <div className="text-center py-12">
+          <Heart className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+          <p className="text-slate-400">Aucune publication aimée</p>
+        </div>
+      ) : (
+        likedPosts.map((post) => (
+          <PostCard key={post.id} post={post} currentUser={user} />
+        ))
+      )}
     </div>
   );
 
@@ -531,42 +482,29 @@ export default function SettingsPage({ user, setUser }) {
       <Button
         variant="ghost"
         onClick={() => setActiveSection("activity")}
-        className="text-cyan-500 hover:text-cyan-400 mb-2"
+        className="text-cyan-500 -ml-2"
       >
         <ArrowLeft className="h-4 w-4 mr-2" />
-        Retour aux activités
+        Retour
       </Button>
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2 text-lg sm:text-xl">
-            <MessageCircle className="h-5 w-5 text-blue-500" />
-            Mes commentaires
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {userComments.length === 0 ? (
-            <div className="text-center py-12">
-              <MessageCircle className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-400">Aucun commentaire</p>
+      {userComments.length === 0 ? (
+        <div className="text-center py-12">
+          <MessageCircle className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+          <p className="text-slate-400">Aucun commentaire</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {userComments.map((comment) => (
+            <div key={comment.id} className="p-4 bg-slate-800/50 rounded-xl">
+              <p className="text-sm text-white mb-2">{comment.content}</p>
+              <p className="text-xs text-slate-400">
+                Sur la publication de {comment.post_author} •{" "}
+                {new Date(comment.created_at).toLocaleDateString("fr-FR")}
+              </p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {userComments.map((comment) => (
-                <div
-                  key={comment.id}
-                  className="p-3 sm:p-4 bg-slate-800/50 rounded-lg border border-slate-700"
-                >
-                  <p className="text-sm text-white mb-2 break-words">{comment.content}</p>
-                  <p className="text-xs text-slate-400">
-                    Sur la publication de {comment.post_author} •{" "}
-                    {new Date(comment.created_at).toLocaleDateString("fr-FR")}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -591,30 +529,27 @@ export default function SettingsPage({ user, setUser }) {
 
   return (
     <Layout user={user} setUser={setUser}>
-      <div className="max-w-4xl mx-auto p-3 sm:p-4">
+      <div className="max-w-2xl mx-auto px-4 py-4 pb-20">
         {/* Header */}
-        <div className="mb-4 sm:mb-6">
-          <h1
-            className="text-2xl sm:text-3xl font-bold text-white mb-2"
-            style={{ fontFamily: "Space Grotesk, sans-serif" }}
-          >
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-white mb-1" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
             Paramètres
           </h1>
-          <p className="text-slate-400 text-sm">Gérez votre compte et vos préférences</p>
+          <p className="text-slate-400 text-sm">Gérez votre compte</p>
         </div>
 
-        {/* Navigation - Scrollable horizontal sur mobile */}
+        {/* Navigation Tabs */}
         {!["liked", "comments", "deleted"].includes(activeSection) && (
-          <div className="flex gap-2 mb-4 sm:mb-6 overflow-x-auto pb-2 -mx-3 px-3 sm:mx-0 sm:px-0">
+          <div className="flex gap-2 mb-6 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
             <Button
               variant={activeSection === "account" ? "default" : "outline"}
               onClick={() => setActiveSection("account")}
+              size="sm"
               className={`flex-shrink-0 ${
                 activeSection === "account"
                   ? "bg-gradient-to-r from-cyan-500 to-blue-500"
-                  : "border-slate-700 text-slate-400"
+                  : "border-slate-700 text-slate-400 bg-slate-900"
               }`}
-              size="sm"
             >
               <User className="h-4 w-4 mr-2" />
               Compte
@@ -622,12 +557,12 @@ export default function SettingsPage({ user, setUser }) {
             <Button
               variant={activeSection === "activity" ? "default" : "outline"}
               onClick={() => setActiveSection("activity")}
+              size="sm"
               className={`flex-shrink-0 ${
                 activeSection === "activity"
                   ? "bg-gradient-to-r from-cyan-500 to-blue-500"
-                  : "border-slate-700 text-slate-400"
+                  : "border-slate-700 text-slate-400 bg-slate-900"
               }`}
-              size="sm"
             >
               <Activity className="h-4 w-4 mr-2" />
               Activités
@@ -635,12 +570,12 @@ export default function SettingsPage({ user, setUser }) {
             <Button
               variant={activeSection === "time" ? "default" : "outline"}
               onClick={() => setActiveSection("time")}
+              size="sm"
               className={`flex-shrink-0 ${
                 activeSection === "time"
                   ? "bg-gradient-to-r from-cyan-500 to-blue-500"
-                  : "border-slate-700 text-slate-400"
+                  : "border-slate-700 text-slate-400 bg-slate-900"
               }`}
-              size="sm"
             >
               <Clock className="h-4 w-4 mr-2" />
               Temps
@@ -648,12 +583,12 @@ export default function SettingsPage({ user, setUser }) {
             <Button
               variant={activeSection === "privacy" ? "default" : "outline"}
               onClick={() => setActiveSection("privacy")}
+              size="sm"
               className={`flex-shrink-0 ${
                 activeSection === "privacy"
                   ? "bg-gradient-to-r from-cyan-500 to-blue-500"
-                  : "border-slate-700 text-slate-400"
+                  : "border-slate-700 text-slate-400 bg-slate-900"
               }`}
-              size="sm"
             >
               <Shield className="h-4 w-4 mr-2" />
               Confidentialité
@@ -665,31 +600,30 @@ export default function SettingsPage({ user, setUser }) {
         {renderContent()}
       </div>
 
+      {/* Modals - Same as before but with better mobile styling */}
       {/* Email Modal */}
       <Dialog open={showEmailModal} onOpenChange={setShowEmailModal}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-[95vw] sm:max-w-lg">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white w-[95vw] max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-lg">Modifier l'adresse email</DialogTitle>
+            <DialogTitle>Modifier l'email</DialogTitle>
             <DialogDescription className="text-slate-400 text-sm">
-              Email actuel: {user?.email}
+              Actuel: {user?.email}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="new-email" className="text-sm">Nouvelle adresse email</Label>
+              <Label className="text-sm">Nouvel email</Label>
               <Input
-                id="new-email"
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 className="bg-slate-800 border-slate-700 text-white mt-1"
-                placeholder="nouvelle@email.com"
+                placeholder="email@example.com"
               />
             </div>
             <div>
-              <Label htmlFor="current-password-email" className="text-sm">Mot de passe actuel</Label>
+              <Label className="text-sm">Mot de passe actuel</Label>
               <Input
-                id="current-password-email"
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
@@ -698,20 +632,16 @@ export default function SettingsPage({ user, setUser }) {
               />
             </div>
           </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowEmailModal(false)}
-              className="w-full sm:w-auto"
-            >
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowEmailModal(false)} className="flex-1">
               Annuler
             </Button>
             <Button
               onClick={handleUpdateEmail}
               disabled={loading}
-              className="bg-gradient-to-r from-cyan-500 to-blue-500 w-full sm:w-auto"
+              className="bg-gradient-to-r from-cyan-500 to-blue-500 flex-1"
             >
-              {loading ? "Modification..." : "Modifier"}
+              {loading ? "..." : "Modifier"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -719,62 +649,49 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Password Modal */}
       <Dialog open={showPasswordModal} onOpenChange={setShowPasswordModal}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-[95vw] sm:max-w-lg">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white w-[95vw] max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-lg">Modifier le mot de passe</DialogTitle>
-            <DialogDescription className="text-slate-400 text-sm">
-              Choisissez un mot de passe sécurisé
-            </DialogDescription>
+            <DialogTitle>Modifier le mot de passe</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="current-password" className="text-sm">Mot de passe actuel</Label>
+              <Label className="text-sm">Mot de passe actuel</Label>
               <Input
-                id="current-password"
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 className="bg-slate-800 border-slate-700 text-white mt-1"
-                placeholder="••••••••"
               />
             </div>
             <div>
-              <Label htmlFor="new-password" className="text-sm">Nouveau mot de passe</Label>
+              <Label className="text-sm">Nouveau mot de passe</Label>
               <Input
-                id="new-password"
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="bg-slate-800 border-slate-700 text-white mt-1"
-                placeholder="••••••••"
               />
             </div>
             <div>
-              <Label htmlFor="confirm-password" className="text-sm">Confirmer le mot de passe</Label>
+              <Label className="text-sm">Confirmer</Label>
               <Input
-                id="confirm-password"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="bg-slate-800 border-slate-700 text-white mt-1"
-                placeholder="••••••••"
               />
             </div>
           </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowPasswordModal(false)}
-              className="w-full sm:w-auto"
-            >
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowPasswordModal(false)} className="flex-1">
               Annuler
             </Button>
             <Button
               onClick={handleUpdatePassword}
               disabled={loading}
-              className="bg-gradient-to-r from-cyan-500 to-blue-500 w-full sm:w-auto"
+              className="bg-gradient-to-r from-cyan-500 to-blue-500 flex-1"
             >
-              {loading ? "Modification..." : "Modifier"}
+              {loading ? "..." : "Modifier"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -782,96 +699,92 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Username Modal */}
       <Dialog open={showUsernameModal} onOpenChange={setShowUsernameModal}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-[95vw] sm:max-w-lg">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white w-[95vw] max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-lg">Modifier le nom d'utilisateur</DialogTitle>
+            <DialogTitle>Modifier le nom d'utilisateur</DialogTitle>
             <DialogDescription className="text-slate-400 text-sm">
-              Nom actuel: @{user?.username}
+              Actuel: @{user?.username}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="new-username" className="text-sm">Nouveau nom d'utilisateur</Label>
+              <Label className="text-sm">Nouveau nom</Label>
               <Input
-                id="new-username"
                 type="text"
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
                 className="bg-slate-800 border-slate-700 text-white mt-1"
-                placeholder="nouveau_nom"
               />
             </div>
             <div>
-              <Label htmlFor="current-password-username" className="text-sm">Mot de passe actuel</Label>
+              <Label className="text-sm">Mot de passe</Label>
               <Input
-                id="current-password-username"
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 className="bg-slate-800 border-slate-700 text-white mt-1"
-                placeholder="••••••••"
               />
             </div>
           </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowUsernameModal(false)}
-              className="w-full sm:w-auto"
-            >
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowUsernameModal(false)} className="flex-1">
               Annuler
             </Button>
             <Button
               onClick={handleUpdateUsername}
               disabled={loading}
-              className="bg-gradient-to-r from-cyan-500 to-blue-500 w-full sm:w-auto"
+              className="bg-gradient-to-r from-cyan-500 to-blue-500 flex-1"
             >
-              {loading ? "Modification..." : "Modifier"}
+              {loading ? "..." : "Modifier"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Account Modal */}
+      {/* Delete Modal */}
       <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-[95vw] sm:max-w-lg">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white w-[95vw] max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-red-500 text-lg">Supprimer le compte</DialogTitle>
+            <DialogTitle className="text-red-500">Supprimer le compte</DialogTitle>
             <DialogDescription className="text-slate-400 text-sm">
-              Cette action est irréversible. Toutes vos données seront définitivement supprimées.
+              Action irréversible
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="bg-red-950/20 border border-red-900/50 rounded-lg p-3 sm:p-4">
-              <p className="text-sm text-slate-300 mb-2">
-                Pour confirmer, tapez <strong className="text-red-500">SUPPRIMER</strong> ci-dessous :
-              </p>
-              <Input
-                value={deleteConfirmation}
-                onChange={(e) => setDeleteConfirmation(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white"
-                placeholder="SUPPRIMER"
-              />
-            </div>
+          <div className="bg-red-950/20 border border-red-900/50 rounded-xl p-4">
+            <p className="text-sm text-slate-300 mb-2">
+              Tapez <strong className="text-red-500">SUPPRIMER</strong>
+            </p>
+            <Input
+              value={deleteConfirmation}
+              onChange={(e) => setDeleteConfirmation(e.target.value)}
+              className="bg-slate-800 border-slate-700 text-white"
+              placeholder="SUPPRIMER"
+            />
           </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowDeleteModal(false)}
-              className="w-full sm:w-auto"
-            >
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowDeleteModal(false)} className="flex-1">
               Annuler
             </Button>
             <Button
               onClick={handleDeleteAccount}
               disabled={loading || deleteConfirmation !== "SUPPRIMER"}
-              className="bg-red-600 hover:bg-red-700 w-full sm:w-auto"
+              className="bg-red-600 hover:bg-red-700 flex-1"
             >
-              {loading ? "Suppression..." : "Supprimer définitivement"}
+              {loading ? "..." : "Supprimer"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <style jsx global>{`
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </Layout>
   );
 }
