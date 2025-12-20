@@ -3,6 +3,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
+import { useTimeTracking } from "@/hooks/useTimeTracking";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
 import ProfilePage from "./pages/ProfilePage";
@@ -43,6 +44,9 @@ axios.interceptors.response.use(
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // ✅ Active le time tracking
+  useTimeTracking(user);
 
   const checkAuth = async () => {
     const token = localStorage.getItem("token");
