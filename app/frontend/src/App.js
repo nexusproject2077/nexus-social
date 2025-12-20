@@ -12,6 +12,7 @@ import NotificationsPage from "./pages/NotificationsPage";
 import SearchPage from "./pages/SearchPage";
 import PostDetailPage from "./pages/PostDetailPage";
 import SettingsPage from "./pages/SettingsPage";
+import AnalyticsDashboard from './pages/AnalyticsDashboard';
 
 // URL du backend (NE CHANGE PLUS JAMAIS)
 const BACKEND_URL = "https://nexus-social-4k3v.onrender.com";
@@ -113,6 +114,10 @@ function App() {
           <Route
             path="/post/:postId"
             element={user ? <PostDetailPage user={user} /> : <Navigate to="/auth" />}
+          />
+          <Route 
+            path="/analytics" 
+           element={<AnalyticsDashboard user={user} setUser={setUser} />} 
           />
           <Route
             path="/settings"
