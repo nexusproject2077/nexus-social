@@ -5,12 +5,13 @@ import { API } from "@/App";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Heart, MessageCircle, Share2, MoreVertical } from "lucide-react";
+import { Heart, MessageCircle, Share2, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
+import CommentsSection from "./CommentsSection";
 
-export default function PostCard({ post, onUpdate, onDelete }) {
+export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const [isLiked, setIsLiked] = useState(post.is_liked || false);
   const [likesCount, setLikesCount] = useState(post.likes_count || 0);
   const [showComments, setShowComments] = useState(false);
@@ -58,8 +59,8 @@ export default function PostCard({ post, onUpdate, onDelete }) {
     }
   };
 
-  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-  const isOwnPost = currentUser.id === post.author_id;
+  // ✅ Utilise la prop currentUser au lieu de localStorage
+  const isOwnPost = currentUser?.id === post.author_id;
 
   return (
     <Card className="bg-slate-900 border-slate-800 text-white mb-4">
@@ -94,8 +95,9 @@ export default function PostCard({ post, onUpdate, onDelete }) {
             size="icon"
             onClick={handleDelete}
             className="text-slate-400 hover:text-red-500"
+            title="Supprimer le post"
           >
-            <MoreVertical className="h-4 w-4" />
+            <Trash2 className="h-4 w-4" />
           </Button>
         )}
       </CardHeader>
@@ -167,11 +169,9 @@ export default function PostCard({ post, onUpdate, onDelete }) {
           </Button>
         </div>
 
-        {/* Section commentaires (à implémenter plus tard) */}
+        {/* Section commentaires */}
         {showComments && (
-          <div className="w-full pt-3 border-t border-slate-800">
-            <p className="text-sm text-slate-400">Commentaires à venir...</p>
-          </div>
+          <CommentsSection postId={post.id} currentUser={currentUser} />
         )}
       </CardFooter>
     </Card>
