@@ -32,6 +32,7 @@ import {
   ChevronRight,
   AlertTriangle,
   ArrowLeft,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import PostCard from "@/components/PostCard";
@@ -275,6 +276,25 @@ export default function SettingsPage({ user, setUser }) {
           </div>
         </div>
         <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 text-slate-500 flex-shrink-0" />
+      </div>
+
+      <div className="h-3 sm:h-4"></div>
+
+      {/* Analytics */}
+      <div
+        onClick={() => navigate("/analytics")}
+        className="flex items-center justify-between p-3 sm:p-4 bg-gradient-to-r from-purple-950/20 to-blue-950/20 border border-purple-900/50 rounded-xl cursor-pointer active:bg-purple-950/30 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 bg-purple-500/10 rounded-full flex items-center justify-center">
+            <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5 text-purple-500" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm font-medium text-purple-400">Analytics & Automatisation</p>
+            <p className="text-[10px] sm:text-xs text-slate-400">Statistiques et gestion</p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 text-purple-500 flex-shrink-0" />
       </div>
 
       <div className="h-3 sm:h-4"></div>
