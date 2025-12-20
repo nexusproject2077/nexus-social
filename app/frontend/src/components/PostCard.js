@@ -14,6 +14,7 @@ import CommentsSection from "./CommentsSection";
 export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const [isLiked, setIsLiked] = useState(post.is_liked || false);
   const [likesCount, setLikesCount] = useState(post.likes_count || 0);
+  const [commentsCount, setCommentsCount] = useState(post.comments_count || 0);
   const [showComments, setShowComments] = useState(false);
 
   const handleLike = async () => {
@@ -44,6 +45,16 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     }
   };
 
+  // ✅ Callback quand un commentaire est ajouté
+  const handleCommentAdded = () => {
+    setCommentsCount(prev => prev + 1);
+  };
+
+  // ✅ Callback quand un commentaire est supprimé
+  const handleCommentDeleted = () => {
+    setCommentsCount(prev => Math.max(0, prev - 1));
+  };
+
   const getInitials = (username) => {
     return username ? username.substring(0, 2).toUpperCase() : "??";
   };
@@ -59,7 +70,6 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     }
   };
 
-  // ✅ Utilise la prop currentUser au lieu de localStorage
   const isOwnPost = currentUser?.id === post.author_id;
 
   return (
@@ -106,23 +116,25 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         {/* Contenu du post */}
         <p className="text-slate-100 whitespace-pre-wrap">{post.content}</p>
 
-        {/* Image ou vidéo */}
+        {/* ✅ Image avec aspect ratio adaptatif */}
         {post.media_url && post.media_type === "image" && (
-          <div className="rounded-lg overflow-hidden">
+          <div className="rounded-lg overflow-hidden bg-slate-800">
             <img
               src={post.media_url}
               alt="Post media"
-              className="w-full object-cover max-h-96"
+              className="w-full h-auto object-contain max-h-[600px]"
+              loading="lazy"
             />
           </div>
         )}
 
+        {/* Vidéo */}
         {post.media_url && post.media_type === "video" && (
           <div className="rounded-lg overflow-hidden">
             <video
               src={post.media_url}
               controls
-              className="w-full max-h-96"
+              className="w-full max-h-[600px]"
             />
           </div>
         )}
@@ -132,7 +144,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         {/* Stats */}
         <div className="flex items-center justify-between w-full text-sm text-slate-400">
           <span>{likesCount} j'aime</span>
-          <span>{post.comments_count || 0} commentaires</span>
+          <span>{commentsCount} commentaire{commentsCount !== 1 ? 's' : ''}</span>
         </div>
 
         {/* Actions */}
@@ -171,7 +183,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
         {/* Section commentaires */}
         {showComments && (
-          <CommentsSection postId={post.id} currentUser={currentUser} />
+          <CommentsSection 
+            postId={post.id} 
+            currentUser={currentUser}
+            onCommentAdded={handleCommentAdded}
+            onCommentDeleted={handleCommentDeleted}
+          />
         )}
       </CardFooter>
     </Card>
