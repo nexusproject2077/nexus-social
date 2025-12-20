@@ -596,6 +596,85 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
     comment = convert_mongo_doc_to_dict(comment_to_insert)
     return Comment(**comment)
 
+@api_router.delete("/posts/{post_id}/comments/{comment_id}")
+async def delete_comment(post_id: str, comment_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprime un commentaire"""
+    comment_raw = await db.comments.find_one({"id": comment_id, "post_id": post_id})
+    if not comment_raw:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    comment = convert_mongo_doc_to_dict(comment_raw)
+    if comment["author_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    await db.comments.delete_one({"id": comment_id})
+    await db.posts.update_one({"id": post_id}, {"$inc": {"comments_count": -1}})
+    
+    return {"message": "Comment deleted successfully"}
+
+@api_router.post("/comments/{comment_id}/like")
+async def like_comment(comment_id: str, current_user: dict = Depends(get_current_user)):
+    """Like/unlike un commentaire"""
+    comment_raw = await db.comments.find_one({"id": comment_id})
+    if not comment_raw:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    like_raw = await db.comment_likes.find_one({"comment_id": comment_id, "user_id": current_user["id"]})
+    
+    if like_raw:
+        # Unlike
+        await db.comment_likes.delete_one({"comment_id": comment_id, "user_id": current_user["id"]})
+        await db.comments.update_one({"id": comment_id}, {"$inc": {"likes_count": -1}})
+        return {"liked": False}
+    else:
+        # Like
+        like_id = str(uuid.uuid4())
+        await db.comment_likes.insert_one({
+            "id": like_id,
+            "comment_id": comment_id,
+            "user_id": current_user["id"],
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        await db.comments.update_one({"id": comment_id}, {"$inc": {"likes_count": 1}})
+        return {"liked": True}
+
+@api_router.get("/comments/{comment_id}/replies")
+async def get_comment_replies(comment_id: str, current_user: dict = Depends(get_current_user)):
+    """Récupère les réponses d'un commentaire"""
+    replies_raw = await db.comment_replies.find({"parent_comment_id": comment_id}).sort("created_at", 1).to_list(length=100)
+    
+    replies = []
+    for reply_raw in replies_raw:
+        reply = convert_mongo_doc_to_dict(reply_raw)
+        replies.append(Comment(**reply))
+    
+    return replies
+
+@api_router.post("/comments/{comment_id}/replies")
+async def create_comment_reply(comment_id: str, reply_data: CommentCreate, current_user: dict = Depends(get_current_user)):
+    """Ajoute une réponse à un commentaire"""
+    comment_raw = await db.comments.find_one({"id": comment_id})
+    if not comment_raw:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    
+    reply_id = str(uuid.uuid4())
+    reply_to_insert = {
+        "id": reply_id,
+        "parent_comment_id": comment_id,
+        "post_id": convert_mongo_doc_to_dict(comment_raw)["post_id"],
+        "author_id": current_user["id"],
+        "author_username": current_user["username"],
+        "author_profile_pic": current_user.get("profile_pic"),
+        "content": reply_data.content,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.comment_replies.insert_one(reply_to_insert)
+    await db.comments.update_one({"id": comment_id}, {"$inc": {"replies_count": 1}})
+    
+    reply = convert_mongo_doc_to_dict(reply_to_insert)
+    return Comment(**reply)
+
 # ==================== USERS ROUTES ====================
 @api_router.get("/users/search")
 async def search_users(q: str, current_user: dict = Depends(get_current_user)):
