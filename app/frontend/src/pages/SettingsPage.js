@@ -31,6 +31,7 @@ import {
   Activity,
   ChevronRight,
   AlertTriangle,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import PostCard from "@/components/PostCard";
@@ -124,7 +125,6 @@ export default function SettingsPage({ user, setUser }) {
       setShowEmailModal(false);
       setNewEmail("");
       setCurrentPassword("");
-      // Refresh user data
       const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
     } catch (error) {
@@ -184,7 +184,6 @@ export default function SettingsPage({ user, setUser }) {
       setShowUsernameModal(false);
       setNewUsername("");
       setCurrentPassword("");
-      // Refresh user data
       const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
     } catch (error) {
@@ -231,8 +230,8 @@ export default function SettingsPage({ user, setUser }) {
     <div className="space-y-4">
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
-          <CardTitle className="text-white">Informations du compte</CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardTitle className="text-white text-lg sm:text-xl">Informations du compte</CardTitle>
+          <CardDescription className="text-slate-400 text-sm">
             Gérez vos informations personnelles
           </CardDescription>
         </CardHeader>
@@ -240,46 +239,46 @@ export default function SettingsPage({ user, setUser }) {
           {/* Email */}
           <div
             onClick={() => setShowEmailModal(true)}
-            className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors"
+            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
           >
-            <div className="flex items-center gap-3">
-              <Mail className="h-5 w-5 text-cyan-500" />
-              <div>
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <Mail className="h-5 w-5 text-cyan-500 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-white">Adresse email</p>
-                <p className="text-xs text-slate-400">{user?.email}</p>
+                <p className="text-xs text-slate-400 truncate">{user?.email}</p>
               </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-slate-400" />
+            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
           </div>
 
           {/* Username */}
           <div
             onClick={() => setShowUsernameModal(true)}
-            className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors"
+            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
           >
-            <div className="flex items-center gap-3">
-              <User className="h-5 w-5 text-cyan-500" />
-              <div>
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <User className="h-5 w-5 text-cyan-500 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-white">Nom d'utilisateur</p>
-                <p className="text-xs text-slate-400">@{user?.username}</p>
+                <p className="text-xs text-slate-400 truncate">@{user?.username}</p>
               </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-slate-400" />
+            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
           </div>
 
           {/* Password */}
           <div
             onClick={() => setShowPasswordModal(true)}
-            className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors"
+            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
           >
             <div className="flex items-center gap-3">
-              <Lock className="h-5 w-5 text-cyan-500" />
+              <Lock className="h-5 w-5 text-cyan-500 flex-shrink-0" />
               <div>
                 <p className="text-sm font-medium text-white">Mot de passe</p>
                 <p className="text-xs text-slate-400">••••••••</p>
               </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-slate-400" />
+            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
           </div>
 
           <Separator className="bg-slate-800" />
@@ -287,16 +286,16 @@ export default function SettingsPage({ user, setUser }) {
           {/* Delete Account */}
           <div
             onClick={() => setShowDeleteModal(true)}
-            className="flex items-center justify-between p-4 bg-red-950/20 border border-red-900/50 rounded-lg cursor-pointer hover:bg-red-950/30 transition-colors"
+            className="flex items-center justify-between p-3 sm:p-4 bg-red-950/20 border border-red-900/50 rounded-lg cursor-pointer hover:bg-red-950/30 transition-colors active:bg-red-950/40"
           >
-            <div className="flex items-center gap-3">
-              <Trash2 className="h-5 w-5 text-red-500" />
-              <div>
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <Trash2 className="h-5 w-5 text-red-500 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-red-500">Supprimer le compte</p>
                 <p className="text-xs text-slate-400">Cette action est irréversible</p>
               </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-red-500" />
+            <ChevronRight className="h-5 w-5 text-red-500 flex-shrink-0" />
           </div>
         </CardContent>
       </Card>
@@ -307,52 +306,52 @@ export default function SettingsPage({ user, setUser }) {
     <div className="space-y-4">
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
-          <CardTitle className="text-white">Vos activités</CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardTitle className="text-white text-lg sm:text-xl">Vos activités</CardTitle>
+          <CardDescription className="text-slate-400 text-sm">
             Consultez vos interactions sur Nexus
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div
             onClick={() => setActiveSection("liked")}
-            className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors"
+            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
           >
             <div className="flex items-center gap-3">
-              <Heart className="h-5 w-5 text-red-500" />
+              <Heart className="h-5 w-5 text-red-500 flex-shrink-0" />
               <div>
                 <p className="text-sm font-medium text-white">Publications aimées</p>
                 <p className="text-xs text-slate-400">Voir tous vos likes</p>
               </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-slate-400" />
+            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
           </div>
 
           <div
             onClick={() => setActiveSection("comments")}
-            className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors"
+            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
           >
             <div className="flex items-center gap-3">
-              <MessageCircle className="h-5 w-5 text-blue-500" />
+              <MessageCircle className="h-5 w-5 text-blue-500 flex-shrink-0" />
               <div>
                 <p className="text-sm font-medium text-white">Mes commentaires</p>
                 <p className="text-xs text-slate-400">Tous vos commentaires</p>
               </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-slate-400" />
+            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
           </div>
 
           <div
             onClick={() => setActiveSection("deleted")}
-            className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors"
+            className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg cursor-pointer hover:bg-slate-800 transition-colors active:bg-slate-700"
           >
             <div className="flex items-center gap-3">
-              <Trash2 className="h-5 w-5 text-slate-400" />
+              <Trash2 className="h-5 w-5 text-slate-400 flex-shrink-0" />
               <div>
                 <p className="text-sm font-medium text-white">Récemment supprimés</p>
                 <p className="text-xs text-slate-400">Éléments supprimés (30 jours)</p>
               </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-slate-400" />
+            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
           </div>
         </CardContent>
       </Card>
@@ -363,11 +362,11 @@ export default function SettingsPage({ user, setUser }) {
     <div className="space-y-4">
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
+          <CardTitle className="text-white flex items-center gap-2 text-lg sm:text-xl">
             <Clock className="h-5 w-5 text-cyan-500" />
             Gestion du temps
           </CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardDescription className="text-slate-400 text-sm">
             Suivez le temps passé sur Nexus
           </CardDescription>
         </CardHeader>
@@ -378,7 +377,7 @@ export default function SettingsPage({ user, setUser }) {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-medium text-white">Aujourd'hui</p>
-                  <p className="text-2xl font-bold text-cyan-500">
+                  <p className="text-xl sm:text-2xl font-bold text-cyan-500">
                     {Math.floor(timeStats.today / 60)}h {timeStats.today % 60}min
                   </p>
                 </div>
@@ -395,7 +394,7 @@ export default function SettingsPage({ user, setUser }) {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-medium text-white">Cette semaine</p>
-                  <p className="text-2xl font-bold text-purple-500">
+                  <p className="text-xl sm:text-2xl font-bold text-purple-500">
                     {Math.floor(timeStats.week / 60)}h {timeStats.week % 60}min
                   </p>
                 </div>
@@ -408,21 +407,21 @@ export default function SettingsPage({ user, setUser }) {
                 <p className="text-xs text-slate-400 mt-1">Limite recommandée: 21h/semaine</p>
               </div>
 
-              {/* Moyenne quotidienne */}
-              <div className="grid grid-cols-3 gap-4 mt-6">
+              {/* Statistiques en grille */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mt-6">
                 <div className="bg-slate-800/50 rounded-lg p-3 text-center">
                   <p className="text-xs text-slate-400">Moy. quotidienne</p>
-                  <p className="text-lg font-bold text-white mt-1">
+                  <p className="text-base sm:text-lg font-bold text-white mt-1">
                     {Math.floor(timeStats.average / 60)}h {timeStats.average % 60}m
                   </p>
                 </div>
                 <div className="bg-slate-800/50 rounded-lg p-3 text-center">
                   <p className="text-xs text-slate-400">Jour le + actif</p>
-                  <p className="text-lg font-bold text-white mt-1">{timeStats.most_active_day}</p>
+                  <p className="text-base sm:text-lg font-bold text-white mt-1 truncate">{timeStats.most_active_day}</p>
                 </div>
-                <div className="bg-slate-800/50 rounded-lg p-3 text-center">
+                <div className="bg-slate-800/50 rounded-lg p-3 text-center col-span-2 sm:col-span-1">
                   <p className="text-xs text-slate-400">Total ce mois</p>
-                  <p className="text-lg font-bold text-white mt-1">
+                  <p className="text-base sm:text-lg font-bold text-white mt-1">
                     {Math.floor(timeStats.month / 60)}h
                   </p>
                 </div>
@@ -443,23 +442,23 @@ export default function SettingsPage({ user, setUser }) {
     <div className="space-y-4">
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
+          <CardTitle className="text-white flex items-center gap-2 text-lg sm:text-xl">
             <Shield className="h-5 w-5 text-cyan-500" />
             Confidentialité
           </CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardDescription className="text-slate-400 text-sm">
             Contrôlez qui peut voir votre contenu
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between p-3 sm:p-4 bg-slate-800/50 rounded-lg">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
               {isPrivate ? (
-                <EyeOff className="h-5 w-5 text-orange-500" />
+                <EyeOff className="h-5 w-5 text-orange-500 flex-shrink-0" />
               ) : (
-                <Eye className="h-5 w-5 text-green-500" />
+                <Eye className="h-5 w-5 text-green-500 flex-shrink-0" />
               )}
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white">
                   Compte {isPrivate ? "privé" : "public"}
                 </p>
@@ -470,14 +469,14 @@ export default function SettingsPage({ user, setUser }) {
                 </p>
               </div>
             </div>
-            <Switch checked={isPrivate} onCheckedChange={handleTogglePrivacy} />
+            <Switch checked={isPrivate} onCheckedChange={handleTogglePrivacy} className="flex-shrink-0" />
           </div>
 
           {isPrivate && (
-            <div className="bg-orange-950/20 border border-orange-900/50 rounded-lg p-4">
+            <div className="bg-orange-950/20 border border-orange-900/50 rounded-lg p-3 sm:p-4">
               <div className="flex gap-3">
                 <AlertTriangle className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-orange-500">Compte privé activé</p>
                   <p className="text-xs text-slate-400 mt-1">
                     Les nouveaux abonnés devront demander à vous suivre. Vous pouvez accepter ou
@@ -497,13 +496,14 @@ export default function SettingsPage({ user, setUser }) {
       <Button
         variant="ghost"
         onClick={() => setActiveSection("activity")}
-        className="text-cyan-500 hover:text-cyan-400"
+        className="text-cyan-500 hover:text-cyan-400 mb-2"
       >
-        ← Retour aux activités
+        <ArrowLeft className="h-4 w-4 mr-2" />
+        Retour aux activités
       </Button>
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
+          <CardTitle className="text-white flex items-center gap-2 text-lg sm:text-xl">
             <Heart className="h-5 w-5 text-red-500 fill-current" />
             Publications aimées
           </CardTitle>
@@ -531,13 +531,14 @@ export default function SettingsPage({ user, setUser }) {
       <Button
         variant="ghost"
         onClick={() => setActiveSection("activity")}
-        className="text-cyan-500 hover:text-cyan-400"
+        className="text-cyan-500 hover:text-cyan-400 mb-2"
       >
-        ← Retour aux activités
+        <ArrowLeft className="h-4 w-4 mr-2" />
+        Retour aux activités
       </Button>
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
+          <CardTitle className="text-white flex items-center gap-2 text-lg sm:text-xl">
             <MessageCircle className="h-5 w-5 text-blue-500" />
             Mes commentaires
           </CardTitle>
@@ -553,9 +554,9 @@ export default function SettingsPage({ user, setUser }) {
               {userComments.map((comment) => (
                 <div
                   key={comment.id}
-                  className="p-4 bg-slate-800/50 rounded-lg border border-slate-700"
+                  className="p-3 sm:p-4 bg-slate-800/50 rounded-lg border border-slate-700"
                 >
-                  <p className="text-sm text-white mb-2">{comment.content}</p>
+                  <p className="text-sm text-white mb-2 break-words">{comment.content}</p>
                   <p className="text-xs text-slate-400">
                     Sur la publication de {comment.post_author} •{" "}
                     {new Date(comment.created_at).toLocaleDateString("fr-FR")}
@@ -590,29 +591,30 @@ export default function SettingsPage({ user, setUser }) {
 
   return (
     <Layout user={user} setUser={setUser}>
-      <div className="max-w-4xl mx-auto p-4">
+      <div className="max-w-4xl mx-auto p-3 sm:p-4">
         {/* Header */}
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <h1
-            className="text-3xl font-bold text-white mb-2"
+            className="text-2xl sm:text-3xl font-bold text-white mb-2"
             style={{ fontFamily: "Space Grotesk, sans-serif" }}
           >
             Paramètres
           </h1>
-          <p className="text-slate-400">Gérez votre compte et vos préférences</p>
+          <p className="text-slate-400 text-sm">Gérez votre compte et vos préférences</p>
         </div>
 
-        {/* Navigation */}
+        {/* Navigation - Scrollable horizontal sur mobile */}
         {!["liked", "comments", "deleted"].includes(activeSection) && (
-          <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          <div className="flex gap-2 mb-4 sm:mb-6 overflow-x-auto pb-2 -mx-3 px-3 sm:mx-0 sm:px-0">
             <Button
               variant={activeSection === "account" ? "default" : "outline"}
               onClick={() => setActiveSection("account")}
-              className={
+              className={`flex-shrink-0 ${
                 activeSection === "account"
                   ? "bg-gradient-to-r from-cyan-500 to-blue-500"
                   : "border-slate-700 text-slate-400"
-              }
+              }`}
+              size="sm"
             >
               <User className="h-4 w-4 mr-2" />
               Compte
@@ -620,11 +622,12 @@ export default function SettingsPage({ user, setUser }) {
             <Button
               variant={activeSection === "activity" ? "default" : "outline"}
               onClick={() => setActiveSection("activity")}
-              className={
+              className={`flex-shrink-0 ${
                 activeSection === "activity"
                   ? "bg-gradient-to-r from-cyan-500 to-blue-500"
                   : "border-slate-700 text-slate-400"
-              }
+              }`}
+              size="sm"
             >
               <Activity className="h-4 w-4 mr-2" />
               Activités
@@ -632,11 +635,12 @@ export default function SettingsPage({ user, setUser }) {
             <Button
               variant={activeSection === "time" ? "default" : "outline"}
               onClick={() => setActiveSection("time")}
-              className={
+              className={`flex-shrink-0 ${
                 activeSection === "time"
                   ? "bg-gradient-to-r from-cyan-500 to-blue-500"
                   : "border-slate-700 text-slate-400"
-              }
+              }`}
+              size="sm"
             >
               <Clock className="h-4 w-4 mr-2" />
               Temps
@@ -644,11 +648,12 @@ export default function SettingsPage({ user, setUser }) {
             <Button
               variant={activeSection === "privacy" ? "default" : "outline"}
               onClick={() => setActiveSection("privacy")}
-              className={
+              className={`flex-shrink-0 ${
                 activeSection === "privacy"
                   ? "bg-gradient-to-r from-cyan-500 to-blue-500"
                   : "border-slate-700 text-slate-400"
-              }
+              }`}
+              size="sm"
             >
               <Shield className="h-4 w-4 mr-2" />
               Confidentialité
@@ -662,45 +667,49 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Email Modal */}
       <Dialog open={showEmailModal} onOpenChange={setShowEmailModal}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-[95vw] sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Modifier l'adresse email</DialogTitle>
-            <DialogDescription className="text-slate-400">
+            <DialogTitle className="text-lg">Modifier l'adresse email</DialogTitle>
+            <DialogDescription className="text-slate-400 text-sm">
               Email actuel: {user?.email}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="new-email">Nouvelle adresse email</Label>
+              <Label htmlFor="new-email" className="text-sm">Nouvelle adresse email</Label>
               <Input
                 id="new-email"
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
                 placeholder="nouvelle@email.com"
               />
             </div>
             <div>
-              <Label htmlFor="current-password-email">Mot de passe actuel</Label>
+              <Label htmlFor="current-password-email" className="text-sm">Mot de passe actuel</Label>
               <Input
                 id="current-password-email"
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
                 placeholder="••••••••"
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEmailModal(false)}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowEmailModal(false)}
+              className="w-full sm:w-auto"
+            >
               Annuler
             </Button>
             <Button
               onClick={handleUpdateEmail}
               disabled={loading}
-              className="bg-gradient-to-r from-cyan-500 to-blue-500"
+              className="bg-gradient-to-r from-cyan-500 to-blue-500 w-full sm:w-auto"
             >
               {loading ? "Modification..." : "Modifier"}
             </Button>
@@ -710,56 +719,60 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Password Modal */}
       <Dialog open={showPasswordModal} onOpenChange={setShowPasswordModal}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-[95vw] sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Modifier le mot de passe</DialogTitle>
-            <DialogDescription className="text-slate-400">
+            <DialogTitle className="text-lg">Modifier le mot de passe</DialogTitle>
+            <DialogDescription className="text-slate-400 text-sm">
               Choisissez un mot de passe sécurisé
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="current-password">Mot de passe actuel</Label>
+              <Label htmlFor="current-password" className="text-sm">Mot de passe actuel</Label>
               <Input
                 id="current-password"
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
                 placeholder="••••••••"
               />
             </div>
             <div>
-              <Label htmlFor="new-password">Nouveau mot de passe</Label>
+              <Label htmlFor="new-password" className="text-sm">Nouveau mot de passe</Label>
               <Input
                 id="new-password"
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
                 placeholder="••••••••"
               />
             </div>
             <div>
-              <Label htmlFor="confirm-password">Confirmer le mot de passe</Label>
+              <Label htmlFor="confirm-password" className="text-sm">Confirmer le mot de passe</Label>
               <Input
                 id="confirm-password"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
                 placeholder="••••••••"
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPasswordModal(false)}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowPasswordModal(false)}
+              className="w-full sm:w-auto"
+            >
               Annuler
             </Button>
             <Button
               onClick={handleUpdatePassword}
               disabled={loading}
-              className="bg-gradient-to-r from-cyan-500 to-blue-500"
+              className="bg-gradient-to-r from-cyan-500 to-blue-500 w-full sm:w-auto"
             >
               {loading ? "Modification..." : "Modifier"}
             </Button>
@@ -769,45 +782,49 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Username Modal */}
       <Dialog open={showUsernameModal} onOpenChange={setShowUsernameModal}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-[95vw] sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Modifier le nom d'utilisateur</DialogTitle>
-            <DialogDescription className="text-slate-400">
+            <DialogTitle className="text-lg">Modifier le nom d'utilisateur</DialogTitle>
+            <DialogDescription className="text-slate-400 text-sm">
               Nom actuel: @{user?.username}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="new-username">Nouveau nom d'utilisateur</Label>
+              <Label htmlFor="new-username" className="text-sm">Nouveau nom d'utilisateur</Label>
               <Input
                 id="new-username"
                 type="text"
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
                 placeholder="nouveau_nom"
               />
             </div>
             <div>
-              <Label htmlFor="current-password-username">Mot de passe actuel</Label>
+              <Label htmlFor="current-password-username" className="text-sm">Mot de passe actuel</Label>
               <Input
                 id="current-password-username"
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white"
+                className="bg-slate-800 border-slate-700 text-white mt-1"
                 placeholder="••••••••"
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUsernameModal(false)}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowUsernameModal(false)}
+              className="w-full sm:w-auto"
+            >
               Annuler
             </Button>
             <Button
               onClick={handleUpdateUsername}
               disabled={loading}
-              className="bg-gradient-to-r from-cyan-500 to-blue-500"
+              className="bg-gradient-to-r from-cyan-500 to-blue-500 w-full sm:w-auto"
             >
               {loading ? "Modification..." : "Modifier"}
             </Button>
@@ -817,15 +834,15 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Delete Account Modal */}
       <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-[95vw] sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-red-500">Supprimer le compte</DialogTitle>
-            <DialogDescription className="text-slate-400">
+            <DialogTitle className="text-red-500 text-lg">Supprimer le compte</DialogTitle>
+            <DialogDescription className="text-slate-400 text-sm">
               Cette action est irréversible. Toutes vos données seront définitivement supprimées.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="bg-red-950/20 border border-red-900/50 rounded-lg p-4">
+            <div className="bg-red-950/20 border border-red-900/50 rounded-lg p-3 sm:p-4">
               <p className="text-sm text-slate-300 mb-2">
                 Pour confirmer, tapez <strong className="text-red-500">SUPPRIMER</strong> ci-dessous :
               </p>
@@ -837,14 +854,18 @@ export default function SettingsPage({ user, setUser }) {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteModal(false)}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowDeleteModal(false)}
+              className="w-full sm:w-auto"
+            >
               Annuler
             </Button>
             <Button
               onClick={handleDeleteAccount}
               disabled={loading || deleteConfirmation !== "SUPPRIMER"}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 w-full sm:w-auto"
             >
               {loading ? "Suppression..." : "Supprimer définitivement"}
             </Button>
