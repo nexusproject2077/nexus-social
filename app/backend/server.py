@@ -741,6 +741,174 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
     
     return posts
 
+# ==================== USER SETTINGS ROUTES ====================
+@api_router.put("/users/me/email")
+async def update_email(
+    email_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Modifier l'email de l'utilisateur"""
+    new_email = email_data.get("new_email")
+    current_password = email_data.get("current_password")
+    
+    if not new_email or not current_password:
+        raise HTTPException(status_code=400, detail="Missing required fields")
+    
+    # Vérifier le mot de passe
+    if not pwd_context.verify(current_password, current_user["password"]):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    
+    # Vérifier si l'email existe déjà
+    existing_user = await db.users.find_one({"email": new_email})
+    if existing_user and existing_user["id"] != current_user["id"]:
+        raise HTTPException(status_code=400, detail="Email already in use")
+    
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$set": {"email": new_email}}
+    )
+    
+    return {"message": "Email updated successfully"}
+
+@api_router.put("/users/me/password")
+async def update_password(
+    password_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Modifier le mot de passe"""
+    current_password = password_data.get("current_password")
+    new_password = password_data.get("new_password")
+    
+    if not current_password or not new_password:
+        raise HTTPException(status_code=400, detail="Missing required fields")
+    
+    # Vérifier le mot de passe actuel
+    if not pwd_context.verify(current_password, current_user["password"]):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    
+    # Hasher le nouveau mot de passe
+    hashed_password = pwd_context.hash(new_password)
+    
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$set": {"password": hashed_password}}
+    )
+    
+    return {"message": "Password updated successfully"}
+
+@api_router.put("/users/me/username")
+async def update_username(
+    username_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Modifier le nom d'utilisateur"""
+    new_username = username_data.get("new_username")
+    current_password = username_data.get("current_password")
+    
+    if not new_username or not current_password:
+        raise HTTPException(status_code=400, detail="Missing required fields")
+    
+    # Vérifier le mot de passe
+    if not pwd_context.verify(current_password, current_user["password"]):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    
+    # Vérifier si le username existe déjà
+    existing_user = await db.users.find_one({"username": new_username})
+    if existing_user and existing_user["id"] != current_user["id"]:
+        raise HTTPException(status_code=400, detail="Username already taken")
+    
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$set": {"username": new_username}}
+    )
+    
+    return {"message": "Username updated successfully"}
+
+@api_router.delete("/users/me")
+async def delete_account(current_user: dict = Depends(get_current_user)):
+    """Supprimer le compte utilisateur"""
+    user_id = current_user["id"]
+    
+    # Supprimer toutes les données de l'utilisateur
+    await db.users.delete_one({"id": user_id})
+    await db.posts.delete_many({"author_id": user_id})
+    await db.comments.delete_many({"author_id": user_id})
+    await db.likes.delete_many({"user_id": user_id})
+    await db.follows.delete_many({"$or": [{"follower_id": user_id}, {"following_id": user_id}]})
+    await db.messages.delete_many({"$or": [{"sender_id": user_id}, {"recipient_id": user_id}]})
+    await db.notifications.delete_many({"$or": [{"user_id": user_id}, {"from_user_id": user_id}]})
+    
+    return {"message": "Account deleted successfully"}
+
+@api_router.put("/users/me/privacy")
+async def update_privacy(
+    privacy_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Modifier la confidentialité du compte"""
+    is_private = privacy_data.get("is_private", False)
+    
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$set": {"is_private": is_private}}
+    )
+    
+    return {"message": "Privacy settings updated"}
+
+@api_router.get("/users/me/liked-posts")
+async def get_liked_posts(current_user: dict = Depends(get_current_user)):
+    """Récupère les publications aimées par l'utilisateur"""
+    likes_raw = await db.likes.find({"user_id": current_user["id"]}).sort("created_at", -1).to_list(length=100)
+    
+    posts = []
+    for like_raw in likes_raw:
+        like = convert_mongo_doc_to_dict(like_raw)
+        post_raw = await db.posts.find_one({"id": like["post_id"]})
+        if post_raw:
+            post = convert_mongo_doc_to_dict(post_raw)
+            post["is_liked"] = True
+            posts.append(Post(**post))
+    
+    return posts
+
+@api_router.get("/users/me/comments")
+async def get_user_comments(current_user: dict = Depends(get_current_user)):
+    """Récupère tous les commentaires de l'utilisateur"""
+    comments_raw = await db.comments.find({"author_id": current_user["id"]}).sort("created_at", -1).to_list(length=100)
+    
+    comments = []
+    for comment_raw in comments_raw:
+        comment = convert_mongo_doc_to_dict(comment_raw)
+        # Récupérer l'auteur du post
+        post_raw = await db.posts.find_one({"id": comment["post_id"]})
+        if post_raw:
+            post = convert_mongo_doc_to_dict(post_raw)
+            comment["post_author"] = post["author_username"]
+            comments.append(comment)
+    
+    return comments
+
+@api_router.get("/users/me/deleted-items")
+async def get_deleted_items(current_user: dict = Depends(get_current_user)):
+    """Récupère les éléments récemment supprimés (30 jours)"""
+    # Cette fonctionnalité nécessiterait un système de soft delete
+    # Pour l'instant, retourne une liste vide
+    return []
+
+@api_router.get("/users/me/time-stats")
+async def get_time_stats(current_user: dict = Depends(get_current_user)):
+    """Récupère les statistiques de temps d'utilisation"""
+    # Cette fonctionnalité nécessiterait un système de tracking
+    # Pour l'instant, retourne des données simulées
+    import random
+    return {
+        "today": random.randint(30, 180),  # minutes
+        "week": random.randint(200, 800),  # minutes
+        "month": random.randint(1000, 3000),  # minutes
+        "average": random.randint(40, 120),  # minutes par jour
+        "most_active_day": random.choice(["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"])
+    }
+
 @api_router.post("/users/{user_id}/follow")
 async def follow_user(user_id: str, current_user: dict = Depends(get_current_user)):
     """Follow/unfollow un utilisateur"""
