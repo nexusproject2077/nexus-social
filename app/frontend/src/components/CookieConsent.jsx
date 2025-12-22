@@ -3,17 +3,24 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Shield } from "lucide-react";
+import { useGDPRRegion } from "@/hooks/useGDPRRegion";
 
 export default function CookieConsent() {
   const [show, setShow] = useState(false);
+  const { isGDPRRegion, loading, countryCode } = useGDPRRegion();
 
   useEffect(() => {
+    // Ne pas afficher si pas en région RGPD
+    if (loading || !isGDPRRegion) {
+      return;
+    }
+
     const consent = localStorage.getItem("cookie_consent");
     if (!consent) {
       // Afficher après 1 seconde pour ne pas gêner le chargement
       setTimeout(() => setShow(true), 1000);
     }
-  }, []);
+  }, [loading, isGDPRRegion]);
 
   const acceptCookies = () => {
     localStorage.setItem("cookie_consent", "accepted");
@@ -27,7 +34,8 @@ export default function CookieConsent() {
     setShow(false);
   };
 
-  if (!show) return null;
+  // Ne pas afficher si pas en région RGPD ou en cours de chargement
+  if (!show || loading || !isGDPRRegion) return null;
 
   return (
     <>
