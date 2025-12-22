@@ -13,6 +13,7 @@ import SearchPage from "./pages/SearchPage";
 import PostDetailPage from "./pages/PostDetailPage";
 import SettingsPage from "./pages/SettingsPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
+import PrivacyCenter from './pages/PrivacyCenter';
 
 // URL du backend (NE CHANGE PLUS JAMAIS)
 const BACKEND_URL = "https://nexus-social-4k3v.onrender.com";
@@ -118,6 +119,10 @@ function App() {
           <Route 
             path="/analytics" 
            element={<AnalyticsDashboard user={user} setUser={setUser} />} 
+          />
+          <Route
+            path="/privacy-center"
+            element={user ? <PrivacyCenter user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           <Route
             path="/settings"
