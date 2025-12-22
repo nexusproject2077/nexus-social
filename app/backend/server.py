@@ -20,6 +20,8 @@ from passlib.context import CryptContext
 import jwt
 import base64
 from bson import ObjectId
+import json
+from collections import defaultdict
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1290,6 +1292,408 @@ async def get_story_viewers(story_id: str, current_user: dict = Depends(get_curr
             })
     
     return viewers
+
+# ==================== GDPR COMPLIANCE ROUTES ====================
+
+# Models GDPR
+class ConsentUpdate(BaseModel):
+    consent_type: str  # 'analytics', 'marketing', 'third_party', 'data_sharing'
+    consent_given: bool
+    ip_address: Optional[str] = None
+
+class PrivacySettings(BaseModel):
+    profile_visibility: str  # 'public', 'private', 'friends_only'
+    show_email: bool
+    show_activity: bool
+    allow_tagging: bool
+    allow_messaging: str  # 'everyone', 'friends', 'nobody'
+    data_retention_days: Optional[int] = 365
+
+@api_router.post("/gdpr/consent/update")
+async def update_consent(user_id: str, consent: ConsentUpdate):
+    """Met à jour le consentement de l'utilisateur (Article 7 RGPD)"""
+    try:
+        # Log du consentement
+        consent_log = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "consent_type": consent.consent_type,
+            "consent_given": consent.consent_given,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "ip_address": consent.ip_address,
+            "method": "api_request"
+        }
+        
+        await db.consent_logs.insert_one(consent_log)
+        
+        # Mettre à jour les paramètres utilisateur
+        update_field = f"consents.{consent.consent_type}"
+        await db.users.update_one(
+            {"id": user_id},
+            {
+                "$set": {
+                    update_field: consent.consent_given,
+                    "consents.last_updated": datetime.now(timezone.utc).isoformat()
+                }
+            }
+        )
+        
+        return {
+            "message": "Consentement mis à jour",
+            "consent_type": consent.consent_type,
+            "consent_given": consent.consent_given
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+@api_router.get("/gdpr/consent/history/{user_id}")
+async def get_consent_history(user_id: str):
+    """Récupère l'historique des consentements"""
+    try:
+        history_raw = await db.consent_logs.find({"user_id": user_id}).sort("timestamp", -1).to_list(length=100)
+        history = [convert_mongo_doc_to_dict(log) for log in history_raw]
+        return {"history": history, "count": len(history)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+@api_router.get("/gdpr/data/export/{user_id}")
+async def export_user_data(user_id: str):
+    """Exporte toutes les données de l'utilisateur (Article 20 - Portabilité)"""
+    try:
+        # Récupérer l'utilisateur
+        user_raw = await db.users.find_one({"id": user_id})
+        if not user_raw:
+            raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+        
+        user = convert_mongo_doc_to_dict(user_raw)
+        
+        # Posts
+        posts_raw = await db.posts.find({"author_id": user_id}).to_list(length=1000)
+        posts = [convert_mongo_doc_to_dict(p) for p in posts_raw]
+        
+        # Commentaires
+        comments_raw = await db.comments.find({"author_id": user_id}).to_list(length=1000)
+        comments = [convert_mongo_doc_to_dict(c) for c in comments_raw]
+        
+        # Likes
+        likes_raw = await db.likes.find({"user_id": user_id}).to_list(length=1000)
+        likes = [convert_mongo_doc_to_dict(l) for l in likes_raw]
+        
+        # Abonnements
+        following_raw = await db.follows.find({"follower_id": user_id}).to_list(length=1000)
+        following = []
+        for follow in following_raw:
+            follow_data = convert_mongo_doc_to_dict(follow)
+            followed_user = await db.users.find_one({"id": follow_data["following_id"]})
+            if followed_user:
+                following.append({
+                    "username": followed_user.get("username"),
+                    "followed_at": follow_data.get("created_at")
+                })
+        
+        # Abonnés
+        followers_raw = await db.follows.find({"following_id": user_id}).to_list(length=1000)
+        followers = []
+        for follow in followers_raw:
+            follow_data = convert_mongo_doc_to_dict(follow)
+            follower_user = await db.users.find_one({"id": follow_data["follower_id"]})
+            if follower_user:
+                followers.append({
+                    "username": follower_user.get("username"),
+                    "followed_at": follow_data.get("created_at")
+                })
+        
+        # Données utilisateur (nettoyées)
+        user_data = {
+            "username": user.get("username"),
+            "email": user.get("email"),
+            "created_at": user.get("created_at"),
+            "bio": user.get("bio"),
+            "profile_pic": user.get("profile_pic")
+        }
+        
+        # Export complet
+        export_data = {
+            "export_date": datetime.now(timezone.utc).isoformat(),
+            "user_info": user_data,
+            "posts": posts,
+            "comments": comments,
+            "likes": likes,
+            "following": following,
+            "followers": followers,
+            "statistics": {
+                "total_posts": len(posts),
+                "total_comments": len(comments),
+                "total_likes": len(likes),
+                "total_following": len(following),
+                "total_followers": len(followers)
+            }
+        }
+        
+        return export_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur export: {str(e)}")
+
+@api_router.post("/gdpr/data/deletion-request")
+async def request_account_deletion(user_id: str, reason: Optional[str] = None):
+    """Demande de suppression de compte (Article 17 - Droit à l'oubli)"""
+    try:
+        # Vérifier si une demande existe déjà
+        existing = await db.deletion_requests.find_one({
+            "user_id": user_id,
+            "status": {"$in": ["pending", "processing"]}
+        })
+        
+        if existing:
+            raise HTTPException(status_code=400, detail="Une demande de suppression est déjà en cours")
+        
+        # Créer la demande
+        request_id = str(uuid.uuid4())
+        deletion_request = {
+            "id": request_id,
+            "user_id": user_id,
+            "reason": reason,
+            "status": "pending",
+            "requested_at": datetime.now(timezone.utc).isoformat(),
+            "scheduled_deletion_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+            "completed_at": None
+        }
+        
+        await db.deletion_requests.insert_one(deletion_request)
+        
+        # Marquer l'utilisateur
+        await db.users.update_one(
+            {"id": user_id},
+            {"$set": {"deletion_scheduled": True, "deletion_request_id": request_id}}
+        )
+        
+        return {
+            "request_id": request_id,
+            "message": "Demande de suppression enregistrée. Vous avez 30 jours pour annuler.",
+            "scheduled_deletion": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+@api_router.put("/gdpr/privacy/settings")
+async def update_privacy_settings(user_id: str, settings: PrivacySettings):
+    """Met à jour les paramètres de confidentialité"""
+    try:
+        settings_doc = {
+            "user_id": user_id,
+            "profile_visibility": settings.profile_visibility,
+            "show_email": settings.show_email,
+            "show_activity": settings.show_activity,
+            "allow_tagging": settings.allow_tagging,
+            "allow_messaging": settings.allow_messaging,
+            "data_retention_days": settings.data_retention_days,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        await db.privacy_settings.update_one(
+            {"user_id": user_id},
+            {"$set": settings_doc},
+            upsert=True
+        )
+        
+        # Mettre à jour aussi dans users
+        await db.users.update_one(
+            {"id": user_id},
+            {"$set": {
+                "is_private": settings.profile_visibility == "private",
+                "privacy_updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        return {"message": "Paramètres de confidentialité mis à jour"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+@api_router.get("/gdpr/privacy/settings/{user_id}")
+async def get_privacy_settings(user_id: str):
+    """Récupère les paramètres de confidentialité"""
+    try:
+        settings_raw = await db.privacy_settings.find_one({"user_id": user_id})
+        
+        if not settings_raw:
+            return {
+                "profile_visibility": "public",
+                "show_email": False,
+                "show_activity": True,
+                "allow_tagging": True,
+                "allow_messaging": "everyone",
+                "data_retention_days": 365
+            }
+        
+        settings = convert_mongo_doc_to_dict(settings_raw)
+        return settings
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+@api_router.get("/gdpr/transparency/data-usage/{user_id}")
+async def get_data_usage_info(user_id: str):
+    """Informe l'utilisateur de comment ses données sont utilisées"""
+    return {
+        "data_collection": {
+            "profile_data": "Utilisé pour votre profil public et la personnalisation",
+            "posts_and_comments": "Partagés publiquement ou selon vos paramètres de confidentialité",
+            "likes_and_follows": "Utilisés pour recommandations et statistiques",
+            "ip_address": "Enregistrée pour la sécurité et la conformité légale",
+            "activity_logs": "Conservés pour la sécurité et l'amélioration du service"
+        },
+        "data_sharing": {
+            "third_parties": "Nous ne partageons pas vos données avec des tiers",
+            "analytics": "Données anonymisées pour améliorer le service",
+            "legal_requirements": "Partagées uniquement si requis par la loi"
+        },
+        "data_retention": {
+            "active_account": "Conservées tant que votre compte est actif",
+            "deleted_account": "Supprimées sous 30 jours après demande",
+            "legal_logs": "Logs de sécurité conservés 1 an"
+        },
+        "your_rights": [
+            "Droit d'accès à vos données (Article 15)",
+            "Droit de rectification (Article 16)",
+            "Droit à l'oubli (Article 17)",
+            "Droit à la portabilité (Article 20)",
+            "Droit de retirer votre consentement (Article 7)"
+        ]
+    }
+
+# ==================== LEGAL DOCUMENTS ====================
+
+@app.get("/api/legal/privacy-policy")
+async def get_privacy_policy():
+    """Politique de confidentialité (RGPD)"""
+    return Response(content="""
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Politique de Confidentialité - Nexus Social</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #e2e8f0;
+            background: #0f172a;
+        }
+        h1 { color: #06b6d4; font-size: 2em; }
+        h2 { color: #22d3ee; font-size: 1.5em; margin-top: 30px; }
+        .date { color: #94a3b8; font-style: italic; }
+        .important { background: #1e293b; border-left: 4px solid #06b6d4; padding: 15px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔒 Politique de Confidentialité</h1>
+    <p class="date">Dernière mise à jour : 21 décembre 2024</p>
+    
+    <div class="important">
+        <strong>📌 En résumé :</strong> Nous respectons votre vie privée. Vos données sont protégées conformément au RGPD.
+    </div>
+
+    <h2>1. Responsable du traitement</h2>
+    <p><strong>Nexus Social</strong></p>
+    <ul>
+        <li>Email : privacy@nexussocial.com</li>
+        <li>DPO : dpo@nexussocial.com</li>
+    </ul>
+
+    <h2>2. Vos droits RGPD</h2>
+    <p>Vous avez le droit de :</p>
+    <ul>
+        <li>📄 Accéder à vos données (Article 15)</li>
+        <li>✏️ Rectifier vos données (Article 16)</li>
+        <li>🗑️ Supprimer vos données (Article 17)</li>
+        <li>📦 Exporter vos données (Article 20)</li>
+        <li>🚫 Vous opposer au traitement (Article 21)</li>
+    </ul>
+
+    <p>Pour exercer vos droits : <strong>Centre de confidentialité</strong> ou <strong>dpo@nexussocial.com</strong></p>
+    
+    <h2>3. Contact</h2>
+    <p>Questions ? <a href="mailto:privacy@nexussocial.com" style="color: #06b6d4;">privacy@nexussocial.com</a></p>
+    
+    <footer style="margin-top: 50px; padding-top: 20px; border-top: 1px solid #334155; color: #94a3b8; text-align: center;">
+        <p>© 2024 Nexus Social - Tous droits réservés</p>
+    </footer>
+</body>
+</html>
+    """, media_type="text/html")
+
+@app.get("/api/legal/terms-of-service")
+async def get_terms_of_service():
+    """Conditions d'utilisation"""
+    return Response(content="""
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CGU - Nexus Social</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #e2e8f0;
+            background: #0f172a;
+        }
+        h1 { color: #06b6d4; }
+        h2 { color: #22d3ee; }
+    </style>
+</head>
+<body>
+    <h1>📜 Conditions d'Utilisation</h1>
+    <p>En utilisant Nexus Social, vous acceptez ces conditions.</p>
+    <h2>Contenu interdit</h2>
+    <ul>
+        <li>❌ Contenus illégaux</li>
+        <li>❌ Harcèlement</li>
+        <li>❌ Spam</li>
+    </ul>
+    <p>Contact : <a href="mailto:legal@nexussocial.com" style="color: #06b6d4;">legal@nexussocial.com</a></p>
+</body>
+</html>
+    """, media_type="text/html")
+
+@app.get("/api/legal/cookie-policy")
+async def get_cookie_policy():
+    """Politique des cookies"""
+    return Response(content="""
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cookies - Nexus Social</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #e2e8f0;
+            background: #0f172a;
+        }
+        h1 { color: #06b6d4; }
+    </style>
+</head>
+<body>
+    <h1>🍪 Politique des Cookies</h1>
+    <p>Nous utilisons uniquement des cookies essentiels pour le fonctionnement du site.</p>
+    <p>❌ Pas de cookies publicitaires</p>
+    <p>❌ Pas de tracking tiers</p>
+</body>
+</html>
+    """, media_type="text/html")
 
 # Inclure le routeur principal
 app.include_router(api_router)
