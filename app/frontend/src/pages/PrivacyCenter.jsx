@@ -336,6 +336,61 @@ export default function PrivacyCenter({ user, setUser }) {
 
           {/* Consentements */}
           <TabsContent value="consents" className="space-y-3 sm:space-y-4">
+            {/* Cookies essentiels */}
+            <Card className="bg-slate-900 border-slate-800">
+              <CardHeader>
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                  🍪 Gestion des cookies
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  Modifiez vos préférences de cookies
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Cookies essentiels (non modifiable) */}
+                <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-white">Cookies essentiels</p>
+                      <p className="text-[10px] sm:text-xs text-slate-400">Nécessaires au fonctionnement du site</p>
+                    </div>
+                    <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
+                      Toujours actifs
+                    </Badge>
+                  </div>
+                  <p className="text-[10px] sm:text-xs text-slate-500">
+                    Session, authentification, préférences
+                  </p>
+                </div>
+
+                {/* Cookies optionnels */}
+                <div className="p-3 bg-slate-800/50 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-white">Cookies analytics</p>
+                      <p className="text-[10px] sm:text-xs text-slate-400">Statistiques d'utilisation anonymes</p>
+                    </div>
+                    <Switch
+                      checked={localStorage.getItem("cookie_consent") === "accepted"}
+                      onCheckedChange={(checked) => {
+                        localStorage.setItem("cookie_consent", checked ? "accepted" : "rejected");
+                        toast.success(checked ? "Cookies analytics activés" : "Cookies analytics désactivés");
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="flex items-start gap-2 p-3 bg-blue-950/20 border border-blue-900/50 rounded-lg text-xs sm:text-sm text-slate-300">
+                  <Info className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <p>
+                    Nous n'utilisons <strong>aucun cookie publicitaire</strong> ni de tracking tiers. 
+                    Consultez notre <a href="/api/legal/cookie-policy" target="_blank" className="text-cyan-400 hover:underline">politique des cookies</a>.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card className="bg-slate-900 border-slate-800">
               <CardHeader>
                 <CardTitle className="text-base sm:text-lg">Vos consentements</CardTitle>
