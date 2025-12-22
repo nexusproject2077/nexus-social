@@ -519,4 +519,370 @@ export default function SettingsPage({ user, setUser }) {
     <div className="space-y-4">
       <button
         onClick={() => setActiveSection("activity")}
-        className="flex items-center gap-2 text-cy
+        className="flex items-center gap-2 text-cyan-500 hover:text-cyan-400 transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        <span className="text-sm font-medium">Retour</span>
+      </button>
+      {likedPosts.length === 0 ? (
+        <div className="text-center py-12">
+          <Heart className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+          <p className="text-slate-400 text-sm">Aucune publication aimée</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {likedPosts.map((post) => (
+            <PostCard key={post.id} post={post} user={user} setUser={setUser} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderCommentsSection = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveSection("activity")}
+        className="flex items-center gap-2 text-cyan-500 hover:text-cyan-400 transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        <span className="text-sm font-medium">Retour</span>
+      </button>
+      {userComments.length === 0 ? (
+        <div className="text-center py-12">
+          <MessageCircle className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+          <p className="text-slate-400 text-sm">Aucun commentaire</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {userComments.map((comment) => (
+            <div key={comment.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <p className="text-sm text-white mb-2">{comment.content}</p>
+              <p className="text-xs text-slate-400">
+                {new Date(comment.created_at).toLocaleDateString('fr-FR')}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderDeletedSection = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveSection("activity")}
+        className="flex items-center gap-2 text-cyan-500 hover:text-cyan-400 transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        <span className="text-sm font-medium">Retour</span>
+      </button>
+      {deletedItems.length === 0 ? (
+        <div className="text-center py-12">
+          <Trash2 className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+          <p className="text-slate-400 text-sm">Aucun élément supprimé</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {deletedItems.map((item) => (
+            <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <p className="text-sm text-white mb-2">{item.content}</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-400">
+                  Supprimé le {new Date(item.deleted_at).toLocaleDateString('fr-FR')}
+                </p>
+                <button className="text-xs text-cyan-500 hover:text-cyan-400">
+                  Restaurer
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <Layout user={user} setUser={setUser}>
+      <div className="max-w-2xl mx-auto px-3 py-4 pb-24">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-white mb-1" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+            Paramètres
+          </h1>
+          <p className="text-sm text-slate-400">
+            Gérez votre compte et vos préférences
+          </p>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+          {[
+            { key: "account", label: "Compte", icon: User },
+            { key: "activity", label: "Activité", icon: Heart },
+            { key: "time", label: "Temps", icon: Clock },
+            { key: "privacy", label: "Confidentialité", icon: Shield },
+          ].map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveSection(key)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-all ${
+                activeSection === key
+                  ? "bg-cyan-500 text-white"
+                  : "bg-slate-900 text-slate-400 hover:bg-slate-800"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span className="text-sm font-medium">{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        {renderContent()}
+
+        {/* Modals... (same as before) */}
+        {/* Modal Email */}
+        {showEmailModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowEmailModal(false)}>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">Changer l'email</h3>
+                <button onClick={() => setShowEmailModal(false)} className="text-slate-400 hover:text-white">
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <label className="text-sm text-slate-400 mb-2 block">Email actuel</label>
+                <div className="bg-slate-800/50 border border-slate-700 rounded-lg px-4 py-3 text-white text-sm">
+                  {user?.email}
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="text-sm text-slate-400 mb-2 block">Nouvel email</label>
+                <input
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-cyan-500 transition-colors"
+                  placeholder="nouveau@email.com"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEmailModal(false)}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg font-medium transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleUpdateEmail}
+                  disabled={loading}
+                  className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white py-3 rounded-lg font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+                  {loading ? "..." : "Confirmer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Username */}
+        {showUsernameModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowUsernameModal(false)}>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">Changer le nom d'utilisateur</h3>
+                <button onClick={() => setShowUsernameModal(false)} className="text-slate-400 hover:text-white">
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <label className="text-sm text-slate-400 mb-2 block">Nom actuel</label>
+                <div className="bg-slate-800/50 border border-slate-700 rounded-lg px-4 py-3 text-white text-sm">
+                  @{user?.username}
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="text-sm text-slate-400 mb-2 block">Nouveau nom</label>
+                <input
+                  type="text"
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-purple-500 transition-colors"
+                  placeholder="nouveau_nom"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowUsernameModal(false)}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg font-medium transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleUpdateUsername}
+                  disabled={loading}
+                  className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white py-3 rounded-lg font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+                  {loading ? "..." : "Confirmer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Password */}
+        {showPasswordModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPasswordModal(false)}>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">Changer le mot de passe</h3>
+                <button onClick={() => setShowPasswordModal(false)} className="text-slate-400 hover:text-white">
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="text-sm text-slate-400 mb-2 block">Mot de passe actuel</label>
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? "text" : "password"}
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 pr-12 text-white text-sm focus:outline-none focus:border-green-500 transition-colors"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                    >
+                      {showCurrentPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm text-slate-400 mb-2 block">Nouveau mot de passe</label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 pr-12 text-white text-sm focus:outline-none focus:border-green-500 transition-colors"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                    >
+                      {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm text-slate-400 mb-2 block">Confirmer le mot de passe</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-green-500 transition-colors"
+                    placeholder="••••••••"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowPasswordModal(false)}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg font-medium transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleUpdatePassword}
+                  disabled={loading}
+                  className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white py-3 rounded-lg font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+                  {loading ? "..." : "Confirmer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Delete */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowDeleteModal(false)}>
+            <div className="bg-slate-900 border border-red-900/50 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="h-6 w-6 text-red-500" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-red-500">Supprimer le compte</h3>
+                  <p className="text-sm text-slate-400">Cette action est irréversible</p>
+                </div>
+              </div>
+
+              <div className="bg-red-950/30 border border-red-900/50 rounded-lg p-4 mb-4">
+                <p className="text-sm text-slate-300 mb-2">
+                  ⚠️ Toutes vos données seront définitivement supprimées :
+                </p>
+                <ul className="text-xs text-slate-400 space-y-1">
+                  <li>• Votre profil et informations</li>
+                  <li>• Toutes vos publications</li>
+                  <li>• Vos commentaires et likes</li>
+                  <li>• Vos messages privés</li>
+                </ul>
+              </div>
+
+              <div className="mb-6">
+                <label className="text-sm text-slate-400 mb-2 block">
+                  Tapez <strong className="text-red-500">SUPPRIMER</strong> pour confirmer
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmation}
+                  onChange={(e) => setDeleteConfirmation(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-red-500 transition-colors"
+                  placeholder="SUPPRIMER"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg font-medium transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={loading || deleteConfirmation !== "SUPPRIMER"}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
+                  {loading ? "..." : "Supprimer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </Layout>
+  );
+}
