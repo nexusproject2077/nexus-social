@@ -299,6 +299,25 @@ export default function SettingsPage({ user, setUser }) {
 
       <div className="h-3 sm:h-4"></div>
 
+      {/* Privacy Center */}
+      <div
+        onClick={() => navigate("/privacy-center")}
+        className="flex items-center justify-between p-3 sm:p-4 bg-gradient-to-r from-blue-950/20 to-cyan-950/20 border border-blue-900/50 rounded-xl cursor-pointer active:bg-blue-950/30 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 bg-blue-500/10 rounded-full flex items-center justify-center">
+            <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm font-medium text-blue-400">Confidentialité et RGPD</p>
+            <p className="text-[10px] sm:text-xs text-slate-400">Gérez vos données personnelles</p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500 flex-shrink-0" />
+      </div>
+
+      <div className="h-3 sm:h-4"></div>
+
       {/* Delete Account */}
       <div
         onClick={() => setShowDeleteModal(true)}
