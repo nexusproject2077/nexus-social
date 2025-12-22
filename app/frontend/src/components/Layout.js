@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Search, Bell, Mail, User, LogOut, Menu, X, Settings, PlusSquare, BarChart3 } from "lucide-react";
+import { Search, Bell, Mail, User, LogOut, Menu, X, Settings } from "lucide-react";
 import CustomLogo from "@/components/CustomLogo";
 
 export default function Layout({ children, user, setUser }) {
@@ -25,24 +25,18 @@ export default function Layout({ children, user, setUser }) {
     { icon: User, label: "Profil", path: `/profile/${user.id}`, testId: "nav-profile" },
   ];
 
-  // Navigation secondaire (dans le menu burger sur mobile, sidebar sur desktop)
+  // Navigation secondaire (UNIQUEMENT dans le menu burger - juste Paramètres)
   const secondaryNavItems = [
-    { icon: BarChart3, label: "Analytics", path: "/analytics", testId: "nav-analytics" },
     { icon: Settings, label: "Paramètres", path: "/settings", testId: "nav-settings" },
   ];
-
-  const allNavItems = [...mainNavItems, ...secondaryNavItems];
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-slate-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <CustomLogo className="w-7 h-7 text-cyan-400" />
-          <h1 className="text-xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
-          </h1>
-        </div>
+        <h1 className="text-xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+          <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Nexus Social</span>
+        </h1>
         <Button
           variant="ghost"
           size="icon"
@@ -72,7 +66,7 @@ export default function Layout({ children, user, setUser }) {
               </div>
             </div>
 
-            {/* Navigation secondaire */}
+            {/* Paramètres */}
             {secondaryNavItems.map((item) => (
               <Button
                 key={item.path}
@@ -112,19 +106,37 @@ export default function Layout({ children, user, setUser }) {
 
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 bg-slate-950 border-r border-slate-800 flex-col z-50">
-        {/* Logo */}
+        {/* Logo - SANS icône à côté */}
         <div className="p-6 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <CustomLogo className="w-8 h-8 text-cyan-400" />
-            <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-              <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
-            </h1>
-          </div>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
+          </h1>
         </div>
 
-        {/* Navigation */}
+        {/* Navigation - UNIQUEMENT les 5 principales + Paramètres */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {allNavItems.map((item) => (
+          {mainNavItems.map((item) => (
+            <Button
+              key={item.path}
+              data-testid={item.testId}
+              onClick={() => navigate(item.path)}
+              variant="ghost"
+              className={`w-full justify-start text-base h-12 ${
+                location.pathname === item.path
+                  ? "bg-slate-800 text-cyan-500"
+                  : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+              }`}
+            >
+              <item.icon className="w-5 h-5 mr-3" />
+              {item.label}
+            </Button>
+          ))}
+
+          {/* Séparateur */}
+          <div className="h-px bg-slate-800 my-2"></div>
+
+          {/* Paramètres */}
+          {secondaryNavItems.map((item) => (
             <Button
               key={item.path}
               data-testid={item.testId}
@@ -175,7 +187,7 @@ export default function Layout({ children, user, setUser }) {
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation */}
+      {/* Mobile Bottom Navigation - 5 icônes uniquement */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800">
         <div className="flex justify-around items-center h-16 px-2">
           {mainNavItems.map((item) => {
