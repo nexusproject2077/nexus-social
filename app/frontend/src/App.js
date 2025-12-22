@@ -3,6 +3,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
+import CookieConsent from "./components/CookieConsent";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
@@ -82,6 +83,7 @@ function App() {
   return (
     <div className="App">
       <Toaster position="top-center" richColors />
+      <CookieConsent />
       <BrowserRouter>
         <Routes>
           <Route
