@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Search, Bell, Mail, User, LogOut, Menu, X, Settings } from "lucide-react";
+import { Search, Bell, User, LogOut, Menu, X, Settings } from "lucide-react";
 import CustomLogo from "@/components/CustomLogo";
+import CustomMessagingIcon from "@/components/CustomMessagingIcon";
 
 export default function Layout({ children, user, setUser }) {
   const navigate = useNavigate();
@@ -21,7 +22,7 @@ export default function Layout({ children, user, setUser }) {
     { icon: CustomLogo, label: "Accueil", path: "/", testId: "nav-home" },
     { icon: Search, label: "Rechercher", path: "/search", testId: "nav-search" },
     { icon: Bell, label: "Notifications", path: "/notifications", testId: "nav-notifications" },
-    { icon: Mail, label: "Messages", path: "/messages", testId: "nav-messages" },
+    { icon: CustomMessagingIcon, label: "Messages", path: "/messages", testId: "nav-messages" },
     { icon: User, label: "Profil", path: `/profile/${user.id}`, testId: "nav-profile" },
   ];
 
@@ -35,7 +36,7 @@ export default function Layout({ children, user, setUser }) {
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-slate-800 px-4 py-3 flex items-center justify-between">
         <h1 className="text-xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-          <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Nexus Social</span>
+          <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
         </h1>
         <Button
           variant="ghost"
