@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Home, Search, Bell, Mail, User, LogOut, Menu, X, Settings, PlusSquare } from "lucide-react";
+import { Search, Bell, Mail, User, LogOut, Menu, X, Settings, PlusSquare, BarChart3 } from "lucide-react";
+import CustomLogo from "@/components/CustomLogo";
 
 export default function Layout({ children, user, setUser }) {
   const navigate = useNavigate();
@@ -17,7 +18,7 @@ export default function Layout({ children, user, setUser }) {
 
   // Navigation principale (visible en bas sur mobile, sidebar sur desktop)
   const mainNavItems = [
-    { icon: Home, label: "Accueil", path: "/", testId: "nav-home" },
+    { icon: CustomLogo, label: "Accueil", path: "/", testId: "nav-home" },
     { icon: Search, label: "Rechercher", path: "/search", testId: "nav-search" },
     { icon: Bell, label: "Notifications", path: "/notifications", testId: "nav-notifications" },
     { icon: Mail, label: "Messages", path: "/messages", testId: "nav-messages" },
@@ -26,6 +27,7 @@ export default function Layout({ children, user, setUser }) {
 
   // Navigation secondaire (dans le menu burger sur mobile, sidebar sur desktop)
   const secondaryNavItems = [
+    { icon: BarChart3, label: "Analytics", path: "/analytics", testId: "nav-analytics" },
     { icon: Settings, label: "Paramètres", path: "/settings", testId: "nav-settings" },
   ];
 
@@ -35,9 +37,12 @@ export default function Layout({ children, user, setUser }) {
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-slate-800 px-4 py-3 flex items-center justify-between">
-        <h1 className="text-xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-          <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
-        </h1>
+        <div className="flex items-center gap-2">
+          <CustomLogo className="w-7 h-7 text-cyan-400" />
+          <h1 className="text-xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
+          </h1>
+        </div>
         <Button
           variant="ghost"
           size="icon"
@@ -105,109 +110,94 @@ export default function Layout({ children, user, setUser }) {
         </div>
       )}
 
-      {/* Mobile Bottom Navigation (Style Instagram) */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/98 backdrop-blur-xl border-t border-slate-800">
-        <div className="flex items-center justify-around px-2 py-2">
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 bg-slate-950 border-r border-slate-800 flex-col z-50">
+        {/* Logo */}
+        <div className="p-6 border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <CustomLogo className="w-8 h-8 text-cyan-400" />
+            <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+              <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
+            </h1>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          {allNavItems.map((item) => (
+            <Button
+              key={item.path}
+              data-testid={item.testId}
+              onClick={() => navigate(item.path)}
+              variant="ghost"
+              className={`w-full justify-start text-base h-12 ${
+                location.pathname === item.path
+                  ? "bg-slate-800 text-cyan-500"
+                  : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+              }`}
+            >
+              <item.icon className="w-5 h-5 mr-3" />
+              {item.label}
+            </Button>
+          ))}
+        </nav>
+
+        {/* User Profile */}
+        <div className="p-4 border-t border-slate-800">
+          <div className="flex items-center gap-3 mb-3">
+            <Avatar className="h-10 w-10">
+              <AvatarImage src={user.profile_pic} />
+              <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-blue-500 text-white font-bold">
+                {user.username[0].toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white truncate">@{user.username}</p>
+              <p className="text-xs text-slate-400 truncate">{user.email}</p>
+            </div>
+          </div>
+          <Button
+            data-testid="desktop-logout-button"
+            onClick={handleLogout}
+            variant="ghost"
+            className="w-full justify-start text-sm h-10 text-red-400 hover:text-red-300 hover:bg-red-950/20"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Déconnexion
+          </Button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="lg:ml-64 pt-16 lg:pt-0 pb-20 lg:pb-0">
+        <div className="container mx-auto max-w-7xl">
+          {children}
+        </div>
+      </main>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800">
+        <div className="flex justify-around items-center h-16 px-2">
           {mainNavItems.map((item) => {
             const isActive = location.pathname === item.path;
-            const Icon = item.icon;
-            
             return (
               <button
                 key={item.path}
                 data-testid={item.testId}
                 onClick={() => navigate(item.path)}
-                className="flex flex-col items-center justify-center flex-1 py-2 px-1 relative"
+                className={`flex flex-col items-center justify-center min-w-0 flex-1 h-full transition-colors ${
+                  isActive ? "text-cyan-500" : "text-slate-400"
+                }`}
               >
-                <div className={`flex items-center justify-center w-12 h-10 rounded-lg transition-all ${
-                  isActive 
-                    ? "bg-slate-800" 
-                    : "hover:bg-slate-800/50"
-                }`}>
-                  {item.label === "Profil" ? (
-                    <Avatar className={`h-6 w-6 ${isActive ? "ring-2 ring-cyan-500" : ""}`}>
-                      <AvatarImage src={user.profile_pic} />
-                      <AvatarFallback className={`text-[10px] ${
-                        isActive 
-                          ? "bg-gradient-to-br from-cyan-500 to-blue-500 text-white" 
-                          : "bg-slate-700"
-                      }`}>
-                        {user.username[0].toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  ) : (
-                    <Icon className={`w-5 h-5 ${
-                      isActive 
-                        ? "text-cyan-500" 
-                        : "text-slate-400"
-                    }`} />
-                  )}
-                </div>
-                {isActive && (
-                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-cyan-500 rounded-full"></div>
-                )}
+                <item.icon className={`w-6 h-6 mb-1 ${isActive ? "text-cyan-500" : ""}`} />
+                <span className="text-[10px] font-medium truncate max-w-full px-1">
+                  {item.label}
+                </span>
               </button>
             );
           })}
         </div>
-      </div>
-
-      <div className="flex">
-        {/* Desktop Sidebar */}
-        <div className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 lg:border-r lg:border-slate-800 lg:p-6">
-          <h1 className="text-3xl font-bold mb-8" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
-          </h1>
-
-          <nav className="flex-1 space-y-2">
-            {allNavItems.map((item) => (
-              <Button
-                key={item.path}
-                data-testid={item.testId}
-                onClick={() => navigate(item.path)}
-                variant="ghost"
-                className={`w-full justify-start text-base ${
-                  location.pathname === item.path
-                    ? "bg-slate-800 text-cyan-500"
-                    : "text-slate-300 hover:text-white"
-                }`}
-              >
-                <item.icon className="w-5 h-5 mr-3" />
-                {item.label}
-              </Button>
-            ))}
-          </nav>
-
-          <div className="mt-auto space-y-4">
-            <div className="flex items-center gap-3 p-3 bg-slate-900 rounded-lg">
-              <Avatar>
-                <AvatarImage src={user.profile_pic} />
-                <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-blue-500 text-white font-bold">
-                  {user.username[0].toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold truncate">@{user.username}</p>
-                <p className="text-xs text-slate-400 truncate">{user.email}</p>
-              </div>
-            </div>
-            <Button
-              data-testid="logout-button"
-              onClick={handleLogout}
-              variant="outline"
-              className="w-full border-slate-700 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              Déconnexion
-            </Button>
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <main className="flex-1 lg:ml-64 pt-14 pb-16 lg:pt-0 lg:pb-0">
-          {children}
-        </main>
-      </div>
+      </nav>
     </div>
   );
 }
