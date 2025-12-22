@@ -3,7 +3,7 @@
 export default function CustomMessagingIcon({ className = "w-6 h-6", color = "currentColor" }) {
   return (
     <svg 
-      viewBox="0 0 470 468" 
+      viewBox="80 100 310 280" 
       className={className}
       xmlns="http://www.w3.org/2000/svg"
     >
