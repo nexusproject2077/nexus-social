@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Search, Bell, User, LogOut, Menu, X, Settings } from "lucide-react";
+import { Bell, User, LogOut, Menu, X, Settings } from "lucide-react";
 import CustomLogo from "@/components/CustomLogo";
 import CustomMessagingIcon from "@/components/CustomMessagingIcon";
+import CustomSearchIcon from "@/components/CustomSearchIcon";
 
 export default function Layout({ children, user, setUser }) {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export default function Layout({ children, user, setUser }) {
   // Navigation principale (visible en bas sur mobile, sidebar sur desktop)
   const mainNavItems = [
     { icon: CustomLogo, label: "Accueil", path: "/", testId: "nav-home" },
-    { icon: Search, label: "Rechercher", path: "/search", testId: "nav-search" },
+    { icon: CustomSearchIcon, label: "Rechercher", path: "/search", testId: "nav-search" },
     { icon: Bell, label: "Notifications", path: "/notifications", testId: "nav-notifications" },
     { icon: CustomMessagingIcon, label: "Messages", path: "/messages", testId: "nav-messages" },
     { icon: User, label: "Profil", path: `/profile/${user.id}`, testId: "nav-profile" },
