@@ -1,3 +1,5 @@
+export default function CustomSettingsIcon({ className = "w-6 h-6", color = "currentColor" }) {
+  return (
 <svg 
   viewBox="0 0 470 468" 
   className={className}
