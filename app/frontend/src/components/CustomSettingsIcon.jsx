@@ -3,7 +3,8 @@ import React from 'react';
 export default function CustomSettingsIcon({ className = "w-6 h-6", color = "currentColor" }) {
   return (
     <svg 
-      viewBox="0 0 470 468" 
+      /* On resserre le viewBox pour zoomer sur l'icône (on retire du vide autour) */
+      viewBox="80 80 310 310" 
       className={className}
       xmlns="http://www.w3.org/2000/svg"
     >
