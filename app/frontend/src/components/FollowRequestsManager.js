@@ -1,232 +1,220 @@
-import { useState, useEffect } from "react";
-import axios from "axios";
-import { API } from "@/App";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserPlus, UserCheck, UserX, Clock } from "lucide-react";
-import { toast } from "sonner";
-import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { LogOut, Menu, X } from "lucide-react";
+import CustomLogo from "@/components/CustomLogo";
+import CustomMessagingIcon from "@/components/CustomMessagingIcon";
+import CustomSearchIcon from "@/components/CustomSearchIcon";
+import CustomNotificationIcon from "@/components/CustomNotificationIcon";
+import CustomSettingsIcon from "@/components/CustomSettingsIcon";
+import CustomAccountIcon from "@/components/CustomAccountIcon";
 
-/**
- * Composant pour gérer les demandes d'abonnement (comptes privés)
- */
-export default function FollowRequestsManager({ user }) {
-  const [pendingRequests, setPendingRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function Layout({ children, user, setUser }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  useEffect(() => {
-    fetchPendingRequests();
-  }, []);
-
-  const fetchPendingRequests = async () => {
-    try {
-      const response = await axios.get(`${API}/users/me/follow-requests`);
-      setPendingRequests(response.data);
-    } catch (error) {
-      console.error("Erreur chargement demandes:", error);
-    } finally {
-      setLoading(false);
-    }
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    if (setUser) setUser(null);
+    navigate("/auth");
   };
 
-  const handleAccept = async (requestId, username) => {
-    try {
-      await axios.post(`${API}/users/me/follow-requests/${requestId}/accept`);
-      setPendingRequests(pendingRequests.filter((r) => r.id !== requestId));
-      toast.success(`${username} peut maintenant vous suivre`);
-    } catch (error) {
-      console.error("Erreur acceptation:", error);
-      toast.error("Erreur lors de l'acceptation");
-    }
-  };
+  // Navigation principale (visible en bas sur mobile, sidebar sur desktop)
+  const mainNavItems = [
+    { icon: CustomLogo, label: "Accueil", path: "/", testId: "nav-home" },
+    { icon: CustomSearchIcon, label: "Rechercher", path: "/search", testId: "nav-search" },
+    { icon: CustomNotificationIcon, label: "Notifications", path: "/notifications", testId: "nav-notifications" },
+    { icon: CustomMessagingIcon, label: "Messages", path: "/messages", testId: "nav-messages" },
+    { icon: CustomAccountIcon, label: "Profil", path: `/profile/${user.id}`, testId: "nav-profile" },
+  ];
 
-  const handleReject = async (requestId, username) => {
-    try {
-      await axios.post(`${API}/users/me/follow-requests/${requestId}/reject`);
-      setPendingRequests(pendingRequests.filter((r) => r.id !== requestId));
-      toast.success(`Demande de ${username} refusée`);
-    } catch (error) {
-      console.error("Erreur rejet:", error);
-      toast.error("Erreur lors du rejet");
-    }
-  };
-
-  const getInitials = (username) => {
-    return username ? username.substring(0, 2).toUpperCase() : "??";
-  };
-
-  if (loading) {
-    return (
-      <Card className="bg-slate-900 border-slate-800">
-        <CardContent className="py-8">
-          <div className="flex justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (pendingRequests.length === 0) {
-    return (
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <Clock className="h-5 w-5 text-cyan-500" />
-            Demandes d'abonnement
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8">
-            <UserPlus className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400">Aucune demande en attente</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  // Navigation secondaire (UNIQUEMENT dans le menu burger - juste Paramètres)
+  const secondaryNavItems = [
+    { icon: CustomSettingsIcon, label: "Paramètres", path: "/settings", testId: "nav-settings" },
+  ];
 
   return (
-    <Card className="bg-slate-900 border-slate-800">
-      <CardHeader>
-        <CardTitle className="text-white flex items-center gap-2">
-          <Clock className="h-5 w-5 text-cyan-500" />
-          Demandes d'abonnement ({pendingRequests.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {pendingRequests.map((request) => (
-            <div
-              key={request.id}
-              className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg border border-slate-700"
-            >
-              <Link
-                to={`/profile/${request.requester_id}`}
-                className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-              >
-                <Avatar className="h-12 w-12">
-                  {request.requester_profile_pic ? (
-                    <AvatarImage
-                      src={request.requester_profile_pic}
-                      alt={request.requester_username}
-                    />
-                  ) : (
-                    <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500">
-                      {getInitials(request.requester_username)}
-                    </AvatarFallback>
-                  )}
-                </Avatar>
-                <div>
-                  <p className="font-semibold text-white">{request.requester_username}</p>
-                  <p className="text-xs text-slate-400">
-                    Demande envoyée il y a{" "}
-                    {Math.floor((Date.now() - new Date(request.created_at)) / 1000 / 60 / 60)}h
-                  </p>
-                </div>
-              </Link>
+    <div className="min-h-screen bg-slate-950 text-white">
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-slate-800 px-4 py-3 flex items-center justify-between">
+        <h1 className="text-xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+          <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
+        </h1>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setShowMobileMenu(!showMobileMenu)}
+          data-testid="mobile-menu-toggle"
+          className="h-9 w-9"
+        >
+          {showMobileMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </Button>
+      </div>
 
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => handleAccept(request.id, request.requester_username)}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  <UserCheck className="h-4 w-4 mr-1" />
-                  Accepter
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleReject(request.id, request.requester_username)}
-                  className="border-red-700 text-red-500 hover:bg-red-950"
-                >
-                  <UserX className="h-4 w-4 mr-1" />
-                  Refuser
-                </Button>
+      {/* Mobile Menu (Paramètres et Déconnexion uniquement) */}
+      {showMobileMenu && (
+        <div className="lg:hidden fixed inset-0 z-40 bg-slate-950/98 backdrop-blur-xl pt-16">
+          <div className="p-4 space-y-2">
+            {/* Profil utilisateur en haut */}
+            <div className="flex items-center gap-3 p-4 bg-slate-900/50 rounded-xl mb-4 border border-slate-800">
+              <Avatar className="h-12 w-12">
+                <AvatarImage src={user.profile_pic} />
+                <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-blue-500 text-white font-bold">
+                  {user.username[0].toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-white truncate">@{user.username}</p>
+                <p className="text-xs text-slate-400 truncate">{user.email}</p>
               </div>
             </div>
-          ))}
+
+            {/* Paramètres */}
+            {secondaryNavItems.map((item) => (
+              <Button
+                key={item.path}
+                data-testid={item.testId}
+                onClick={() => {
+                  navigate(item.path);
+                  setShowMobileMenu(false);
+                }}
+                variant="ghost"
+                className={`w-full justify-start text-base h-12 ${
+                  location.pathname === item.path
+                    ? "bg-slate-800 text-cyan-500"
+                    : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+                }`}
+              >
+                <item.icon className="w-5 h-5 mr-3" />
+                {item.label}
+              </Button>
+            ))}
+
+            {/* Séparateur */}
+            <div className="h-px bg-slate-800 my-4"></div>
+
+            {/* Déconnexion */}
+            <Button
+              data-testid="mobile-logout-button"
+              onClick={handleLogout}
+              variant="ghost"
+              className="w-full justify-start text-base h-12 text-red-400 hover:text-red-300 hover:bg-red-950/20"
+            >
+              <LogOut className="w-5 h-5 mr-3" />
+              Déconnexion
+            </Button>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      )}
+
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 bg-slate-950 border-r border-slate-800 flex-col z-50">
+        {/* Logo - SANS icône à côté */}
+        <div className="p-6 border-b border-slate-800">
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
+          </h1>
+        </div>
+
+        {/* Navigation - UNIQUEMENT les 5 principales + Paramètres */}
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          {mainNavItems.map((item) => (
+            <Button
+              key={item.path}
+              data-testid={item.testId}
+              onClick={() => navigate(item.path)}
+              variant="ghost"
+              className={`w-full justify-start text-base h-12 ${
+                location.pathname === item.path
+                  ? "bg-slate-800 text-cyan-500"
+                  : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+              }`}
+            >
+              <item.icon className="w-6 h-6 mr-3" />
+              {item.label}
+            </Button>
+          ))}
+
+          {/* Séparateur */}
+          <div className="h-px bg-slate-800 my-2"></div>
+
+          {/* Paramètres */}
+          {secondaryNavItems.map((item) => (
+            <Button
+              key={item.path}
+              data-testid={item.testId}
+              onClick={() => navigate(item.path)}
+              variant="ghost"
+              className={`w-full justify-start text-base h-12 ${
+                location.pathname === item.path
+                  ? "bg-slate-800 text-cyan-500"
+                  : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+              }`}
+            >
+              <item.icon className="w-6 h-6 mr-3" />
+              {item.label}
+            </Button>
+          ))}
+        </nav>
+
+        {/* User Profile */}
+        <div className="p-4 border-t border-slate-800">
+          <div className="flex items-center gap-3 mb-3">
+            <Avatar className="h-10 w-10">
+              <AvatarImage src={user.profile_pic} />
+              <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-blue-500 text-white font-bold">
+                {user.username[0].toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white truncate">@{user.username}</p>
+              <p className="text-xs text-slate-400 truncate">{user.email}</p>
+            </div>
+          </div>
+          <Button
+            data-testid="desktop-logout-button"
+            onClick={handleLogout}
+            variant="ghost"
+            className="w-full justify-start text-sm h-10 text-red-400 hover:text-red-300 hover:bg-red-950/20"
+          >
+            <LogOut className="w-5 h-5 mr-2" />
+            Déconnexion
+          </Button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="lg:ml-64 pt-16 lg:pt-0 pb-20 lg:pb-0">
+        <div className="container mx-auto max-w-7xl">
+          {children}
+        </div>
+      </main>
+
+      {/* Mobile Bottom Navigation - 5 icônes uniquement */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800">
+        <div className="flex justify-around items-center h-16 px-2">
+          {mainNavItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <button
+                key={item.path}
+                data-testid={item.testId}
+                onClick={() => navigate(item.path)}
+                className={`flex flex-col items-center justify-center min-w-0 flex-1 h-full transition-colors ${
+                  isActive ? "text-cyan-500" : "text-slate-400"
+                }`}
+              >
+                <item.icon className={`w-6 h-6 mb-1 ${isActive ? "text-cyan-500" : ""}`} />
+                <span className="text-[10px] font-medium truncate max-w-full px-1">
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
   );
-}
-
-/**
- * Hook pour gérer le statut de follow d'un compte privé
- */
-export function useFollowRequest(userId, isPrivate) {
-  const [status, setStatus] = useState("none"); // none, pending, following
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    checkFollowStatus();
-  }, [userId]);
-
-  const checkFollowStatus = async () => {
-    try {
-      const response = await axios.get(`${API}/users/${userId}/follow-status`);
-      setStatus(response.data.status);
-    } catch (error) {
-      console.error("Erreur vérification statut:", error);
-    }
-  };
-
-  const sendFollowRequest = async () => {
-    setLoading(true);
-    try {
-      if (isPrivate) {
-        await axios.post(`${API}/users/${userId}/follow-request`);
-        setStatus("pending");
-        toast.success("Demande envoyée");
-      } else {
-        await axios.post(`${API}/users/${userId}/follow`);
-        setStatus("following");
-        toast.success("Vous suivez maintenant cet utilisateur");
-      }
-    } catch (error) {
-      console.error("Erreur follow:", error);
-      toast.error("Erreur lors de l'envoi de la demande");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const cancelFollowRequest = async () => {
-    setLoading(true);
-    try {
-      await axios.delete(`${API}/users/${userId}/follow-request`);
-      setStatus("none");
-      toast.success("Demande annulée");
-    } catch (error) {
-      console.error("Erreur annulation:", error);
-      toast.error("Erreur lors de l'annulation");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const unfollow = async () => {
-    setLoading(true);
-    try {
-      await axios.post(`${API}/users/${userId}/follow`);
-      setStatus("none");
-      toast.success("Vous ne suivez plus cet utilisateur");
-    } catch (error) {
-      console.error("Erreur unfollow:", error);
-      toast.error("Erreur lors du désabonnement");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return {
-    status,
-    loading,
-    sendFollowRequest,
-    cancelFollowRequest,
-    unfollow,
-  };
 }
