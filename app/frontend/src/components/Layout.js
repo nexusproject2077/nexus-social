@@ -8,6 +8,7 @@ import CustomMessagingIcon from "@/components/CustomMessagingIcon";
 import CustomSearchIcon from "@/components/CustomSearchIcon";
 import CustomNotificationIcon from "@/components/CustomNotificationIcon";
 import CustomSettingsIcon from "@/components/CustomSettingsIcon";
+import CustomAccountIcon from "@/components/CustomAccountIcon";
 
 export default function Layout({ children, user, setUser }) {
   const navigate = useNavigate();
