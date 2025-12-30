@@ -27,7 +27,7 @@ export default function Layout({ children, user, setUser }) {
     { icon: CustomSearchIcon, label: "Rechercher", path: "/search", testId: "nav-search" },
     { icon: CustomNotificationIcon, label: "Notifications", path: "/notifications", testId: "nav-notifications" },
     { icon: CustomMessagingIcon, label: "Messages", path: "/messages", testId: "nav-messages" },
-    { icon: User, label: "Profil", path: `/profile/${user.id}`, testId: "nav-profile" },
+    { icon: CustomAccountIcon, label: "Profil", path: `/profile/${user.id}`, testId: "nav-profile" },
   ];
 
   // Navigation secondaire (UNIQUEMENT dans le menu burger - juste Paramètres)
