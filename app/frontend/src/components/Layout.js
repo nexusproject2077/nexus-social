@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { User, LogOut, Menu, X, Settings } from "lucide-react";
+import { User, LogOut, Menu, X } from "lucide-react";
 import CustomLogo from "@/components/CustomLogo";
 import CustomMessagingIcon from "@/components/CustomMessagingIcon";
 import CustomSearchIcon from "@/components/CustomSearchIcon";
 import CustomNotificationIcon from "@/components/CustomNotificationIcon";
+import CustomSettingsIcon from "@/components/CustomSettingsIcon";
 
 export default function Layout({ children, user, setUser }) {
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ export default function Layout({ children, user, setUser }) {
 
   // Navigation secondaire (UNIQUEMENT dans le menu burger - juste Paramètres)
   const secondaryNavItems = [
-    { icon: Settings, label: "Paramètres", path: "/settings", testId: "nav-settings" },
+    { icon: CustomSettingsIcon, label: "Paramètres", path: "/settings", testId: "nav-settings" },
   ];
 
   return (
