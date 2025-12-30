@@ -3,7 +3,7 @@ import React from 'react';
 export default function CustomAccountIcon({ className = "w-6 h-6", color = "currentColor" }) {
   return (
     <svg 
-      viewBox="110 110 230 230" 
+      viewBox="80 80 300 300" 
       className={className}
       xmlns="http://www.w3.org/2000/svg"
     >
