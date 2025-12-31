@@ -55,7 +55,7 @@ export default function Layout({ children, user, setUser }) {
 
       {/* Mobile Menu (Paramètres et Déconnexion uniquement) */}
       {showMobileMenu && (
-        <div className="lg:hidden fixed inset-0 z-40 bg-slate-950/98 backdrop-blur-xl pt-16">
+        <div className="lg:hidden fixed inset-0 z-40 bg-slate-950 backdrop-blur-xl pt-16">
           <div className="p-4 space-y-2">
             {/* Profil utilisateur en haut */}
             <div className="flex items-center gap-3 p-4 bg-slate-900/50 rounded-xl mb-4 border border-slate-800">
