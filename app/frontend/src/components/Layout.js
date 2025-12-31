@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { User, LogOut, Menu, X } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import CustomLogo from "@/components/CustomLogo";
 import CustomMessagingIcon from "@/components/CustomMessagingIcon";
 import CustomSearchIcon from "@/components/CustomSearchIcon";
@@ -132,7 +132,7 @@ export default function Layout({ children, user, setUser }) {
                   : "text-slate-300 hover:text-white hover:bg-slate-800/50"
               }`}
             >
-              <item.icon className="w-5 h-5 mr-3" />
+              <item.icon className="w-7 h-7 mr-3" />
               {item.label}
             </Button>
           ))}
@@ -153,7 +153,7 @@ export default function Layout({ children, user, setUser }) {
                   : "text-slate-300 hover:text-white hover:bg-slate-800/50"
               }`}
             >
-              <item.icon className="w-5 h-5 mr-3" />
+              <item.icon className="w-7 h-7 mr-3" />
               {item.label}
             </Button>
           ))}
@@ -179,7 +179,7 @@ export default function Layout({ children, user, setUser }) {
             variant="ghost"
             className="w-full justify-start text-sm h-10 text-red-400 hover:text-red-300 hover:bg-red-950/20"
           >
-            <LogOut className="w-4 h-4 mr-2" />
+            <LogOut className="w-5 h-5 mr-2" />
             Déconnexion
           </Button>
         </div>
