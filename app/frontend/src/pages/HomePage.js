@@ -45,10 +45,10 @@ export default function HomePage({ user, setUser }) {
 
   return (
     <Layout user={user} setUser={setUser}>
-      {/* Container avec padding-top pour mobile */}
-      <div className="max-w-2xl mx-auto pt-16 lg:pt-0">
-        {/* Header sticky - maintenant il part du bon endroit */}
-        <div className="sticky top-16 lg:top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800 p-4">
+      {/* Container sans padding-top - titre reste en haut */}
+      <div className="max-w-2xl mx-auto">
+        {/* Header sticky - directement en haut */}
+        <div className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800 p-4">
           <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
             Fil d'actualité
           </h1>
