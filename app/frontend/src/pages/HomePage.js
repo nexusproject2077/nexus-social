@@ -20,7 +20,7 @@ export default function HomePage({ user, setUser }) {
 
   const fetchFeed = async () => {
     try {
-      const response = await axios.get(`${API}/posts/feed`); // ← CORRIGÉ : parenthèses au lieu de backticks
+      const response = await axios.get(`${API}/posts/feed`);
       setPosts(response.data);
     } catch (error) {
       console.error("Erreur lors du chargement du fil:", error);
@@ -45,9 +45,10 @@ export default function HomePage({ user, setUser }) {
 
   return (
     <Layout user={user} setUser={setUser}>
-      <div className="max-w-2xl mx-auto">
-        {/* Header sticky */}
-        <div className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800 p-4">
+      {/* Container avec padding-top pour mobile */}
+      <div className="max-w-2xl mx-auto pt-16 lg:pt-0">
+        {/* Header sticky - maintenant il part du bon endroit */}
+        <div className="sticky top-16 lg:top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800 p-4">
           <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
             Fil d'actualité
           </h1>
