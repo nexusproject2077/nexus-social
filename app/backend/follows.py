@@ -1,508 +1,419 @@
 """
-follows.py - Gestion complète du système de suivi (follow/unfollow)
+follows.py - Système de suivi complet pour FastAPI + MongoDB
 Inclut : suivi, demandes d'abonnement, listes abonnés/abonnements
 """
 
-from flask import Blueprint, request, jsonify, g
-from functools import wraps
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from database import get_db_connection
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from motor.motor_asyncio import AsyncIOMotorClient
+from datetime import datetime, timezone
+from typing import List, Optional
+from pydantic import BaseModel
 import jwt
 import os
 
-follow_bp = Blueprint('follows', __name__)
+# Router pour les follows
+follow_router = APIRouter(prefix="/api", tags=["follows"])
 
-# ==================== MIDDLEWARE AUTH ====================
+# Security
+security = HTTPBearer()
+SECRET_KEY = os.environ.get('SECRET_KEY', '76f267dbc69c6b4e639a50a7ccdd3783')
+ALGORITHM = "HS256"
 
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            return jsonify({'error': 'Token manquant'}), 401
-        
-        try:
-            if token.startswith('Bearer '):
-                token = token[7:]
-            
-            data = jwt.decode(token, os.getenv('JWT_SECRET', 'your-secret-key'), algorithms=['HS256'])
-            g.current_user_id = data['user_id']
-        except:
-            return jsonify({'error': 'Token invalide'}), 401
-        
-        return f(*args, **kwargs)
-    
-    return decorated
+# MongoDB (sera injecté depuis server.py)
+db = None
 
+def set_database(database):
+    """Fonction pour injecter la DB depuis server.py"""
+    global db
+    db = database
+
+# ==================== MODELS ====================
+
+class FollowRequest(BaseModel):
+    id: str
+    follower_id: str
+    follower_username: str
+    follower_profile_pic: Optional[str] = None
+    created_at: str
+
+class FollowUser(BaseModel):
+    id: str
+    username: str
+    profile_pic: Optional[str] = None
+    is_following_back: Optional[bool] = False
+    follows_back: Optional[bool] = False
+
+class FollowStats(BaseModel):
+    followers: int
+    following: int
+    posts: int
 
 # ==================== HELPER FUNCTIONS ====================
 
-def check_follow_status(follower_id, followed_id, conn):
+def convert_mongo_doc(doc: dict) -> dict:
+    """Convertit un document MongoDB"""
+    if doc is None:
+        return None
+    new_doc = doc.copy()
+    if "_id" in new_doc:
+        if "id" not in new_doc:
+            new_doc["id"] = str(new_doc["_id"])
+        del new_doc["_id"]
+    return new_doc
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Récupère l'utilisateur actuel depuis le token"""
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("user_id")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Token invalide")
+        return user_id
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expiré")
+    except:
+        raise HTTPException(status_code=401, detail="Token invalide")
+
+async def check_follow_status(follower_id: str, followed_id: str) -> str:
     """
-    Vérifie le statut d'abonnement entre deux utilisateurs
+    Vérifie le statut d'abonnement
     Returns: 'following', 'pending', 'not_following'
     """
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Vérifier abonnement confirmé
+    follow = await db.follows.find_one({
+        "follower_id": follower_id,
+        "followed_id": followed_id,
+        "status": "following"
+    })
+    if follow:
+        return "following"
     
-    # Vérifier dans follows (abonnements confirmés)
-    cursor.execute("""
-        SELECT * FROM follows 
-        WHERE follower_id = %s AND followed_id = %s AND status = 'following'
-    """, (follower_id, followed_id))
+    # Vérifier demande en attente
+    request = await db.follow_requests.find_one({
+        "follower_id": follower_id,
+        "followed_id": followed_id,
+        "status": "pending"
+    })
+    if request:
+        return "pending"
     
-    if cursor.fetchone():
-        return 'following'
-    
-    # Vérifier dans follow_requests (demandes en attente)
-    cursor.execute("""
-        SELECT * FROM follow_requests 
-        WHERE follower_id = %s AND followed_id = %s AND status = 'pending'
-    """, (follower_id, followed_id))
-    
-    if cursor.fetchone():
-        return 'pending'
-    
-    return 'not_following'
+    return "not_following"
 
-
-def is_account_private(user_id, conn):
+async def is_account_private(user_id: str) -> bool:
     """Vérifie si le compte est privé"""
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute("SELECT is_private FROM users WHERE id = %s", (user_id,))
-    result = cursor.fetchone()
-    return result['is_private'] if result else False
+    user = await db.users.find_one({"id": user_id})
+    return user.get("is_private", False) if user else False
 
-
-def can_view_profile(viewer_id, profile_id, conn):
-    """
-    Vérifie si viewer_id peut voir le profil/contenu de profile_id
-    Returns: True si autorisé
-    """
-    # Propre profil
+async def can_view_profile(viewer_id: str, profile_id: str) -> bool:
+    """Vérifie si viewer peut voir le contenu de profile"""
     if viewer_id == profile_id:
         return True
     
-    # Compte public
-    if not is_account_private(profile_id, conn):
+    if not await is_account_private(profile_id):
         return True
     
-    # Compte privé : vérifier si suit
-    status = check_follow_status(viewer_id, profile_id, conn)
-    return status == 'following'
-
+    status = await check_follow_status(viewer_id, profile_id)
+    return status == "following"
 
 # ==================== ENDPOINTS SUIVI ====================
 
-@follow_bp.route('/users/<int:user_id>/follow', methods=['POST'])
-@token_required
-def follow_user(user_id):
+@follow_router.post("/users/{user_id}/follow")
+async def follow_user(user_id: str, current_user_id: str = Depends(get_current_user)):
     """
     Suivre un utilisateur (ou envoyer demande si privé)
     POST /api/users/{user_id}/follow
     """
-    current_user_id = g.current_user_id
-    
     if current_user_id == user_id:
-        return jsonify({'error': 'Vous ne pouvez pas vous suivre vous-même'}), 400
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas vous suivre vous-même")
     
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Vérifier si l'utilisateur existe
+    target_user = await db.users.find_one({"id": user_id})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     
-    try:
-        # Vérifier si l'utilisateur existe
-        cursor.execute("SELECT id, username, is_private FROM users WHERE id = %s", (user_id,))
-        target_user = cursor.fetchone()
-        
-        if not target_user:
-            return jsonify({'error': 'Utilisateur introuvable'}), 404
-        
-        # Vérifier si déjà abonné ou demande en cours
-        existing_status = check_follow_status(current_user_id, user_id, conn)
-        
-        if existing_status == 'following':
-            return jsonify({'error': 'Vous suivez déjà cet utilisateur'}), 400
-        
-        if existing_status == 'pending':
-            return jsonify({'error': 'Demande déjà en attente'}), 400
-        
-        # Si compte PRIVÉ : créer demande
-        if target_user['is_private']:
-            cursor.execute("""
-                INSERT INTO follow_requests (follower_id, followed_id, status)
-                VALUES (%s, %s, 'pending')
-                ON CONFLICT (follower_id, followed_id) DO NOTHING
-            """, (current_user_id, user_id))
-            
-            conn.commit()
-            
-            return jsonify({
-                'status': 'pending',
-                'message': 'Demande d\'abonnement envoyée'
-            }), 201
-        
-        # Si compte PUBLIC : abonnement direct
-        else:
-            cursor.execute("""
-                INSERT INTO follows (follower_id, followed_id, status)
-                VALUES (%s, %s, 'following')
-                ON CONFLICT (follower_id, followed_id) DO NOTHING
-            """, (current_user_id, user_id))
-            
-            conn.commit()
-            
-            return jsonify({
-                'status': 'following',
-                'message': 'Vous suivez maintenant cet utilisateur'
-            }), 201
+    # Vérifier statut actuel
+    existing_status = await check_follow_status(current_user_id, user_id)
     
-    except Exception as e:
-        conn.rollback()
-        return jsonify({'error': str(e)}), 500
+    if existing_status == "following":
+        raise HTTPException(status_code=400, detail="Vous suivez déjà cet utilisateur")
     
-    finally:
-        cursor.close()
-        conn.close()
+    if existing_status == "pending":
+        raise HTTPException(status_code=400, detail="Demande déjà en attente")
+    
+    # Si compte PRIVÉ : créer demande
+    if target_user.get("is_private", False):
+        await db.follow_requests.insert_one({
+            "id": f"req_{current_user_id}_{user_id}_{int(datetime.now(timezone.utc).timestamp())}",
+            "follower_id": current_user_id,
+            "followed_id": user_id,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        return {
+            "status": "pending",
+            "message": "Demande d'abonnement envoyée"
+        }
+    
+    # Si compte PUBLIC : abonnement direct
+    else:
+        await db.follows.insert_one({
+            "id": f"follow_{current_user_id}_{user_id}",
+            "follower_id": current_user_id,
+            "followed_id": user_id,
+            "status": "following",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Incrémenter compteurs
+        await db.users.update_one(
+            {"id": user_id},
+            {"$inc": {"followers_count": 1}}
+        )
+        await db.users.update_one(
+            {"id": current_user_id},
+            {"$inc": {"following_count": 1}}
+        )
+        
+        return {
+            "status": "following",
+            "message": "Vous suivez maintenant cet utilisateur"
+        }
 
-
-@follow_bp.route('/users/<int:user_id>/follow', methods=['DELETE'])
-@token_required
-def unfollow_user(user_id):
+@follow_router.delete("/users/{user_id}/follow")
+async def unfollow_user(user_id: str, current_user_id: str = Depends(get_current_user)):
     """
     Se désabonner d'un utilisateur
     DELETE /api/users/{user_id}/follow
     """
-    current_user_id = g.current_user_id
+    # Supprimer de follows
+    result = await db.follows.delete_one({
+        "follower_id": current_user_id,
+        "followed_id": user_id
+    })
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    # Supprimer demande en attente si existe
+    await db.follow_requests.delete_one({
+        "follower_id": current_user_id,
+        "followed_id": user_id
+    })
     
-    try:
-        # Supprimer de follows
-        cursor.execute("""
-            DELETE FROM follows 
-            WHERE follower_id = %s AND followed_id = %s
-        """, (current_user_id, user_id))
-        
-        # Supprimer demande en attente si existe
-        cursor.execute("""
-            DELETE FROM follow_requests 
-            WHERE follower_id = %s AND followed_id = %s
-        """, (current_user_id, user_id))
-        
-        conn.commit()
-        
-        return jsonify({'message': 'Désabonnement réussi'}), 200
+    if result.deleted_count > 0:
+        # Décrémenter compteurs
+        await db.users.update_one(
+            {"id": user_id},
+            {"$inc": {"followers_count": -1}}
+        )
+        await db.users.update_one(
+            {"id": current_user_id},
+            {"$inc": {"following_count": -1}}
+        )
     
-    except Exception as e:
-        conn.rollback()
-        return jsonify({'error': str(e)}), 500
-    
-    finally:
-        cursor.close()
-        conn.close()
+    return {"message": "Désabonnement réussi"}
 
-
-@follow_bp.route('/users/<int:user_id>/follow-status', methods=['GET'])
-@token_required
-def get_follow_status(user_id):
+@follow_router.get("/users/{user_id}/follow-status")
+async def get_follow_status(user_id: str, current_user_id: str = Depends(get_current_user)):
     """
     Vérifier le statut d'abonnement
     GET /api/users/{user_id}/follow-status
     """
-    current_user_id = g.current_user_id
+    status = await check_follow_status(current_user_id, user_id)
+    is_private = await is_account_private(user_id)
     
-    conn = get_db_connection()
-    
-    try:
-        status = check_follow_status(current_user_id, user_id, conn)
-        is_private = is_account_private(user_id, conn)
-        
-        return jsonify({
-            'status': status,
-            'is_private': is_private
-        }), 200
-    
-    finally:
-        conn.close()
-
+    return {
+        "status": status,
+        "is_private": is_private
+    }
 
 # ==================== LISTES ABONNÉS/ABONNEMENTS ====================
 
-@follow_bp.route('/users/<int:user_id>/followers', methods=['GET'])
-@token_required
-def get_followers(user_id):
+@follow_router.get("/users/{user_id}/followers")
+async def get_followers(user_id: str, current_user_id: str = Depends(get_current_user)):
     """
     Liste des abonnés d'un utilisateur
     GET /api/users/{user_id}/followers
-    Accessible seulement si autorisé (compte public ou abonné)
     """
-    current_user_id = g.current_user_id
+    # Vérifier autorisation
+    if not await can_view_profile(current_user_id, user_id):
+        raise HTTPException(status_code=403, detail="Compte privé - abonnement requis")
     
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Récupérer les abonnés
+    followers_list = []
+    async for follow in db.follows.find({"followed_id": user_id, "status": "following"}):
+        follower = await db.users.find_one({"id": follow["follower_id"]})
+        if follower:
+            # Vérifier si suit en retour
+            is_following_back = await db.follows.find_one({
+                "follower_id": current_user_id,
+                "followed_id": follower["id"],
+                "status": "following"
+            }) is not None
+            
+            followers_list.append({
+                "id": follower["id"],
+                "username": follower["username"],
+                "profile_pic": follower.get("profile_pic"),
+                "is_following_back": is_following_back
+            })
     
-    try:
-        # Vérifier autorisation
-        if not can_view_profile(current_user_id, user_id, conn):
-            return jsonify({'error': 'Compte privé - abonnement requis'}), 403
-        
-        # Récupérer les abonnés
-        cursor.execute("""
-            SELECT 
-                u.id,
-                u.username,
-                u.profile_pic,
-                EXISTS(
-                    SELECT 1 FROM follows 
-                    WHERE follower_id = %s AND followed_id = u.id
-                ) as is_following_back
-            FROM follows f
-            JOIN users u ON f.follower_id = u.id
-            WHERE f.followed_id = %s AND f.status = 'following'
-            ORDER BY f.created_at DESC
-        """, (current_user_id, user_id))
-        
-        followers = cursor.fetchall()
-        
-        return jsonify({
-            'followers': followers,
-            'count': len(followers)
-        }), 200
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
-    finally:
-        cursor.close()
-        conn.close()
+    return {
+        "followers": followers_list,
+        "count": len(followers_list)
+    }
 
-
-@follow_bp.route('/users/<int:user_id>/following', methods=['GET'])
-@token_required
-def get_following(user_id):
+@follow_router.get("/users/{user_id}/following")
+async def get_following(user_id: str, current_user_id: str = Depends(get_current_user)):
     """
     Liste des abonnements d'un utilisateur
     GET /api/users/{user_id}/following
-    Accessible seulement si autorisé
     """
-    current_user_id = g.current_user_id
+    # Vérifier autorisation
+    if not await can_view_profile(current_user_id, user_id):
+        raise HTTPException(status_code=403, detail="Compte privé - abonnement requis")
     
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Récupérer les abonnements
+    following_list = []
+    async for follow in db.follows.find({"follower_id": user_id, "status": "following"}):
+        followed_user = await db.users.find_one({"id": follow["followed_id"]})
+        if followed_user:
+            # Vérifier si suit en retour
+            follows_back = await db.follows.find_one({
+                "follower_id": followed_user["id"],
+                "followed_id": current_user_id,
+                "status": "following"
+            }) is not None
+            
+            following_list.append({
+                "id": followed_user["id"],
+                "username": followed_user["username"],
+                "profile_pic": followed_user.get("profile_pic"),
+                "follows_back": follows_back
+            })
     
-    try:
-        # Vérifier autorisation
-        if not can_view_profile(current_user_id, user_id, conn):
-            return jsonify({'error': 'Compte privé - abonnement requis'}), 403
-        
-        # Récupérer les abonnements
-        cursor.execute("""
-            SELECT 
-                u.id,
-                u.username,
-                u.profile_pic,
-                EXISTS(
-                    SELECT 1 FROM follows 
-                    WHERE follower_id = u.id AND followed_id = %s
-                ) as follows_back
-            FROM follows f
-            JOIN users u ON f.followed_id = u.id
-            WHERE f.follower_id = %s AND f.status = 'following'
-            ORDER BY f.created_at DESC
-        """, (current_user_id, user_id))
-        
-        following = cursor.fetchall()
-        
-        return jsonify({
-            'following': following,
-            'count': len(following)
-        }), 200
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
-    finally:
-        cursor.close()
-        conn.close()
-
+    return {
+        "following": following_list,
+        "count": len(following_list)
+    }
 
 # ==================== DEMANDES D'ABONNEMENT ====================
 
-@follow_bp.route('/follow-requests', methods=['GET'])
-@token_required
-def get_follow_requests():
+@follow_router.get("/follow-requests")
+async def get_follow_requests(current_user_id: str = Depends(get_current_user)):
     """
     Liste des demandes d'abonnement reçues
     GET /api/follow-requests
     """
-    current_user_id = g.current_user_id
+    requests_list = []
     
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
-    try:
-        cursor.execute("""
-            SELECT 
-                fr.id,
-                fr.created_at,
-                json_build_object(
-                    'id', u.id,
-                    'username', u.username,
-                    'profile_pic', u.profile_pic
-                ) as user
-            FROM follow_requests fr
-            JOIN users u ON fr.follower_id = u.id
-            WHERE fr.followed_id = %s AND fr.status = 'pending'
-            ORDER BY fr.created_at DESC
-        """, (current_user_id,))
+    async for request in db.follow_requests.find({
+        "followed_id": current_user_id,
+        "status": "pending"
+    }).sort("created_at", -1):
         
-        requests = cursor.fetchall()
-        
-        return jsonify({
-            'requests': requests,
-            'count': len(requests)
-        }), 200
+        follower = await db.users.find_one({"id": request["follower_id"]})
+        if follower:
+            requests_list.append({
+                "id": request["id"],
+                "user": {
+                    "id": follower["id"],
+                    "username": follower["username"],
+                    "profile_pic": follower.get("profile_pic")
+                },
+                "created_at": request["created_at"]
+            })
     
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
-    finally:
-        cursor.close()
-        conn.close()
+    return {
+        "requests": requests_list,
+        "count": len(requests_list)
+    }
 
-
-@follow_bp.route('/follow-requests/<int:request_id>/accept', methods=['POST'])
-@token_required
-def accept_follow_request(request_id):
+@follow_router.post("/follow-requests/{request_id}/accept")
+async def accept_follow_request(request_id: str, current_user_id: str = Depends(get_current_user)):
     """
     Accepter une demande d'abonnement
     POST /api/follow-requests/{request_id}/accept
     """
-    current_user_id = g.current_user_id
+    # Vérifier que la demande existe
+    request = await db.follow_requests.find_one({
+        "id": request_id,
+        "followed_id": current_user_id,
+        "status": "pending"
+    })
     
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    if not request:
+        raise HTTPException(status_code=404, detail="Demande introuvable")
     
-    try:
-        # Vérifier que la demande existe et appartient à l'utilisateur
-        cursor.execute("""
-            SELECT follower_id, followed_id 
-            FROM follow_requests 
-            WHERE id = %s AND followed_id = %s AND status = 'pending'
-        """, (request_id, current_user_id))
-        
-        request_data = cursor.fetchone()
-        
-        if not request_data:
-            return jsonify({'error': 'Demande introuvable'}), 404
-        
-        # Créer l'abonnement
-        cursor.execute("""
-            INSERT INTO follows (follower_id, followed_id, status)
-            VALUES (%s, %s, 'following')
-            ON CONFLICT (follower_id, followed_id) DO NOTHING
-        """, (request_data['follower_id'], request_data['followed_id']))
-        
-        # Supprimer la demande
-        cursor.execute("""
-            DELETE FROM follow_requests WHERE id = %s
-        """, (request_id,))
-        
-        conn.commit()
-        
-        return jsonify({'message': 'Demande acceptée'}), 200
+    # Créer l'abonnement
+    await db.follows.insert_one({
+        "id": f"follow_{request['follower_id']}_{request['followed_id']}",
+        "follower_id": request["follower_id"],
+        "followed_id": request["followed_id"],
+        "status": "following",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
     
-    except Exception as e:
-        conn.rollback()
-        return jsonify({'error': str(e)}), 500
+    # Supprimer la demande
+    await db.follow_requests.delete_one({"id": request_id})
     
-    finally:
-        cursor.close()
-        conn.close()
+    # Incrémenter compteurs
+    await db.users.update_one(
+        {"id": request["followed_id"]},
+        {"$inc": {"followers_count": 1}}
+    )
+    await db.users.update_one(
+        {"id": request["follower_id"]},
+        {"$inc": {"following_count": 1}}
+    )
+    
+    return {"message": "Demande acceptée"}
 
-
-@follow_bp.route('/follow-requests/<int:request_id>/reject', methods=['POST'])
-@token_required
-def reject_follow_request(request_id):
+@follow_router.post("/follow-requests/{request_id}/reject")
+async def reject_follow_request(request_id: str, current_user_id: str = Depends(get_current_user)):
     """
     Refuser une demande d'abonnement
     POST /api/follow-requests/{request_id}/reject
     """
-    current_user_id = g.current_user_id
+    result = await db.follow_requests.delete_one({
+        "id": request_id,
+        "followed_id": current_user_id,
+        "status": "pending"
+    })
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Demande introuvable")
     
-    try:
-        # Vérifier et supprimer la demande
-        cursor.execute("""
-            DELETE FROM follow_requests 
-            WHERE id = %s AND followed_id = %s AND status = 'pending'
-        """, (request_id, current_user_id))
-        
-        if cursor.rowcount == 0:
-            return jsonify({'error': 'Demande introuvable'}), 404
-        
-        conn.commit()
-        
-        return jsonify({'message': 'Demande refusée'}), 200
-    
-    except Exception as e:
-        conn.rollback()
-        return jsonify({'error': str(e)}), 500
-    
-    finally:
-        cursor.close()
-        conn.close()
-
+    return {"message": "Demande refusée"}
 
 # ==================== STATISTIQUES ====================
 
-@follow_bp.route('/users/<int:user_id>/stats', methods=['GET'])
-@token_required
-def get_user_stats(user_id):
+@follow_router.get("/users/{user_id}/stats")
+async def get_user_stats(user_id: str, current_user_id: str = Depends(get_current_user)):
     """
     Statistiques publiques d'un utilisateur
     GET /api/users/{user_id}/stats
     """
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Compter abonnés
+    followers_count = await db.follows.count_documents({
+        "followed_id": user_id,
+        "status": "following"
+    })
     
-    try:
-        # Nombre d'abonnés
-        cursor.execute("""
-            SELECT COUNT(*) as count 
-            FROM follows 
-            WHERE followed_id = %s AND status = 'following'
-        """, (user_id,))
-        followers_count = cursor.fetchone()['count']
-        
-        # Nombre d'abonnements
-        cursor.execute("""
-            SELECT COUNT(*) as count 
-            FROM follows 
-            WHERE follower_id = %s AND status = 'following'
-        """, (user_id,))
-        following_count = cursor.fetchone()['count']
-        
-        # Nombre de posts
-        cursor.execute("""
-            SELECT COUNT(*) as count 
-            FROM posts 
-            WHERE user_id = %s AND deleted_at IS NULL
-        """, (user_id,))
-        posts_count = cursor.fetchone()['count']
-        
-        return jsonify({
-            'followers': followers_count,
-            'following': following_count,
-            'posts': posts_count
-        }), 200
+    # Compter abonnements
+    following_count = await db.follows.count_documents({
+        "follower_id": user_id,
+        "status": "following"
+    })
     
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    # Compter posts (non supprimés)
+    posts_count = await db.posts.count_documents({
+        "author_id": user_id,
+        "deleted_at": None
+    })
     
-    finally:
-        cursor.close()
-        conn.close()
+    return {
+        "followers": followers_count,
+        "following": following_count,
+        "posts": posts_count
+    }
