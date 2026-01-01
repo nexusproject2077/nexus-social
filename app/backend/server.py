@@ -22,7 +22,17 @@ import base64
 from bson import ObjectId
 import json
 from collections import defaultdict
-from follows import follow_router, set_database
+
+# Import du module follows (avec gestion des chemins)
+try:
+    from backend.follows import follow_router, set_database
+except ImportError:
+    try:
+        from follows import follow_router, set_database
+    except ImportError:
+        print("⚠️ WARNING: Module 'follows' not found. Follow system will not be available.")
+        follow_router = None
+        set_database = None
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1696,8 +1706,16 @@ async def get_cookie_policy():
 </html>
     """, media_type="text/html")
 
-set_database(db)
-app.include_router(follow_router)
+# ==================== FOLLOW SYSTEM INTEGRATION ====================
+# Injecter la database dans le module follows
+if set_database is not None:
+    set_database(db)
+    print("✅ Follow system database injected")
+
+# Inclure le router des follows
+if follow_router is not None:
+    app.include_router(follow_router)
+    print("✅ Follow system router registered")
 
 # Inclure le routeur principal
 app.include_router(api_router)
