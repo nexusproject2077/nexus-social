@@ -22,6 +22,7 @@ import base64
 from bson import ObjectId
 import json
 from collections import defaultdict
+from follows import follow_router, set_database
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1694,6 +1695,9 @@ async def get_cookie_policy():
 </body>
 </html>
     """, media_type="text/html")
+
+set_database(db)
+app.include_router(follow_router)
 
 # Inclure le routeur principal
 app.include_router(api_router)
