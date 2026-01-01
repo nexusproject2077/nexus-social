@@ -67,14 +67,20 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     try:
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("user_id")
+        
+        # Essayer "sub" (format principal) puis "user_id" (fallback)
+        user_id = payload.get("sub") or payload.get("user_id")
+        
         if user_id is None:
             raise HTTPException(status_code=401, detail="Token invalide")
+        
         return user_id
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expiré")
-    except:
+    except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token invalide")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Erreur d'authentification: {str(e)}")
 
 async def check_follow_status(follower_id: str, followed_id: str) -> str:
     """
@@ -188,30 +194,41 @@ async def unfollow_user(user_id: str, current_user_id: str = Depends(get_current
     Se désabonner d'un utilisateur
     DELETE /api/users/{user_id}/follow
     """
-    # Supprimer de follows
-    result = await db.follows.delete_one({
-        "follower_id": current_user_id,
-        "followed_id": user_id
-    })
+    try:
+        # Vérifier si l'abonnement existe avant de supprimer
+        existing_follow = await db.follows.find_one({
+            "follower_id": current_user_id,
+            "followed_id": user_id
+        })
+        
+        # Supprimer de follows
+        await db.follows.delete_one({
+            "follower_id": current_user_id,
+            "followed_id": user_id
+        })
+        
+        # Supprimer demande en attente si existe
+        await db.follow_requests.delete_one({
+            "follower_id": current_user_id,
+            "followed_id": user_id
+        })
+        
+        # Décrémenter compteurs SEULEMENT si l'abonnement existait
+        if existing_follow:
+            await db.users.update_one(
+                {"id": user_id},
+                {"$inc": {"followers_count": -1}}
+            )
+            await db.users.update_one(
+                {"id": current_user_id},
+                {"$inc": {"following_count": -1}}
+            )
+        
+        return {"message": "Désabonnement réussi"}
     
-    # Supprimer demande en attente si existe
-    await db.follow_requests.delete_one({
-        "follower_id": current_user_id,
-        "followed_id": user_id
-    })
-    
-    if result.deleted_count > 0:
-        # Décrémenter compteurs
-        await db.users.update_one(
-            {"id": user_id},
-            {"$inc": {"followers_count": -1}}
-        )
-        await db.users.update_one(
-            {"id": current_user_id},
-            {"$inc": {"following_count": -1}}
-        )
-    
-    return {"message": "Désabonnement réussi"}
+    except Exception as e:
+        print(f"❌ Error in unfollow: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erreur lors du désabonnement: {str(e)}")
 
 @follow_router.get("/users/{user_id}/follow-status")
 async def get_follow_status(user_id: str, current_user_id: str = Depends(get_current_user)):
