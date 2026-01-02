@@ -479,9 +479,12 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
 
 @api_router.get("/posts/feed", response_model=List[Post])
 async def get_posts_feed(current_user: dict = Depends(get_current_user)):
-    """Récupère le feed de posts"""
+    """Récupère le feed de posts (seulement des comptes autorisés)"""
     # Récupère les utilisateurs suivis
-    follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(length=100)
+    follows_raw = await db.follows.find({
+        "follower_id": current_user["id"],
+        "status": "following"  # ← IMPORTANT: seulement les follows confirmés
+    }).to_list(length=100)
     
     # Support ancien format (following_id) et nouveau (followed_id)
     followed_user_ids = []
@@ -766,7 +769,29 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
 
 @api_router.get("/users/{user_id}/posts", response_model=List[Post])
 async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Récupère les posts d'un utilisateur"""
+    """Récupère les posts d'un utilisateur (avec vérification privacy)"""
+    
+    # Vérifier si c'est son propre profil
+    is_own_profile = current_user["id"] == user_id
+    
+    if not is_own_profile:
+        # Récupérer l'utilisateur cible
+        target_user = await db.users.find_one({"id": user_id})
+        
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Si le compte est privé, vérifier si l'utilisateur suit
+        if target_user.get("is_private", False):
+            is_following = await check_is_following(current_user["id"], user_id)
+            
+            if not is_following:
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Ce compte est privé. Vous devez être abonné pour voir ses publications."
+                )
+    
+    # Récupérer les posts
     posts_raw = await db.posts.find({"author_id": user_id}).sort("created_at", -1).to_list(length=50)
     
     posts = []
