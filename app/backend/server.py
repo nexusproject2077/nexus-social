@@ -166,6 +166,21 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
     return new_doc
 
 
+async def check_is_following(follower_id: str, followed_id: str) -> bool:
+    """
+    Vérifie si follower_id suit followed_id
+    Compatible avec ancien format (following_id) et nouveau (followed_id)
+    """
+    # Chercher avec les deux formats
+    follow = await db.follows.find_one({
+        "$or": [
+            {"follower_id": follower_id, "followed_id": followed_id},
+            {"follower_id": follower_id, "following_id": followed_id}
+        ]
+    })
+    return bool(follow)
+
+
 # Router principal
 api_router = APIRouter(prefix="/api")
 
@@ -467,7 +482,16 @@ async def get_posts_feed(current_user: dict = Depends(get_current_user)):
     """Récupère le feed de posts"""
     # Récupère les utilisateurs suivis
     follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(length=100)
-    followed_user_ids = [convert_mongo_doc_to_dict(f)["followed_id"] for f in follows_raw]  # ← CORRIGÉ: followed_id au lieu de following_id
+    
+    # Support ancien format (following_id) et nouveau (followed_id)
+    followed_user_ids = []
+    for f in follows_raw:
+        f_dict = convert_mongo_doc_to_dict(f)
+        # Essaie followed_id puis following_id (rétrocompatibilité)
+        user_id = f_dict.get("followed_id") or f_dict.get("following_id")
+        if user_id:
+            followed_user_ids.append(user_id)
+    
     followed_user_ids.append(current_user["id"])
     
     # Récupère les posts
@@ -705,7 +729,7 @@ async def search_users(q: str, current_user: dict = Depends(get_current_user)):
     users = []
     for user_raw in users_raw:
         user = convert_mongo_doc_to_dict(user_raw)
-        is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "followed_id": user["id"]})
+        is_following = await check_is_following(current_user["id"], user["id"])
         users.append(UserProfile(
             id=user["id"],
             username=user["username"],
@@ -713,7 +737,7 @@ async def search_users(q: str, current_user: dict = Depends(get_current_user)):
             profile_pic=user.get("profile_pic"),
             followers_count=user.get("followers_count", 0),
             following_count=user.get("following_count", 0),
-            is_following=bool(is_following_raw),
+            is_following=is_following,
             created_at=user["created_at"]
         ))
     
@@ -727,7 +751,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         raise HTTPException(status_code=404, detail="User not found")
     
     user = convert_mongo_doc_to_dict(user_raw)
-    is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "followed_id": user_id})
+    is_following = await check_is_following(current_user["id"], user_id)
     
     return UserProfile(
         id=user["id"],
@@ -736,7 +760,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         profile_pic=user.get("profile_pic"),
         followers_count=user.get("followers_count", 0),
         following_count=user.get("following_count", 0),
-        is_following=bool(is_following_raw),
+        is_following=is_following,
         created_at=user["created_at"]
     )
 
@@ -1099,7 +1123,7 @@ async def search(q: str, current_user: dict = Depends(get_current_user)):
     users = []
     for user_raw in users_raw:
         user = convert_mongo_doc_to_dict(user_raw)
-        is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "followed_id": user["id"]})
+        is_following = await check_is_following(current_user["id"], user["id"])
         users.append(UserProfile(
             id=user["id"],
             username=user["username"],
@@ -1107,7 +1131,7 @@ async def search(q: str, current_user: dict = Depends(get_current_user)):
             profile_pic=user.get("profile_pic"),
             followers_count=user.get("followers_count", 0),
             following_count=user.get("following_count", 0),
-            is_following=bool(is_following_raw),
+            is_following=is_following,
             created_at=user["created_at"]
         ))
     
@@ -1158,7 +1182,16 @@ async def get_stories_feed(current_user: dict = Depends(get_current_user)):
     
     # Récupère les utilisateurs suivis + l'utilisateur actuel
     follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(length=100)
-    followed_user_ids = [convert_mongo_doc_to_dict(f)["followed_id"] for f in follows_raw]  # ← CORRIGÉ: followed_id au lieu de following_id
+    
+    # Support ancien format (following_id) et nouveau (followed_id)
+    followed_user_ids = []
+    for f in follows_raw:
+        f_dict = convert_mongo_doc_to_dict(f)
+        # Essaie followed_id puis following_id (rétrocompatibilité)
+        user_id = f_dict.get("followed_id") or f_dict.get("following_id")
+        if user_id:
+            followed_user_ids.append(user_id)
+    
     followed_user_ids.append(current_user["id"])  # Ajoute l'utilisateur actuel
     
     # Récupère toutes les stories non expirées des utilisateurs suivis
