@@ -467,7 +467,7 @@ async def get_posts_feed(current_user: dict = Depends(get_current_user)):
     """Récupère le feed de posts"""
     # Récupère les utilisateurs suivis
     follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(length=100)
-    followed_user_ids = [convert_mongo_doc_to_dict(f)["following_id"] for f in follows_raw]
+    followed_user_ids = [convert_mongo_doc_to_dict(f)["followed_id"] for f in follows_raw]  # ← CORRIGÉ: followed_id au lieu de following_id
     followed_user_ids.append(current_user["id"])
     
     # Récupère les posts
@@ -705,7 +705,7 @@ async def search_users(q: str, current_user: dict = Depends(get_current_user)):
     users = []
     for user_raw in users_raw:
         user = convert_mongo_doc_to_dict(user_raw)
-        is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user["id"]})
+        is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "followed_id": user["id"]})
         users.append(UserProfile(
             id=user["id"],
             username=user["username"],
@@ -727,7 +727,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         raise HTTPException(status_code=404, detail="User not found")
     
     user = convert_mongo_doc_to_dict(user_raw)
-    is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
+    is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "followed_id": user_id})
     
     return UserProfile(
         id=user["id"],
@@ -847,7 +847,7 @@ async def delete_account(current_user: dict = Depends(get_current_user)):
     await db.posts.delete_many({"author_id": user_id})
     await db.comments.delete_many({"author_id": user_id})
     await db.likes.delete_many({"user_id": user_id})
-    await db.follows.delete_many({"$or": [{"follower_id": user_id}, {"following_id": user_id}]})
+    await db.follows.delete_many({"$or": [{"follower_id": user_id}, {"followed_id": user_id}]})
     await db.messages.delete_many({"$or": [{"sender_id": user_id}, {"recipient_id": user_id}]})
     await db.notifications.delete_many({"$or": [{"user_id": user_id}, {"from_user_id": user_id}]})
     
@@ -932,11 +932,11 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
     
-    existing_follow_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user_id})
+    existing_follow_raw = await db.follows.find_one({"follower_id": current_user["id"], "followed_id": user_id})
     
     if existing_follow_raw:
         # Unfollow
-        await db.follows.delete_one({"follower_id": current_user["id"], "following_id": user_id})
+        await db.follows.delete_one({"follower_id": current_user["id"], "followed_id": user_id})
         await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": -1}})
         await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": -1}})
         return {"following": False}
@@ -946,7 +946,7 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
         await db.follows.insert_one({
             "id": follow_id,
             "follower_id": current_user["id"],
-            "following_id": user_id,
+            "followed_id": user_id,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": 1}})
@@ -1099,7 +1099,7 @@ async def search(q: str, current_user: dict = Depends(get_current_user)):
     users = []
     for user_raw in users_raw:
         user = convert_mongo_doc_to_dict(user_raw)
-        is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "following_id": user["id"]})
+        is_following_raw = await db.follows.find_one({"follower_id": current_user["id"], "followed_id": user["id"]})
         users.append(UserProfile(
             id=user["id"],
             username=user["username"],
@@ -1158,7 +1158,7 @@ async def get_stories_feed(current_user: dict = Depends(get_current_user)):
     
     # Récupère les utilisateurs suivis + l'utilisateur actuel
     follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(length=100)
-    followed_user_ids = [convert_mongo_doc_to_dict(f)["following_id"] for f in follows_raw]
+    followed_user_ids = [convert_mongo_doc_to_dict(f)["followed_id"] for f in follows_raw]  # ← CORRIGÉ: followed_id au lieu de following_id
     followed_user_ids.append(current_user["id"])  # Ajoute l'utilisateur actuel
     
     # Récupère toutes les stories non expirées des utilisateurs suivis
@@ -1395,7 +1395,7 @@ async def export_user_data(user_id: str):
         following = []
         for follow in following_raw:
             follow_data = convert_mongo_doc_to_dict(follow)
-            followed_user = await db.users.find_one({"id": follow_data["following_id"]})
+            followed_user = await db.users.find_one({"id": follow_data["followed_id"]})
             if followed_user:
                 following.append({
                     "username": followed_user.get("username"),
@@ -1403,7 +1403,7 @@ async def export_user_data(user_id: str):
                 })
         
         # Abonnés
-        followers_raw = await db.follows.find({"following_id": user_id}).to_list(length=1000)
+        followers_raw = await db.follows.find({"followed_id": user_id}).to_list(length=1000)
         followers = []
         for follow in followers_raw:
             follow_data = convert_mongo_doc_to_dict(follow)
