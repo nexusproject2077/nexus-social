@@ -131,62 +131,94 @@ async def follow_user(user_id: str, current_user_id: str = Depends(get_current_u
     Suivre un utilisateur (ou envoyer demande si privé)
     POST /api/users/{user_id}/follow
     """
-    if current_user_id == user_id:
-        raise HTTPException(status_code=400, detail="Vous ne pouvez pas vous suivre vous-même")
-    
-    # Vérifier si l'utilisateur existe
-    target_user = await db.users.find_one({"id": user_id})
-    if not target_user:
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    
-    # Vérifier statut actuel
-    existing_status = await check_follow_status(current_user_id, user_id)
-    
-    if existing_status == "following":
-        raise HTTPException(status_code=400, detail="Vous suivez déjà cet utilisateur")
-    
-    if existing_status == "pending":
-        raise HTTPException(status_code=400, detail="Demande déjà en attente")
-    
-    # Si compte PRIVÉ : créer demande
-    if target_user.get("is_private", False):
-        await db.follow_requests.insert_one({
-            "id": f"req_{current_user_id}_{user_id}_{int(datetime.now(timezone.utc).timestamp())}",
-            "follower_id": current_user_id,
-            "followed_id": user_id,
-            "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
+    try:
+        print(f"📍 Follow request: current_user={current_user_id}, target_user={user_id}")
         
-        return {
-            "status": "pending",
-            "message": "Demande d'abonnement envoyée"
-        }
+        if current_user_id == user_id:
+            raise HTTPException(status_code=400, detail="Vous ne pouvez pas vous suivre vous-même")
+        
+        # Vérifier si l'utilisateur existe
+        print(f"🔍 Searching for target user: {user_id}")
+        target_user = await db.users.find_one({"id": user_id})
+        
+        if not target_user:
+            print(f"❌ Target user not found: {user_id}")
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+        
+        print(f"✅ Target user found: {target_user.get('username')}, is_private={target_user.get('is_private', False)}")
+        
+        # Vérifier statut actuel
+        existing_status = await check_follow_status(current_user_id, user_id)
+        print(f"📊 Current follow status: {existing_status}")
+        
+        if existing_status == "following":
+            raise HTTPException(status_code=400, detail="Vous suivez déjà cet utilisateur")
+        
+        if existing_status == "pending":
+            raise HTTPException(status_code=400, detail="Demande déjà en attente")
+        
+        # Si compte PRIVÉ : créer demande
+        if target_user.get("is_private", False):
+            request_id = f"req_{current_user_id}_{user_id}_{int(datetime.now(timezone.utc).timestamp())}"
+            print(f"🔒 Creating follow request (private account): {request_id}")
+            
+            await db.follow_requests.insert_one({
+                "id": request_id,
+                "follower_id": current_user_id,
+                "followed_id": user_id,
+                "status": "pending",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            print(f"✅ Follow request created successfully")
+            return {
+                "status": "pending",
+                "message": "Demande d'abonnement envoyée"
+            }
+        
+        # Si compte PUBLIC : abonnement direct
+        else:
+            follow_id = f"follow_{current_user_id}_{user_id}"
+            print(f"🔓 Creating follow (public account): {follow_id}")
+            
+            # Insérer l'abonnement
+            await db.follows.insert_one({
+                "id": follow_id,
+                "follower_id": current_user_id,
+                "followed_id": user_id,
+                "status": "following",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            print(f"✅ Follow created successfully")
+            
+            # Incrémenter compteurs (ne pas planter si ça échoue)
+            try:
+                print(f"📈 Updating follower counts...")
+                await db.users.update_one(
+                    {"id": user_id},
+                    {"$inc": {"followers_count": 1}}
+                )
+                await db.users.update_one(
+                    {"id": current_user_id},
+                    {"$inc": {"following_count": 1}}
+                )
+                print(f"✅ Counts updated")
+            except Exception as count_error:
+                print(f"⚠️ Warning: Could not update follow counts: {count_error}")
+            
+            return {
+                "status": "following",
+                "message": "Vous suivez maintenant cet utilisateur"
+            }
     
-    # Si compte PUBLIC : abonnement direct
-    else:
-        await db.follows.insert_one({
-            "id": f"follow_{current_user_id}_{user_id}",
-            "follower_id": current_user_id,
-            "followed_id": user_id,
-            "status": "following",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-        
-        # Incrémenter compteurs
-        await db.users.update_one(
-            {"id": user_id},
-            {"$inc": {"followers_count": 1}}
-        )
-        await db.users.update_one(
-            {"id": current_user_id},
-            {"$inc": {"following_count": 1}}
-        )
-        
-        return {
-            "status": "following",
-            "message": "Vous suivez maintenant cet utilisateur"
-        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ ERROR in follow_user: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
 
 @follow_router.delete("/users/{user_id}/follow")
 async def unfollow_user(user_id: str, current_user_id: str = Depends(get_current_user)):
