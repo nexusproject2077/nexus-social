@@ -9,8 +9,11 @@ import { API } from "../App";
 import { toast } from "sonner";
 
 interface StoryGroup {
-  user: { id: string; username: string; avatar?: string };
+  user_id: string;
+  username: string;
+  profile_pic?: string;
   stories: { id: string; media_url: string; media_type: "image" | "video" }[];
+  last_story_time?: string;
 }
 
 export default function StoriesFeed() {
@@ -77,20 +80,22 @@ export default function StoriesFeed() {
         {Array.isArray(stories) &&
           stories.map((group, index) => (
             <button
-              key={group.user.id}
+              key={group.user_id || index}
               onClick={() => openStoryViewer(index)}
               className="flex flex-col items-center gap-1 flex-shrink-0 group"
             >
               <div className="w-16 h-16 rounded-full ring-2 ring-cyan-500 p-0.5">
                 <div className="w-full h-full rounded-full overflow-hidden">
                   <Avatar className="w-full h-full">
-                    <AvatarImage src={group.user.avatar} />
-                    <AvatarFallback>{group.user.username[0].toUpperCase()}</AvatarFallback>
+                    <AvatarImage src={group.profile_pic} />
+                    <AvatarFallback>
+                      {group.username?.[0]?.toUpperCase() || '?'}
+                    </AvatarFallback>
                   </Avatar>
                 </div>
               </div>
               <span className="text-xs max-w-16 truncate text-slate-300">
-                {group.user.username}
+                {group.username || 'Unknown'}
               </span>
             </button>
           ))}
