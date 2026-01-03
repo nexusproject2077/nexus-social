@@ -205,6 +205,19 @@ class User(BaseModel):
     followers_count: int = 0
     following_count: int = 0
     created_at: str
+    
+    # Nouveaux champs pour profil complet
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    birthdate: Optional[str] = None
+    gender: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    website: Optional[str] = None
+    
+    # Paramètres de confidentialité
+    is_private: Optional[bool] = False
+    allow_story_replies: Optional[bool] = True
 
 class UserProfile(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -1330,7 +1343,10 @@ async def get_stories_feed(current_user: dict = Depends(get_current_user)):
     now = datetime.now(timezone.utc).isoformat()
     
     # Récupère les utilisateurs suivis + l'utilisateur actuel
-    follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(length=100)
+    follows_raw = await db.follows.find({
+        "follower_id": current_user["id"],
+        "status": "following"  # ⚠️ IMPORTANT: Seulement les follows confirmés
+    }).to_list(length=100)
     
     # Support ancien format (following_id) et nouveau (followed_id)
     followed_user_ids = []
@@ -1485,6 +1501,61 @@ async def get_story_viewers(story_id: str, current_user: dict = Depends(get_curr
             })
     
     return viewers
+
+@api_router.post("/stories/{story_id}/reply")
+async def reply_to_story(
+    story_id: str,
+    reply_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Répondre à une story via message privé"""
+    try:
+        # Vérifier que la story existe
+        story_raw = await db.stories.find_one({"id": story_id})
+        if not story_raw:
+            raise HTTPException(status_code=404, detail="Story introuvable")
+        
+        story = convert_mongo_doc_to_dict(story_raw)
+        
+        # Récupérer l'auteur de la story
+        author_raw = await db.users.find_one({"id": story["author_id"]})
+        if not author_raw:
+            raise HTTPException(status_code=404, detail="Auteur introuvable")
+        
+        author = convert_mongo_doc_to_dict(author_raw)
+        
+        # Vérifier si l'auteur accepte les réponses aux stories
+        if not author.get("allow_story_replies", True):
+            raise HTTPException(
+                status_code=403,
+                detail="Cet utilisateur n'accepte pas les réponses aux stories"
+            )
+        
+        # Créer le message de réponse
+        message_id = str(uuid.uuid4())
+        message = {
+            "id": message_id,
+            "sender_id": current_user["id"],
+            "sender_username": current_user["username"],
+            "sender_profile_pic": current_user.get("profile_pic"),
+            "recipient_id": story["author_id"],
+            "recipient_username": author["username"],
+            "content": reply_data.get("content", ""),
+            "story_id": story_id,  # Lien vers la story
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        await db.messages.insert_one(message)
+        
+        return {
+            "success": True,
+            "message": convert_mongo_doc_to_dict(message)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
 # ==================== GDPR COMPLIANCE ROUTES ====================
 
