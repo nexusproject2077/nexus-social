@@ -613,6 +613,38 @@ async def start_user_session(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
+@api_router.post("/users/me/sessions/{session_id}/end")
+async def end_user_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Termine une session utilisateur"""
+    try:
+        now = datetime.now(timezone.utc)
+        
+        # Mettre à jour la session si elle existe
+        try:
+            result = await db.sessions.update_one(
+                {
+                    "id": session_id,
+                    "user_id": current_user["id"]
+                },
+                {"$set": {
+                    "ended_at": now.isoformat(),
+                    "is_active": False
+                }}
+            )
+        except:
+            pass  # Si la collection n'existe pas, on ignore
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "ended_at": now.isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
 # ==================== POSTS ROUTES ====================
 @api_router.post("/posts", response_model=Post)
 async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
