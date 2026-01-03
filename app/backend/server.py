@@ -205,19 +205,6 @@ class User(BaseModel):
     followers_count: int = 0
     following_count: int = 0
     created_at: str
-    
-    # Nouveaux champs pour profil complet
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    birthdate: Optional[str] = None
-    gender: Optional[str] = None
-    phone: Optional[str] = None
-    location: Optional[str] = None
-    website: Optional[str] = None
-    
-    # Paramètres de confidentialité
-    is_private: Optional[bool] = False
-    allow_story_replies: Optional[bool] = True
 
 class UserProfile(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -1313,19 +1300,45 @@ async def search(q: str, current_user: dict = Depends(get_current_user)):
 
 # ==================== STORIES ROUTES ====================
 @api_router.post("/stories", response_model=Story)
-async def create_story(story_data: StoryCreate, current_user: dict = Depends(get_current_user)):
-    """Créer une nouvelle story"""
+async def create_story(
+    file: UploadFile = File(None),
+    media_type: str = Form(None),
+    media_url: str = Form(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Créer une nouvelle story - supporte upload de fichier OU URL"""
     story_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(hours=24)
+    
+    # CAS 1: Upload de fichier
+    if file:
+        content_type = file.content_type
+        if content_type.startswith('image'):
+            media_type = 'image'
+        elif content_type.startswith('video'):
+            media_type = 'video'
+        else:
+            raise HTTPException(status_code=400, detail="Type de fichier non supporté")
+        
+        # Lire et convertir en base64
+        file_content = await file.read()
+        media_url = f"data:{content_type};base64,{base64.b64encode(file_content).decode()}"
+    
+    # CAS 2: URL fournie directement (ancien système)
+    elif media_url and media_type:
+        pass  # Utilise les valeurs fournies
+    
+    else:
+        raise HTTPException(status_code=400, detail="Fichier ou URL requis")
     
     story_to_insert = {
         "id": story_id,
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
-        "media_type": story_data.media_type,
-        "media_url": story_data.media_url,
+        "media_type": media_type,
+        "media_url": media_url,
         "views_count": 0,
         "created_at": now.isoformat(),
         "expires_at": expires_at.isoformat()
@@ -1343,10 +1356,7 @@ async def get_stories_feed(current_user: dict = Depends(get_current_user)):
     now = datetime.now(timezone.utc).isoformat()
     
     # Récupère les utilisateurs suivis + l'utilisateur actuel
-    follows_raw = await db.follows.find({
-        "follower_id": current_user["id"],
-        "status": "following"  # ⚠️ IMPORTANT: Seulement les follows confirmés
-    }).to_list(length=100)
+    follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(length=100)
     
     # Support ancien format (following_id) et nouveau (followed_id)
     followed_user_ids = []
@@ -1501,61 +1511,6 @@ async def get_story_viewers(story_id: str, current_user: dict = Depends(get_curr
             })
     
     return viewers
-
-@api_router.post("/stories/{story_id}/reply")
-async def reply_to_story(
-    story_id: str,
-    reply_data: dict,
-    current_user: dict = Depends(get_current_user)
-):
-    """Répondre à une story via message privé"""
-    try:
-        # Vérifier que la story existe
-        story_raw = await db.stories.find_one({"id": story_id})
-        if not story_raw:
-            raise HTTPException(status_code=404, detail="Story introuvable")
-        
-        story = convert_mongo_doc_to_dict(story_raw)
-        
-        # Récupérer l'auteur de la story
-        author_raw = await db.users.find_one({"id": story["author_id"]})
-        if not author_raw:
-            raise HTTPException(status_code=404, detail="Auteur introuvable")
-        
-        author = convert_mongo_doc_to_dict(author_raw)
-        
-        # Vérifier si l'auteur accepte les réponses aux stories
-        if not author.get("allow_story_replies", True):
-            raise HTTPException(
-                status_code=403,
-                detail="Cet utilisateur n'accepte pas les réponses aux stories"
-            )
-        
-        # Créer le message de réponse
-        message_id = str(uuid.uuid4())
-        message = {
-            "id": message_id,
-            "sender_id": current_user["id"],
-            "sender_username": current_user["username"],
-            "sender_profile_pic": current_user.get("profile_pic"),
-            "recipient_id": story["author_id"],
-            "recipient_username": author["username"],
-            "content": reply_data.get("content", ""),
-            "story_id": story_id,  # Lien vers la story
-            "read": False,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        await db.messages.insert_one(message)
-        
-        return {
-            "success": True,
-            "message": convert_mongo_doc_to_dict(message)
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
 # ==================== GDPR COMPLIANCE ROUTES ====================
 
