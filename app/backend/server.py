@@ -450,6 +450,130 @@ async def update_profile(
     updated_user = convert_mongo_doc_to_dict(updated_user_raw)
     return User(**updated_user)
 
+@api_router.put("/users/me/privacy")
+async def update_privacy_settings(
+    privacy_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Met à jour compte privé"""
+    try:
+        is_private = privacy_data.get("is_private", False)
+        
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            {"$set": {
+                "is_private": is_private,
+                "privacy_updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        # Mettre à jour l'utilisateur en mémoire
+        updated_user = await db.users.find_one({"id": current_user["id"]})
+        
+        return {
+            "success": True,
+            "is_private": is_private,
+            "user": convert_mongo_doc_to_dict(updated_user)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+
+@api_router.put("/users/me/profile-details")
+async def update_profile_details(
+    profile_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Met à jour les détails du profil (nom, prénom, etc.)"""
+    try:
+        allowed_fields = [
+            "first_name", "last_name", "bio", "location", 
+            "phone", "birthdate", "gender", "website"
+        ]
+        
+        update_data = {
+            k: v for k, v in profile_data.items() 
+            if k in allowed_fields and v is not None
+        }
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="Aucune donnée valide")
+        
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            {"$set": update_data}
+        )
+        
+        updated_user = await db.users.find_one({"id": current_user["id"]})
+        
+        return {
+            "success": True, 
+            "user": convert_mongo_doc_to_dict(updated_user)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+
+@api_router.put("/users/me/story-settings")
+async def update_story_settings(
+    settings: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Activer/désactiver réponses aux stories"""
+    try:
+        allow_story_replies = settings.get("allow_story_replies", True)
+        
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            {"$set": {
+                "allow_story_replies": allow_story_replies
+            }}
+        )
+        
+        return {
+            "success": True,
+            "allow_story_replies": allow_story_replies
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+
+@api_router.get("/users/me/settings")
+async def get_user_settings(current_user: dict = Depends(get_current_user)):
+    """Récupère tous les paramètres utilisateur"""
+    try:
+        user = await db.users.find_one({"id": current_user["id"]})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_dict = convert_mongo_doc_to_dict(user)
+        
+        return {
+            "privacy": {
+                "is_private": user_dict.get("is_private", False),
+                "allow_story_replies": user_dict.get("allow_story_replies", True)
+            },
+            "profile": {
+                "first_name": user_dict.get("first_name", ""),
+                "last_name": user_dict.get("last_name", ""),
+                "bio": user_dict.get("bio", ""),
+                "location": user_dict.get("location", ""),
+                "phone": user_dict.get("phone", ""),
+                "birthdate": user_dict.get("birthdate", ""),
+                "gender": user_dict.get("gender", ""),
+                "website": user_dict.get("website", "")
+            },
+            "account": {
+                "username": user_dict.get("username"),
+                "email": user_dict.get("email"),
+                "created_at": user_dict.get("created_at")
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
 # ==================== POSTS ROUTES ====================
 @api_router.post("/posts", response_model=Post)
 async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
