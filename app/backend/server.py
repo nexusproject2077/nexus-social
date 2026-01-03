@@ -574,6 +574,45 @@ async def get_user_settings(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
+@api_router.post("/users/me/sessions/start")
+async def start_user_session(current_user: dict = Depends(get_current_user)):
+    """Démarre une session utilisateur (tracking d'activité)"""
+    try:
+        now = datetime.now(timezone.utc)
+        
+        # Mettre à jour la dernière activité de l'utilisateur
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            {"$set": {
+                "last_active": now.isoformat(),
+                "last_session_start": now.isoformat()
+            }}
+        )
+        
+        # Optionnel: créer un enregistrement de session
+        session_id = str(uuid.uuid4())
+        session = {
+            "id": session_id,
+            "user_id": current_user["id"],
+            "started_at": now.isoformat(),
+            "last_activity": now.isoformat(),
+            "is_active": True
+        }
+        
+        # Insérer dans la collection sessions (si elle existe)
+        try:
+            await db.sessions.insert_one(session)
+        except:
+            pass  # Si la collection n'existe pas, on ignore
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "started_at": now.isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
 # ==================== POSTS ROUTES ====================
 @api_router.post("/posts", response_model=Post)
 async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
