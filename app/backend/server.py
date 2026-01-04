@@ -575,6 +575,8 @@ async def get_user_settings(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
+# CORRECTION LIGNE 578-630
+
 @api_router.post("/users/me/sessions/start")
 async def start_user_session(current_user: dict = Depends(get_current_user)):
     """Démarre une session utilisateur (tracking d'activité)"""
@@ -589,12 +591,34 @@ async def start_user_session(current_user: dict = Depends(get_current_user)):
                 "last_session_start": now.isoformat()
             }}
         )
+        
+        # Optionnel: créer un enregistrement de session
+        session_id = str(uuid.uuid4())
+        session = {
+            "id": session_id,
+            "user_id": current_user["id"],
+            "started_at": now.isoformat(),
+            "last_activity": now.isoformat(),
+            "is_active": True
+        }
+        
+        # Insérer dans la collection sessions (si elle existe)
+        try:
+            await db.sessions.insert_one(session)
+        except:
+            pass  # Si la collection n'existe pas, on ignore
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "started_at": now.isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
-# NOUVEAUX ENDPOINTS À AJOUTER DANS server.py
 
-# ==================== ENDPOINTS PARAMÈTRES COMPTE ====================
+# ENSUITE, ajouter les nouveaux endpoints...
 
-# 1. CHANGER LE MOT DE PASSE
 @api_router.put("/users/me/password")
 async def change_password(
     current_password: str = Body(...),
