@@ -7,7 +7,6 @@ import {
   User,
   Lock,
   Shield,
-  Bell,
   Eye,
   Download,
   HeartCrack,
@@ -30,6 +29,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { API } from '../App';
+import ChangePasswordModal from '../components/ChangePasswordModal';
+import CustomAccountIcon from '../components/CustomAccountIcon';
+import CustomNotificationIcon from '../components/CustomNotificationIcon';
+import CustomShieldIcon from '../components/CustomShieldIcon';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -38,6 +41,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   const [profileData, setProfileData] = useState({
     first_name: '',
@@ -163,7 +167,7 @@ export default function SettingsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Votre compte */}
             <SettingCard
-              icon={<User className="w-6 h-6" />}
+              icon={<CustomAccountIcon className="w-6 h-6" color="currentColor" />}
               title="Votre compte"
               subtitle={`@${settings?.account?.username}`}
               onClick={() => setCurrentView('account')}
@@ -172,7 +176,7 @@ export default function SettingsPage() {
 
             {/* Sécurité */}
             <SettingCard
-              icon={<Shield className="w-6 h-6" />}
+              icon={<CustomShieldIcon className="w-6 h-6" color="currentColor" />}
               title="Sécurité"
               subtitle="Mot de passe et sessions"
               onClick={() => setCurrentView('security')}
@@ -181,7 +185,7 @@ export default function SettingsPage() {
 
             {/* Notifications */}
             <SettingCard
-              icon={<Bell className="w-6 h-6" />}
+              icon={<CustomNotificationIcon className="w-6 h-6" color="currentColor" />}
               title="Notifications"
               subtitle="Gérer les alertes"
               onClick={() => setCurrentView('notifications')}
@@ -263,7 +267,7 @@ export default function SettingsPage() {
                 icon={<Lock className="w-5 h-5" />}
                 title="Changer le mot de passe"
                 subtitle="Modifier votre mot de passe"
-                onClick={() => toast.info("Modal à implémenter")}
+                onClick={() => setShowPasswordModal(true)}
               />
               <SettingItem
                 icon={<Download className="w-5 h-5" />}
@@ -587,7 +591,14 @@ export default function SettingsPage() {
     );
   }
 
-  return null;
+  // Render modal if needed
+  return (
+    <>
+      {showPasswordModal && (
+        <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />
+      )}
+    </>
+  );
 }
 
 // COMPOSANTS UTILITAIRES
