@@ -22,6 +22,7 @@ import base64
 from bson import ObjectId
 import json
 from collections import defaultdict
+from fastapi import Body
 
 # Import du module follows (avec gestion des chemins)
 try:
@@ -588,7 +589,196 @@ async def start_user_session(current_user: dict = Depends(get_current_user)):
                 "last_session_start": now.isoformat()
             }}
         )
+
+# NOUVEAUX ENDPOINTS À AJOUTER DANS server.py
+
+# ==================== ENDPOINTS PARAMÈTRES COMPTE ====================
+
+# 1. CHANGER LE MOT DE PASSE
+@api_router.put("/users/me/password")
+async def change_password(
+    current_password: str = Body(...),
+    new_password: str = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Changer le mot de passe de l'utilisateur"""
+    try:
+        # Vérifier le mot de passe actuel
+        user = await db.users.find_one({"id": current_user["id"]})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
         
+        # Vérifier que l'ancien mot de passe est correct
+        if not pwd_context.verify(current_password, user["password"]):
+            raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+        
+        # Hasher le nouveau mot de passe
+        hashed_password = pwd_context.hash(new_password)
+        
+        # Mettre à jour
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            {"$set": {"password": hashed_password}}
+        )
+        
+        return {"success": True, "message": "Mot de passe changé avec succès"}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+
+# 2. TÉLÉCHARGER SES DONNÉES (GDPR)
+@api_router.get("/users/me/data-export")
+async def export_user_data(current_user: dict = Depends(get_current_user)):
+    """Exporter toutes les données de l'utilisateur (GDPR)"""
+    try:
+        # Récupérer toutes les données
+        user = await db.users.find_one({"id": current_user["id"]})
+        posts = await db.posts.find({"author_id": current_user["id"]}).to_list(length=1000)
+        comments = await db.comments.find({"user_id": current_user["id"]}).to_list(length=1000)
+        stories = await db.stories.find({"author_id": current_user["id"]}).to_list(length=100)
+        
+        # Préparer l'export
+        export_data = {
+            "user_profile": {
+                "username": user.get("username"),
+                "email": user.get("email"),
+                "first_name": user.get("first_name"),
+                "last_name": user.get("last_name"),
+                "bio": user.get("bio"),
+                "location": user.get("location"),
+                "phone": user.get("phone"),
+                "birthdate": user.get("birthdate"),
+                "gender": user.get("gender"),
+                "created_at": user.get("created_at"),
+            },
+            "posts": [convert_mongo_doc_to_dict(p) for p in posts],
+            "comments": [convert_mongo_doc_to_dict(c) for c in comments],
+            "stories": [convert_mongo_doc_to_dict(s) for s in stories],
+            "export_date": datetime.now(timezone.utc).isoformat()
+        }
+        
+        return export_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur export: {str(e)}")
+
+
+# 3. OBTENIR LES SESSIONS ACTIVES
+@api_router.get("/users/me/sessions")
+async def get_active_sessions(current_user: dict = Depends(get_current_user)):
+    """Obtenir la liste des sessions actives"""
+    try:
+        sessions = await db.sessions.find({
+            "user_id": current_user["id"],
+            "is_active": True
+        }).sort("last_activity", -1).to_list(length=50)
+        
+        # Convertir les ObjectId
+        for session in sessions:
+            session["_id"] = str(session["_id"])
+        
+        return {"sessions": sessions}
+    except Exception as e:
+        return {"sessions": []}
+
+
+# 4. RÉVOQUER UNE SESSION
+@api_router.delete("/users/me/sessions/{session_id}")
+async def revoke_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Révoquer une session spécifique"""
+    try:
+        result = await db.sessions.update_one(
+            {
+                "id": session_id,
+                "user_id": current_user["id"]
+            },
+            {"$set": {
+                "is_active": False,
+                "ended_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        if result.modified_count > 0:
+            return {"success": True, "message": "Session révoquée"}
+        return {"success": False, "message": "Session non trouvée"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+
+# 5. DÉSACTIVER LE COMPTE
+@api_router.put("/users/me/deactivate")
+async def deactivate_account(
+    password: str = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Désactiver le compte utilisateur"""
+    try:
+        # Vérifier le mot de passe
+        user = await db.users.find_one({"id": current_user["id"]})
+        if not pwd_context.verify(password, user["password"]):
+            raise HTTPException(status_code=400, detail="Mot de passe incorrect")
+        
+        # Marquer comme désactivé
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            {"$set": {
+                "is_active": False,
+                "deactivated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        return {"success": True, "message": "Compte désactivé"}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+
+# 6. OBTENIR LES STATISTIQUES DU COMPTE
+@api_router.get("/users/me/stats")
+async def get_account_stats(current_user: dict = Depends(get_current_user)):
+    """Obtenir les statistiques du compte"""
+    try:
+        # Compter les posts
+        posts_count = await db.posts.count_documents({"author_id": current_user["id"]})
+        
+        # Compter les likes reçus
+        posts = await db.posts.find({"author_id": current_user["id"]}).to_list(length=1000)
+        total_likes = sum(post.get("likes_count", 0) for post in posts)
+        
+        # Compter les commentaires reçus
+        total_comments = sum(post.get("comments_count", 0) for post in posts)
+        
+        # Compter les followers
+        followers_count = await db.follows.count_documents({
+            "following_id": current_user["id"],
+            "status": "accepted"
+        })
+        
+        # Compter les following
+        following_count = await db.follows.count_documents({
+            "follower_id": current_user["id"],
+            "status": "accepted"
+        })
+        
+        # Stories publiées
+        stories_count = await db.stories.count_documents({"author_id": current_user["id"]})
+        
+        return {
+            "posts_count": posts_count,
+            "total_likes": total_likes,
+            "total_comments": total_comments,
+            "followers_count": followers_count,
+            "following_count": following_count,
+            "stories_count": stories_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
         # Optionnel: créer un enregistrement de session
         session_id = str(uuid.uuid4())
         session = {
