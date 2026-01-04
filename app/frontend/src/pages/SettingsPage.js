@@ -1,4 +1,4 @@
-// src/pages/SettingsPage.jsx
+// src/pages/SettingsPage.jsx - RESPONSIVE + CYAN THEME
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -16,11 +16,8 @@ import {
   Moon,
   Languages,
   Palette,
-  Volume2,
   HelpCircle,
-  FileText,
   LogOut,
-  Camera,
   Mail,
   Phone,
   Calendar,
@@ -28,19 +25,20 @@ import {
   Link as LinkIcon,
   Check,
   X,
-  Loader
+  Loader,
+  Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { API } from '../App';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const [currentView, setCurrentView] = useState('main'); // main, account, security, notifications
+  const [currentView, setCurrentView] = useState('main');
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Form states pour l'édition du profil
   const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   const [profileData, setProfileData] = useState({
     first_name: '',
     last_name: '',
@@ -69,7 +67,7 @@ export default function SettingsPage() {
         setProfileData(data.profile || {});
       }
     } catch (err) {
-      toast.error("Erreur lors du chargement");
+      toast.error("Erreur chargement");
     } finally {
       setLoading(false);
     }
@@ -92,7 +90,7 @@ export default function SettingsPage() {
           ...prev,
           privacy: { ...prev.privacy, [key]: value }
         }));
-        toast.success("Paramètre mis à jour");
+        toast.success("✓ Mis à jour");
       }
     } catch (err) {
       toast.error("Erreur");
@@ -100,6 +98,7 @@ export default function SettingsPage() {
   };
 
   const updateProfile = async () => {
+    setSaving(true);
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API}/users/me/profile-details`, {
@@ -112,12 +111,14 @@ export default function SettingsPage() {
       });
 
       if (response.ok) {
-        toast.success("Profil mis à jour !");
+        toast.success("✓ Profil mis à jour !");
         setEditMode(false);
         fetchSettings();
       }
     } catch (err) {
-      toast.error("Erreur mise à jour");
+      toast.error("Erreur");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -129,152 +130,185 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950 flex items-center justify-center">
         <Loader className="w-8 h-8 text-cyan-400 animate-spin" />
       </div>
     );
   }
 
-  // MAIN VIEW - Liste des sections principales
+  // MAIN VIEW
   if (currentView === 'main') {
     return (
-      <div className="min-h-screen bg-black text-white">
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-black/95 backdrop-blur-xl border-b border-slate-800">
-          <div className="flex items-center justify-between px-4 py-3">
-            <button
-              onClick={() => navigate(-1)}
-              className="p-2 hover:bg-slate-800 rounded-full transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <h1 className="text-xl font-bold">Paramètres</h1>
-            <div className="w-9" />
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
+        {/* Header - Responsive */}
+        <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-xl border-b border-cyan-500/20">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center justify-between px-4 md:px-6 lg:px-8 py-4">
+              <button
+                onClick={() => navigate(-1)}
+                className="p-2 hover:bg-cyan-500/10 rounded-full transition-all"
+              >
+                <ArrowLeft className="w-5 h-5 text-cyan-400" />
+              </button>
+              <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+                Paramètres
+              </h1>
+              <div className="w-9" />
+            </div>
           </div>
         </div>
 
-        {/* Sections principales */}
-        <div className="divide-y divide-slate-800">
-          <SettingSection
-            icon={<User className="w-5 h-5" />}
-            title="Votre compte"
-            subtitle={`@${settings?.account?.username}`}
-            onClick={() => setCurrentView('account')}
-          />
-          <SettingSection
-            icon={<Shield className="w-5 h-5" />}
-            title="Sécurité et accès au compte"
-            subtitle="Gérez la sécurité de votre compte"
-            onClick={() => setCurrentView('security')}
-          />
-          <SettingSection
-            icon={<Bell className="w-5 h-5" />}
-            title="Notifications"
-            subtitle="Gérez vos notifications push"
-            onClick={() => setCurrentView('notifications')}
-          />
-          <SettingSection
-            icon={<Eye className="w-5 h-5" />}
-            title="Confidentialité et sécurité"
-            subtitle="Contrôlez ce que vous partagez"
-            onClick={() => setCurrentView('privacy')}
-          />
-          <SettingSection
-            icon={<Palette className="w-5 h-5" />}
-            title="Affichage"
-            subtitle="Thème et apparence"
-            onClick={() => setCurrentView('display')}
-          />
-          <SettingSection
-            icon={<HelpCircle className="w-5 h-5" />}
-            title="Aide et assistance"
-            subtitle="Besoin d'aide ?"
-            onClick={() => toast.info("Contactez support@nexus-social.com")}
-          />
-        </div>
+        {/* Content - Responsive Grid */}
+        <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Votre compte */}
+            <SettingCard
+              icon={<User className="w-6 h-6" />}
+              title="Votre compte"
+              subtitle={`@${settings?.account?.username}`}
+              onClick={() => setCurrentView('account')}
+              gradient="from-cyan-500/20 to-blue-500/20"
+            />
 
-        {/* Déconnexion */}
-        <div className="p-4 mt-8">
-          <button
-            onClick={handleLogout}
-            className="w-full bg-red-600 hover:bg-red-500 text-white font-semibold py-3 rounded-full transition-colors flex items-center justify-center gap-2"
-          >
-            <LogOut className="w-5 h-5" />
-            Se déconnecter
-          </button>
-        </div>
+            {/* Sécurité */}
+            <SettingCard
+              icon={<Shield className="w-6 h-6" />}
+              title="Sécurité"
+              subtitle="Mot de passe et sessions"
+              onClick={() => setCurrentView('security')}
+              gradient="from-purple-500/20 to-pink-500/20"
+            />
 
-        {/* Footer */}
-        <div className="text-center text-slate-600 text-sm py-8">
-          <p>Nexus Social © 2025</p>
+            {/* Notifications */}
+            <SettingCard
+              icon={<Bell className="w-6 h-6" />}
+              title="Notifications"
+              subtitle="Gérer les alertes"
+              onClick={() => setCurrentView('notifications')}
+              gradient="from-orange-500/20 to-red-500/20"
+            />
+
+            {/* Confidentialité */}
+            <SettingCard
+              icon={<Eye className="w-6 h-6" />}
+              title="Confidentialité"
+              subtitle="Compte privé et stories"
+              onClick={() => setCurrentView('privacy')}
+              gradient="from-green-500/20 to-emerald-500/20"
+            />
+
+            {/* Affichage */}
+            <SettingCard
+              icon={<Palette className="w-6 h-6" />}
+              title="Affichage"
+              subtitle="Thème et apparence"
+              onClick={() => setCurrentView('display')}
+              gradient="from-yellow-500/20 to-orange-500/20"
+            />
+
+            {/* Aide */}
+            <SettingCard
+              icon={<HelpCircle className="w-6 h-6" />}
+              title="Aide"
+              subtitle="Support et assistance"
+              onClick={() => toast.info("📧 support@nexus-social.com")}
+              gradient="from-indigo-500/20 to-purple-500/20"
+            />
+          </div>
+
+          {/* Déconnexion */}
+          <div className="mt-8">
+            <button
+              onClick={handleLogout}
+              className="w-full bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-semibold py-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-500/20"
+            >
+              <LogOut className="w-5 h-5" />
+              Se déconnecter
+            </button>
+          </div>
+
+          {/* Footer */}
+          <div className="text-center text-cyan-400/40 text-sm py-8">
+            <p>Nexus Social © 2025</p>
+          </div>
         </div>
       </div>
     );
   }
 
-  // ACCOUNT VIEW - Informations du compte
+  // ACCOUNT VIEW
   if (currentView === 'account') {
     return (
-      <div className="min-h-screen bg-black text-white">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
         <ViewHeader 
           title="Votre compte" 
           subtitle={`@${settings?.account?.username}`}
           onBack={() => setCurrentView('main')} 
         />
 
-        <div className="px-4 py-3 text-slate-400 text-sm">
-          Consultez les informations de votre compte, téléchargez vos données ou désactivez votre compte.
-        </div>
+        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
+          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 overflow-hidden">
+            <div className="p-4 text-cyan-400/60 text-sm border-b border-cyan-500/10">
+              Consultez et modifiez les informations de votre compte
+            </div>
 
-        <div className="divide-y divide-slate-800">
-          <SettingItem
-            icon={<User className="w-5 h-5" />}
-            title="Informations du compte"
-            subtitle="Nom, prénom, email, téléphone"
-            onClick={() => setCurrentView('account-info')}
-          />
-          <SettingItem
-            icon={<Lock className="w-5 h-5" />}
-            title="Changer le mot de passe"
-            subtitle="Modifiez votre mot de passe"
-            onClick={() => setCurrentView('change-password')}
-          />
-          <SettingItem
-            icon={<Download className="w-5 h-5" />}
-            title="Télécharger vos données"
-            subtitle="Archive de vos publications et données"
-            onClick={() => toast.info("Fonctionnalité à venir")}
-          />
-          <SettingItem
-            icon={<HeartCrack className="w-5 h-5" />}
-            title="Désactiver votre compte"
-            subtitle="Découvrez comment désactiver votre compte"
-            onClick={() => toast.warning("Contactez le support pour désactiver")}
-          />
+            <div className="divide-y divide-cyan-500/10">
+              <SettingItem
+                icon={<User className="w-5 h-5" />}
+                title="Informations du compte"
+                subtitle="Nom, email, téléphone, bio"
+                onClick={() => setCurrentView('account-info')}
+              />
+              <SettingItem
+                icon={<Lock className="w-5 h-5" />}
+                title="Changer le mot de passe"
+                subtitle="Modifier votre mot de passe"
+                onClick={() => toast.info("Modal à implémenter")}
+              />
+              <SettingItem
+                icon={<Download className="w-5 h-5" />}
+                title="Télécharger vos données"
+                subtitle="Export GDPR complet"
+                onClick={() => toast.info("Téléchargement à venir")}
+              />
+              <SettingItem
+                icon={<HeartCrack className="w-5 h-5" />}
+                title="Désactiver votre compte"
+                subtitle="Temporairement ou définitivement"
+                onClick={() => toast.warning("Contactez le support")}
+              />
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  // ACCOUNT INFO - Édition des informations personnelles
+  // ACCOUNT INFO - Responsive Form
   if (currentView === 'account-info') {
     return (
-      <div className="min-h-screen bg-black text-white">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
         <ViewHeader 
-          title="Informations du compte"
+          title="Informations"
           onBack={() => setCurrentView('account')}
           action={
             editMode ? (
               <button
                 onClick={updateProfile}
-                className="text-cyan-400 font-semibold hover:text-cyan-300"
+                disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full text-white font-semibold hover:from-cyan-400 hover:to-blue-400 transition-all disabled:opacity-50"
               >
+                {saving ? (
+                  <Loader className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
                 Enregistrer
               </button>
             ) : (
               <button
                 onClick={() => setEditMode(true)}
-                className="text-cyan-400 font-semibold hover:text-cyan-300"
+                className="text-cyan-400 font-semibold hover:text-cyan-300 transition-colors"
               >
                 Modifier
               </button>
@@ -282,110 +316,116 @@ export default function SettingsPage() {
           }
         />
 
-        <div className="p-4 space-y-4">
-          {/* Username (lecture seule) */}
-          <InputField
-            label="Nom d'utilisateur"
-            value={settings?.account?.username}
-            icon={<User className="w-5 h-5" />}
-            disabled
-          />
+        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
+          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 p-4 md:p-6">
+            {/* Grid responsive pour les champs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              {/* Username */}
+              <InputField
+                label="Nom d'utilisateur"
+                value={settings?.account?.username}
+                icon={<User className="w-5 h-5" />}
+                disabled
+              />
 
-          {/* Email (lecture seule) */}
-          <InputField
-            label="Email"
-            value={settings?.account?.email}
-            icon={<Mail className="w-5 h-5" />}
-            disabled
-          />
+              {/* Email */}
+              <InputField
+                label="Email"
+                value={settings?.account?.email}
+                icon={<Mail className="w-5 h-5" />}
+                disabled
+              />
 
-          {/* Prénom */}
-          <InputField
-            label="Prénom"
-            value={profileData.first_name}
-            onChange={(e) => setProfileData({...profileData, first_name: e.target.value})}
-            icon={<User className="w-5 h-5" />}
-            disabled={!editMode}
-          />
+              {/* Prénom */}
+              <InputField
+                label="Prénom"
+                value={profileData.first_name}
+                onChange={(e) => setProfileData({...profileData, first_name: e.target.value})}
+                icon={<User className="w-5 h-5" />}
+                disabled={!editMode}
+              />
 
-          {/* Nom */}
-          <InputField
-            label="Nom"
-            value={profileData.last_name}
-            onChange={(e) => setProfileData({...profileData, last_name: e.target.value})}
-            icon={<User className="w-5 h-5" />}
-            disabled={!editMode}
-          />
+              {/* Nom */}
+              <InputField
+                label="Nom"
+                value={profileData.last_name}
+                onChange={(e) => setProfileData({...profileData, last_name: e.target.value})}
+                icon={<User className="w-5 h-5" />}
+                disabled={!editMode}
+              />
 
-          {/* Téléphone */}
-          <InputField
-            label="Téléphone"
-            value={profileData.phone}
-            onChange={(e) => setProfileData({...profileData, phone: e.target.value})}
-            icon={<Phone className="w-5 h-5" />}
-            disabled={!editMode}
-            type="tel"
-          />
+              {/* Téléphone */}
+              <InputField
+                label="Téléphone"
+                value={profileData.phone}
+                onChange={(e) => setProfileData({...profileData, phone: e.target.value})}
+                icon={<Phone className="w-5 h-5" />}
+                disabled={!editMode}
+                type="tel"
+              />
 
-          {/* Date de naissance */}
-          <InputField
-            label="Date de naissance"
-            value={profileData.birthdate}
-            onChange={(e) => setProfileData({...profileData, birthdate: e.target.value})}
-            icon={<Calendar className="w-5 h-5" />}
-            disabled={!editMode}
-            type="date"
-          />
+              {/* Date de naissance */}
+              <InputField
+                label="Date de naissance"
+                value={profileData.birthdate}
+                onChange={(e) => setProfileData({...profileData, birthdate: e.target.value})}
+                icon={<Calendar className="w-5 h-5" />}
+                disabled={!editMode}
+                type="date"
+              />
 
-          {/* Localisation */}
-          <InputField
-            label="Localisation"
-            value={profileData.location}
-            onChange={(e) => setProfileData({...profileData, location: e.target.value})}
-            icon={<MapPin className="w-5 h-5" />}
-            disabled={!editMode}
-          />
+              {/* Localisation */}
+              <InputField
+                label="Localisation"
+                value={profileData.location}
+                onChange={(e) => setProfileData({...profileData, location: e.target.value})}
+                icon={<MapPin className="w-5 h-5" />}
+                disabled={!editMode}
+              />
 
-          {/* Site web */}
-          <InputField
-            label="Site web"
-            value={profileData.website}
-            onChange={(e) => setProfileData({...profileData, website: e.target.value})}
-            icon={<LinkIcon className="w-5 h-5" />}
-            disabled={!editMode}
-            type="url"
-          />
-
-          {/* Bio */}
-          <div>
-            <label className="text-sm text-slate-400 mb-2 block">Bio</label>
-            <textarea
-              value={profileData.bio}
-              onChange={(e) => setProfileData({...profileData, bio: e.target.value})}
-              disabled={!editMode}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-4 py-3 text-white disabled:opacity-60 resize-none"
-              rows={4}
-              maxLength={160}
-            />
-            <div className="text-right text-xs text-slate-500 mt-1">
-              {profileData.bio?.length || 0}/160
+              {/* Site web */}
+              <InputField
+                label="Site web"
+                value={profileData.website}
+                onChange={(e) => setProfileData({...profileData, website: e.target.value})}
+                icon={<LinkIcon className="w-5 h-5" />}
+                disabled={!editMode}
+                type="url"
+              />
             </div>
-          </div>
 
-          {/* Genre */}
-          <div>
-            <label className="text-sm text-slate-400 mb-2 block">Genre</label>
-            <select
-              value={profileData.gender}
-              onChange={(e) => setProfileData({...profileData, gender: e.target.value})}
-              disabled={!editMode}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-4 py-3 text-white disabled:opacity-60"
-            >
-              <option value="">Préférer ne pas dire</option>
-              <option value="male">Homme</option>
-              <option value="female">Femme</option>
-              <option value="other">Autre</option>
-            </select>
+            {/* Bio - Full width */}
+            <div className="mt-6">
+              <label className="text-sm text-cyan-400/80 mb-2 block font-medium">Bio</label>
+              <textarea
+                value={profileData.bio}
+                onChange={(e) => setProfileData({...profileData, bio: e.target.value})}
+                disabled={!editMode}
+                className="w-full bg-slate-800/50 border border-cyan-500/20 rounded-xl px-4 py-3 text-white disabled:opacity-60 resize-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                rows={4}
+                maxLength={160}
+                placeholder="Parlez de vous..."
+              />
+              <div className="text-right text-xs text-cyan-400/60 mt-1">
+                {profileData.bio?.length || 0}/160
+              </div>
+            </div>
+
+            {/* Genre - Full width */}
+            <div className="mt-6">
+              <label className="text-sm text-cyan-400/80 mb-2 block font-medium">Genre</label>
+              <select
+                value={profileData.gender}
+                onChange={(e) => setProfileData({...profileData, gender: e.target.value})}
+                disabled={!editMode}
+                className="w-full bg-slate-800/50 border border-cyan-500/20 rounded-xl px-4 py-3 text-white disabled:opacity-60 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+              >
+                <option value="">Préférer ne pas dire</option>
+                <option value="male">Homme</option>
+                <option value="female">Femme</option>
+                <option value="other">Autre</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -395,163 +435,82 @@ export default function SettingsPage() {
   // SECURITY VIEW
   if (currentView === 'security') {
     return (
-      <div className="min-h-screen bg-black text-white">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
         <ViewHeader 
-          title="Sécurité et accès au compte"
-          subtitle={`@${settings?.account?.username}`}
+          title="Sécurité"
+          subtitle="Protection de votre compte"
           onBack={() => setCurrentView('main')} 
         />
 
-        <div className="px-4 py-3 text-slate-400 text-sm">
-          Gérez la sécurité de votre compte et suivez l'utilisation de votre compte.
-        </div>
-
-        <div className="divide-y divide-slate-800">
-          <SettingItem
-            icon={<Shield className="w-5 h-5" />}
-            title="Sécurité"
-            subtitle="Gérez la sécurité de votre compte"
-            onClick={() => toast.info("Authentification à deux facteurs à venir")}
-          />
-          <SettingItem
-            icon={<Smartphone className="w-5 h-5" />}
-            title="Applications et sessions"
-            subtitle="Appareils connectés et sessions actives"
-            onClick={() => toast.info("Voir les sessions actives - à venir")}
-          />
-          <SettingItem
-            icon={<Globe className="w-5 h-5" />}
-            title="Comptes connectés"
-            subtitle="Gérer les comptes Google ou Apple"
-            onClick={() => toast.info("Aucun compte connecté")}
-          />
+        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
+          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 overflow-hidden">
+            <div className="divide-y divide-cyan-500/10">
+              <SettingItem
+                icon={<Shield className="w-5 h-5" />}
+                title="Authentification à deux facteurs"
+                subtitle="Sécurité renforcée (à venir)"
+                onClick={() => toast.info("Bientôt disponible")}
+              />
+              <SettingItem
+                icon={<Smartphone className="w-5 h-5" />}
+                title="Appareils et sessions"
+                subtitle="Gérer les appareils connectés"
+                onClick={() => toast.info("Liste des sessions à venir")}
+              />
+              <SettingItem
+                icon={<Globe className="w-5 h-5" />}
+                title="Comptes connectés"
+                subtitle="Google, Apple (à venir)"
+                onClick={() => toast.info("Aucun compte connecté")}
+              />
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  // NOTIFICATIONS VIEW
+  // NOTIFICATIONS VIEW - Responsive
   if (currentView === 'notifications') {
     return (
-      <div className="min-h-screen bg-black text-white">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
         <ViewHeader 
           title="Notifications"
+          subtitle="Gérer vos alertes"
           onBack={() => setCurrentView('main')} 
         />
 
-        {/* Section: Publications des personnes que vous suivez */}
-        <SectionHeader title="Publications des personnes que vous suivez" />
-        <div className="divide-y divide-slate-800">
-          <ToggleItem
-            title="Posts"
-            subtitle="15 personnes"
-            checked={true}
-            onChange={() => {}}
-          />
-        </div>
+        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 space-y-4">
+          {/* Publications */}
+          <NotificationSection title="Publications des personnes que vous suivez">
+            <ToggleItem
+              title="Posts"
+              subtitle="15 personnes"
+              checked={true}
+              onChange={() => {}}
+            />
+          </NotificationSection>
 
-        {/* Section: En rapport avec vous et vos posts */}
-        <SectionHeader title="En rapport avec vous et vos posts" />
-        <div className="divide-y divide-slate-800">
-          <ToggleItem
-            title="Mentions et réponses"
-            subtitle="Adapté pour vous"
-            checked={true}
-            onChange={() => {}}
-          />
-          <ToggleItem
-            title="Reposts"
-            subtitle="Adapté pour vous"
-            checked={false}
-            onChange={() => {}}
-          />
-          <ToggleItem
-            title="J'aime"
-            subtitle="Adapté pour vous"
-            checked={true}
-            onChange={() => {}}
-          />
-          <ToggleItem
-            title="Photo tags"
-            checked={true}
-            onChange={() => {}}
-          />
-          <ToggleItem
-            title="Moments"
-            checked={true}
-            onChange={() => {}}
-          />
-        </div>
+          {/* Interactions */}
+          <NotificationSection title="En rapport avec vous et vos posts">
+            <ToggleItem title="Mentions et réponses" subtitle="Adapté pour vous" checked={true} onChange={() => {}} />
+            <ToggleItem title="Reposts" subtitle="Adapté pour vous" checked={false} onChange={() => {}} />
+            <ToggleItem title="J'aime" subtitle="Adapté pour vous" checked={true} onChange={() => {}} />
+            <ToggleItem title="Photo tags" checked={true} onChange={() => {}} />
+            <ToggleItem title="Moments" checked={true} onChange={() => {}} />
+          </NotificationSection>
 
-        {/* Section: Abonnés et contacts */}
-        <SectionHeader title="Abonnés et contacts" />
-        <div className="divide-y divide-slate-800">
-          <ToggleItem
-            title="Nouveaux abonnés"
-            checked={true}
-            onChange={() => {}}
-          />
-          <ToggleItem
-            title="Contact rejoint Nexus"
-            checked={true}
-            onChange={() => {}}
-          />
-        </div>
+          {/* Abonnés */}
+          <NotificationSection title="Abonnés et contacts">
+            <ToggleItem title="Nouveaux abonnés" checked={true} onChange={() => {}} />
+            <ToggleItem title="Contact rejoint Nexus" checked={true} onChange={() => {}} />
+          </NotificationSection>
 
-        {/* Section: Messages directs */}
-        <SectionHeader title="Messages directs" />
-        <div className="divide-y divide-slate-800">
-          <ToggleItem
-            title="Messages directs"
-            checked={true}
-            onChange={() => {}}
-          />
-          <ToggleItem
-            title="Réactions aux messages"
-            subtitle="Vos propres messages"
-            checked={false}
-            onChange={() => {}}
-          />
-        </div>
-
-        {/* Section: Recommandations de Nexus */}
-        <SectionHeader title="Recommandations de Nexus" />
-        <div className="divide-y divide-slate-800">
-          <ToggleItem
-            title="Topics"
-            checked={true}
-            onChange={() => {}}
-          />
-          <ToggleItem
-            title="Recommandations"
-            checked={true}
-            onChange={() => {}}
-          />
-        </div>
-
-        {/* Section: Actualités de Nexus */}
-        <SectionHeader title="Actualités de Nexus" />
-        <div className="divide-y divide-slate-800">
-          <ToggleItem
-            title="News / Sport"
-            checked={true}
-            onChange={() => {}}
-          />
-          <ToggleItem
-            title="Aperçu des nouvelles fonctionnalités"
-            checked={true}
-            onChange={() => {}}
-          />
-        </div>
-
-        {/* Section: Alertes d'urgence */}
-        <SectionHeader title="Alertes d'urgence" />
-        <div className="divide-y divide-slate-800">
-          <ToggleItem
-            title="Alertes de crise et d'urgence"
-            checked={true}
-            onChange={() => {}}
-          />
+          {/* Messages */}
+          <NotificationSection title="Messages directs">
+            <ToggleItem title="Messages directs" checked={true} onChange={() => {}} />
+            <ToggleItem title="Réactions aux messages" subtitle="Vos propres messages" checked={false} onChange={() => {}} />
+          </NotificationSection>
         </div>
       </div>
     );
@@ -560,31 +519,30 @@ export default function SettingsPage() {
   // PRIVACY VIEW
   if (currentView === 'privacy') {
     return (
-      <div className="min-h-screen bg-black text-white">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
         <ViewHeader 
-          title="Confidentialité et sécurité"
+          title="Confidentialité"
+          subtitle="Contrôlez votre visibilité"
           onBack={() => setCurrentView('main')} 
         />
 
-        <div className="divide-y divide-slate-800">
-          <ToggleItem
-            title="Compte privé"
-            subtitle="Seuls vos abonnés peuvent voir vos publications"
-            checked={settings?.privacy?.is_private || false}
-            onChange={(val) => updatePrivacy('is_private', val)}
-          />
-          <ToggleItem
-            title="Autoriser les réponses aux stories"
-            subtitle="Les autres peuvent répondre à vos stories"
-            checked={settings?.privacy?.allow_story_replies !== false}
-            onChange={(val) => updatePrivacy('allow_story_replies', val)}
-          />
-          <SettingItem
-            icon={<Eye className="w-5 h-5" />}
-            title="Audience et marquage"
-            subtitle="Gérez qui peut vous voir et vous marquer"
-            onClick={() => toast.info("Paramètres avancés à venir")}
-          />
+        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
+          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 overflow-hidden">
+            <div className="divide-y divide-cyan-500/10">
+              <ToggleItem
+                title="Compte privé"
+                subtitle="Seuls vos abonnés voient vos publications"
+                checked={settings?.privacy?.is_private || false}
+                onChange={(val) => updatePrivacy('is_private', val)}
+              />
+              <ToggleItem
+                title="Autoriser les réponses aux stories"
+                subtitle="Les autres peuvent répondre à vos stories"
+                checked={settings?.privacy?.allow_story_replies !== false}
+                onChange={(val) => updatePrivacy('allow_story_replies', val)}
+              />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -593,32 +551,37 @@ export default function SettingsPage() {
   // DISPLAY VIEW
   if (currentView === 'display') {
     return (
-      <div className="min-h-screen bg-black text-white">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
         <ViewHeader 
           title="Affichage"
+          subtitle="Personnaliser l'apparence"
           onBack={() => setCurrentView('main')} 
         />
 
-        <div className="divide-y divide-slate-800">
-          <ToggleItem
-            title="Mode sombre"
-            subtitle="Toujours activé"
-            checked={true}
-            onChange={() => {}}
-            disabled
-          />
-          <SettingItem
-            icon={<Palette className="w-5 h-5" />}
-            title="Couleur d'accentuation"
-            subtitle="Cyan"
-            onClick={() => toast.info("Personnalisation à venir")}
-          />
-          <SettingItem
-            icon={<Languages className="w-5 h-5" />}
-            title="Langue"
-            subtitle="Français"
-            onClick={() => toast.info("Multilingue à venir")}
-          />
+        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
+          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 overflow-hidden">
+            <div className="divide-y divide-cyan-500/10">
+              <ToggleItem
+                title="Mode sombre"
+                subtitle="Toujours activé"
+                checked={true}
+                onChange={() => {}}
+                disabled
+              />
+              <SettingItem
+                icon={<Palette className="w-5 h-5" />}
+                title="Couleur d'accentuation"
+                subtitle="Cyan (par défaut)"
+                onClick={() => toast.info("Personnalisation à venir")}
+              />
+              <SettingItem
+                icon={<Languages className="w-5 h-5" />}
+                title="Langue"
+                subtitle="Français"
+                onClick={() => toast.info("Multilingue à venir")}
+              />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -627,41 +590,52 @@ export default function SettingsPage() {
   return null;
 }
 
-// Composants utilitaires
+// COMPOSANTS UTILITAIRES
+
 function ViewHeader({ title, subtitle, onBack, action }) {
   return (
-    <div className="sticky top-0 z-10 bg-black/95 backdrop-blur-xl border-b border-slate-800">
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3 flex-1">
-          <button
-            onClick={onBack}
-            className="p-2 hover:bg-slate-800 rounded-full transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-xl font-bold">{title}</h1>
-            {subtitle && <p className="text-sm text-slate-400">{subtitle}</p>}
+    <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-xl border-b border-cyan-500/20">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between px-4 md:px-6 py-4">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <button
+              onClick={onBack}
+              className="p-2 hover:bg-cyan-500/10 rounded-full transition-all flex-shrink-0"
+            >
+              <ArrowLeft className="w-5 h-5 text-cyan-400" />
+            </button>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl md:text-2xl font-bold text-white truncate">{title}</h1>
+              {subtitle && <p className="text-sm text-cyan-400/60 truncate">{subtitle}</p>}
+            </div>
           </div>
+          {action && <div className="ml-4 flex-shrink-0">{action}</div>}
         </div>
-        {action && <div>{action}</div>}
       </div>
     </div>
   );
 }
 
-function SettingSection({ icon, title, subtitle, onClick }) {
+function SettingCard({ icon, title, subtitle, onClick, gradient }) {
   return (
     <button
       onClick={onClick}
-      className="w-full px-4 py-4 flex items-center gap-4 hover:bg-slate-900 transition-colors"
+      className={`group relative overflow-hidden bg-slate-900/50 backdrop-blur-sm border border-cyan-500/20 rounded-2xl p-6 hover:border-cyan-500/40 transition-all duration-300 text-left`}
     >
-      <div className="text-slate-400">{icon}</div>
-      <div className="flex-1 text-left">
-        <p className="font-semibold">{title}</p>
-        {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
+      {/* Gradient Background */}
+      <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+      
+      {/* Content */}
+      <div className="relative z-10">
+        <div className="flex items-start justify-between mb-3">
+          <div className="p-3 bg-cyan-500/10 rounded-xl text-cyan-400 group-hover:bg-cyan-500/20 transition-all">
+            {icon}
+          </div>
+          <ChevronRight className="w-5 h-5 text-cyan-400/40 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
+        </div>
+        <h3 className="font-bold text-white mb-1">{title}</h3>
+        <p className="text-sm text-cyan-400/60">{subtitle}</p>
       </div>
-      <ChevronRight className="w-5 h-5 text-slate-600" />
     </button>
   );
 }
@@ -670,35 +644,35 @@ function SettingItem({ icon, title, subtitle, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="w-full px-4 py-4 flex items-center gap-4 hover:bg-slate-900 transition-colors"
+      className="w-full px-4 md:px-6 py-4 flex items-center gap-4 hover:bg-cyan-500/5 transition-all group"
     >
-      <div className="text-slate-400">{icon}</div>
-      <div className="flex-1 text-left">
-        <p className="font-medium">{title}</p>
-        {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
+      <div className="text-cyan-400/60 group-hover:text-cyan-400 transition-colors">{icon}</div>
+      <div className="flex-1 text-left min-w-0">
+        <p className="font-medium text-white truncate">{title}</p>
+        {subtitle && <p className="text-sm text-cyan-400/60 truncate">{subtitle}</p>}
       </div>
-      <ChevronRight className="w-5 h-5 text-slate-600" />
+      <ChevronRight className="w-5 h-5 text-cyan-400/40 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all flex-shrink-0" />
     </button>
   );
 }
 
 function ToggleItem({ title, subtitle, checked, onChange, disabled }) {
   return (
-    <div className="px-4 py-4 flex items-center justify-between hover:bg-slate-900 transition-colors">
-      <div className="flex-1">
-        <p className="font-medium">{title}</p>
-        {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
+    <div className="px-4 md:px-6 py-4 flex items-center justify-between gap-4 hover:bg-cyan-500/5 transition-all">
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-white truncate">{title}</p>
+        {subtitle && <p className="text-sm text-cyan-400/60 truncate">{subtitle}</p>}
       </div>
       <button
         onClick={() => !disabled && onChange(!checked)}
         disabled={disabled}
-        className={`relative w-11 h-6 rounded-full transition-colors ${
-          checked ? 'bg-cyan-500' : 'bg-slate-700'
+        className={`relative w-12 h-6 rounded-full transition-all flex-shrink-0 ${
+          checked ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 'bg-slate-700'
         } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
         <div
-          className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-            checked ? 'translate-x-5' : 'translate-x-0.5'
+          className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow-lg ${
+            checked ? 'translate-x-6' : 'translate-x-0.5'
           }`}
         />
       </button>
@@ -706,20 +680,25 @@ function ToggleItem({ title, subtitle, checked, onChange, disabled }) {
   );
 }
 
-function SectionHeader({ title }) {
+function NotificationSection({ title, children }) {
   return (
-    <div className="px-4 py-3 bg-slate-900/50">
-      <h2 className="text-sm font-semibold text-slate-300">{title}</h2>
+    <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 overflow-hidden">
+      <div className="px-4 md:px-6 py-3 bg-cyan-500/5 border-b border-cyan-500/10">
+        <h2 className="text-sm font-semibold text-cyan-400">{title}</h2>
+      </div>
+      <div className="divide-y divide-cyan-500/10">
+        {children}
+      </div>
     </div>
   );
 }
 
 function InputField({ label, value, onChange, icon, disabled, type = "text" }) {
   return (
-    <div>
-      <label className="text-sm text-slate-400 mb-2 block">{label}</label>
+    <div className="w-full">
+      <label className="text-sm text-cyan-400/80 mb-2 block font-medium">{label}</label>
       <div className="relative">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-cyan-400/40">
           {icon}
         </div>
         <input
@@ -727,7 +706,7 @@ function InputField({ label, value, onChange, icon, disabled, type = "text" }) {
           value={value || ''}
           onChange={onChange}
           disabled={disabled}
-          className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-11 pr-4 py-3 text-white disabled:opacity-60 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
+          className="w-full bg-slate-800/50 border border-cyan-500/20 rounded-xl pl-11 pr-4 py-3 text-white disabled:opacity-60 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all placeholder:text-cyan-400/30"
         />
       </div>
     </div>
