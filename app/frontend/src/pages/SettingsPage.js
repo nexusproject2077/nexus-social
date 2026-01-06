@@ -33,6 +33,7 @@ import ChangePasswordModal from '../components/ChangePasswordModal';
 import CustomAccountIcon from '../components/CustomAccountIcon';
 import CustomNotificationIcon from '../components/CustomNotificationIcon';
 import CustomShieldIcon from '../components/CustomShieldIcon';
+import CustomEyeIcon from '../components/CustomEyeIcon';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -194,7 +195,7 @@ export default function SettingsPage() {
 
             {/* Confidentialité */}
             <SettingCard
-              icon={<Eye className="w-6 h-6" />}
+              icon={<CustomEyeIcon className="w-6 h-6" color="currentColor" />}
               title="Confidentialité"
               subtitle="Compte privé et stories"
               onClick={() => setCurrentView('privacy')}
