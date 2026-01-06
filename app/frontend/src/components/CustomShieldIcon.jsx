@@ -7,7 +7,7 @@ const CustomShieldIcon = ({
   return (
     <svg 
       xmlns="http://www.w3.org/2000/svg" 
-      viewBox="120 140 230 270"
+      viewBox="135 120 200 280"
       className={className}
       fill="none"
     >
