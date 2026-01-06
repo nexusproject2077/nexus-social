@@ -4,7 +4,7 @@ import React from 'react';
 export default function CustomEyeIcon({ className = 'w-6 h-6', color = 'currentColor' }) {
   return (
     <svg 
-      viewBox="0 0 1360 768"
+      viewBox="110 110 270 250"
       className={className}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
