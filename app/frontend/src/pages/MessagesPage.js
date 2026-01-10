@@ -444,57 +444,12 @@ export default function MessagesPage({ user }) {
                         key={msg.id}
                         onMouseEnter={() => setHoveredMessage(msg.id)}
                         onMouseLeave={() => setHoveredMessage(null)}
-                        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group relative`}
+                        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group`}
                       >
-                        <div className="max-w-xs sm:max-w-md">
-                          <div
-                            className={`px-4 py-2 rounded-2xl ${
-                              isOwn
-                                ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white'
-                                : 'bg-slate-800 text-white'
-                            }`}
-                          >
-                            {repliedMsg && (
-                              <div className="mb-2 pb-2 border-b border-white/20">
-                                <p className="text-xs opacity-70 truncate">
-                                  Réponse à : {repliedMsg.content}
-                                </p>
-                              </div>
-                            )}
-                            
-                            <p className="break-words">{msg.content}</p>
-                            
-                            {isOwn && (
-                              <div className="flex items-center justify-end mt-1 gap-1">
-                                <span className="text-[10px] opacity-70">
-                                  {new Date(msg.created_at).toLocaleTimeString('fr-FR', {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </span>
-                                {getMessageStatus(msg)}
-                              </div>
-                            )}
-                          </div>
-
-                          {msg.reactions && msg.reactions.length > 0 && (
-                            <div className="flex gap-1 mt-1">
-                              {msg.reactions.map((reaction, idx) => (
-                                <div
-                                  key={idx}
-                                  className="bg-slate-700 px-2 py-1 rounded-full text-xs"
-                                >
-                                  {reaction.emoji}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Actions hover - Desktop only */}
-                          {hoveredMessage === msg.id && (
-                            <div className={`hidden md:flex absolute top-0 ${
-                              isOwn ? 'left-0 -translate-x-full -ml-2' : 'right-0 translate-x-full mr-2'
-                            } items-center gap-1 bg-slate-900 rounded-lg p-1 shadow-lg border border-slate-700`}>
+                        <div className="relative flex items-center gap-2">
+                          {/* Actions AVANT le message (pour messages à droite) */}
+                          {isOwn && hoveredMessage === msg.id && (
+                            <div className="hidden md:flex items-center gap-1 bg-slate-900 rounded-lg p-1 shadow-lg border border-slate-700">
                               <Button
                                 size="icon"
                                 variant="ghost"
@@ -503,7 +458,6 @@ export default function MessagesPage({ user }) {
                               >
                                 <Smile className="w-4 h-4" />
                               </Button>
-
                               <Button
                                 size="icon"
                                 variant="ghost"
@@ -512,7 +466,6 @@ export default function MessagesPage({ user }) {
                               >
                                 <Reply className="w-4 h-4" />
                               </Button>
-
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button
@@ -538,49 +491,141 @@ export default function MessagesPage({ user }) {
                                     <Reply className="w-4 h-4 mr-2" />
                                     Répondre
                                   </DropdownMenuItem>
-                                  {isOwn && (
-                                    <>
-                                      <DropdownMenuItem
-                                        onClick={() => handleDeleteMessage(msg.id, "me")}
-                                        className="cursor-pointer hover:bg-slate-800 text-red-400"
-                                      >
-                                        <Trash2 className="w-4 h-4 mr-2" />
-                                        Supprimer pour moi
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => handleDeleteMessage(msg.id, "everyone")}
-                                        className="cursor-pointer hover:bg-slate-800 text-red-400"
-                                      >
-                                        <Trash2 className="w-4 h-4 mr-2" />
-                                        Supprimer pour tous
-                                      </DropdownMenuItem>
-                                    </>
-                                  )}
+                                  <DropdownMenuItem
+                                    onClick={() => handleDeleteMessage(msg.id, "me")}
+                                    className="cursor-pointer hover:bg-slate-800 text-red-400"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Supprimer pour moi
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleDeleteMessage(msg.id, "everyone")}
+                                    className="cursor-pointer hover:bg-slate-800 text-red-400"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Supprimer pour tous
+                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
                           )}
 
-                          {/* Emoji Picker */}
-                          {showEmojiPicker === msg.id && (
-                            <div className="absolute top-0 right-0 translate-x-full mr-2 bg-slate-900 rounded-lg p-2 shadow-lg border border-slate-700 flex gap-1 z-20">
-                              {QUICK_EMOJIS.map(emoji => (
-                                <button
-                                  key={emoji}
-                                  onClick={() => handleReaction(msg.id, emoji)}
-                                  className="hover:scale-125 transition text-2xl"
+                          {/* Bulle de message */}
+                          <div className="relative max-w-xs sm:max-w-md">
+                            <div
+                              className={`px-4 py-2 rounded-2xl ${
+                                isOwn
+                                  ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white'
+                                  : 'bg-slate-800 text-white'
+                              }`}
+                            >
+                              {repliedMsg && (
+                                <div className="mb-2 pb-2 border-b border-white/20">
+                                  <p className="text-xs opacity-70 truncate">
+                                    Réponse à : {repliedMsg.content}
+                                  </p>
+                                </div>
+                              )}
+                              
+                              <p className="break-words">{msg.content}</p>
+                              
+                              <div className="flex items-center justify-end mt-1 gap-1">
+                                <span className="text-[10px] opacity-70">
+                                  {new Date(msg.created_at).toLocaleTimeString('fr-FR', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                                {isOwn && getMessageStatus(msg)}
+                              </div>
+                            </div>
+
+                            {/* Réactions */}
+                            {msg.reactions && msg.reactions.length > 0 && (
+                              <div className="flex gap-1 mt-1">
+                                {msg.reactions.map((reaction, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="bg-slate-700 px-2 py-1 rounded-full text-xs"
+                                  >
+                                    {reaction.emoji}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Emoji Picker */}
+                            {showEmojiPicker === msg.id && (
+                              <div className={`absolute top-0 ${
+                                isOwn ? 'right-full mr-2' : 'left-full ml-2'
+                              } bg-slate-900 rounded-lg p-2 shadow-lg border border-slate-700 flex gap-1 z-20`}>
+                                {QUICK_EMOJIS.map(emoji => (
+                                  <button
+                                    key={emoji}
+                                    onClick={() => handleReaction(msg.id, emoji)}
+                                    className="hover:scale-125 transition text-2xl"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8"
+                                  onClick={() => setShowEmojiPicker(null)}
                                 >
-                                  {emoji}
-                                </button>
-                              ))}
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Actions APRÈS le message (pour messages à gauche) */}
+                          {!isOwn && hoveredMessage === msg.id && (
+                            <div className="hidden md:flex items-center gap-1 bg-slate-900 rounded-lg p-1 shadow-lg border border-slate-700">
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-8 w-8"
-                                onClick={() => setShowEmojiPicker(null)}
+                                className="h-8 w-8 hover:bg-slate-800"
+                                onClick={() => setShowEmojiPicker(msg.id)}
                               >
-                                <X className="w-4 h-4" />
+                                <Smile className="w-4 h-4" />
                               </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 hover:bg-slate-800"
+                                onClick={() => setReplyingTo(msg)}
+                              >
+                                <Reply className="w-4 h-4" />
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 hover:bg-slate-800"
+                                  >
+                                    <MoreVertical className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="bg-slate-900 border-slate-700 text-white">
+                                  <DropdownMenuItem
+                                    onClick={() => handleCopyMessage(msg.content)}
+                                    className="cursor-pointer hover:bg-slate-800"
+                                  >
+                                    <Copy className="w-4 h-4 mr-2" />
+                                    Copier
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => setReplyingTo(msg)}
+                                    className="cursor-pointer hover:bg-slate-800"
+                                  >
+                                    <Reply className="w-4 h-4 mr-2" />
+                                    Répondre
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           )}
                         </div>
