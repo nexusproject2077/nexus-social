@@ -47,6 +47,11 @@ export default function MessagesPage({ user }) {
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [loading, setLoading] = useState(false);
   
+  // Separate search for group modal
+  const [groupSearchQuery, setGroupSearchQuery] = useState("");
+  const [groupSearchResults, setGroupSearchResults] = useState([]);
+  const [groupSearchLoading, setGroupSearchLoading] = useState(false);
+  
   // Mobile long press
   const [longPressMessage, setLongPressMessage] = useState(null);
   const [showMobileActions, setShowMobileActions] = useState(false);
@@ -72,6 +77,7 @@ export default function MessagesPage({ user }) {
     scrollToBottom();
   }, [messages]);
 
+  // Search for new message modal
   useEffect(() => {
     const delaySearch = setTimeout(() => {
       if (searchQuery.trim().length > 0) {
@@ -82,6 +88,18 @@ export default function MessagesPage({ user }) {
     }, 300);
     return () => clearTimeout(delaySearch);
   }, [searchQuery]);
+
+  // Search for group modal
+  useEffect(() => {
+    const delaySearch = setTimeout(() => {
+      if (groupSearchQuery.trim().length > 0) {
+        searchUsersForGroup();
+      } else {
+        setGroupSearchResults([]);
+      }
+    }, 300);
+    return () => clearTimeout(delaySearch);
+  }, [groupSearchQuery]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -165,6 +183,19 @@ export default function MessagesPage({ user }) {
     }
   };
 
+  const searchUsersForGroup = async () => {
+    try {
+      setGroupSearchLoading(true);
+      const response = await axios.get(`${API}/users/search?q=${groupSearchQuery}`);
+      const filtered = response.data.filter(u => u.id !== user.id);
+      setGroupSearchResults(filtered);
+    } catch (error) {
+      console.error("Erreur recherche groupe:", error);
+    } finally {
+      setGroupSearchLoading(false);
+    }
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!messageContent.trim()) return;
@@ -240,8 +271,8 @@ export default function MessagesPage({ user }) {
       setShowNewGroupModal(false);
       setGroupName("");
       setSelectedMembers([]);
-      setSearchQuery("");
-      setSearchResults([]);
+      setGroupSearchQuery("");
+      setGroupSearchResults([]);
       
       await fetchGroups();
       navigate(`/messages/group/${response.data.group.id}`);
@@ -879,8 +910,8 @@ export default function MessagesPage({ user }) {
               <div className="relative mb-2">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={groupSearchQuery}
+                  onChange={(e) => setGroupSearchQuery(e.target.value)}
                   placeholder="Rechercher..."
                   className="bg-slate-800 border-slate-700 text-white pl-10"
                 />
@@ -905,25 +936,39 @@ export default function MessagesPage({ user }) {
               )}
 
               <div className="max-h-48 overflow-y-auto space-y-2">
-                {searchResults.map(user => (
-                  <div
-                    key={user.id}
-                    onClick={() => {
-                      if (!selectedMembers.find(m => m.id === user.id)) {
-                        setSelectedMembers([...selectedMembers, user]);
-                      }
-                    }}
-                    className="flex items-center gap-3 p-2 hover:bg-slate-800 rounded-lg cursor-pointer"
-                  >
-                    <Avatar className="w-8 h-8">
-                      <AvatarImage src={user.profile_pic} />
-                      <AvatarFallback className="bg-slate-700 text-xs">
-                        {user.username[0].toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <p className="text-sm">{user.username}</p>
+                {groupSearchLoading ? (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-500 mx-auto"></div>
                   </div>
-                ))}
+                ) : groupSearchResults.length > 0 ? (
+                  groupSearchResults.map(user => (
+                    <div
+                      key={user.id}
+                      onClick={() => {
+                        if (!selectedMembers.find(m => m.id === user.id)) {
+                          setSelectedMembers([...selectedMembers, user]);
+                        }
+                      }}
+                      className="flex items-center gap-3 p-2 hover:bg-slate-800 rounded-lg cursor-pointer"
+                    >
+                      <Avatar className="w-8 h-8">
+                        <AvatarImage src={user.profile_pic} />
+                        <AvatarFallback className="bg-slate-700 text-xs">
+                          {user.username[0].toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <p className="text-sm">{user.username}</p>
+                    </div>
+                  ))
+                ) : groupSearchQuery ? (
+                  <div className="text-center py-4 text-slate-400 text-sm">
+                    Aucun utilisateur trouvé
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-slate-400 text-sm">
+                    Recherchez des utilisateurs à ajouter
+                  </div>
+                )}
               </div>
             </div>
 
