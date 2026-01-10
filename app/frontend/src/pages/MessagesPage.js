@@ -1,5 +1,3 @@
-// src/pages/MessagesPageEnhanced.jsx - Messages avec toutes les fonctionnalités
-
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -21,12 +19,17 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-// Picker emoji simple
 const QUICK_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
 
-export default function MessagesPageEnhanced({ user }) {
-  const { userId: selectedUserId, groupId: selectedGroupId } = useParams();
+export default function MessagesPage({ user }) {
+  const params = useParams();
   const navigate = useNavigate();
+  
+  // Détection du type de conversation
+  const selectedUserId = params.userId;
+  const selectedGroupId = params.groupId;
+  const isGroup = Boolean(selectedGroupId);
+  
   const [conversations, setConversations] = useState([]);
   const [groups, setGroups] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -36,15 +39,14 @@ export default function MessagesPageEnhanced({ user }) {
   const [replyingTo, setReplyingTo] = useState(null);
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(null); // message_id ou null
+  const [showEmojiPicker, setShowEmojiPicker] = useState(null);
   const [hoveredMessage, setHoveredMessage] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  
-  // Groupe
   const [groupName, setGroupName] = useState("");
   const [selectedMembers, setSelectedMembers] = useState([]);
+  const [loading, setLoading] = useState(false);
   
   const messagesEndRef = useRef(null);
 
@@ -74,7 +76,6 @@ export default function MessagesPageEnhanced({ user }) {
         setSearchResults([]);
       }
     }, 300);
-
     return () => clearTimeout(delaySearch);
   }, [searchQuery]);
 
@@ -85,7 +86,7 @@ export default function MessagesPageEnhanced({ user }) {
   const fetchConversations = async () => {
     try {
       const response = await axios.get(`${API}/messages/conversations`);
-      setConversations(response.data);
+      setConversations(response.data || []);
     } catch (error) {
       console.error("Erreur conversations:", error);
     }
@@ -97,39 +98,51 @@ export default function MessagesPageEnhanced({ user }) {
       setGroups(response.data.groups || []);
     } catch (error) {
       console.error("Erreur groupes:", error);
+      setGroups([]);
     }
   };
 
   const fetchMessages = async (otherUserId) => {
     try {
+      setLoading(true);
       const response = await axios.get(`${API}/messages/${otherUserId}`);
-      setMessages(response.data);
+      setMessages(response.data || []);
       
       const userResponse = await axios.get(`${API}/users/${otherUserId}`);
       setSelectedUser(userResponse.data);
       setSelectedGroup(null);
     } catch (error) {
       toast.error("Erreur lors du chargement des messages");
+      setMessages([]);
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchGroupMessages = async (groupId) => {
     try {
-      const response = await axios.get(`${API}/messages/groups/${groupId}/messages`);
-      setMessages(response.data.messages || []);
+      setLoading(true);
+      const [messagesRes, groupRes] = await Promise.all([
+        axios.get(`${API}/messages/groups/${groupId}/messages`),
+        axios.get(`${API}/messages/groups/${groupId}`)
+      ]);
       
-      const groupResponse = await axios.get(`${API}/messages/groups/${groupId}`);
-      setSelectedGroup(groupResponse.data.group);
+      setMessages(messagesRes.data.messages || []);
+      setSelectedGroup(groupRes.data.group);
       setSelectedUser(null);
     } catch (error) {
-      toast.error("Erreur lors du chargement des messages du groupe");
+      console.error("Erreur groupe:", error);
+      toast.error("Erreur lors du chargement du groupe");
+      setMessages([]);
+    } finally {
+      setLoading(false);
     }
   };
 
   const markAsRead = async (otherUserId) => {
     try {
       await axios.put(`${API}/messages/mark-as-read/${otherUserId}`);
-      fetchConversations(); // Refresh pour mettre à jour les compteurs
+      fetchConversations();
     } catch (error) {
       console.error("Erreur mark as read:", error);
     }
@@ -153,21 +166,19 @@ export default function MessagesPageEnhanced({ user }) {
     if (!messageContent.trim()) return;
 
     try {
-      if (selectedGroupId) {
-        // Message de groupe
+      if (isGroup && selectedGroupId) {
         const response = await axios.post(`${API}/messages/groups/${selectedGroupId}/messages`, {
           content: messageContent,
           reply_to_id: replyingTo?.id
         });
         setMessages([...messages, response.data.message]);
-      } else {
-        // Message privé
+      } else if (selectedUserId) {
         const response = await axios.post(`${API}/messages`, {
           recipient_id: selectedUserId,
           content: messageContent,
           reply_to_id: replyingTo?.id
         });
-        setMessages([...messages, response.data.message]);
+        setMessages([...messages, response.data]);
       }
       
       setMessageContent("");
@@ -181,14 +192,9 @@ export default function MessagesPageEnhanced({ user }) {
   const handleReaction = async (messageId, emoji) => {
     try {
       const response = await axios.post(`${API}/messages/${messageId}/react`, { emoji });
-      
-      // Mettre à jour localement
       setMessages(messages.map(msg => 
-        msg.id === messageId 
-          ? { ...msg, reactions: response.data.reactions }
-          : msg
+        msg.id === messageId ? { ...msg, reactions: response.data.reactions } : msg
       ));
-      
       setShowEmojiPicker(null);
     } catch (error) {
       toast.error("Erreur lors de l'ajout de la réaction");
@@ -205,14 +211,7 @@ export default function MessagesPageEnhanced({ user }) {
       await axios.delete(`${API}/messages/${messageId}`, {
         data: { delete_for: deleteFor }
       });
-      
-      if (deleteFor === "everyone") {
-        setMessages(messages.filter(msg => msg.id !== messageId));
-      } else {
-        // Masquer localement
-        setMessages(messages.filter(msg => msg.id !== messageId));
-      }
-      
+      setMessages(messages.filter(msg => msg.id !== messageId));
       toast.success("Message supprimé");
     } catch (error) {
       toast.error("Erreur lors de la suppression");
@@ -273,14 +272,18 @@ export default function MessagesPageEnhanced({ user }) {
     return messages.find(m => m.id === replyToId);
   };
 
+  // Vérifier si on a sélectionné quelque chose
+  const hasSelection = Boolean(selectedUserId || selectedGroupId);
+  const currentName = selectedUser?.username || selectedGroup?.name || "";
+  const currentAvatar = selectedUser?.profile_pic || selectedGroup?.avatar_url || "";
+
   return (
     <Layout user={user}>
       <div className="flex h-[calc(100vh-64px)] lg:h-screen">
-        {/* Conversations List */}
+        {/* Sidebar */}
         <div className={`w-full sm:w-80 border-r border-slate-800 overflow-y-auto ${
-          selectedUserId || selectedGroupId ? 'hidden sm:block' : 'block'
+          hasSelection ? 'hidden sm:block' : 'block'
         }`}>
-          {/* Header */}
           <div className="sticky top-0 bg-slate-950 border-b border-slate-800 p-4 z-10">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
@@ -330,7 +333,7 @@ export default function MessagesPageEnhanced({ user }) {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold truncate">{group.name}</p>
                     <p className="text-sm text-slate-400 truncate">
-                      {group.member_ids.length} membres
+                      {group.member_ids?.length || 0} membres
                     </p>
                   </div>
                 </div>
@@ -338,7 +341,7 @@ export default function MessagesPageEnhanced({ user }) {
             </div>
           )}
           
-          {/* Conversations privées */}
+          {/* Conversations */}
           <div className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase">
             Messages privés
           </div>
@@ -358,43 +361,39 @@ export default function MessagesPageEnhanced({ user }) {
               </Button>
             </div>
           ) : (
-            <div>
-              {conversations.map((conv) => (
-                <div
-                  key={conv.user_id}
-                  onClick={() => handleSelectConversation(conv.user_id)}
-                  className={`flex items-center gap-3 p-4 hover:bg-slate-900 cursor-pointer border-b border-slate-800 transition ${
-                    selectedUserId === conv.user_id ? 'bg-slate-900' : ''
-                  }`}
-                >
-                  <Avatar>
-                    <AvatarImage src={conv.profile_pic} />
-                    <AvatarFallback className="bg-slate-700">
-                      {conv.username[0].toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="font-semibold truncate">{conv.username}</p>
-                      {conv.unread_count > 0 && (
-                        <span className="bg-cyan-500 text-white text-xs rounded-full px-2 py-1 ml-2">
-                          {conv.unread_count}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-slate-400 truncate">{conv.last_message}</p>
+            conversations.map((conv) => (
+              <div
+                key={conv.user_id}
+                onClick={() => handleSelectConversation(conv.user_id)}
+                className={`flex items-center gap-3 p-4 hover:bg-slate-900 cursor-pointer border-b border-slate-800 transition ${
+                  selectedUserId === conv.user_id ? 'bg-slate-900' : ''
+                }`}
+              >
+                <Avatar>
+                  <AvatarImage src={conv.profile_pic} />
+                  <AvatarFallback className="bg-slate-700">
+                    {conv.username[0].toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold truncate">{conv.username}</p>
+                    {conv.unread_count > 0 && (
+                      <span className="bg-cyan-500 text-white text-xs rounded-full px-2 py-1 ml-2">
+                        {conv.unread_count}
+                      </span>
+                    )}
                   </div>
+                  <p className="text-sm text-slate-400 truncate">{conv.last_message}</p>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))
           )}
         </div>
 
-        {/* Messages */}
-        <div className={`flex-1 flex flex-col ${
-          selectedUserId || selectedGroupId ? 'block' : 'hidden sm:flex'
-        }`}>
-          {(selectedUserId && selectedUser) || (selectedGroupId && selectedGroup) ? (
+        {/* Messages Area */}
+        <div className={`flex-1 flex flex-col ${hasSelection ? 'block' : 'hidden sm:flex'}`}>
+          {hasSelection && currentName ? (
             <>
               {/* Header */}
               <div className="sticky top-0 bg-slate-950 border-b border-slate-800 p-4 flex items-center gap-3 z-10">
@@ -407,193 +406,193 @@ export default function MessagesPageEnhanced({ user }) {
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
                 <Avatar>
-                  <AvatarImage src={selectedUser?.profile_pic || selectedGroup?.avatar_url} />
-                  <AvatarFallback className={selectedGroup ? "bg-gradient-to-r from-purple-500 to-pink-500" : "bg-slate-700"}>
-                    {(selectedUser?.username || selectedGroup?.name)[0].toUpperCase()}
+                  <AvatarImage src={currentAvatar} />
+                  <AvatarFallback className={isGroup ? "bg-gradient-to-r from-purple-500 to-pink-500" : "bg-slate-700"}>
+                    {currentName[0]?.toUpperCase() || '?'}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
-                  <h3 className="font-semibold">
-                    {selectedUser?.username || selectedGroup?.name}
-                  </h3>
+                  <h3 className="font-semibold">{currentName}</h3>
                   {selectedUser?.bio && (
                     <p className="text-xs text-slate-400 truncate">{selectedUser.bio}</p>
                   )}
                   {selectedGroup && (
                     <p className="text-xs text-slate-400">
-                      {selectedGroup.member_ids.length} membres
+                      {selectedGroup.member_ids?.length || 0} membres
                     </p>
                   )}
                 </div>
               </div>
 
-              {/* Messages avec hover et actions */}
+              {/* Messages */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.map((msg) => {
-                  const isOwn = msg.sender_id === user.id;
-                  const repliedMsg = msg.reply_to_id ? getRepliedMessage(msg.reply_to_id) : null;
+                {loading ? (
+                  <div className="flex justify-center items-center h-full">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500"></div>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex justify-center items-center h-full text-slate-400">
+                    <p>Aucun message</p>
+                  </div>
+                ) : (
+                  messages.map((msg) => {
+                    const isOwn = msg.sender_id === user.id;
+                    const repliedMsg = msg.reply_to_id ? getRepliedMessage(msg.reply_to_id) : null;
 
-                  return (
-                    <div
-                      key={msg.id}
-                      onMouseEnter={() => setHoveredMessage(msg.id)}
-                      onMouseLeave={() => setHoveredMessage(null)}
-                      className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group`}
-                    >
-                      <div className="relative">
-                        {/* Bulle de message */}
-                        <div
-                          className={`max-w-xs sm:max-w-md px-4 py-2 rounded-2xl ${
-                            isOwn
-                              ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white'
-                              : 'bg-slate-800 text-white'
-                          }`}
-                        >
-                          {/* Message répondu */}
-                          {repliedMsg && (
-                            <div className="mb-2 pb-2 border-b border-white/20">
-                              <p className="text-xs opacity-70 truncate">
-                                Réponse à : {repliedMsg.content}
-                              </p>
+                    return (
+                      <div
+                        key={msg.id}
+                        onMouseEnter={() => setHoveredMessage(msg.id)}
+                        onMouseLeave={() => setHoveredMessage(null)}
+                        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group relative`}
+                      >
+                        <div className="max-w-xs sm:max-w-md">
+                          <div
+                            className={`px-4 py-2 rounded-2xl ${
+                              isOwn
+                                ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white'
+                                : 'bg-slate-800 text-white'
+                            }`}
+                          >
+                            {repliedMsg && (
+                              <div className="mb-2 pb-2 border-b border-white/20">
+                                <p className="text-xs opacity-70 truncate">
+                                  Réponse à : {repliedMsg.content}
+                                </p>
+                              </div>
+                            )}
+                            
+                            <p className="break-words">{msg.content}</p>
+                            
+                            {isOwn && (
+                              <div className="flex items-center justify-end mt-1 gap-1">
+                                <span className="text-[10px] opacity-70">
+                                  {new Date(msg.created_at).toLocaleTimeString('fr-FR', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                                {getMessageStatus(msg)}
+                              </div>
+                            )}
+                          </div>
+
+                          {msg.reactions && msg.reactions.length > 0 && (
+                            <div className="flex gap-1 mt-1">
+                              {msg.reactions.map((reaction, idx) => (
+                                <div
+                                  key={idx}
+                                  className="bg-slate-700 px-2 py-1 rounded-full text-xs"
+                                >
+                                  {reaction.emoji}
+                                </div>
+                              ))}
                             </div>
                           )}
-                          
-                          <p className="break-words">{msg.content}</p>
-                          
-                          {/* Statut (ticks) */}
-                          {isOwn && (
-                            <div className="flex items-center justify-end mt-1 gap-1">
-                              <span className="text-[10px] opacity-70">
-                                {new Date(msg.created_at).toLocaleTimeString('fr-FR', {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </span>
-                              {getMessageStatus(msg)}
+
+                          {/* Actions hover - Desktop only */}
+                          {hoveredMessage === msg.id && (
+                            <div className={`hidden md:flex absolute top-0 ${
+                              isOwn ? 'left-0 -translate-x-full -ml-2' : 'right-0 translate-x-full mr-2'
+                            } items-center gap-1 bg-slate-900 rounded-lg p-1 shadow-lg border border-slate-700`}>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 hover:bg-slate-800"
+                                onClick={() => setShowEmojiPicker(msg.id)}
+                              >
+                                <Smile className="w-4 h-4" />
+                              </Button>
+
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 hover:bg-slate-800"
+                                onClick={() => setReplyingTo(msg)}
+                              >
+                                <Reply className="w-4 h-4" />
+                              </Button>
+
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 hover:bg-slate-800"
+                                  >
+                                    <MoreVertical className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="bg-slate-900 border-slate-700 text-white">
+                                  <DropdownMenuItem
+                                    onClick={() => handleCopyMessage(msg.content)}
+                                    className="cursor-pointer hover:bg-slate-800"
+                                  >
+                                    <Copy className="w-4 h-4 mr-2" />
+                                    Copier
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => setReplyingTo(msg)}
+                                    className="cursor-pointer hover:bg-slate-800"
+                                  >
+                                    <Reply className="w-4 h-4 mr-2" />
+                                    Répondre
+                                  </DropdownMenuItem>
+                                  {isOwn && (
+                                    <>
+                                      <DropdownMenuItem
+                                        onClick={() => handleDeleteMessage(msg.id, "me")}
+                                        className="cursor-pointer hover:bg-slate-800 text-red-400"
+                                      >
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Supprimer pour moi
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => handleDeleteMessage(msg.id, "everyone")}
+                                        className="cursor-pointer hover:bg-slate-800 text-red-400"
+                                      >
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Supprimer pour tous
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          )}
+
+                          {/* Emoji Picker */}
+                          {showEmojiPicker === msg.id && (
+                            <div className="absolute top-0 right-0 translate-x-full mr-2 bg-slate-900 rounded-lg p-2 shadow-lg border border-slate-700 flex gap-1 z-20">
+                              {QUICK_EMOJIS.map(emoji => (
+                                <button
+                                  key={emoji}
+                                  onClick={() => handleReaction(msg.id, emoji)}
+                                  className="hover:scale-125 transition text-2xl"
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                onClick={() => setShowEmojiPicker(null)}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
                             </div>
                           )}
                         </div>
-
-                        {/* Réactions */}
-                        {msg.reactions && msg.reactions.length > 0 && (
-                          <div className="flex gap-1 mt-1">
-                            {msg.reactions.map((reaction, idx) => (
-                              <div
-                                key={idx}
-                                className="bg-slate-700 px-2 py-1 rounded-full text-xs"
-                              >
-                                {reaction.emoji}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Actions au hover (PC uniquement) */}
-                        {hoveredMessage === msg.id && (
-                          <div className={`hidden md:flex absolute top-0 ${
-                            isOwn ? 'left-0 -translate-x-full -ml-2' : 'right-0 translate-x-full mr-2'
-                          } items-center gap-1 bg-slate-900 rounded-lg p-1 shadow-lg border border-slate-700`}>
-                            {/* Emoji */}
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 hover:bg-slate-800"
-                              onClick={() => setShowEmojiPicker(msg.id)}
-                            >
-                              <Smile className="w-4 h-4" />
-                            </Button>
-
-                            {/* Reply */}
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 hover:bg-slate-800"
-                              onClick={() => setReplyingTo(msg)}
-                            >
-                              <Reply className="w-4 h-4" />
-                            </Button>
-
-                            {/* Menu 3 points */}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 hover:bg-slate-800"
-                                >
-                                  <MoreVertical className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent className="bg-slate-900 border-slate-700 text-white">
-                                <DropdownMenuItem
-                                  onClick={() => handleCopyMessage(msg.content)}
-                                  className="cursor-pointer hover:bg-slate-800"
-                                >
-                                  <Copy className="w-4 h-4 mr-2" />
-                                  Copier
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => setReplyingTo(msg)}
-                                  className="cursor-pointer hover:bg-slate-800"
-                                >
-                                  <Reply className="w-4 h-4 mr-2" />
-                                  Répondre
-                                </DropdownMenuItem>
-                                {isOwn && (
-                                  <>
-                                    <DropdownMenuItem
-                                      onClick={() => handleDeleteMessage(msg.id, "me")}
-                                      className="cursor-pointer hover:bg-slate-800 text-red-400"
-                                    >
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Supprimer pour moi
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => handleDeleteMessage(msg.id, "everyone")}
-                                      className="cursor-pointer hover:bg-slate-800 text-red-400"
-                                    >
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Supprimer pour tous
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        )}
-
-                        {/* Emoji picker */}
-                        {showEmojiPicker === msg.id && (
-                          <div className="absolute top-0 right-0 translate-x-full mr-2 bg-slate-900 rounded-lg p-2 shadow-lg border border-slate-700 flex gap-1 z-20">
-                            {QUICK_EMOJIS.map(emoji => (
-                              <button
-                                key={emoji}
-                                onClick={() => handleReaction(msg.id, emoji)}
-                                className="hover:scale-125 transition text-2xl"
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8"
-                              onClick={() => setShowEmojiPicker(null)}
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input avec réponse */}
+              {/* Input */}
               <div className="border-t border-slate-800">
-                {/* Barre de réponse */}
                 {replyingTo && (
                   <div className="px-4 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -656,9 +655,76 @@ export default function MessagesPageEnhanced({ user }) {
         </div>
       </div>
 
-      {/* Modal Nouveau Message (identique à avant) */}
+      {/* Modal Nouveau Message */}
       <Dialog open={showNewMessageModal} onOpenChange={setShowNewMessageModal}>
-        {/* ... même contenu qu'avant ... */}
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Nouveau message</DialogTitle>
+          </DialogHeader>
+
+          <div className="mt-4">
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Rechercher un utilisateur..."
+                className="bg-slate-800 border-slate-700 text-white pl-10"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSearchResults([]);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-96 overflow-y-auto">
+              {searchLoading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500 mx-auto"></div>
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="space-y-2">
+                  {searchResults.map((user) => (
+                    <div
+                      key={user.id}
+                      onClick={() => handleStartNewConversation(user.id)}
+                      className="flex items-center gap-3 p-3 hover:bg-slate-800 rounded-lg cursor-pointer transition"
+                    >
+                      <Avatar>
+                        <AvatarImage src={user.profile_pic} />
+                        <AvatarFallback className="bg-slate-700">
+                          {user.username[0].toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{user.username}</p>
+                        {user.bio && (
+                          <p className="text-sm text-slate-400 truncate">{user.bio}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : searchQuery ? (
+                <div className="text-center py-8 text-slate-400">
+                  <p>Aucun utilisateur trouvé</p>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-slate-400">
+                  <Search className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>Recherchez un utilisateur pour commencer</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
       </Dialog>
 
       {/* Modal Nouveau Groupe */}
@@ -669,7 +735,6 @@ export default function MessagesPageEnhanced({ user }) {
           </DialogHeader>
 
           <div className="mt-4 space-y-4">
-            {/* Nom du groupe */}
             <div>
               <label className="text-sm text-slate-400 mb-2 block">Nom du groupe</label>
               <Input
@@ -680,7 +745,6 @@ export default function MessagesPageEnhanced({ user }) {
               />
             </div>
 
-            {/* Recherche membres */}
             <div>
               <label className="text-sm text-slate-400 mb-2 block">Ajouter des membres</label>
               <div className="relative mb-2">
@@ -693,7 +757,6 @@ export default function MessagesPageEnhanced({ user }) {
                 />
               </div>
 
-              {/* Membres sélectionnés */}
               {selectedMembers.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-2">
                   {selectedMembers.map(member => (
@@ -712,7 +775,6 @@ export default function MessagesPageEnhanced({ user }) {
                 </div>
               )}
 
-              {/* Résultats recherche */}
               <div className="max-h-48 overflow-y-auto space-y-2">
                 {searchResults.map(user => (
                   <div
