@@ -1539,6 +1539,382 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     message = convert_mongo_doc_to_dict(message_to_insert)
     return Message(**message)
 
+# ==================== ENHANCED MESSAGES FEATURES ====================
+
+# Read Receipts
+@api_router.put("/messages/{message_id}/status")
+async def update_message_status(
+    message_id: str,
+    status_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Mettre à jour le statut d'un message (delivered/read)"""
+    status = status_data.get("status")
+    
+    message_raw = await db.messages.find_one({"id": message_id})
+    if not message_raw:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    message = convert_mongo_doc_to_dict(message_raw)
+    
+    # Seul le destinataire peut mettre à jour le statut
+    if message["recipient_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    now = datetime.now(timezone.utc).isoformat()
+    updates = {"status": status, "updated_at": now}
+    
+    if status == "delivered" and not message.get("delivered_at"):
+        updates["delivered_at"] = now
+    elif status == "read" and not message.get("read_at"):
+        updates["read_at"] = now
+        updates["read"] = True  # Backward compatibility
+        if not message.get("delivered_at"):
+            updates["delivered_at"] = now
+    
+    await db.messages.update_one(
+        {"id": message_id},
+        {"$set": updates}
+    )
+    
+    return {"success": True, "status": status}
+
+@api_router.put("/messages/mark-as-read/{user_id}")
+async def mark_conversation_as_read(
+    user_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Marquer tous les messages d'une conversation comme lus"""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    result = await db.messages.update_many(
+        {
+            "sender_id": user_id,
+            "recipient_id": current_user["id"],
+            "read": False
+        },
+        {
+            "$set": {
+                "status": "read",
+                "read": True,
+                "read_at": now,
+                "updated_at": now
+            }
+        }
+    )
+    
+    return {
+        "success": True,
+        "marked_count": result.modified_count
+    }
+
+# Reactions
+@api_router.post("/messages/{message_id}/react")
+async def add_reaction(
+    message_id: str,
+    reaction_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Ajouter une réaction à un message"""
+    emoji = reaction_data.get("emoji")
+    
+    message_raw = await db.messages.find_one({"id": message_id})
+    if not message_raw:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    message = convert_mongo_doc_to_dict(message_raw)
+    
+    # Vérifier que l'utilisateur fait partie de la conversation
+    if current_user["id"] not in [message["sender_id"], message["recipient_id"]]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Vérifier si l'utilisateur a déjà réagi
+    reactions = message.get("reactions", [])
+    existing = next((r for r in reactions if r["user_id"] == current_user["id"]), None)
+    
+    if existing:
+        reactions = [r for r in reactions if r["user_id"] != current_user["id"]]
+    
+    # Ajouter nouvelle réaction
+    reactions.append({
+        "user_id": current_user["id"],
+        "emoji": emoji,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await db.messages.update_one(
+        {"id": message_id},
+        {"$set": {"reactions": reactions}}
+    )
+    
+    return {"success": True, "reactions": reactions}
+
+@api_router.delete("/messages/{message_id}/react")
+async def remove_reaction(
+    message_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Retirer sa réaction d'un message"""
+    message_raw = await db.messages.find_one({"id": message_id})
+    if not message_raw:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    message = convert_mongo_doc_to_dict(message_raw)
+    reactions = message.get("reactions", [])
+    reactions = [r for r in reactions if r["user_id"] != current_user["id"]]
+    
+    await db.messages.update_one(
+        {"id": message_id},
+        {"$set": {"reactions": reactions}}
+    )
+    
+    return {"success": True, "reactions": reactions}
+
+# Delete Message
+@api_router.delete("/messages/{message_id}")
+async def delete_message(
+    message_id: str,
+    delete_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Supprimer un message"""
+    delete_for = delete_data.get("delete_for", "me")
+    
+    message_raw = await db.messages.find_one({"id": message_id})
+    if not message_raw:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    message = convert_mongo_doc_to_dict(message_raw)
+    deleted_by = message.get("deleted_by", [])
+    
+    if delete_for == "everyone":
+        # Seul l'expéditeur peut supprimer pour tout le monde
+        if message["sender_id"] != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Supprimer complètement
+        await db.messages.delete_one({"id": message_id})
+        return {"success": True, "message": "Message deleted for everyone"}
+    
+    else:  # delete_for == "me"
+        if current_user["id"] not in deleted_by:
+            deleted_by.append(current_user["id"])
+        
+        await db.messages.update_one(
+            {"id": message_id},
+            {"$set": {"deleted_by": deleted_by}}
+        )
+        
+        return {"success": True, "message": "Message deleted for you"}
+
+# ==================== GROUP CHATS ====================
+
+@api_router.post("/messages/groups")
+async def create_group(
+    group_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Créer un groupe de discussion"""
+    now = datetime.now(timezone.utc).isoformat()
+    group_id = str(uuid.uuid4())
+    
+    group = {
+        "id": group_id,
+        "name": group_data["name"],
+        "avatar_url": group_data.get("avatar_url"),
+        "creator_id": current_user["id"],
+        "admin_ids": [current_user["id"]],
+        "member_ids": [current_user["id"]] + group_data.get("member_ids", []),
+        "settings": {
+            "allow_members_to_add": group_data.get("allow_members_to_add", True),
+            "allow_members_to_send_media": group_data.get("allow_members_to_send_media", True)
+        },
+        "created_at": now,
+        "updated_at": now
+    }
+    
+    await db.group_chats.insert_one(group)
+    
+    return {
+        "success": True,
+        "group": convert_mongo_doc_to_dict(group)
+    }
+
+@api_router.get("/messages/groups")
+async def list_groups(current_user: dict = Depends(get_current_user)):
+    """Lister les groupes de l'utilisateur"""
+    groups_raw = await db.group_chats.find({
+        "member_ids": current_user["id"]
+    }).to_list(length=100)
+    
+    groups = [convert_mongo_doc_to_dict(g) for g in groups_raw]
+    
+    return {
+        "success": True,
+        "groups": groups
+    }
+
+@api_router.get("/messages/groups/{group_id}")
+async def get_group(
+    group_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Détails d'un groupe"""
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    group = convert_mongo_doc_to_dict(group_raw)
+    
+    # Vérifier membership
+    if current_user["id"] not in group["member_ids"]:
+        raise HTTPException(status_code=403, detail="Not a member")
+    
+    return {
+        "success": True,
+        "group": group
+    }
+
+@api_router.post("/messages/groups/{group_id}/messages")
+async def send_group_message(
+    group_id: str,
+    message_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Envoyer un message dans un groupe"""
+    # Vérifier membership
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    group = convert_mongo_doc_to_dict(group_raw)
+    
+    if current_user["id"] not in group["member_ids"]:
+        raise HTTPException(status_code=403, detail="Not a member")
+    
+    now = datetime.now(timezone.utc).isoformat()
+    message_id = str(uuid.uuid4())
+    
+    message = {
+        "id": message_id,
+        "group_id": group_id,
+        "sender_id": current_user["id"],
+        "sender_username": current_user["username"],
+        "sender_profile_pic": current_user.get("profile_pic"),
+        "content": message_data["content"],
+        "media_urls": message_data.get("media_urls", []),
+        "reply_to_id": message_data.get("reply_to_id"),
+        "reactions": [],
+        "read_by": [current_user["id"]],
+        "deleted_for": [],
+        "created_at": now
+    }
+    
+    await db.group_messages.insert_one(message)
+    
+    return {
+        "success": True,
+        "message": convert_mongo_doc_to_dict(message)
+    }
+
+@api_router.get("/messages/groups/{group_id}/messages")
+async def get_group_messages(
+    group_id: str,
+    limit: int = 50,
+    skip: int = 0,
+    current_user: dict = Depends(get_current_user)
+):
+    """Récupérer les messages d'un groupe"""
+    # Vérifier membership
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    group = convert_mongo_doc_to_dict(group_raw)
+    
+    if current_user["id"] not in group["member_ids"]:
+        raise HTTPException(status_code=403, detail="Not a member")
+    
+    # Récupérer messages non supprimés pour cet utilisateur
+    messages_raw = await db.group_messages.find({
+        "group_id": group_id,
+        "deleted_for": {"$ne": current_user["id"]}
+    }).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    
+    messages = [convert_mongo_doc_to_dict(m) for m in messages_raw]
+    messages.reverse()  # Ordre chronologique
+    
+    return {
+        "success": True,
+        "messages": messages
+    }
+
+@api_router.post("/messages/groups/{group_id}/members")
+async def add_group_member(
+    group_id: str,
+    member_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Ajouter un membre à un groupe"""
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    group = convert_mongo_doc_to_dict(group_raw)
+    
+    # Vérifier si admin
+    if current_user["id"] not in group["admin_ids"]:
+        raise HTTPException(status_code=403, detail="Admin only")
+    
+    user_id = member_data.get("user_id")
+    
+    if user_id not in group["member_ids"]:
+        await db.group_chats.update_one(
+            {"id": group_id},
+            {
+                "$push": {"member_ids": user_id},
+                "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+            }
+        )
+    
+    return {"success": True, "message": "Member added"}
+
+@api_router.delete("/messages/groups/{group_id}/members/{user_id}")
+async def remove_group_member(
+    group_id: str,
+    user_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Retirer un membre d'un groupe"""
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    group = convert_mongo_doc_to_dict(group_raw)
+    
+    # Vérifier si admin ou si c'est l'utilisateur lui-même
+    if current_user["id"] not in group["admin_ids"] and current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Ne pas retirer le créateur
+    if user_id == group["creator_id"]:
+        raise HTTPException(status_code=400, detail="Cannot remove creator")
+    
+    await db.group_chats.update_one(
+        {"id": group_id},
+        {
+            "$pull": {"member_ids": user_id, "admin_ids": user_id},
+            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+        }
+    )
+    
+    return {"success": True, "message": "Member removed"}
+
 # ==================== SEARCH ROUTES ====================
 @api_router.get("/search")
 async def search(q: str, current_user: dict = Depends(get_current_user)):
