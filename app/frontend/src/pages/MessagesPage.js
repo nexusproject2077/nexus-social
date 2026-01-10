@@ -25,7 +25,6 @@ export default function MessagesPage({ user }) {
   const params = useParams();
   const navigate = useNavigate();
   
-  // Détection du type de conversation
   const selectedUserId = params.userId;
   const selectedGroupId = params.groupId;
   const isGroup = Boolean(selectedGroupId);
@@ -47,6 +46,11 @@ export default function MessagesPage({ user }) {
   const [groupName, setGroupName] = useState("");
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // Mobile long press
+  const [longPressMessage, setLongPressMessage] = useState(null);
+  const [showMobileActions, setShowMobileActions] = useState(false);
+  const longPressTimer = useRef(null);
   
   const messagesEndRef = useRef(null);
 
@@ -196,6 +200,7 @@ export default function MessagesPage({ user }) {
         msg.id === messageId ? { ...msg, reactions: response.data.reactions } : msg
       ));
       setShowEmojiPicker(null);
+      setShowMobileActions(false);
     } catch (error) {
       toast.error("Erreur lors de l'ajout de la réaction");
     }
@@ -204,6 +209,7 @@ export default function MessagesPage({ user }) {
   const handleCopyMessage = (content) => {
     navigator.clipboard.writeText(content);
     toast.success("Message copié !");
+    setShowMobileActions(false);
   };
 
   const handleDeleteMessage = async (messageId, deleteFor = "me") => {
@@ -213,6 +219,7 @@ export default function MessagesPage({ user }) {
       });
       setMessages(messages.filter(msg => msg.id !== messageId));
       toast.success("Message supprimé");
+      setShowMobileActions(false);
     } catch (error) {
       toast.error("Erreur lors de la suppression");
     }
@@ -233,11 +240,14 @@ export default function MessagesPage({ user }) {
       setShowNewGroupModal(false);
       setGroupName("");
       setSelectedMembers([]);
+      setSearchQuery("");
+      setSearchResults([]);
       
-      fetchGroups();
+      await fetchGroups();
       navigate(`/messages/group/${response.data.group.id}`);
       toast.success("Groupe créé !");
     } catch (error) {
+      console.error("Erreur création groupe:", error);
       toast.error("Erreur lors de la création du groupe");
     }
   };
@@ -256,6 +266,23 @@ export default function MessagesPage({ user }) {
     navigate(`/messages/${userId}`);
   };
 
+  // Long press handlers
+  const handleTouchStart = (msg) => {
+    longPressTimer.current = setTimeout(() => {
+      setLongPressMessage(msg);
+      setShowMobileActions(true);
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    }, 500);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
   const getMessageStatus = (msg) => {
     if (msg.sender_id !== user.id) return null;
     
@@ -272,7 +299,6 @@ export default function MessagesPage({ user }) {
     return messages.find(m => m.id === replyToId);
   };
 
-  // Vérifier si on a sélectionné quelque chose
   const hasSelection = Boolean(selectedUserId || selectedGroupId);
   const currentName = selectedUser?.username || selectedGroup?.name || "";
   const currentAvatar = selectedUser?.profile_pic || selectedGroup?.avatar_url || "";
@@ -310,7 +336,6 @@ export default function MessagesPage({ user }) {
             </div>
           </div>
           
-          {/* Groupes */}
           {groups.length > 0 && (
             <div className="border-b border-slate-800">
               <div className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase">
@@ -341,7 +366,6 @@ export default function MessagesPage({ user }) {
             </div>
           )}
           
-          {/* Conversations */}
           <div className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase">
             Messages privés
           </div>
@@ -395,7 +419,6 @@ export default function MessagesPage({ user }) {
         <div className={`flex-1 flex flex-col ${hasSelection ? 'block' : 'hidden sm:flex'}`}>
           {hasSelection && currentName ? (
             <>
-              {/* Header */}
               <div className="sticky top-0 bg-slate-950 border-b border-slate-800 p-4 flex items-center gap-3 z-10">
                 <Button
                   variant="ghost"
@@ -424,7 +447,6 @@ export default function MessagesPage({ user }) {
                 </div>
               </div>
 
-              {/* Messages */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {loading ? (
                   <div className="flex justify-center items-center h-full">
@@ -444,10 +466,12 @@ export default function MessagesPage({ user }) {
                         key={msg.id}
                         onMouseEnter={() => setHoveredMessage(msg.id)}
                         onMouseLeave={() => setHoveredMessage(null)}
+                        onTouchStart={() => handleTouchStart(msg)}
+                        onTouchEnd={handleTouchEnd}
                         className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group`}
                       >
                         <div className="relative flex items-center gap-2">
-                          {/* Actions AVANT le message (pour messages à droite) */}
+                          {/* Actions AVANT (desktop only, messages à droite) */}
                           {isOwn && hoveredMessage === msg.id && (
                             <div className="hidden md:flex items-center gap-1 bg-slate-900 rounded-lg p-1 shadow-lg border border-slate-700">
                               <Button
@@ -476,30 +500,33 @@ export default function MessagesPage({ user }) {
                                     <MoreVertical className="w-4 h-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent className="bg-slate-900 border-slate-700 text-white">
+                                <DropdownMenuContent 
+                                  className="bg-slate-900 border-slate-700 text-white"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   <DropdownMenuItem
-                                    onClick={() => handleCopyMessage(msg.content)}
+                                    onSelect={() => handleCopyMessage(msg.content)}
                                     className="cursor-pointer hover:bg-slate-800"
                                   >
                                     <Copy className="w-4 h-4 mr-2" />
                                     Copier
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
-                                    onClick={() => setReplyingTo(msg)}
+                                    onSelect={() => setReplyingTo(msg)}
                                     className="cursor-pointer hover:bg-slate-800"
                                   >
                                     <Reply className="w-4 h-4 mr-2" />
                                     Répondre
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
-                                    onClick={() => handleDeleteMessage(msg.id, "me")}
+                                    onSelect={() => handleDeleteMessage(msg.id, "me")}
                                     className="cursor-pointer hover:bg-slate-800 text-red-400"
                                   >
                                     <Trash2 className="w-4 h-4 mr-2" />
                                     Supprimer pour moi
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
-                                    onClick={() => handleDeleteMessage(msg.id, "everyone")}
+                                    onSelect={() => handleDeleteMessage(msg.id, "everyone")}
                                     className="cursor-pointer hover:bg-slate-800 text-red-400"
                                   >
                                     <Trash2 className="w-4 h-4 mr-2" />
@@ -510,7 +537,7 @@ export default function MessagesPage({ user }) {
                             </div>
                           )}
 
-                          {/* Bulle de message */}
+                          {/* Bulle */}
                           <div className="relative max-w-xs sm:max-w-md">
                             <div
                               className={`px-4 py-2 rounded-2xl ${
@@ -540,7 +567,6 @@ export default function MessagesPage({ user }) {
                               </div>
                             </div>
 
-                            {/* Réactions */}
                             {msg.reactions && msg.reactions.length > 0 && (
                               <div className="flex gap-1 mt-1">
                                 {msg.reactions.map((reaction, idx) => (
@@ -580,7 +606,7 @@ export default function MessagesPage({ user }) {
                             )}
                           </div>
 
-                          {/* Actions APRÈS le message (pour messages à gauche) */}
+                          {/* Actions APRÈS (desktop only, messages à gauche) */}
                           {!isOwn && hoveredMessage === msg.id && (
                             <div className="hidden md:flex items-center gap-1 bg-slate-900 rounded-lg p-1 shadow-lg border border-slate-700">
                               <Button
@@ -609,16 +635,19 @@ export default function MessagesPage({ user }) {
                                     <MoreVertical className="w-4 h-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent className="bg-slate-900 border-slate-700 text-white">
+                                <DropdownMenuContent 
+                                  className="bg-slate-900 border-slate-700 text-white"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   <DropdownMenuItem
-                                    onClick={() => handleCopyMessage(msg.content)}
+                                    onSelect={() => handleCopyMessage(msg.content)}
                                     className="cursor-pointer hover:bg-slate-800"
                                   >
                                     <Copy className="w-4 h-4 mr-2" />
                                     Copier
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
-                                    onClick={() => setReplyingTo(msg)}
+                                    onSelect={() => setReplyingTo(msg)}
                                     className="cursor-pointer hover:bg-slate-800"
                                   >
                                     <Reply className="w-4 h-4 mr-2" />
@@ -636,7 +665,6 @@ export default function MessagesPage({ user }) {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
               <div className="border-t border-slate-800">
                 {replyingTo && (
                   <div className="px-4 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
@@ -699,6 +727,62 @@ export default function MessagesPage({ user }) {
           )}
         </div>
       </div>
+
+      {/* Mobile Actions Modal (Long Press) */}
+      <Dialog open={showMobileActions} onOpenChange={setShowMobileActions}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Actions</DialogTitle>
+          </DialogHeader>
+          
+          {longPressMessage && (
+            <div className="space-y-2 mt-4">
+              <Button
+                onClick={() => setShowEmojiPicker(longPressMessage.id)}
+                className="w-full justify-start bg-slate-800 hover:bg-slate-700"
+              >
+                <Smile className="w-4 h-4 mr-2" />
+                Réagir
+              </Button>
+              <Button
+                onClick={() => {
+                  setReplyingTo(longPressMessage);
+                  setShowMobileActions(false);
+                }}
+                className="w-full justify-start bg-slate-800 hover:bg-slate-700"
+              >
+                <Reply className="w-4 h-4 mr-2" />
+                Répondre
+              </Button>
+              <Button
+                onClick={() => handleCopyMessage(longPressMessage.content)}
+                className="w-full justify-start bg-slate-800 hover:bg-slate-700"
+              >
+                <Copy className="w-4 h-4 mr-2" />
+                Copier
+              </Button>
+              {longPressMessage.sender_id === user.id && (
+                <>
+                  <Button
+                    onClick={() => handleDeleteMessage(longPressMessage.id, "me")}
+                    className="w-full justify-start bg-red-900/20 hover:bg-red-900/30 text-red-400"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Supprimer pour moi
+                  </Button>
+                  <Button
+                    onClick={() => handleDeleteMessage(longPressMessage.id, "everyone")}
+                    className="w-full justify-start bg-red-900/20 hover:bg-red-900/30 text-red-400"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Supprimer pour tous
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Nouveau Message */}
       <Dialog open={showNewMessageModal} onOpenChange={setShowNewMessageModal}>
