@@ -4,7 +4,7 @@ from pathlib import Path
 # Cette ligne magique règle TOUT le problème Render
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response, Query, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -13,7 +13,7 @@ from pymongo.errors import InvalidURI, ConnectionFailure
 import os
 import logging
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext
@@ -22,7 +22,11 @@ import base64
 from bson import ObjectId
 import json
 from collections import defaultdict
-from fastapi import Body
+from enum import Enum
+import hashlib
+import random
+import math
+import re
 
 # Import du module follows (avec gestion des chemins)
 try:
