@@ -2575,6 +2575,275 @@ async def get_cookie_policy():
 </html>
     """, media_type="text/html")
 
+
+
+# ==================== ENHANCED FEATURES - ADDED BY MERGE SCRIPT ====================
+
+# ==================== ENUMS ====================
+
+class BadgeType(str, Enum):
+    EARLY_ADOPTER = "early_adopter"
+    VETERAN = "veteran"
+    INFLUENCER = "influencer"
+    VERIFIED = "verified"
+    TOP_CONTRIBUTOR = "top_contributor"
+    COMMENTATOR = "commentator"
+    SOCIAL_BUTTERFLY = "social_butterfly"
+    PHOTOGRAPHER = "photographer"
+    STORYTELLER = "storyteller"
+    VERIFIED_EMAIL = "verified_email"
+
+class ReactionType(str, Enum):
+    LIKE = "like"
+    LOVE = "love"
+    HAHA = "haha"
+    WOW = "wow"
+    SAD = "sad"
+    ANGRY = "angry"
+    FIRE = "fire"
+    CLAP = "clap"
+
+class PrivacyLevel(str, Enum):
+    PUBLIC = "public"
+    FOLLOWERS = "followers"
+    FRIENDS = "friends"
+    NOBODY = "nobody"
+
+class ReportReason(str, Enum):
+    SPAM = "spam"
+    HARASSMENT = "harassment"
+    HATE_SPEECH = "hate_speech"
+    VIOLENCE = "violence"
+    NUDITY = "nudity"
+    FALSE_INFO = "false_info"
+
+# ==================== CONSTANTS ====================
+
+BADGES_METADATA = {
+    BadgeType.EARLY_ADOPTER: {"name": "Early Adopter", "icon": "🚀", "points": 100},
+    BadgeType.VETERAN: {"name": "Vétéran", "icon": "⭐", "points": 50},
+    BadgeType.INFLUENCER: {"name": "Influenceur", "icon": "👑", "points": 200},
+    BadgeType.VERIFIED: {"name": "Vérifié", "icon": "✓", "points": 150},
+    BadgeType.TOP_CONTRIBUTOR: {"name": "Top Contributeur", "icon": "📝", "points": 30},
+    BadgeType.VERIFIED_EMAIL: {"name": "Email Vérifié", "icon": "📧", "points": 10},
+}
+
+REACTION_EMOJIS = {
+    ReactionType.LIKE: "❤️",
+    ReactionType.LOVE: "😍",
+    ReactionType.HAHA: "😂",
+    ReactionType.WOW: "😮",
+    ReactionType.SAD: "😢",
+    ReactionType.ANGRY: "😡",
+    ReactionType.FIRE: "🔥",
+    ReactionType.CLAP: "👏"
+}
+
+LEVEL_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500]
+XP_REWARDS = {"post_created": 10, "post_liked": 2, "comment_created": 5, "story_created": 3}
+
+# ==================== HELPER FUNCTIONS ====================
+
+def get_timestamp_days_ago(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+def extract_hashtags(text: str) -> List[str]:
+    return re.findall(r'#(\w+)', text)
+
+# ==================== GAMIFICATION ====================
+
+class LevelingSystem:
+    async def add_xp(self, user_id: str, amount: int, reason: str) -> dict:
+        user = await db.users.find_one({"id": user_id})
+        current_xp = user.get("xp", 0)
+        new_xp = current_xp + amount
+        
+        await db.users.update_one(
+            {"id": user_id},
+            {"$set": {"xp": new_xp}}
+        )
+        
+        return {"xp_gained": amount, "total_xp": new_xp}
+
+class GamificationEngine:
+    async def check_and_award_badges(self, user_id: str):
+        user = await db.users.find_one({"id": user_id})
+        current_badges = user.get("badges", [])
+        new_badges = []
+        
+        if user.get("email_verified") and BadgeType.VERIFIED_EMAIL not in current_badges:
+            new_badges.append(BadgeType.VERIFIED_EMAIL)
+        
+        posts_count = await db.posts.count_documents({"author_id": user_id})
+        if posts_count >= 100 and BadgeType.TOP_CONTRIBUTOR not in current_badges:
+            new_badges.append(BadgeType.TOP_CONTRIBUTOR)
+        
+        if new_badges:
+            await db.users.update_one(
+                {"id": user_id},
+                {"$push": {"badges": {"$each": new_badges}}}
+            )
+        
+        return new_badges
+
+# ==================== REACTIONS SYSTEM ====================
+
+@api_router.post("/posts/{post_id}/react")
+async def react_to_post(
+    post_id: str,
+    reaction_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    reaction_type = reaction_data.get("reaction_type")
+    if reaction_type not in [r.value for r in ReactionType]:
+        raise HTTPException(400, "Invalid reaction type")
+    
+    existing = await db.reactions.find_one({
+        "user_id": current_user["id"],
+        "post_id": post_id
+    })
+    
+    if existing:
+        await db.reactions.update_one(
+            {"id": existing["id"]},
+            {"$set": {"reaction_type": reaction_type}}
+        )
+    else:
+        await db.reactions.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": current_user["id"],
+            "post_id": post_id,
+            "reaction_type": reaction_type,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    await update_post_reaction_counts(post_id)
+    return {"success": True}
+
+@api_router.delete("/posts/{post_id}/react")
+async def remove_reaction(post_id: str, current_user: dict = Depends(get_current_user)):
+    await db.reactions.delete_one({"user_id": current_user["id"], "post_id": post_id})
+    await update_post_reaction_counts(post_id)
+    return {"success": True}
+
+@api_router.get("/posts/{post_id}/reactions")
+async def get_post_reactions(post_id: str, current_user: dict = Depends(get_current_user)):
+    reactions = await db.reactions.find({"post_id": post_id}).to_list(length=1000)
+    
+    by_type = {}
+    for reaction in reactions:
+        rtype = reaction["reaction_type"]
+        if rtype not in by_type:
+            by_type[rtype] = []
+        by_type[rtype].append(reaction["user_id"])
+    
+    reaction_counts = {
+        rtype: {"count": len(user_ids), "emoji": REACTION_EMOJIS[rtype]}
+        for rtype, user_ids in by_type.items()
+    }
+    
+    user_reaction = next(
+        (r["reaction_type"] for r in reactions if r["user_id"] == current_user["id"]),
+        None
+    )
+    
+    return {"success": True, "reactions": reaction_counts, "user_reaction": user_reaction}
+
+async def update_post_reaction_counts(post_id: str):
+    reactions = await db.reactions.find({"post_id": post_id}).to_list(length=10000)
+    counts = {}
+    for reaction in reactions:
+        rtype = reaction["reaction_type"]
+        counts[rtype] = counts.get(rtype, 0) + 1
+    
+    await db.posts.update_one(
+        {"id": post_id},
+        {"$set": {"reactions": counts, "total_reactions": len(reactions)}}
+    )
+
+# ==================== GAMIFICATION ENDPOINTS ====================
+
+@api_router.get("/gamification/badges")
+async def get_user_badges(current_user: dict = Depends(get_current_user)):
+    user = await db.users.find_one({"id": current_user["id"]})
+    badges = user.get("badges", [])
+    badge_details = [{"type": badge, **BADGES_METADATA.get(badge, {})} for badge in badges]
+    return {"success": True, "badges": badge_details}
+
+@api_router.post("/gamification/check-badges")
+async def check_badges(current_user: dict = Depends(get_current_user)):
+    engine = GamificationEngine()
+    new_badges = await engine.check_and_award_badges(current_user["id"])
+    return {"success": True, "new_badges": [{"type": b, **BADGES_METADATA[b]} for b in new_badges]}
+
+@api_router.get("/gamification/level")
+async def get_user_level(current_user: dict = Depends(get_current_user)):
+    user = await db.users.find_one({"id": current_user["id"]})
+    return {"success": True, "level": user.get("level", 1), "xp": user.get("xp", 0)}
+
+# ==================== PRIVACY ENDPOINTS ====================
+
+@api_router.get("/privacy/settings")
+async def get_privacy_settings(current_user: dict = Depends(get_current_user)):
+    user = await db.users.find_one({"id": current_user["id"]})
+    privacy = user.get("privacy_settings", {})
+    default_privacy = {
+        "profile_visibility": "public",
+        "who_can_message": "everyone",
+        "blocked_users": []
+    }
+    return {"success": True, "privacy_settings": {**default_privacy, **privacy}}
+
+@api_router.post("/privacy/block")
+async def block_user(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    blocked_id = data["user_id"]
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$addToSet": {"privacy_settings.blocked_users": blocked_id}}
+    )
+    return {"success": True}
+
+# ==================== REPORTING ENDPOINTS ====================
+
+@api_router.post("/reports")
+async def create_report(report_data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    report_id = str(uuid.uuid4())
+    report = {
+        "id": report_id,
+        "reporter_id": current_user["id"],
+        "reported_content_id": report_data.get("reported_content_id"),
+        "content_type": report_data["content_type"],
+        "reason": report_data["reason"],
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.reports.insert_one(report)
+    return {"success": True, "report_id": report_id}
+
+# ==================== NOTIFICATIONS ====================
+
+async def create_notification(user_id: str, type: str, content: str, metadata: dict = None):
+    notification_id = str(uuid.uuid4())
+    await db.notifications.insert_one({
+        "id": notification_id,
+        "user_id": user_id,
+        "type": type,
+        "content": content,
+        "metadata": metadata or {},
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return notification_id
+
+@api_router.get("/notifications")
+async def get_notifications(limit: int = 20, current_user: dict = Depends(get_current_user)):
+    notifications = await db.notifications.find(
+        {"user_id": current_user["id"]}
+    ).sort("created_at", -1).limit(limit).to_list(length=limit)
+    return {"success": True, "notifications": [convert_mongo_doc_to_dict(n) for n in notifications]}
+
+# ==================== END ENHANCED FEATURES ====================
+
 # ==================== FOLLOW SYSTEM INTEGRATION ====================
 # Injecter la database dans le module follows
 if set_database is not None:
