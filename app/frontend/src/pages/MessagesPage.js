@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Send, ArrowLeft, Plus, Search, X, Check, CheckCheck,
-  MoreVertical, Reply, Smile, Copy, Trash2, Users
+  MoreVertical, Reply, Smile, Copy, Trash2, Users,
+  UserMinus, LogOut, Settings, Crown, Shield
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -56,6 +57,10 @@ export default function MessagesPage({ user }) {
   const [longPressMessage, setLongPressMessage] = useState(null);
   const [showMobileActions, setShowMobileActions] = useState(false);
   const longPressTimer = useRef(null);
+
+  // Group details modal
+  const [showGroupDetails, setShowGroupDetails] = useState(false);
+  const [groupMembers, setGroupMembers] = useState([]);
   
   const messagesEndRef = useRef(null);
 
@@ -70,6 +75,10 @@ export default function MessagesPage({ user }) {
       markAsRead(selectedUserId);
     } else if (selectedGroupId) {
       fetchGroupMessages(selectedGroupId);
+    } else {
+      // Recharger les groupes quand on revient à la page principale
+      fetchGroups();
+      fetchConversations();
     }
   }, [selectedUserId, selectedGroupId]);
 
@@ -318,6 +327,55 @@ export default function MessagesPage({ user }) {
     navigate(`/messages/${userId}`);
   };
 
+  const fetchGroupMembers = async () => {
+    if (!selectedGroup || !selectedGroup.member_ids) return;
+
+    try {
+      const membersPromises = selectedGroup.member_ids.map(memberId =>
+        axios.get(`${API}/users/${memberId}`)
+      );
+      const membersResponses = await Promise.all(membersPromises);
+      const members = membersResponses.map(res => res.data);
+      setGroupMembers(members);
+    } catch (error) {
+      console.error("Erreur chargement membres:", error);
+      toast.error("Erreur lors du chargement des membres");
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!selectedGroupId || !user) return;
+
+    try {
+      await axios.delete(`${API}/messages/groups/${selectedGroupId}/members/${user.id}`);
+      toast.success("Vous avez quitté le groupe");
+      setShowGroupDetails(false);
+      navigate('/messages');
+      await fetchGroups();
+    } catch (error) {
+      console.error("Erreur quitter groupe:", error);
+      const errorMessage = error.response?.data?.detail || "Erreur lors de la sortie du groupe";
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleRemoveMember = async (memberId) => {
+    if (!selectedGroupId) return;
+
+    try {
+      await axios.delete(`${API}/messages/groups/${selectedGroupId}/members/${memberId}`);
+      toast.success("Membre retiré du groupe");
+      await fetchGroupMembers();
+      // Recharger les détails du groupe
+      const groupRes = await axios.get(`${API}/messages/groups/${selectedGroupId}`);
+      setSelectedGroup(groupRes.data.group);
+    } catch (error) {
+      console.error("Erreur retrait membre:", error);
+      const errorMessage = error.response?.data?.detail || "Erreur lors du retrait du membre";
+      toast.error(errorMessage);
+    }
+  };
+
   // Long press handlers
   const handleTouchStart = (msg) => {
     longPressTimer.current = setTimeout(() => {
@@ -480,22 +538,32 @@ export default function MessagesPage({ user }) {
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
-                <Avatar>
-                  <AvatarImage src={currentAvatar} />
-                  <AvatarFallback className={isGroup ? "bg-gradient-to-r from-purple-500 to-pink-500" : "bg-slate-700"}>
-                    {currentName[0]?.toUpperCase() || '?'}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <h3 className="font-semibold">{currentName}</h3>
-                  {selectedUser?.bio && (
-                    <p className="text-xs text-slate-400 truncate">{selectedUser.bio}</p>
-                  )}
-                  {selectedGroup && (
-                    <p className="text-xs text-slate-400">
-                      {selectedGroup.member_ids?.length || 0} membres
-                    </p>
-                  )}
+                <div
+                  className={`flex items-center gap-3 flex-1 ${isGroup ? 'cursor-pointer hover:bg-slate-900 -ml-2 -my-2 p-2 rounded-lg transition' : ''}`}
+                  onClick={() => {
+                    if (isGroup) {
+                      setShowGroupDetails(true);
+                      fetchGroupMembers();
+                    }
+                  }}
+                >
+                  <Avatar>
+                    <AvatarImage src={currentAvatar} />
+                    <AvatarFallback className={isGroup ? "bg-gradient-to-r from-purple-500 to-pink-500" : "bg-slate-700"}>
+                      {currentName[0]?.toUpperCase() || '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <h3 className="font-semibold">{currentName}</h3>
+                    {selectedUser?.bio && (
+                      <p className="text-xs text-slate-400 truncate">{selectedUser.bio}</p>
+                    )}
+                    {selectedGroup && (
+                      <p className="text-xs text-slate-400">
+                        {selectedGroup.member_ids?.length || 0} membres
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1008,6 +1076,122 @@ export default function MessagesPage({ user }) {
               )}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Détails du Groupe */}
+      <Dialog open={showGroupDetails} onOpenChange={setShowGroupDetails}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Détails du groupe</DialogTitle>
+          </DialogHeader>
+
+          {selectedGroup && (
+            <div className="mt-4 space-y-6">
+              {/* Header du groupe */}
+              <div className="flex flex-col items-center gap-3 pb-6 border-b border-slate-800">
+                <Avatar className="w-24 h-24">
+                  <AvatarImage src={selectedGroup.avatar_url} />
+                  <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500 text-3xl">
+                    {selectedGroup.name[0]?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="text-center">
+                  <h3 className="text-xl font-bold">{selectedGroup.name}</h3>
+                  <p className="text-sm text-slate-400">
+                    {selectedGroup.member_ids?.length || 0} membres
+                  </p>
+                </div>
+              </div>
+
+              {/* Liste des membres */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-semibold text-sm text-slate-400 uppercase">Membres</h4>
+                  {selectedGroup.admin_ids?.includes(user.id) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-cyan-400 hover:text-cyan-300"
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Ajouter
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {groupMembers.map((member) => {
+                    const isCreator = member.id === selectedGroup.creator_id;
+                    const isAdmin = selectedGroup.admin_ids?.includes(member.id);
+                    const isCurrentUser = member.id === user.id;
+                    const canRemove = selectedGroup.admin_ids?.includes(user.id) && !isCreator && !isCurrentUser;
+
+                    return (
+                      <div
+                        key={member.id}
+                        className="flex items-center gap-3 p-3 hover:bg-slate-800 rounded-lg transition"
+                      >
+                        <Avatar>
+                          <AvatarImage src={member.profile_pic} />
+                          <AvatarFallback className="bg-slate-700">
+                            {member.username[0].toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold truncate">{member.username}</p>
+                            {isCreator && (
+                              <Crown className="w-4 h-4 text-yellow-500" title="Créateur" />
+                            )}
+                            {isAdmin && !isCreator && (
+                              <Shield className="w-4 h-4 text-blue-500" title="Admin" />
+                            )}
+                          </div>
+                          {member.bio && (
+                            <p className="text-xs text-slate-400 truncate">{member.bio}</p>
+                          )}
+                        </div>
+                        {canRemove && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                            onClick={() => handleRemoveMember(member.id)}
+                          >
+                            <UserMinus className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2 pt-4 border-t border-slate-800">
+                {selectedGroup.creator_id !== user.id && (
+                  <Button
+                    onClick={handleLeaveGroup}
+                    className="w-full justify-start bg-red-900/20 hover:bg-red-900/30 text-red-400 hover:text-red-300"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Quitter le groupe
+                  </Button>
+                )}
+
+                {selectedGroup.admin_ids?.includes(user.id) && (
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-slate-300 hover:bg-slate-800"
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Paramètres du groupe
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </Layout>
