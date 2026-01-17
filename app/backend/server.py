@@ -1743,6 +1743,9 @@ async def create_group(
         # Créer le groupe avec le créateur toujours inclus
         all_member_ids = [current_user["id"]] + [mid for mid in member_ids if mid != current_user["id"]]
 
+        print(f"✅ Création groupe avec member_ids: {all_member_ids}")
+        print(f"✅ Creator ID: {current_user['id']}")
+
         group = {
             "id": group_id,
             "name": group_data["name"].strip(),
@@ -1760,6 +1763,7 @@ async def create_group(
 
         # Insérer le groupe dans la base de données
         result = await db.group_chats.insert_one(group)
+        print(f"✅ Groupe créé avec ID: {group_id}")
 
         if not result.inserted_id:
             raise HTTPException(status_code=500, detail="Erreur lors de la création du groupe")
@@ -1781,12 +1785,18 @@ async def create_group(
 @api_router.get("/messages/groups")
 async def list_groups(current_user: dict = Depends(get_current_user)):
     """Lister les groupes de l'utilisateur"""
+    print(f"🔍 Recherche groupes pour user: {current_user['id']}")
+
     groups_raw = await db.group_chats.find({
         "member_ids": current_user["id"]
     }).to_list(length=100)
-    
+
+    print(f"📊 Nombre de groupes trouvés: {len(groups_raw)}")
+
     groups = [convert_mongo_doc_to_dict(g) for g in groups_raw]
-    
+
+    print(f"📦 Groupes à retourner: {[g['name'] for g in groups]}")
+
     return {
         "success": True,
         "groups": groups
