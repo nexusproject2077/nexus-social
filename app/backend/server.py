@@ -1719,30 +1719,64 @@ async def create_group(
     current_user: dict = Depends(get_current_user)
 ):
     """Créer un groupe de discussion"""
-    now = datetime.now(timezone.utc).isoformat()
-    group_id = str(uuid.uuid4())
-    
-    group = {
-        "id": group_id,
-        "name": group_data["name"],
-        "avatar_url": group_data.get("avatar_url"),
-        "creator_id": current_user["id"],
-        "admin_ids": [current_user["id"]],
-        "member_ids": [current_user["id"]] + group_data.get("member_ids", []),
-        "settings": {
-            "allow_members_to_add": group_data.get("allow_members_to_add", True),
-            "allow_members_to_send_media": group_data.get("allow_members_to_send_media", True)
-        },
-        "created_at": now,
-        "updated_at": now
-    }
-    
-    await db.group_chats.insert_one(group)
-    
-    return {
-        "success": True,
-        "group": convert_mongo_doc_to_dict(group)
-    }
+    try:
+        # Validation des données
+        if not group_data.get("name"):
+            raise HTTPException(status_code=400, detail="Le nom du groupe est requis")
+
+        if not isinstance(group_data.get("name"), str) or len(group_data["name"].strip()) == 0:
+            raise HTTPException(status_code=400, detail="Le nom du groupe doit être une chaîne non vide")
+
+        member_ids = group_data.get("member_ids", [])
+        if not isinstance(member_ids, list):
+            raise HTTPException(status_code=400, detail="member_ids doit être une liste")
+
+        # Vérifier que tous les membres existent
+        if member_ids:
+            members_count = await db.users.count_documents({"id": {"$in": member_ids}})
+            if members_count != len(member_ids):
+                raise HTTPException(status_code=400, detail="Certains utilisateurs n'existent pas")
+
+        now = datetime.now(timezone.utc).isoformat()
+        group_id = str(uuid.uuid4())
+
+        # Créer le groupe avec le créateur toujours inclus
+        all_member_ids = [current_user["id"]] + [mid for mid in member_ids if mid != current_user["id"]]
+
+        group = {
+            "id": group_id,
+            "name": group_data["name"].strip(),
+            "avatar_url": group_data.get("avatar_url"),
+            "creator_id": current_user["id"],
+            "admin_ids": [current_user["id"]],
+            "member_ids": all_member_ids,
+            "settings": {
+                "allow_members_to_add": group_data.get("allow_members_to_add", True),
+                "allow_members_to_send_media": group_data.get("allow_members_to_send_media", True)
+            },
+            "created_at": now,
+            "updated_at": now
+        }
+
+        # Insérer le groupe dans la base de données
+        result = await db.group_chats.insert_one(group)
+
+        if not result.inserted_id:
+            raise HTTPException(status_code=500, detail="Erreur lors de la création du groupe")
+
+        # Retourner le groupe créé
+        group_response = convert_mongo_doc_to_dict(group)
+
+        return {
+            "success": True,
+            "group": group_response
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Erreur création groupe: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la création du groupe: {str(e)}")
 
 @api_router.get("/messages/groups")
 async def list_groups(current_user: dict = Depends(get_current_user)):
@@ -1787,41 +1821,57 @@ async def send_group_message(
     current_user: dict = Depends(get_current_user)
 ):
     """Envoyer un message dans un groupe"""
-    # Vérifier membership
-    group_raw = await db.group_chats.find_one({"id": group_id})
-    
-    if not group_raw:
-        raise HTTPException(status_code=404, detail="Group not found")
-    
-    group = convert_mongo_doc_to_dict(group_raw)
-    
-    if current_user["id"] not in group["member_ids"]:
-        raise HTTPException(status_code=403, detail="Not a member")
-    
-    now = datetime.now(timezone.utc).isoformat()
-    message_id = str(uuid.uuid4())
-    
-    message = {
-        "id": message_id,
-        "group_id": group_id,
-        "sender_id": current_user["id"],
-        "sender_username": current_user["username"],
-        "sender_profile_pic": current_user.get("profile_pic"),
-        "content": message_data["content"],
-        "media_urls": message_data.get("media_urls", []),
-        "reply_to_id": message_data.get("reply_to_id"),
-        "reactions": [],
-        "read_by": [current_user["id"]],
-        "deleted_for": [],
-        "created_at": now
-    }
-    
-    await db.group_messages.insert_one(message)
-    
-    return {
-        "success": True,
-        "message": convert_mongo_doc_to_dict(message)
-    }
+    try:
+        # Validation du contenu
+        if not message_data.get("content"):
+            raise HTTPException(status_code=400, detail="Le contenu du message est requis")
+
+        if not isinstance(message_data.get("content"), str) or len(message_data["content"].strip()) == 0:
+            raise HTTPException(status_code=400, detail="Le contenu du message doit être une chaîne non vide")
+
+        # Vérifier membership
+        group_raw = await db.group_chats.find_one({"id": group_id})
+
+        if not group_raw:
+            raise HTTPException(status_code=404, detail="Groupe introuvable")
+
+        group = convert_mongo_doc_to_dict(group_raw)
+
+        if current_user["id"] not in group["member_ids"]:
+            raise HTTPException(status_code=403, detail="Vous n'êtes pas membre de ce groupe")
+
+        now = datetime.now(timezone.utc).isoformat()
+        message_id = str(uuid.uuid4())
+
+        message = {
+            "id": message_id,
+            "group_id": group_id,
+            "sender_id": current_user["id"],
+            "sender_username": current_user["username"],
+            "sender_profile_pic": current_user.get("profile_pic"),
+            "content": message_data["content"].strip(),
+            "media_urls": message_data.get("media_urls", []),
+            "reply_to_id": message_data.get("reply_to_id"),
+            "reactions": [],
+            "read_by": [current_user["id"]],
+            "deleted_for": [],
+            "created_at": now
+        }
+
+        result = await db.group_messages.insert_one(message)
+
+        if not result.inserted_id:
+            raise HTTPException(status_code=500, detail="Erreur lors de l'envoi du message")
+
+        return {
+            "success": True,
+            "message": convert_mongo_doc_to_dict(message)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Erreur envoi message groupe: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'envoi du message: {str(e)}")
 
 @api_router.get("/messages/groups/{group_id}/messages")
 async def get_group_messages(
