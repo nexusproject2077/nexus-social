@@ -148,14 +148,16 @@ export default function MessagesPage({ user }) {
         axios.get(`${API}/messages/groups/${groupId}/messages`),
         axios.get(`${API}/messages/groups/${groupId}`)
       ]);
-      
+
       setMessages(messagesRes.data.messages || []);
       setSelectedGroup(groupRes.data.group);
       setSelectedUser(null);
     } catch (error) {
       console.error("Erreur groupe:", error);
-      toast.error("Erreur lors du chargement du groupe");
+      const errorMessage = error.response?.data?.detail || "Erreur lors du chargement du groupe";
+      toast.error(errorMessage);
       setMessages([]);
+      setSelectedGroup(null);
     } finally {
       setLoading(false);
     }
@@ -203,24 +205,30 @@ export default function MessagesPage({ user }) {
     try {
       if (isGroup && selectedGroupId) {
         const response = await axios.post(`${API}/messages/groups/${selectedGroupId}/messages`, {
-          content: messageContent,
+          content: messageContent.trim(),
           reply_to_id: replyingTo?.id
         });
-        setMessages([...messages, response.data.message]);
+        if (response.data && response.data.message) {
+          setMessages([...messages, response.data.message]);
+        }
       } else if (selectedUserId) {
         const response = await axios.post(`${API}/messages`, {
           recipient_id: selectedUserId,
-          content: messageContent,
+          content: messageContent.trim(),
           reply_to_id: replyingTo?.id
         });
-        setMessages([...messages, response.data]);
+        if (response.data) {
+          setMessages([...messages, response.data]);
+        }
       }
-      
+
       setMessageContent("");
       setReplyingTo(null);
       fetchConversations();
     } catch (error) {
-      toast.error("Erreur lors de l'envoi du message");
+      console.error("Erreur envoi message:", error);
+      const errorMessage = error.response?.data?.detail || "Erreur lors de l'envoi du message";
+      toast.error(errorMessage);
     }
   };
 
@@ -257,29 +265,42 @@ export default function MessagesPage({ user }) {
   };
 
   const handleCreateGroup = async () => {
-    if (!groupName.trim() || selectedMembers.length === 0) {
-      toast.error("Nom et membres requis");
+    if (!groupName.trim()) {
+      toast.error("Le nom du groupe est requis");
+      return;
+    }
+
+    if (selectedMembers.length === 0) {
+      toast.error("Veuillez sélectionner au moins un membre");
       return;
     }
 
     try {
+      setLoading(true);
       const response = await axios.post(`${API}/messages/groups`, {
-        name: groupName,
+        name: groupName.trim(),
         member_ids: selectedMembers.map(m => m.id)
       });
-      
-      setShowNewGroupModal(false);
-      setGroupName("");
-      setSelectedMembers([]);
-      setGroupSearchQuery("");
-      setGroupSearchResults([]);
-      
-      await fetchGroups();
-      navigate(`/messages/group/${response.data.group.id}`);
-      toast.success("Groupe créé !");
+
+      if (response.data && response.data.group) {
+        setShowNewGroupModal(false);
+        setGroupName("");
+        setSelectedMembers([]);
+        setGroupSearchQuery("");
+        setGroupSearchResults([]);
+
+        await fetchGroups();
+        navigate(`/messages/group/${response.data.group.id}`);
+        toast.success("Groupe créé avec succès !");
+      } else {
+        toast.error("Réponse invalide du serveur");
+      }
     } catch (error) {
       console.error("Erreur création groupe:", error);
-      toast.error("Erreur lors de la création du groupe");
+      const errorMessage = error.response?.data?.detail || "Erreur lors de la création du groupe";
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -974,10 +995,17 @@ export default function MessagesPage({ user }) {
 
             <Button
               onClick={handleCreateGroup}
-              disabled={!groupName.trim() || selectedMembers.length === 0}
+              disabled={!groupName.trim() || selectedMembers.length === 0 || loading}
               className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
             >
-              Créer le groupe
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Création...
+                </div>
+              ) : (
+                "Créer le groupe"
+              )}
             </Button>
           </div>
         </DialogContent>
