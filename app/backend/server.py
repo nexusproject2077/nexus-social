@@ -1862,16 +1862,16 @@ async def send_group_message(
 
         if not result.inserted_id:
             raise HTTPException(status_code=500, detail="Erreur lors de l'envoi du message")
+
+        return {
+            "success": True,
+            "message": convert_mongo_doc_to_dict(message)
+        }
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Erreur envoi message groupe: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'envoi du message: {str(e)}")
-    
-    return {
-        "success": True,
-        "message": convert_mongo_doc_to_dict(message)
-    }
 
 @api_router.get("/messages/groups/{group_id}/messages")
 async def get_group_messages(

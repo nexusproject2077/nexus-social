@@ -107,6 +107,10 @@ function App() {
             element={user ? <MessagesPage user={user} /> : <Navigate to="/auth" />}
           />
           <Route
+            path="/messages/group/:groupId"
+            element={user ? <MessagesPage user={user} /> : <Navigate to="/auth" />}
+          />
+          <Route
             path="/notifications"
             element={user ? <NotificationsPage user={user} /> : <Navigate to="/auth" />}
           />
