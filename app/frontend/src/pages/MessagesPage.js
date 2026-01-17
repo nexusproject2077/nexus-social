@@ -61,6 +61,10 @@ export default function MessagesPage({ user }) {
   // Group details modal
   const [showGroupDetails, setShowGroupDetails] = useState(false);
   const [groupMembers, setGroupMembers] = useState([]);
+
+  // Group settings modal
+  const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [editGroupName, setEditGroupName] = useState("");
   
   const messagesEndRef = useRef(null);
 
@@ -126,6 +130,7 @@ export default function MessagesPage({ user }) {
   const fetchGroups = async () => {
     try {
       const response = await axios.get(`${API}/messages/groups`);
+      console.log("📦 Groupes chargés:", response.data);
       setGroups(response.data.groups || []);
     } catch (error) {
       console.error("Erreur groupes:", error);
@@ -376,6 +381,41 @@ export default function MessagesPage({ user }) {
     }
   };
 
+  const handleOpenGroupSettings = () => {
+    if (selectedGroup) {
+      setEditGroupName(selectedGroup.name);
+      setShowGroupSettings(true);
+    }
+  };
+
+  const handleSaveGroupSettings = async () => {
+    if (!selectedGroupId || !editGroupName.trim()) {
+      toast.error("Le nom du groupe ne peut pas être vide");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await axios.put(`${API}/messages/groups/${selectedGroupId}`, {
+        name: editGroupName.trim()
+      });
+
+      toast.success("Paramètres mis à jour");
+      setShowGroupSettings(false);
+
+      // Recharger les détails du groupe
+      const groupRes = await axios.get(`${API}/messages/groups/${selectedGroupId}`);
+      setSelectedGroup(groupRes.data.group);
+      await fetchGroups();
+    } catch (error) {
+      console.error("Erreur mise à jour groupe:", error);
+      const errorMessage = error.response?.data?.detail || "Erreur lors de la mise à jour";
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Long press handlers
   const handleTouchStart = (msg) => {
     longPressTimer.current = setTimeout(() => {
@@ -446,12 +486,12 @@ export default function MessagesPage({ user }) {
             </div>
           </div>
           
-          {groups.length > 0 && (
-            <div className="border-b border-slate-800">
-              <div className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase">
-                Groupes
-              </div>
-              {groups.map((group) => (
+          <div className="border-b border-slate-800">
+            <div className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase">
+              Groupes {groups.length > 0 && `(${groups.length})`}
+            </div>
+            {groups.length > 0 ? (
+              groups.map((group) => (
                 <div
                   key={group.id}
                   onClick={() => handleSelectGroup(group.id)}
@@ -472,9 +512,13 @@ export default function MessagesPage({ user }) {
                     </p>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            ) : (
+              <div className="px-4 py-8 text-center text-sm text-slate-500">
+                Aucun groupe pour le moment
+              </div>
+            )}
+          </div>
           
           <div className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase">
             Messages privés
@@ -1183,12 +1227,60 @@ export default function MessagesPage({ user }) {
                 {selectedGroup.admin_ids?.includes(user.id) && (
                   <Button
                     variant="ghost"
+                    onClick={handleOpenGroupSettings}
                     className="w-full justify-start text-slate-300 hover:bg-slate-800"
                   >
                     <Settings className="w-4 h-4 mr-2" />
                     Paramètres du groupe
                   </Button>
                 )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Paramètres du Groupe */}
+      <Dialog open={showGroupSettings} onOpenChange={setShowGroupSettings}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Paramètres du groupe</DialogTitle>
+          </DialogHeader>
+
+          {selectedGroup && (
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="text-sm text-slate-400 mb-2 block">Nom du groupe</label>
+                <Input
+                  value={editGroupName}
+                  onChange={(e) => setEditGroupName(e.target.value)}
+                  placeholder="Nom du groupe"
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowGroupSettings(false)}
+                  className="flex-1"
+                >
+                  Annuler
+                </Button>
+                <Button
+                  onClick={handleSaveGroupSettings}
+                  disabled={!editGroupName.trim() || loading}
+                  className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                >
+                  {loading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Enregistrement...
+                    </div>
+                  ) : (
+                    "Enregistrer"
+                  )}
+                </Button>
               </div>
             </div>
           )}
