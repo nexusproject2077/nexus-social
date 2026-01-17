@@ -1743,6 +1743,9 @@ async def create_group(
         # Créer le groupe avec le créateur toujours inclus
         all_member_ids = [current_user["id"]] + [mid for mid in member_ids if mid != current_user["id"]]
 
+        print(f"✅ Création groupe avec member_ids: {all_member_ids}")
+        print(f"✅ Creator ID: {current_user['id']}")
+
         group = {
             "id": group_id,
             "name": group_data["name"].strip(),
@@ -1760,6 +1763,7 @@ async def create_group(
 
         # Insérer le groupe dans la base de données
         result = await db.group_chats.insert_one(group)
+        print(f"✅ Groupe créé avec ID: {group_id}")
 
         if not result.inserted_id:
             raise HTTPException(status_code=500, detail="Erreur lors de la création du groupe")
@@ -1781,12 +1785,18 @@ async def create_group(
 @api_router.get("/messages/groups")
 async def list_groups(current_user: dict = Depends(get_current_user)):
     """Lister les groupes de l'utilisateur"""
+    print(f"🔍 Recherche groupes pour user: {current_user['id']}")
+
     groups_raw = await db.group_chats.find({
         "member_ids": current_user["id"]
     }).to_list(length=100)
-    
+
+    print(f"📊 Nombre de groupes trouvés: {len(groups_raw)}")
+
     groups = [convert_mongo_doc_to_dict(g) for g in groups_raw]
-    
+
+    print(f"📦 Groupes à retourner: {[g['name'] for g in groups]}")
+
     return {
         "success": True,
         "groups": groups
@@ -1905,6 +1915,63 @@ async def get_group_messages(
         "success": True,
         "messages": messages
     }
+
+@api_router.put("/messages/groups/{group_id}")
+async def update_group(
+    group_id: str,
+    group_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Mettre à jour les paramètres d'un groupe"""
+    try:
+        # Vérifier que le groupe existe
+        group_raw = await db.group_chats.find_one({"id": group_id})
+
+        if not group_raw:
+            raise HTTPException(status_code=404, detail="Groupe introuvable")
+
+        group = convert_mongo_doc_to_dict(group_raw)
+
+        # Vérifier si admin
+        if current_user["id"] not in group["admin_ids"]:
+            raise HTTPException(status_code=403, detail="Seuls les admins peuvent modifier le groupe")
+
+        # Préparer les données de mise à jour
+        update_data = {}
+
+        if "name" in group_data:
+            if not group_data["name"] or not isinstance(group_data["name"], str) or len(group_data["name"].strip()) == 0:
+                raise HTTPException(status_code=400, detail="Le nom du groupe doit être une chaîne non vide")
+            update_data["name"] = group_data["name"].strip()
+
+        if "avatar_url" in group_data:
+            update_data["avatar_url"] = group_data["avatar_url"]
+
+        if not update_data:
+            raise HTTPException(status_code=400, detail="Aucune donnée à mettre à jour")
+
+        # Ajouter la date de mise à jour
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Mettre à jour le groupe
+        await db.group_chats.update_one(
+            {"id": group_id},
+            {"$set": update_data}
+        )
+
+        # Récupérer le groupe mis à jour
+        updated_group_raw = await db.group_chats.find_one({"id": group_id})
+        updated_group = convert_mongo_doc_to_dict(updated_group_raw)
+
+        return {
+            "success": True,
+            "group": updated_group
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Erreur mise à jour groupe: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la mise à jour du groupe: {str(e)}")
 
 @api_router.post("/messages/groups/{group_id}/members")
 async def add_group_member(
