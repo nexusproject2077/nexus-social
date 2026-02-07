@@ -7,6 +7,7 @@ import CustomLogo from "@/components/CustomLogo";
 import CustomMessagingIcon from "@/components/CustomMessagingIcon";
 import CustomSearchIcon from "@/components/CustomSearchIcon";
 import CustomNotificationIcon from "@/components/CustomNotificationIcon";
+import CustomBrowserIcon from "@/components/CustomBrowserIcon";
 import CustomSettingsIcon from "@/components/CustomSettingsIcon";
 import CustomAccountIcon from "@/components/CustomAccountIcon";
 
@@ -26,6 +27,7 @@ export default function Layout({ children, user, setUser }) {
     { icon: CustomLogo, label: "Accueil", path: "/", testId: "nav-home" },
     { icon: CustomSearchIcon, label: "Rechercher", path: "/search", testId: "nav-search" },
     { icon: CustomNotificationIcon, label: "Notifications", path: "/notifications", testId: "nav-notifications" },
+    { icon: CustomBrowserIcon, label: "Navigateur", path: "/browser", testId: "nav-browser" },
     { icon: CustomMessagingIcon, label: "Messages", path: "/messages", testId: "nav-messages" },
     { icon: CustomAccountIcon, label: "Profil", path: `/profile/${user.id}`, testId: "nav-profile" },
   ];
