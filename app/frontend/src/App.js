@@ -13,6 +13,7 @@ import NotificationsPage from "./pages/NotificationsPage";
 import SearchPage from "./pages/SearchPage";
 import PostDetailPage from "./pages/PostDetailPage";
 import SettingsPage from "./pages/SettingsPage";
+import BrowserPage from "./pages/BrowserPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import PrivacyCenter from './pages/PrivacyCenter';
 
@@ -113,6 +114,10 @@ function App() {
           <Route
             path="/notifications"
             element={user ? <NotificationsPage user={user} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/browser"
+            element={user ? <BrowserPage user={user} /> : <Navigate to="/auth" />}
           />
           <Route
             path="/search"
