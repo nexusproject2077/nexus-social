@@ -40,16 +40,17 @@ export default function BrowserPage({ user }) {
   const [loading, setLoading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [iframeError, setIframeError] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Sites suggérés populaires avec icônes SVG
   const suggestedSites = [
-    { name: "DuckDuckGo", url: "https://duckduckgo.com", Icon: DuckDuckGoIcon, category: "Recherche" },
     { name: "Wikipedia", url: "https://www.wikipedia.org", Icon: WikipediaIcon, category: "Savoir" },
-    { name: "YouTube", url: "https://www.youtube.com", Icon: YouTubeIcon, category: "Vidéo" },
     { name: "GitHub", url: "https://github.com", Icon: GitHubIcon, category: "Code" },
     { name: "Medium", url: "https://medium.com", Icon: MediumIcon, category: "Articles" },
-    { name: "Twitter/X", url: "https://x.com", Icon: TwitterIcon, category: "Social" },
     { name: "Stack Overflow", url: "https://stackoverflow.com", Icon: StackOverflowIcon, category: "Dev" },
+    { name: "YouTube", url: "https://www.youtube.com", Icon: YouTubeIcon, category: "Vidéo" },
+    { name: "Twitter/X", url: "https://x.com", Icon: TwitterIcon, category: "Social" },
+    { name: "Reddit", url: "https://www.reddit.com", Icon: RedditIcon, category: "Forum" },
     { name: "Dribbble", url: "https://dribbble.com", Icon: DribbbleIcon, category: "Design" },
   ];
 
@@ -98,6 +99,7 @@ export default function BrowserPage({ user }) {
   const handleNavigate = async (targetUrl) => {
     let finalUrl = targetUrl;
     setIframeError(false);
+    setSearchTerm("");
 
     // Si ce n'est pas une URL complète, ajouter https://
     if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
@@ -105,8 +107,10 @@ export default function BrowserPage({ user }) {
       if (finalUrl.includes(".") || finalUrl.startsWith("localhost")) {
         finalUrl = "https://" + finalUrl;
       } else {
-        // Sinon, rechercher sur DuckDuckGo (autorise les iframes contrairement à Google)
-        finalUrl = `https://duckduckgo.com/?q=${encodeURIComponent(finalUrl)}`;
+        // C'est un terme de recherche - afficher la page de recherche personnalisée
+        setSearchTerm(finalUrl);
+        setCurrentUrl("");
+        return;
       }
     }
 
@@ -172,6 +176,7 @@ export default function BrowserPage({ user }) {
     setCurrentUrl("");
     setUrl("");
     setSearchQuery("");
+    setSearchTerm("");
     setIframeError(false);
   };
 
@@ -374,7 +379,102 @@ export default function BrowserPage({ user }) {
 
         {/* Contenu */}
         <div className="flex-1 overflow-hidden relative">
-          {currentUrl ? (
+          {searchTerm ? (
+            <div className="h-full overflow-y-auto p-8 bg-slate-950">
+              <div className="max-w-4xl mx-auto space-y-6">
+                {/* Header de recherche */}
+                <div className="text-center space-y-4">
+                  <Search className="w-16 h-16 text-cyan-500 mx-auto" />
+                  <h2 className="text-3xl font-bold text-white">
+                    Recherche : <span className="text-cyan-500">"{searchTerm}"</span>
+                  </h2>
+                  <p className="text-slate-400">
+                    Les moteurs de recherche bloquent l'affichage en iframe. Choisissez où effectuer votre recherche :
+                  </p>
+                </div>
+
+                {/* Options de moteurs de recherche */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(searchTerm)}`, '_blank')}
+                    className="bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl p-6 transition group text-left"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center text-2xl font-bold">
+                        G
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-bold text-lg text-white">Google</div>
+                        <div className="text-sm text-slate-400">Moteur de recherche le plus populaire</div>
+                      </div>
+                      <ExternalLink className="w-5 h-5 text-slate-400 group-hover:text-cyan-400" />
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => window.open(`https://duckduckgo.com/?q=${encodeURIComponent(searchTerm)}`, '_blank')}
+                    className="bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl p-6 transition group text-left"
+                  >
+                    <div className="flex items-center gap-4">
+                      <DuckDuckGoIcon className="w-12 h-12" />
+                      <div className="flex-1">
+                        <div className="font-bold text-lg text-white">DuckDuckGo</div>
+                        <div className="text-sm text-slate-400">Recherche privée sans tracking</div>
+                      </div>
+                      <ExternalLink className="w-5 h-5 text-slate-400 group-hover:text-cyan-400" />
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => window.open(`https://www.bing.com/search?q=${encodeURIComponent(searchTerm)}`, '_blank')}
+                    className="bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl p-6 transition group text-left"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center text-white text-xl font-bold">
+                        B
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-bold text-lg text-white">Bing</div>
+                        <div className="text-sm text-slate-400">Moteur de Microsoft avec IA</div>
+                      </div>
+                      <ExternalLink className="w-5 h-5 text-slate-400 group-hover:text-cyan-400" />
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => window.open(`https://www.ecosia.org/search?q=${encodeURIComponent(searchTerm)}`, '_blank')}
+                    className="bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl p-6 transition group text-left"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center text-white text-2xl">
+                        🌱
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-bold text-lg text-white">Ecosia</div>
+                        <div className="text-sm text-slate-400">Plante des arbres avec vos recherches</div>
+                      </div>
+                      <ExternalLink className="w-5 h-5 text-slate-400 group-hover:text-cyan-400" />
+                    </div>
+                  </button>
+                </div>
+
+                {/* Bouton retour */}
+                <div className="text-center pt-4">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setSearchTerm("");
+                      setSearchQuery("");
+                    }}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Retour à l'accueil
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : currentUrl ? (
             <>
               <iframe
                 ref={iframeRef}
