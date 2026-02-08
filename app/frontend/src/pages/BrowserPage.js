@@ -20,7 +20,8 @@ import {
   TwitterIcon,
   RedditIcon,
   StackOverflowIcon,
-  DribbbleIcon
+  DribbbleIcon,
+  DuckDuckGoIcon
 } from "@/components/BrowserIcons";
 
 export default function BrowserPage({ user }) {
@@ -42,12 +43,12 @@ export default function BrowserPage({ user }) {
 
   // Sites suggérés populaires avec icônes SVG
   const suggestedSites = [
-    { name: "YouTube", url: "https://www.youtube.com", Icon: YouTubeIcon, category: "Vidéo" },
+    { name: "DuckDuckGo", url: "https://duckduckgo.com", Icon: DuckDuckGoIcon, category: "Recherche" },
     { name: "Wikipedia", url: "https://www.wikipedia.org", Icon: WikipediaIcon, category: "Savoir" },
+    { name: "YouTube", url: "https://www.youtube.com", Icon: YouTubeIcon, category: "Vidéo" },
     { name: "GitHub", url: "https://github.com", Icon: GitHubIcon, category: "Code" },
     { name: "Medium", url: "https://medium.com", Icon: MediumIcon, category: "Articles" },
     { name: "Twitter/X", url: "https://x.com", Icon: TwitterIcon, category: "Social" },
-    { name: "Reddit", url: "https://www.reddit.com", Icon: RedditIcon, category: "Forum" },
     { name: "Stack Overflow", url: "https://stackoverflow.com", Icon: StackOverflowIcon, category: "Dev" },
     { name: "Dribbble", url: "https://dribbble.com", Icon: DribbbleIcon, category: "Design" },
   ];
@@ -104,8 +105,8 @@ export default function BrowserPage({ user }) {
       if (finalUrl.includes(".") || finalUrl.startsWith("localhost")) {
         finalUrl = "https://" + finalUrl;
       } else {
-        // Sinon, rechercher sur Google
-        finalUrl = `https://www.google.com/search?q=${encodeURIComponent(finalUrl)}`;
+        // Sinon, rechercher sur DuckDuckGo (autorise les iframes contrairement à Google)
+        finalUrl = `https://duckduckgo.com/?q=${encodeURIComponent(finalUrl)}`;
       }
     }
 
@@ -392,7 +393,7 @@ export default function BrowserPage({ user }) {
                       Ce site web refuse d'être affiché dans le navigateur intégré pour des raisons de sécurité.
                     </p>
                     <p className="text-sm text-slate-500">
-                      Certains sites comme Reddit, Facebook ou Twitter bloquent l'affichage en iframe via leurs paramètres de sécurité (X-Frame-Options).
+                      Certains sites comme Google, Reddit, Facebook ou Twitter bloquent l'affichage en iframe via leurs paramètres de sécurité (X-Frame-Options).
                     </p>
                     <div className="flex gap-2 justify-center">
                       <Button
