@@ -7,11 +7,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   Globe, ArrowLeft, ArrowRight, RefreshCw, Home, Share2,
   Bookmark, History, Search, X, TrendingUp, BookMarked,
-  ExternalLink, MessageSquare
+  ExternalLink, MessageSquare, AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import axios from "axios";
 import { API } from "@/App";
+import {
+  YouTubeIcon,
+  WikipediaIcon,
+  GitHubIcon,
+  MediumIcon,
+  TwitterIcon,
+  RedditIcon,
+  StackOverflowIcon,
+  DribbbleIcon
+} from "@/components/BrowserIcons";
 
 export default function BrowserPage({ user }) {
   const navigate = useNavigate();
@@ -28,31 +38,52 @@ export default function BrowserPage({ user }) {
   const [shareCaption, setShareCaption] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(-1);
+  const [iframeError, setIframeError] = useState(false);
 
-  // Sites suggérés populaires
+  // Sites suggérés populaires avec icônes SVG
   const suggestedSites = [
-    { name: "YouTube", url: "https://www.youtube.com", icon: "🎥", category: "Vidéo" },
-    { name: "Wikipedia", url: "https://www.wikipedia.org", icon: "📚", category: "Savoir" },
-    { name: "GitHub", url: "https://github.com", icon: "💻", category: "Code" },
-    { name: "Medium", url: "https://medium.com", icon: "✍️", category: "Articles" },
-    { name: "Twitter/X", url: "https://x.com", icon: "🐦", category: "Social" },
-    { name: "Reddit", url: "https://www.reddit.com", icon: "🤖", category: "Forum" },
-    { name: "Stack Overflow", url: "https://stackoverflow.com", icon: "💡", category: "Dev" },
-    { name: "Dribbble", url: "https://dribbble.com", icon: "🎨", category: "Design" },
+    { name: "YouTube", url: "https://www.youtube.com", Icon: YouTubeIcon, category: "Vidéo" },
+    { name: "Wikipedia", url: "https://www.wikipedia.org", Icon: WikipediaIcon, category: "Savoir" },
+    { name: "GitHub", url: "https://github.com", Icon: GitHubIcon, category: "Code" },
+    { name: "Medium", url: "https://medium.com", Icon: MediumIcon, category: "Articles" },
+    { name: "Twitter/X", url: "https://x.com", Icon: TwitterIcon, category: "Social" },
+    { name: "Reddit", url: "https://www.reddit.com", Icon: RedditIcon, category: "Forum" },
+    { name: "Stack Overflow", url: "https://stackoverflow.com", Icon: StackOverflowIcon, category: "Dev" },
+    { name: "Dribbble", url: "https://dribbble.com", Icon: DribbbleIcon, category: "Design" },
   ];
 
   useEffect(() => {
-    // Charger les signets depuis localStorage
-    const savedBookmarks = localStorage.getItem("browser_bookmarks");
-    if (savedBookmarks) {
-      setBookmarks(JSON.parse(savedBookmarks));
-    }
-
-    const savedHistory = localStorage.getItem("browser_history");
-    if (savedHistory) {
-      setHistory(JSON.parse(savedHistory));
-    }
+    fetchBookmarks();
+    fetchHistory();
   }, []);
+
+  const fetchBookmarks = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get(`${API}/browser/bookmarks`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data.success) {
+        setBookmarks(response.data.bookmarks);
+      }
+    } catch (error) {
+      console.error("Erreur chargement signets:", error);
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get(`${API}/browser/history`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data.success) {
+        setHistory(response.data.history);
+      }
+    } catch (error) {
+      console.error("Erreur chargement historique:", error);
+    }
+  };
 
   const isValidUrl = (string) => {
     try {
@@ -63,8 +94,9 @@ export default function BrowserPage({ user }) {
     }
   };
 
-  const handleNavigate = (targetUrl) => {
+  const handleNavigate = async (targetUrl) => {
     let finalUrl = targetUrl;
+    setIframeError(false);
 
     // Si ce n'est pas une URL complète, ajouter https://
     if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
@@ -77,16 +109,20 @@ export default function BrowserPage({ user }) {
       }
     }
 
-    // Ajouter à l'historique
-    const newHistoryItem = {
-      url: finalUrl,
-      title: finalUrl,
-      timestamp: new Date().toISOString()
-    };
-
-    const updatedHistory = [newHistoryItem, ...history.slice(0, 99)]; // Garder les 100 derniers
-    setHistory(updatedHistory);
-    localStorage.setItem("browser_history", JSON.stringify(updatedHistory));
+    // Ajouter à l'historique sur le serveur
+    try {
+      const token = localStorage.getItem("token");
+      await axios.post(`${API}/browser/history`, {
+        url: finalUrl,
+        title: finalUrl
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      // Recharger l'historique
+      await fetchHistory();
+    } catch (error) {
+      console.error("Erreur ajout historique:", error);
+    }
 
     setCurrentUrl(finalUrl);
     setUrl(finalUrl);
@@ -101,29 +137,32 @@ export default function BrowserPage({ user }) {
   };
 
   const handleBack = () => {
-    if (currentIndex > 0) {
-      const prevUrl = history[currentIndex - 1]?.url;
+    if (currentIndex > 0 && history.length > 0) {
+      const prevUrl = history[history.length - currentIndex]?.url;
       if (prevUrl) {
         setCurrentUrl(prevUrl);
         setUrl(prevUrl);
         setCurrentIndex(currentIndex - 1);
+        setIframeError(false);
       }
     }
   };
 
   const handleForward = () => {
-    if (currentIndex < history.length - 1) {
-      const nextUrl = history[currentIndex + 1]?.url;
+    if (currentIndex < history.length - 1 && history.length > 0) {
+      const nextUrl = history[history.length - (currentIndex + 2)]?.url;
       if (nextUrl) {
         setCurrentUrl(nextUrl);
         setUrl(nextUrl);
         setCurrentIndex(currentIndex + 1);
+        setIframeError(false);
       }
     }
   };
 
   const handleRefresh = () => {
     if (iframeRef.current) {
+      setIframeError(false);
       iframeRef.current.src = iframeRef.current.src;
     }
   };
@@ -132,31 +171,43 @@ export default function BrowserPage({ user }) {
     setCurrentUrl("");
     setUrl("");
     setSearchQuery("");
+    setIframeError(false);
   };
 
-  const handleAddBookmark = () => {
+  const handleAddBookmark = async () => {
     if (!currentUrl) {
       toast.error("Aucune page à ajouter aux favoris");
       return;
     }
 
-    const bookmark = {
-      url: currentUrl,
-      title: currentUrl,
-      timestamp: new Date().toISOString()
-    };
-
-    const updatedBookmarks = [bookmark, ...bookmarks];
-    setBookmarks(updatedBookmarks);
-    localStorage.setItem("browser_bookmarks", JSON.stringify(updatedBookmarks));
-    toast.success("Ajouté aux favoris !");
+    try {
+      const token = localStorage.getItem("token");
+      await axios.post(`${API}/browser/bookmarks`, {
+        url: currentUrl,
+        title: currentUrl
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success("Ajouté aux favoris !");
+      await fetchBookmarks();
+    } catch (error) {
+      console.error("Erreur ajout signet:", error);
+      toast.error("Erreur lors de l'ajout aux favoris");
+    }
   };
 
-  const handleRemoveBookmark = (index) => {
-    const updatedBookmarks = bookmarks.filter((_, i) => i !== index);
-    setBookmarks(updatedBookmarks);
-    localStorage.setItem("browser_bookmarks", JSON.stringify(updatedBookmarks));
-    toast.success("Retiré des favoris");
+  const handleRemoveBookmark = async (bookmarkId) => {
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`${API}/browser/bookmarks/${bookmarkId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success("Retiré des favoris");
+      await fetchBookmarks();
+    } catch (error) {
+      console.error("Erreur suppression signet:", error);
+      toast.error("Erreur lors de la suppression");
+    }
   };
 
   const handleShareToFeed = async () => {
@@ -167,6 +218,7 @@ export default function BrowserPage({ user }) {
 
     try {
       setLoading(true);
+      const token = localStorage.getItem("token");
       await axios.post(`${API}/posts`, {
         content: shareCaption || `Découvrez cette page : ${currentUrl}`,
         link_url: currentUrl,
@@ -175,6 +227,8 @@ export default function BrowserPage({ user }) {
           title: currentUrl,
           description: "Partagé depuis le navigateur intégré"
         }
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       toast.success("Partagé sur votre fil !");
@@ -188,11 +242,19 @@ export default function BrowserPage({ user }) {
     }
   };
 
-  const handleClearHistory = () => {
-    setHistory([]);
-    localStorage.removeItem("browser_history");
-    toast.success("Historique effacé");
-    setShowHistory(false);
+  const handleClearHistory = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`${API}/browser/history`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success("Historique effacé");
+      setHistory([]);
+      setShowHistory(false);
+    } catch (error) {
+      console.error("Erreur effacement historique:", error);
+      toast.error("Erreur lors de l'effacement");
+    }
   };
 
   return (
@@ -207,7 +269,7 @@ export default function BrowserPage({ user }) {
                 size="icon"
                 variant="ghost"
                 onClick={handleBack}
-                disabled={currentIndex <= 0}
+                disabled={currentIndex <= 0 || history.length === 0}
                 className="hover:bg-slate-800"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -216,7 +278,7 @@ export default function BrowserPage({ user }) {
                 size="icon"
                 variant="ghost"
                 onClick={handleForward}
-                disabled={currentIndex >= history.length - 1}
+                disabled={currentIndex >= history.length - 1 || history.length === 0}
                 className="hover:bg-slate-800"
               >
                 <ArrowRight className="w-5 h-5" />
@@ -310,15 +372,48 @@ export default function BrowserPage({ user }) {
         </div>
 
         {/* Contenu */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden relative">
           {currentUrl ? (
-            <iframe
-              ref={iframeRef}
-              src={currentUrl}
-              className="w-full h-full bg-white"
-              title="Browser"
-              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-            />
+            <>
+              <iframe
+                ref={iframeRef}
+                src={currentUrl}
+                className="w-full h-full bg-white"
+                title="Browser"
+                sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-popups-to-escape-sandbox"
+                onError={() => setIframeError(true)}
+              />
+              {iframeError && (
+                <div className="absolute inset-0 bg-slate-900 flex items-center justify-center p-8">
+                  <div className="max-w-md text-center space-y-4">
+                    <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto" />
+                    <h3 className="text-xl font-bold text-white">Site non accessible</h3>
+                    <p className="text-slate-400">
+                      Ce site web refuse d'être affiché dans le navigateur intégré pour des raisons de sécurité.
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      Certains sites comme Reddit, Facebook ou Twitter bloquent l'affichage en iframe via leurs paramètres de sécurité (X-Frame-Options).
+                    </p>
+                    <div className="flex gap-2 justify-center">
+                      <Button
+                        onClick={() => window.open(currentUrl, '_blank')}
+                        className="bg-gradient-to-r from-cyan-500 to-blue-500"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Ouvrir dans un nouvel onglet
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={handleHome}
+                        className="text-slate-400"
+                      >
+                        Retour
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="h-full overflow-y-auto p-8">
               <div className="max-w-6xl mx-auto space-y-8">
@@ -342,17 +437,22 @@ export default function BrowserPage({ user }) {
                     <h2 className="text-xl font-bold">Sites populaires</h2>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {suggestedSites.map((site) => (
-                      <button
-                        key={site.url}
-                        onClick={() => handleNavigate(site.url)}
-                        className="bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl p-4 transition group"
-                      >
-                        <div className="text-3xl mb-2">{site.icon}</div>
-                        <div className="font-semibold text-left">{site.name}</div>
-                        <div className="text-xs text-slate-400 text-left">{site.category}</div>
-                      </button>
-                    ))}
+                    {suggestedSites.map((site) => {
+                      const IconComponent = site.Icon;
+                      return (
+                        <button
+                          key={site.url}
+                          onClick={() => handleNavigate(site.url)}
+                          className="bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl p-4 transition group"
+                        >
+                          <div className="flex items-center justify-center mb-2">
+                            <IconComponent className="w-12 h-12" />
+                          </div>
+                          <div className="font-semibold text-left">{site.name}</div>
+                          <div className="text-xs text-slate-400 text-left">{site.category}</div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -364,9 +464,9 @@ export default function BrowserPage({ user }) {
                       <h2 className="text-xl font-bold">Vos favoris</h2>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {bookmarks.slice(0, 6).map((bookmark, index) => (
+                      {bookmarks.slice(0, 6).map((bookmark) => (
                         <div
-                          key={index}
+                          key={bookmark.id}
                           className="bg-slate-900 border border-slate-800 rounded-lg p-3 flex items-center gap-3 hover:bg-slate-800 transition group cursor-pointer"
                           onClick={() => handleNavigate(bookmark.url)}
                         >
@@ -392,11 +492,11 @@ export default function BrowserPage({ user }) {
                     </li>
                     <li className="flex items-center gap-2">
                       <Bookmark className="w-4 h-4 text-purple-400" />
-                      Sauvegardez vos sites favoris et accédez-y rapidement
+                      Vos favoris synchronisés sur tous vos appareils
                     </li>
                     <li className="flex items-center gap-2">
                       <History className="w-4 h-4 text-blue-400" />
-                      Consultez votre historique de navigation
+                      Historique accessible partout
                     </li>
                   </ul>
                 </div>
@@ -418,9 +518,9 @@ export default function BrowserPage({ user }) {
 
           {bookmarks.length > 0 ? (
             <div className="mt-4 space-y-2">
-              {bookmarks.map((bookmark, index) => (
+              {bookmarks.map((bookmark) => (
                 <div
-                  key={index}
+                  key={bookmark.id}
                   className="bg-slate-800 rounded-lg p-4 flex items-center gap-3"
                 >
                   <Bookmark className="w-4 h-4 text-purple-500" />
@@ -442,7 +542,7 @@ export default function BrowserPage({ user }) {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => handleRemoveBookmark(index)}
+                    onClick={() => handleRemoveBookmark(bookmark.id)}
                     className="text-red-400 hover:text-red-300"
                   >
                     <X className="w-4 h-4" />
@@ -483,9 +583,9 @@ export default function BrowserPage({ user }) {
 
           {history.length > 0 ? (
             <div className="mt-4 space-y-2">
-              {history.map((item, index) => (
+              {history.map((item) => (
                 <div
-                  key={index}
+                  key={item.id}
                   onClick={() => {
                     handleNavigate(item.url);
                     setShowHistory(false);

@@ -2972,6 +2972,92 @@ async def get_notifications(limit: int = 20, current_user: dict = Depends(get_cu
     ).sort("created_at", -1).limit(limit).to_list(length=limit)
     return {"success": True, "notifications": [convert_mongo_doc_to_dict(n) for n in notifications]}
 
+# ==================== BROWSER (NAVIGATEUR) ====================
+
+@api_router.get("/browser/bookmarks")
+async def get_bookmarks(current_user: dict = Depends(get_current_user)):
+    """Récupérer les signets de l'utilisateur"""
+    bookmarks = await db.browser_bookmarks.find(
+        {"user_id": current_user["id"]}
+    ).sort("timestamp", -1).to_list(length=1000)
+    return {"success": True, "bookmarks": [convert_mongo_doc_to_dict(b) for b in bookmarks]}
+
+@api_router.post("/browser/bookmarks")
+async def add_bookmark(
+    bookmark_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Ajouter un signet"""
+    bookmark_id = str(uuid.uuid4())
+    bookmark = {
+        "id": bookmark_id,
+        "user_id": current_user["id"],
+        "url": bookmark_data.get("url"),
+        "title": bookmark_data.get("title", bookmark_data.get("url")),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    await db.browser_bookmarks.insert_one(bookmark)
+    return {"success": True, "bookmark": convert_mongo_doc_to_dict(bookmark)}
+
+@api_router.delete("/browser/bookmarks/{bookmark_id}")
+async def delete_bookmark(
+    bookmark_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Supprimer un signet"""
+    result = await db.browser_bookmarks.delete_one({
+        "id": bookmark_id,
+        "user_id": current_user["id"]
+    })
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Signet non trouvé")
+    return {"success": True}
+
+@api_router.get("/browser/history")
+async def get_history(
+    limit: int = Query(100, le=1000),
+    current_user: dict = Depends(get_current_user)
+):
+    """Récupérer l'historique de navigation"""
+    history = await db.browser_history.find(
+        {"user_id": current_user["id"]}
+    ).sort("timestamp", -1).limit(limit).to_list(length=limit)
+    return {"success": True, "history": [convert_mongo_doc_to_dict(h) for h in history]}
+
+@api_router.post("/browser/history")
+async def add_history(
+    history_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Ajouter à l'historique"""
+    history_id = str(uuid.uuid4())
+    history_item = {
+        "id": history_id,
+        "user_id": current_user["id"],
+        "url": history_data.get("url"),
+        "title": history_data.get("title", history_data.get("url")),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    await db.browser_history.insert_one(history_item)
+
+    # Limiter l'historique à 1000 entrées par utilisateur
+    count = await db.browser_history.count_documents({"user_id": current_user["id"]})
+    if count > 1000:
+        # Supprimer les plus anciennes entrées
+        old_entries = await db.browser_history.find(
+            {"user_id": current_user["id"]}
+        ).sort("timestamp", 1).limit(count - 1000).to_list(length=count - 1000)
+        old_ids = [entry["id"] for entry in old_entries]
+        await db.browser_history.delete_many({"id": {"$in": old_ids}})
+
+    return {"success": True, "history_item": convert_mongo_doc_to_dict(history_item)}
+
+@api_router.delete("/browser/history")
+async def clear_history(current_user: dict = Depends(get_current_user)):
+    """Effacer tout l'historique"""
+    await db.browser_history.delete_many({"user_id": current_user["id"]})
+    return {"success": True}
+
 # ==================== END ENHANCED FEATURES ====================
 
 # ==================== FOLLOW SYSTEM INTEGRATION ====================
