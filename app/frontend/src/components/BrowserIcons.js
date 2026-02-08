@@ -72,3 +72,17 @@ export const DribbbleIcon = ({ className = "w-12 h-12" }) => (
     <path d="M24 12C24 18 22 26 18 34" stroke="white" strokeWidth="2" strokeLinecap="round" fill="none"/>
   </svg>
 );
+
+export const DuckDuckGoIcon = ({ className = "w-12 h-12" }) => (
+  <svg className={className} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="48" height="48" rx="10" fill="#DE5833"/>
+    <circle cx="24" cy="20" r="8" fill="white"/>
+    <ellipse cx="21" cy="19" rx="1.5" ry="2" fill="#000000"/>
+    <ellipse cx="27" cy="19" rx="1.5" ry="2" fill="#000000"/>
+    <path d="M21 22C21 22 22 23 24 23C26 23 27 22 27 22" stroke="#000000" strokeWidth="1" strokeLinecap="round"/>
+    <ellipse cx="24" cy="30" rx="10" ry="6" fill="white"/>
+    <path d="M19 28L18 32L20 34" stroke="#000000" strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M29 28L30 32L28 34" stroke="#000000" strokeWidth="1.5" strokeLinecap="round"/>
+    <circle cx="24" cy="16" r="1" fill="#65BC46"/>
+  </svg>
+);
