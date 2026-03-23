@@ -7,6 +7,26 @@ module.exports = {
   ],
   theme: {
   	extend: {
+  		fontFamily: {
+  			headline: ["Space Grotesk", "sans-serif"],
+  			body: ["Inter", "sans-serif"],
+  			label: ["Inter", "sans-serif"],
+  		},
+  		colors: {
+  			"ns-surface": "#0b1326",
+  			"ns-surface-lowest": "#060e20",
+  			"ns-surface-low": "#131b2e",
+  			"ns-surface-container": "#171f33",
+  			"ns-surface-high": "#222a3d",
+  			"ns-surface-highest": "#2d3449",
+  			"ns-on-surface": "#dae2fd",
+  			"ns-on-surface-variant": "#bbc9cd",
+  			"ns-primary": "#8aebff",
+  			"ns-primary-container": "#22d3ee",
+  			"ns-on-primary": "#00363e",
+  			"ns-secondary": "#adc6ff",
+  			"ns-outline": "#859397",
+  		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
