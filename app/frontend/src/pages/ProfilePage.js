@@ -5,314 +5,450 @@ import { API } from "@/App";
 import Layout from "@/components/Layout";
 import PostCard from "@/components/PostCard";
 import EditProfileModal from "@/components/EditProfileModal";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserPlus, UserMinus, Edit, Lock, Clock } from "lucide-react";
+import { Lock, Clock, UserPlus, UserMinus, Edit } from "lucide-react";
 import { toast } from "sonner";
+
+// ── Design tokens (from Tailwind config) ──────────────────────────────────────
+const C = {
+  surface:          "#0b1326",
+  surfaceLow:       "#131b2e",
+  surfaceContainer: "#171f33",
+  surfaceHigh:      "#222a3d",
+  surfaceHighest:   "#2d3449",
+  surfaceBright:    "#31394d",
+  primary:          "#8aebff",
+  primaryContainer: "#22d3ee",
+  onPrimary:        "#00363e",
+  outline:          "#859397",
+  outlineVariant:   "#3c494c",
+  onSurface:        "#dae2fd",
+};
+
+const glass = {
+  background: "rgba(19, 27, 46, 0.72)",
+  backdropFilter: "blur(40px)",
+  WebkitBackdropFilter: "blur(40px)",
+};
 
 export default function ProfilePage({ user, setUser }) {
   const { userId } = useParams();
-  const [profile, setProfile] = useState(null);
-  const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [profile, setProfile]         = useState(null);
+  const [posts, setPosts]             = useState([]);
+  const [loading, setLoading]         = useState(true);
   const [followLoading, setFollowLoading] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
-  const [followStatus, setFollowStatus] = useState("not_following"); // 'following', 'pending', 'not_following'
-  const [stats, setStats] = useState({ followers: 0, following: 0, posts: 0 });
-  
+  const [followStatus, setFollowStatus] = useState("not_following");
+  const [stats, setStats]             = useState({ followers: 0, following: 0, posts: 0 });
+  const [activeTab, setActiveTab]     = useState("media");
+
   const isOwnProfile = user && userId && user.id === userId;
 
   useEffect(() => {
     if (userId) {
       fetchProfile();
       fetchUserPosts();
-      if (!isOwnProfile) {
-        fetchFollowStatus();
-      }
+      if (!isOwnProfile) fetchFollowStatus();
     }
   }, [userId]);
 
+  // ── Data fetching ──────────────────────────────────────────────────────────
   const fetchProfile = async () => {
     try {
-      const response = await axios.get(`${API}/users/${userId}`);
-      setProfile(response.data);
-      
-      // Récupérer les stats
+      const res = await axios.get(`${API}/users/${userId}`);
+      setProfile(res.data);
       try {
         const statsRes = await axios.get(`${API}/users/${userId}/stats`);
         setStats(statsRes.data);
-      } catch (err) {
-        console.error("Erreur stats:", err);
-        // Fallback aux anciennes stats
+      } catch {
         setStats({
-          followers: response.data.followers_count || 0,
-          following: response.data.following_count || 0,
-          posts: 0
+          followers: res.data.followers_count || 0,
+          following: res.data.following_count || 0,
+          posts: 0,
         });
       }
-    } catch (error) {
-      console.error("Erreur profil:", error);
+    } catch (err) {
+      console.error("Erreur profil:", err);
       toast.error("Erreur lors du chargement du profil");
     }
   };
 
   const fetchFollowStatus = async () => {
     try {
-      const response = await axios.get(`${API}/users/${userId}/follow-status`);
-      setFollowStatus(response.data.status);
-    } catch (error) {
-      console.error("Erreur statut:", error);
+      const res = await axios.get(`${API}/users/${userId}/follow-status`);
+      setFollowStatus(res.data.status);
+    } catch (err) {
+      console.error("Erreur statut:", err);
     }
   };
 
   const fetchUserPosts = async () => {
     try {
-      const response = await axios.get(`${API}/users/${userId}/posts`);
-      setPosts(response.data);
-      setStats(prev => ({ ...prev, posts: response.data.length }));
-    } catch (error) {
-      console.error("Erreur posts:", error);
-      // Si 403, c'est probablement un compte privé
-      if (error.response?.status === 403) {
-        setPosts([]);
-      } else {
+      const res = await axios.get(`${API}/users/${userId}/posts`);
+      setPosts(res.data);
+      setStats((prev) => ({ ...prev, posts: res.data.length }));
+    } catch (err) {
+      console.error("Erreur posts:", err);
+      if (err.response?.status !== 403)
         toast.error("Erreur lors du chargement des publications");
-      }
     } finally {
       setLoading(false);
     }
   };
 
+  // ── Follow / Unfollow ──────────────────────────────────────────────────────
   const handleFollow = async () => {
-    if (!user) {
-      toast.error("Vous devez être connecté");
-      return;
-    }
-
+    if (!user) { toast.error("Vous devez être connecté"); return; }
     try {
       setFollowLoading(true);
-      const response = await axios.post(`${API}/users/${userId}/follow`);
-      
-      setFollowStatus(response.data.status);
-      
-      if (response.data.status === "pending") {
-        toast.success("Demande d'abonnement envoyée");
-      } else {
-        toast.success("Abonné avec succès");
-        setStats(prev => ({ ...prev, followers: prev.followers + 1 }));
-      }
-    } catch (error) {
-      console.error("Erreur follow:", error);
-      toast.error(error.response?.data?.detail || "Erreur lors de l'action");
-    } finally {
-      setFollowLoading(false);
-    }
+      const res = await axios.post(`${API}/users/${userId}/follow`);
+      setFollowStatus(res.data.status);
+      if (res.data.status === "pending") toast.success("Demande d'abonnement envoyée");
+      else { toast.success("Abonné avec succès"); setStats((p) => ({ ...p, followers: p.followers + 1 })); }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erreur lors de l'action");
+    } finally { setFollowLoading(false); }
   };
 
   const handleUnfollow = async () => {
-    if (!user) {
-      toast.error("Vous devez être connecté");
-      return;
-    }
-
+    if (!user) { toast.error("Vous devez être connecté"); return; }
     try {
       setFollowLoading(true);
       await axios.delete(`${API}/users/${userId}/follow`);
-      
       setFollowStatus("not_following");
       toast.success("Désabonné avec succès");
-      setStats(prev => ({ ...prev, followers: Math.max(0, prev.followers - 1) }));
-    } catch (error) {
-      console.error("Erreur unfollow:", error);
-      toast.error(error.response?.data?.detail || "Erreur lors de l'action");
-    } finally {
-      setFollowLoading(false);
-    }
+      setStats((p) => ({ ...p, followers: Math.max(0, p.followers - 1) }));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erreur lors de l'action");
+    } finally { setFollowLoading(false); }
   };
 
-  const handleProfileUpdate = (updatedUser) => {
-    setUser(updatedUser);
-    setProfile(updatedUser);
-    setShowEditProfile(false);
-  };
+  // ── Post handlers ──────────────────────────────────────────────────────────
+  const handleProfileUpdate = (updated) => { setUser(updated); setProfile(updated); setShowEditProfile(false); };
+  const handlePostUpdate    = (updated) => setPosts(posts.map((p) => (p.id === updated.id ? updated : p)));
+  const handlePostDelete    = (id) => { setPosts(posts.filter((p) => p.id !== id)); setStats((p) => ({ ...p, posts: Math.max(0, p.posts - 1) })); };
 
-  const handlePostUpdate = (updatedPost) => {
-    setPosts(posts.map((p) => (p.id === updatedPost.id ? updatedPost : p)));
-  };
-
-  const handlePostDelete = (postId) => {
-    setPosts(posts.filter((p) => p.id !== postId));
-    setStats(prev => ({ ...prev, posts: Math.max(0, prev.posts - 1) }));
-  };
-
-  const renderFollowButton = () => {
-    if (isOwnProfile) {
-      return (
-        <Button
-          data-testid="edit-profile-button"
-          onClick={() => setShowEditProfile(true)}
-          variant="outline"
-          className="border-slate-700 text-white hover:bg-slate-800"
-        >
-          <Edit className="w-4 h-4 mr-2" />
-          Modifier le profil
-        </Button>
-      );
-    }
-
-    if (followStatus === "following") {
-      return (
-        <Button
-          data-testid="unfollow-button"
-          onClick={handleUnfollow}
-          disabled={followLoading}
-          className="bg-slate-700 hover:bg-slate-600 text-white font-semibold"
-        >
-          {followLoading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-          ) : (
-            <UserMinus className="w-4 h-4 mr-2" />
-          )}
-          Se désabonner
-        </Button>
-      );
-    }
-
-    if (followStatus === "pending") {
-      return (
-        <Button
-          data-testid="cancel-request-button"
-          onClick={handleUnfollow}
-          disabled={followLoading}
-          variant="outline"
-          className="border-orange-500 text-orange-500 hover:bg-orange-500/10"
-        >
-          {followLoading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-500 mr-2"></div>
-          ) : (
-            <Clock className="w-4 h-4 mr-2" />
-          )}
-          Demande envoyée
-        </Button>
-      );
-    }
-
-    return (
-      <Button
-        data-testid="follow-button"
-        onClick={handleFollow}
-        disabled={followLoading}
-        className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold"
-      >
-        {followLoading ? (
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-        ) : (
-          <UserPlus className="w-4 h-4 mr-2" />
-        )}
-        {profile?.is_private ? "Demander à suivre" : "Suivre"}
-      </Button>
-    );
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const fmt = (n) => {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+    if (n >= 1_000)     return (n / 1_000).toFixed(1) + "k";
+    return n;
   };
 
   const canViewContent = isOwnProfile || !profile?.is_private || followStatus === "following";
+  const mediaPosts     = posts.filter((p) => p.media_url);
 
-  if (!profile) {
-    return (
-      <Layout user={user} setUser={setUser}>
-        <div className="flex justify-center items-center h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500"></div>
-        </div>
-      </Layout>
+  // ── Follow button ──────────────────────────────────────────────────────────
+  const FollowButton = () => {
+    const spinner = (color = "#fff") => (
+      <div style={{ width: 14, height: 14, border: `2px solid ${color}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
     );
-  }
 
+    if (isOwnProfile) return (
+      <button
+        data-testid="edit-profile-button"
+        onClick={() => setShowEditProfile(true)}
+        style={{ background: C.surfaceHigh, color: C.primary, border: `1px solid ${C.primaryContainer}33` }}
+        className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
+      >
+        <Edit size={14} /> Modifier le profil
+      </button>
+    );
+
+    if (followStatus === "following") return (
+      <button
+        data-testid="unfollow-button"
+        onClick={handleUnfollow}
+        disabled={followLoading}
+        style={{ background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}
+        className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-80"
+      >
+        {followLoading ? spinner(C.onSurface) : <UserMinus size={14} />} Suivi
+      </button>
+    );
+
+    if (followStatus === "pending") return (
+      <button
+        data-testid="cancel-request-button"
+        onClick={handleUnfollow}
+        disabled={followLoading}
+        className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
+        style={{ background: "rgba(245,158,11,0.1)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.3)" }}
+      >
+        {followLoading ? spinner("#fbbf24") : <Clock size={14} />} Demande envoyée
+      </button>
+    );
+
+    return (
+      <button
+        data-testid="follow-button"
+        onClick={handleFollow}
+        disabled={followLoading}
+        className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
+        style={{ background: "linear-gradient(135deg, #22d3ee, #3b82f6)", color: C.onPrimary, boxShadow: "0 4px 14px rgba(34,211,238,0.25)" }}
+      >
+        {followLoading ? spinner(C.onPrimary) : <UserPlus size={14} />}
+        {profile?.is_private ? "Demander à suivre" : "Suivre"}
+      </button>
+    );
+  };
+
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (!profile) return (
+    <Layout user={user} setUser={setUser}>
+      <div className="flex justify-center items-center" style={{ minHeight: "60vh" }}>
+        <div className="flex items-center gap-3 px-8 py-3 rounded-full" style={{ ...glass, border: `1px solid ${C.outlineVariant}22` }}>
+          <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: `${C.primaryContainer}33`, borderTopColor: C.primaryContainer }} />
+          <span className="text-sm font-bold tracking-widest uppercase" style={{ color: C.outline }}>Chargement...</span>
+        </div>
+      </div>
+    </Layout>
+  );
+
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  const tabs = [
+    { id: "posts",  label: "Publications", icon: "article"  },
+    { id: "media",  label: "Médias",       icon: "grid_on"  },
+  ];
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <Layout user={user} setUser={setUser}>
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-gradient-to-r from-cyan-500/20 to-blue-500/20 h-32 sm:h-48"></div>
 
-        <div className="px-4 sm:px-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between -mt-16 sm:-mt-20 mb-4">
-            <Avatar className="w-24 h-24 sm:w-32 sm:h-32 border-4 border-slate-950">
-              <AvatarImage src={profile.profile_pic} />
-              <AvatarFallback className="bg-slate-700 text-white text-3xl sm:text-4xl">
-                {profile.username?.[0]?.toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+      {/* ── Cinematic Hero ───────────────────────────────────────────────── */}
+      <div className="relative w-full overflow-hidden" style={{ height: 290 }}>
+        {/* Gradient banner */}
+        <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #0a1628 0%, #0d1e3d 35%, #071525 65%, #0b1326 100%)" }} />
+        {/* Ambient glows */}
+        <div className="absolute rounded-full blur-3xl" style={{ width: 320, height: 320, top: -40, left: "20%", background: "radial-gradient(circle, rgba(34,211,238,0.12), transparent)" }} />
+        <div className="absolute rounded-full blur-3xl" style={{ width: 240, height: 240, top: 0, right: "25%", background: "radial-gradient(circle, rgba(59,130,246,0.10), transparent)" }} />
+        {/* Fade to surface */}
+        <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 0%, ${C.surface}80 60%, ${C.surface} 100%)`, zIndex: 1 }} />
 
-            <div className="mt-4 sm:mt-0">
-              {renderFollowButton()}
+        {/* Profile overlay */}
+        <div className="absolute bottom-0 left-0 w-full px-5 sm:px-8 pb-6" style={{ zIndex: 2 }}>
+          <div className="flex flex-col sm:flex-row items-end gap-5 sm:gap-8 max-w-5xl mx-auto">
+
+            {/* Avatar */}
+            <div className="relative flex-shrink-0 group">
+              <div className="absolute inset-0 rounded-full blur-2xl opacity-0 group-hover:opacity-30 transition-opacity" style={{ background: C.primaryContainer }} />
+              <div
+                className="relative rounded-full p-[3px]"
+                style={{
+                  width: 128, height: 128,
+                  background: `linear-gradient(135deg, ${C.primaryContainer}, #1e3a5f, #3b82f6)`,
+                  boxShadow: `0 0 20px rgba(34,211,238,0.30)`,
+                }}
+              >
+                {profile.profile_pic ? (
+                  <img src={profile.profile_pic} alt={profile.username} className="w-full h-full rounded-full object-cover" style={{ border: `4px solid ${C.surface}` }} />
+                ) : (
+                  <div
+                    className="w-full h-full rounded-full flex items-center justify-center text-4xl font-black"
+                    style={{ background: `linear-gradient(135deg, ${C.primaryContainer}, #3b82f6)`, color: C.onPrimary, border: `4px solid ${C.surface}` }}
+                  >
+                    {profile.username?.[0]?.toUpperCase()}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="mb-6">
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-                {profile.username}
-              </h1>
-              {profile.is_private && (
-                <Lock className="w-5 h-5 text-slate-400" />
+            {/* Meta */}
+            <div className="flex-1 min-w-0 mb-1">
+              <div className="flex flex-wrap items-center gap-3 mb-2">
+                <h1
+                  className="text-3xl sm:text-[2.8rem] font-black tracking-tighter leading-none text-white"
+                  style={{ fontFamily: "Space Grotesk, sans-serif", textShadow: "0 0 28px rgba(34,211,238,0.38)" }}
+                >
+                  {profile.username}
+                </h1>
+                {profile.is_private && <Lock size={18} color={C.outline} />}
+                <FollowButton />
+              </div>
+              {profile.bio && (
+                <p className="text-sm leading-relaxed max-w-md" style={{ color: C.outline }}>
+                  {profile.bio}
+                </p>
               )}
             </div>
-            {profile.bio && <p className="text-slate-400 mt-2">{profile.bio}</p>}
-            <div className="flex gap-6 mt-4 text-sm">
-              <div>
-                <span className="font-semibold text-white">{stats.posts}</span>
-                <span className="text-slate-400 ml-1">Publications</span>
-              </div>
-              <div>
-                <span className="font-semibold text-white">{stats.followers}</span>
-                <span className="text-slate-400 ml-1">Abonnés</span>
-              </div>
-              <div>
-                <span className="font-semibold text-white">{stats.following}</span>
-                <span className="text-slate-400 ml-1">Abonnements</span>
-              </div>
-            </div>
-          </div>
 
-          <div className="border-t border-slate-800 pt-6">
-            <h2 className="text-xl font-bold mb-4">Publications</h2>
-            
-            {!canViewContent ? (
-              <div className="text-center py-12 bg-slate-900/50 rounded-xl border border-slate-800">
-                <Lock className="w-16 h-16 mx-auto mb-4 text-slate-600" />
-                <h3 className="text-xl font-bold mb-2">Ce compte est privé</h3>
-                <p className="text-slate-400">
-                  Suivez ce compte pour voir ses publications
-                </p>
-              </div>
-            ) : loading ? (
-              <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500"></div>
-              </div>
-            ) : posts.length === 0 ? (
-              <div className="text-center py-12 text-slate-400">
-                <p>Aucune publication</p>
-              </div>
-            ) : (
-              <div className="space-y-4 pb-6">
-                {posts.map((post) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    currentUser={user}
-                    onUpdate={handlePostUpdate}
-                    onDelete={handlePostDelete}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Stats — desktop */}
+            <div className="hidden sm:flex gap-3 flex-shrink-0 mb-1">
+              {[
+                { label: "Publications", value: fmt(stats.posts) },
+                { label: "Abonnés",      value: fmt(stats.followers) },
+                { label: "Abonnements",  value: fmt(stats.following) },
+              ].map((s) => (
+                <div key={s.label} className="text-center px-5 py-3 rounded-2xl" style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}>
+                  <span className="block text-[10px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
+                    {s.label}
+                  </span>
+                  <span className="text-xl font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+                    {s.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
           </div>
         </div>
       </div>
 
-      <EditProfileModal
-        open={showEditProfile}
-        onClose={() => setShowEditProfile(false)}
-        user={user}
-        onUpdate={handleProfileUpdate}
-      />
+      {/* Stats — mobile */}
+      <div className="sm:hidden flex gap-3 px-5 pt-4 overflow-x-auto pb-1">
+        {[
+          { label: "Publications", value: fmt(stats.posts) },
+          { label: "Abonnés",      value: fmt(stats.followers) },
+          { label: "Abonnements",  value: fmt(stats.following) },
+        ].map((s) => (
+          <div key={s.label} className="flex-shrink-0 text-center px-4 py-2.5 rounded-xl"
+            style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}>
+            <span className="block text-[9px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
+              {s.label}
+            </span>
+            <span className="text-lg font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+              {s.value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      <div
+        className="sticky z-30 mt-6"
+        style={{ top: 56, background: `${C.surface}d9`, backdropFilter: "blur(16px)", borderTop: `1px solid ${C.outlineVariant}18`, borderBottom: `1px solid ${C.outlineVariant}18` }}
+      >
+        <div className="max-w-5xl mx-auto flex">
+          {tabs.map(({ id, label, icon }) => {
+            const active = activeTab === id;
+            return (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className="flex-1 py-4 flex items-center justify-center gap-2 relative transition-all"
+              >
+                <span
+                  className="material-symbols-outlined text-lg"
+                  style={{ color: active ? C.primaryContainer : C.outline, fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
+                >
+                  {icon}
+                </span>
+                <span
+                  className="font-bold text-sm tracking-tight"
+                  style={{ fontFamily: "Space Grotesk, sans-serif", color: active ? C.primaryContainer : C.outline }}
+                >
+                  {label}
+                </span>
+                {active && (
+                  <div
+                    className="absolute bottom-0 left-1/2 -translate-x-1/2 rounded-t-full"
+                    style={{ width: 56, height: 3, background: C.primaryContainer, boxShadow: `0 0 10px ${C.primaryContainer}cc` }}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Content ───────────────────────────────────────────────────────── */}
+      <div className="max-w-5xl mx-auto px-4 py-8 pb-28 md:pb-8">
+
+        {/* Private lock */}
+        {!canViewContent ? (
+          <div className="text-center py-16 rounded-2xl" style={{ background: `${C.surfaceContainer}80`, border: `1px solid ${C.outlineVariant}18` }}>
+            <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5" style={{ background: `${C.primaryContainer}12` }}>
+              <Lock size={40} color={C.outline} />
+            </div>
+            <h3 className="text-2xl font-black text-white mb-2" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+              Compte privé
+            </h3>
+            <p className="text-sm" style={{ color: C.outline }}>
+              Abonnez-vous pour voir les publications de ce compte
+            </p>
+          </div>
+
+        ) : loading ? (
+          <div className="flex justify-center py-16">
+            <div className="flex items-center gap-3 px-8 py-3 rounded-full" style={{ ...glass, border: `1px solid ${C.outlineVariant}22` }}>
+              <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: `${C.primaryContainer}33`, borderTopColor: C.primaryContainer }} />
+              <span className="text-xs font-bold tracking-widest uppercase" style={{ color: C.outline }}>Chargement...</span>
+            </div>
+          </div>
+
+        ) : (
+          <>
+            {/* ── Médias grid ───────────────────────────────────────────── */}
+            {activeTab === "media" && (
+              mediaPosts.length === 0 ? (
+                <div className="text-center py-16" style={{ color: C.outline }}>
+                  <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">photo_library</span>
+                  <p className="text-sm">Aucun média publié</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+                  {mediaPosts.map((post) => (
+                    <div
+                      key={post.id}
+                      className="group relative rounded-2xl overflow-hidden cursor-pointer"
+                      style={{ aspectRatio: "1 / 1", background: C.surfaceLow }}
+                    >
+                      {post.media_type === "video" ? (
+                        <video src={post.media_url} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" muted playsInline />
+                      ) : (
+                        <img src={post.media_url} alt="Post" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      )}
+
+                      {/* Hover overlay */}
+                      <div
+                        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-6"
+                        style={{ background: "rgba(45,52,73,0.65)", backdropFilter: "blur(2px)" }}
+                      >
+                        {[
+                          { icon: "favorite",    count: post.likes_count    || 0 },
+                          { icon: "chat_bubble", count: post.comments_count || 0 },
+                        ].map(({ icon, count }) => (
+                          <div key={icon} className="flex items-center gap-1.5 text-white">
+                            <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>{icon}</span>
+                            <span className="font-black text-base" style={{ fontFamily: "Space Grotesk, sans-serif" }}>{fmt(count)}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Video badge */}
+                      {post.media_type === "video" && (
+                        <div className="absolute top-3 right-3 p-1.5 rounded-lg" style={{ background: "rgba(11,19,38,0.78)", backdropFilter: "blur(4px)" }}>
+                          <span className="material-symbols-outlined text-white text-sm">play_circle</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* ── Publications list ─────────────────────────────────────── */}
+            {activeTab === "posts" && (
+              posts.length === 0 ? (
+                <div className="text-center py-16" style={{ color: C.outline }}>
+                  <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">article</span>
+                  <p className="text-sm">Aucune publication</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {posts.map((post) => (
+                    <PostCard key={post.id} post={post} currentUser={user} onUpdate={handlePostUpdate} onDelete={handlePostDelete} />
+                  ))}
+                </div>
+              )
+            )}
+          </>
+        )}
+      </div>
+
+      <EditProfileModal open={showEditProfile} onClose={() => setShowEditProfile(false)} user={user} onUpdate={handleProfileUpdate} />
+
+      {/* Spinner keyframe */}
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </Layout>
   );
 }
