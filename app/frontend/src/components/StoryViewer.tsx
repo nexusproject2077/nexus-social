@@ -56,17 +56,23 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // Récupérer l'ID de l'utilisateur connecté
+  // Récupérer l'ID de l'utilisateur connecté depuis le localStorage
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        setCurrentUserId(payload.sub);
-      } catch (e) {
-        console.error("Failed to decode token:", e);
-        setCurrentUserId(null);
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const user = JSON.parse(stored);
+        setCurrentUserId(String(user.id));
+        return;
       }
+      // Fallback: décoder le JWT
+      const token = localStorage.getItem('token');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setCurrentUserId(String(payload.sub));
+      }
+    } catch (e) {
+      console.error("Failed to get current user:", e);
     }
   }, []);
 
@@ -259,7 +265,10 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
     return null;
   }
 
-  const isAuthor = currentUserId === (currentStory.author_id || currentGroup.user_id);
+  const isAuthor =
+    currentUserId !== null &&
+    (String(currentStory.author_id) === currentUserId ||
+      String(currentGroup.user_id) === currentUserId);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center">
