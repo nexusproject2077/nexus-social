@@ -621,7 +621,32 @@ async def start_user_session(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
 
-# ENSUITE, ajouter les nouveaux endpoints...
+@api_router.post("/users/me/sessions/{session_id}/ping")
+async def ping_user_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Ping pour maintenir la session active"""
+    try:
+        now = datetime.now(timezone.utc)
+
+        await db.users.update_one(
+            {"id": current_user["id"]},
+            {"$set": {"last_active": now.isoformat()}}
+        )
+
+        try:
+            await db.sessions.update_one(
+                {"id": session_id, "user_id": current_user["id"]},
+                {"$set": {"last_activity": now.isoformat()}}
+            )
+        except:
+            pass
+
+        return {"success": True, "session_id": session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
 
 @api_router.put("/users/me/password")
 async def change_password(
