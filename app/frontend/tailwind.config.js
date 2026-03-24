@@ -26,13 +26,6 @@ module.exports = {
   			"ns-on-primary": "#00363e",
   			"ns-secondary": "#adc6ff",
   			"ns-outline": "#859397",
-  		},
-  		borderRadius: {
-  			lg: 'var(--radius)',
-  			md: 'calc(var(--radius) - 2px)',
-  			sm: 'calc(var(--radius) - 4px)'
-  		},
-  		colors: {
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {
