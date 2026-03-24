@@ -105,7 +105,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
 
   // Gestion de la progression (images et vidéos)
   useEffect(() => {
-    if (!currentStory || isPaused || isLongPressing) return;
+    if (!currentStory || isPaused || isLongPressing || showConfirmModal) return;
 
     setProgress(0);
     startTimeRef.current = Date.now();
@@ -145,7 +145,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
         clearInterval(progressIntervalRef.current);
       }
     };
-  }, [currentStory, isPaused, isLongPressing]);
+  }, [currentStory, isPaused, isLongPressing, showConfirmModal]);
 
   // Marquer comme vue au chargement
   useEffect(() => {
