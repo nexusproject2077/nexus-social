@@ -51,16 +51,14 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
     formData.append("file", file);
 
     try {
-      const res = await axios.post(`${API}/stories/`, formData, {
+      await axios.post(`${API}/stories/`, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
 
-      if (res.data.success) {
-        toast.success("Story publiée avec succès !");
-        onSuccess();
-      }
+      toast.success("Story publiée avec succès !");
+      onSuccess();
     } catch (err: any) {
       console.error("Erreur upload story :", err);
       if (err.response?.status === 401) {
