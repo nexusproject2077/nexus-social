@@ -16,6 +16,7 @@ import SettingsPage from "./pages/SettingsPage";
 import BrowserPage from "./pages/BrowserPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import PrivacyCenter from './pages/PrivacyCenter';
+import ClipsPage from './pages/ClipsPage';
 
 // URL du backend (NE CHANGE PLUS JAMAIS)
 const BACKEND_URL = "https://nexus-social-4k3v.onrender.com";
@@ -134,6 +135,10 @@ function App() {
           <Route
             path="/privacy-center"
             element={user ? <PrivacyCenter user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/clips"
+            element={user ? <ClipsPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           <Route
             path="/settings"

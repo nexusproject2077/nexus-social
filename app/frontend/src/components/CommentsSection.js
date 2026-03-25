@@ -1,41 +1,73 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { API } from "@/App";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Trash2, Send, Heart, MessageCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
 
-export default function CommentsSection({ postId, currentUser, onCommentAdded, onCommentDeleted }) {
-  const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState("");
-  const [replyingTo, setReplyingTo] = useState(null);
-  const [replyText, setReplyText] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+const C = {
+  surface:    "#0b1326",
+  low:        "#131b2e",
+  container:  "#171f33",
+  high:       "#222a3d",
+  cyan:       "#22d3ee",
+  onPrimary:  "#00363e",
+  outline:    "#859397",
+  outlineVar: "#3c494c",
+  onSurface:  "#dae2fd",
+  onVariant:  "#bbc9cd",
+};
 
-  useEffect(() => {
-    fetchComments();
-  }, [postId]);
+function Avatar({ user, size = 8 }) {
+  const s = `w-${size} h-${size}`;
+  return user?.profile_pic ? (
+    <img src={user.profile_pic} alt={user.username} className={`${s} rounded-full object-cover flex-shrink-0`} />
+  ) : (
+    <div
+      className={`${s} rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0`}
+      style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
+    >
+      {user?.username?.[0]?.toUpperCase() ?? "?"}
+    </div>
+  );
+}
+
+function AuthorAvatar({ username, profilePic, size = 8 }) {
+  return profilePic ? (
+    <img src={profilePic} alt={username} className={`w-${size} h-${size} rounded-full object-cover flex-shrink-0`} />
+  ) : (
+    <div
+      className={`w-${size} h-${size} rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0`}
+      style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
+    >
+      {username?.[0]?.toUpperCase() ?? "?"}
+    </div>
+  );
+}
+
+export default function CommentsSection({ postId, currentUser, onCommentAdded, onCommentDeleted }) {
+  const [comments,    setComments]    = useState([]);
+  const [newComment,  setNewComment]  = useState("");
+  const [replyingTo,  setReplyingTo]  = useState(null);
+  const [replyText,   setReplyText]   = useState("");
+  const [loading,     setLoading]     = useState(true);
+  const [submitting,  setSubmitting]  = useState(false);
+
+  useEffect(() => { fetchComments(); }, [postId]);
 
   const fetchComments = async () => {
     try {
-      const response = await axios.get(`${API}/posts/${postId}/comments`);
-      // Initialise les états des likes pour chaque commentaire
-      const commentsWithLikeState = response.data.map(comment => ({
-        ...comment,
-        isLiked: comment.is_liked || false,
-        likesCount: comment.likes_count || 0,
-        repliesCount: comment.replies_count || 0,
+      const res = await axios.get(`${API}/posts/${postId}/comments`);
+      setComments(res.data.map(c => ({
+        ...c,
+        isLiked: c.is_liked || false,
+        likesCount: c.likes_count || 0,
+        repliesCount: c.replies_count || 0,
         showReplies: false,
         replies: [],
-      }));
-      setComments(commentsWithLikeState);
-    } catch (error) {
-      console.error("Erreur lors du chargement des commentaires:", error);
+      })));
+    } catch (err) {
+      console.error("Erreur commentaires:", err);
     } finally {
       setLoading(false);
     }
@@ -43,311 +75,187 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
 
   const handleSubmitComment = async (e) => {
     e.preventDefault();
-    if (!newComment.trim()) {
-      toast.error("Le commentaire ne peut pas être vide");
-      return;
-    }
-
+    if (!newComment.trim()) return;
     setSubmitting(true);
     try {
-      const response = await axios.post(`${API}/posts/${postId}/comments`, {
-        content: newComment,
-      });
-      const newCommentData = {
-        ...response.data,
-        isLiked: false,
-        likesCount: 0,
-        repliesCount: 0,
-        showReplies: false,
-        replies: [],
-      };
-      setComments([newCommentData, ...comments]);
+      const res = await axios.post(`${API}/posts/${postId}/comments`, { content: newComment });
+      setComments(prev => [{ ...res.data, isLiked: false, likesCount: 0, repliesCount: 0, showReplies: false, replies: [] }, ...prev]);
       setNewComment("");
-      toast.success("Commentaire ajouté");
-      // ✅ Notifie le parent
-      if (onCommentAdded) {
-        onCommentAdded();
-      }
-    } catch (error) {
-      console.error("Erreur lors de l'ajout du commentaire:", error);
-      toast.error("Erreur lors de l'ajout du commentaire");
-    } finally {
-      setSubmitting(false);
-    }
+      onCommentAdded?.();
+    } catch { toast.error("Erreur lors de l'ajout du commentaire"); }
+    finally { setSubmitting(false); }
   };
 
   const handleDeleteComment = async (commentId) => {
-    if (!window.confirm("Supprimer ce commentaire ?")) {
-      return;
-    }
-
+    if (!window.confirm("Supprimer ce commentaire ?")) return;
     try {
       await axios.delete(`${API}/posts/${postId}/comments/${commentId}`);
-      setComments(comments.filter((c) => c.id !== commentId));
-      toast.success("Commentaire supprimé");
-      // ✅ Notifie le parent
-      if (onCommentDeleted) {
-        onCommentDeleted();
-      }
-    } catch (error) {
-      console.error("Erreur lors de la suppression:", error);
-      toast.error(error.response?.data?.detail || "Erreur lors de la suppression");
+      setComments(prev => prev.filter(c => c.id !== commentId));
+      onCommentDeleted?.();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erreur lors de la suppression");
     }
   };
 
   const handleLikeComment = async (commentId) => {
     try {
-      const response = await axios.post(`${API}/comments/${commentId}/like`);
-      setComments(comments.map(c => 
-        c.id === commentId 
-          ? { ...c, isLiked: response.data.liked, likesCount: c.likesCount + (response.data.liked ? 1 : -1) }
-          : c
+      const res = await axios.post(`${API}/comments/${commentId}/like`);
+      setComments(prev => prev.map(c =>
+        c.id === commentId ? { ...c, isLiked: res.data.liked, likesCount: c.likesCount + (res.data.liked ? 1 : -1) } : c
       ));
-    } catch (error) {
-      console.error("Erreur lors du like:", error);
-      toast.error("Erreur lors du like du commentaire");
-    }
+    } catch { toast.error("Erreur lors du like"); }
   };
 
   const handleReply = async (commentId) => {
-    if (!replyText.trim()) {
-      toast.error("La réponse ne peut pas être vide");
-      return;
-    }
-
+    if (!replyText.trim()) return;
     try {
-      const response = await axios.post(`${API}/comments/${commentId}/replies`, {
-        content: replyText,
-      });
-      
-      // Ajoute la réponse au commentaire parent
-      setComments(comments.map(c => 
-        c.id === commentId 
-          ? { 
-              ...c, 
-              replies: [response.data, ...c.replies],
-              repliesCount: c.repliesCount + 1,
-            }
-          : c
+      const res = await axios.post(`${API}/comments/${commentId}/replies`, { content: replyText });
+      setComments(prev => prev.map(c =>
+        c.id === commentId ? { ...c, replies: [res.data, ...c.replies], repliesCount: c.repliesCount + 1 } : c
       ));
-      
       setReplyText("");
       setReplyingTo(null);
-      toast.success("Réponse ajoutée");
-    } catch (error) {
-      console.error("Erreur lors de la réponse:", error);
-      toast.error("Erreur lors de l'ajout de la réponse");
-    }
+    } catch { toast.error("Erreur lors de l'ajout de la réponse"); }
   };
 
   const toggleReplies = async (commentId) => {
     const comment = comments.find(c => c.id === commentId);
-    
     if (!comment.showReplies && comment.replies.length === 0) {
-      // Charger les réponses
       try {
-        const response = await axios.get(`${API}/comments/${commentId}/replies`);
-        setComments(comments.map(c => 
-          c.id === commentId 
-            ? { ...c, replies: response.data, showReplies: true }
-            : c
-        ));
-      } catch (error) {
-        console.error("Erreur lors du chargement des réponses:", error);
-      }
+        const res = await axios.get(`${API}/comments/${commentId}/replies`);
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, replies: res.data, showReplies: true } : c));
+      } catch { console.error("Erreur replies"); }
     } else {
-      // Toggle l'affichage
-      setComments(comments.map(c => 
-        c.id === commentId 
-          ? { ...c, showReplies: !c.showReplies }
-          : c
-      ));
+      setComments(prev => prev.map(c => c.id === commentId ? { ...c, showReplies: !c.showReplies } : c));
     }
   };
 
-  const getInitials = (username) => {
-    return username ? username.substring(0, 2).toUpperCase() : "??";
-  };
-
-  const formatDate = (dateString) => {
-    try {
-      return formatDistanceToNow(new Date(dateString), {
-        addSuffix: true,
-        locale: fr,
-      });
-    } catch (error) {
-      return "Il y a quelques instants";
-    }
+  const formatDate = (d) => {
+    try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); }
+    catch { return "À l'instant"; }
   };
 
   return (
-    <div className="w-full pt-3 border-t border-slate-800 space-y-4">
-      {/* Formulaire d'ajout de commentaire */}
-      <form onSubmit={handleSubmitComment} className="flex gap-2">
-        <Avatar className="h-8 w-8 flex-shrink-0">
-          {currentUser?.profile_pic ? (
-            <AvatarImage src={currentUser.profile_pic} alt={currentUser.username} />
-          ) : (
-            <AvatarFallback className="bg-gradient-to-r from-cyan-500 to-blue-500 text-xs">
-              {getInitials(currentUser?.username)}
-            </AvatarFallback>
-          )}
-        </Avatar>
-        <div className="flex-1 flex gap-2">
-          <Textarea
+    <div className="space-y-4 pt-3" style={{ borderTop: `1px solid rgba(255,255,255,0.06)` }}>
+
+      {/* ── Input ─────────────────────────────────────────────────────── */}
+      <form onSubmit={handleSubmitComment} className="flex gap-3 items-end">
+        <Avatar user={currentUser} size={8} />
+        <div
+          className="flex-1 flex items-center gap-2 px-3 py-2 rounded-2xl transition-all focus-within:ring-1"
+          style={{ backgroundColor: C.high, border: `1px solid ${C.outlineVar}`, focusWithinRingColor: C.cyan }}
+        >
+          <input
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             placeholder="Ajouter un commentaire..."
-            className="bg-slate-800 border-slate-700 text-white resize-none min-h-[40px] max-h-[120px]"
-            rows={1}
+            className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500"
+            style={{ color: C.onSurface }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitComment(e); } }}
           />
-          <Button
+          <button
             type="submit"
             disabled={submitting || !newComment.trim()}
-            size="icon"
-            className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 flex-shrink-0"
+            className="flex items-center justify-center w-8 h-8 rounded-xl transition-all active:scale-90 disabled:opacity-40"
+            style={{ background: newComment.trim() ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: newComment.trim() ? C.onPrimary : C.outline }}
           >
-            <Send className="h-4 w-4" />
-          </Button>
+            <span className="material-symbols-outlined text-sm">{submitting ? "hourglass_top" : "send"}</span>
+          </button>
         </div>
       </form>
 
-      {/* Liste des commentaires */}
+      {/* ── Comments list ──────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex justify-center py-4">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-500"></div>
+          <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
         </div>
       ) : comments.length === 0 ? (
-        <p className="text-sm text-slate-400 text-center py-4">
-          Aucun commentaire pour le moment
-        </p>
+        <p className="text-xs text-center py-3" style={{ color: C.outline }}>Aucun commentaire — soyez le premier !</p>
       ) : (
-        <div className="space-y-3 max-h-[500px] overflow-y-auto">
+        <div className="space-y-3 max-h-96 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin", scrollbarColor: `${C.high} transparent` }}>
           {comments.map((comment) => (
             <div key={comment.id} className="space-y-2">
-              {/* Commentaire principal */}
-              <div className="flex gap-2">
-                <Avatar className="h-8 w-8 flex-shrink-0">
-                  {comment.author_profile_pic ? (
-                    <AvatarImage
-                      src={comment.author_profile_pic}
-                      alt={comment.author_username}
-                    />
-                  ) : (
-                    <AvatarFallback className="bg-gradient-to-r from-cyan-500 to-blue-500 text-xs">
-                      {getInitials(comment.author_username)}
-                    </AvatarFallback>
-                  )}
-                </Avatar>
-                <div className="flex-1 bg-slate-800/50 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold text-sm">
-                      {comment.author_username}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400">
-                        {formatDate(comment.created_at)}
-                      </span>
-                      {currentUser?.id === comment.author_id && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteComment(comment.id)}
-                          className="h-6 w-6 text-slate-400 hover:text-red-500"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      )}
+
+              {/* Comment */}
+              <div className="flex gap-2.5">
+                <AuthorAvatar username={comment.author_username} profilePic={comment.author_profile_pic} size={8} />
+                <div className="flex-1 min-w-0">
+                  <div className="rounded-2xl rounded-tl-none px-3 py-2.5" style={{ backgroundColor: C.high }}>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-xs font-bold" style={{ color: C.onSurface }}>{comment.author_username}</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px]" style={{ color: C.outline }}>{formatDate(comment.created_at)}</span>
+                        {currentUser?.id === comment.author_id && (
+                          <button onClick={() => handleDeleteComment(comment.id)} className="hover:text-red-400 transition-colors" style={{ color: C.outline }}>
+                            <span className="material-symbols-outlined text-xs">close</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: C.onVariant }}>{comment.content}</p>
                   </div>
-                  <p className="text-sm text-slate-200 whitespace-pre-wrap mb-2">
-                    {comment.content}
-                  </p>
-                  
-                  {/* Actions du commentaire */}
-                  <div className="flex items-center gap-4 text-xs">
+
+                  {/* Comment actions */}
+                  <div className="flex items-center gap-4 mt-1 ml-1">
                     <button
                       onClick={() => handleLikeComment(comment.id)}
-                      className={`flex items-center gap-1 ${
-                        comment.isLiked ? "text-red-500" : "text-slate-400"
-                      } hover:text-red-500 transition-colors`}
+                      className="flex items-center gap-1 text-[10px] font-bold transition-colors"
+                      style={{ color: comment.isLiked ? "#f87171" : C.outline }}
                     >
-                      <Heart className={`h-3 w-3 ${comment.isLiked ? "fill-current" : ""}`} />
-                      <span>{comment.likesCount > 0 ? comment.likesCount : ''}</span>
+                      <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: comment.isLiked ? "'FILL' 1" : "'FILL' 0" }}>favorite</span>
+                      {comment.likesCount > 0 && <span>{comment.likesCount}</span>}
                     </button>
-                    
                     <button
                       onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
-                      className="flex items-center gap-1 text-slate-400 hover:text-blue-500 transition-colors"
+                      className="text-[10px] font-bold transition-colors hover:text-cyan-400"
+                      style={{ color: replyingTo === comment.id ? C.cyan : C.outline }}
                     >
-                      <MessageCircle className="h-3 w-3" />
-                      <span>Répondre</span>
+                      Répondre
                     </button>
-                    
                     {comment.repliesCount > 0 && (
-                      <button
-                        onClick={() => toggleReplies(comment.id)}
-                        className="text-slate-400 hover:text-cyan-500 transition-colors"
-                      >
-                        {comment.showReplies ? "Masquer" : "Voir"} {comment.repliesCount} réponse{comment.repliesCount > 1 ? 's' : ''}
+                      <button onClick={() => toggleReplies(comment.id)} className="text-[10px] font-bold transition-colors hover:text-cyan-400" style={{ color: C.outline }}>
+                        {comment.showReplies ? "▲ Masquer" : `▼ ${comment.repliesCount} réponse${comment.repliesCount > 1 ? "s" : ""}`}
                       </button>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Formulaire de réponse */}
+              {/* Reply form */}
               {replyingTo === comment.id && (
-                <div className="ml-10 flex gap-2">
-                  <Avatar className="h-6 w-6 flex-shrink-0">
-                    {currentUser?.profile_pic ? (
-                      <AvatarImage src={currentUser.profile_pic} alt={currentUser.username} />
-                    ) : (
-                      <AvatarFallback className="bg-gradient-to-r from-cyan-500 to-blue-500 text-xs">
-                        {getInitials(currentUser?.username)}
-                      </AvatarFallback>
-                    )}
-                  </Avatar>
-                  <div className="flex-1 flex gap-2">
-                    <Textarea
+                <div className="ml-10 flex gap-2 items-end">
+                  <Avatar user={currentUser} size={7} />
+                  <div
+                    className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded-2xl"
+                    style={{ backgroundColor: C.high, border: `1px solid ${C.outlineVar}` }}
+                  >
+                    <input
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
-                      placeholder={`Répondre à ${comment.author_username}...`}
-                      className="bg-slate-800 border-slate-700 text-white resize-none min-h-[32px] text-sm"
-                      rows={1}
+                      placeholder={`Répondre à ${comment.author_username}…`}
+                      className="flex-1 bg-transparent border-none outline-none text-xs placeholder:text-slate-500"
+                      style={{ color: C.onSurface }}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(comment.id); } }}
                     />
-                    <Button
-                      size="icon"
-                      onClick={() => handleReply(comment.id)}
-                      disabled={!replyText.trim()}
-                      className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 h-8 w-8"
-                    >
-                      <Send className="h-3 w-3" />
-                    </Button>
+                    <button onClick={() => handleReply(comment.id)} disabled={!replyText.trim()} className="disabled:opacity-40 transition-colors hover:text-cyan-400" style={{ color: C.outline }}>
+                      <span className="material-symbols-outlined text-sm">send</span>
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* Réponses */}
+              {/* Replies */}
               {comment.showReplies && comment.replies.length > 0 && (
                 <div className="ml-10 space-y-2">
                   {comment.replies.map((reply) => (
                     <div key={reply.id} className="flex gap-2">
-                      <Avatar className="h-6 w-6 flex-shrink-0">
-                        {reply.author_profile_pic ? (
-                          <AvatarImage src={reply.author_profile_pic} alt={reply.author_username} />
-                        ) : (
-                          <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500 text-xs">
-                            {getInitials(reply.author_username)}
-                          </AvatarFallback>
-                        )}
-                      </Avatar>
-                      <div className="flex-1 bg-slate-800/30 rounded-lg p-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-xs">{reply.author_username}</span>
-                          <span className="text-xs text-slate-400">{formatDate(reply.created_at)}</span>
+                      <AuthorAvatar username={reply.author_username} profilePic={reply.author_profile_pic} size={7} />
+                      <div className="flex-1 rounded-2xl rounded-tl-none px-3 py-2" style={{ backgroundColor: C.container, border: `1px solid rgba(255,255,255,0.04)` }}>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] font-bold" style={{ color: C.onSurface }}>{reply.author_username}</span>
+                          <span className="text-[9px]" style={{ color: C.outline }}>{formatDate(reply.created_at)}</span>
                         </div>
-                        <p className="text-xs text-slate-200">{reply.content}</p>
+                        <p className="text-xs leading-relaxed" style={{ color: C.onVariant }}>{reply.content}</p>
                       </div>
                     </div>
                   ))}

@@ -1,0 +1,288 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
+import { API } from "@/App";
+import Layout from "@/components/Layout";
+import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
+import { fr } from "date-fns/locale";
+
+const C = {
+  surface:   "#0b1326",
+  high:      "#222a3d",
+  cyan:      "#22d3ee",
+  onPrimary: "#00363e",
+  outline:   "#859397",
+  onSurface: "#dae2fd",
+};
+
+function ClipCard({ post, currentUser, isActive }) {
+  const navigate  = useNavigate();
+  const videoRef  = useRef(null);
+  const [isLiked, setIsLiked]       = useState(post.is_liked || false);
+  const [likes, setLikes]           = useState(post.likes_count || 0);
+  const [comments, setComments]     = useState(post.comments_count || 0);
+  const [muted, setMuted]           = useState(true);
+  const [paused, setPaused]         = useState(false);
+  const [showComment, setShowComment] = useState(false);
+  const [commentText, setCommentText] = useState("");
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (isActive) {
+      video.play().catch(() => {});
+      setPaused(false);
+    } else {
+      video.pause();
+      video.currentTime = 0;
+    }
+  }, [isActive]);
+
+  const handleTap = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (paused) { video.play(); setPaused(false); }
+    else { video.pause(); setPaused(true); }
+  };
+
+  const handleLike = async (e) => {
+    e.stopPropagation();
+    try {
+      const res = await axios.post(`${API}/posts/${post.id}/like`);
+      setIsLiked(res.data.liked);
+      setLikes(p => res.data.liked ? p + 1 : p - 1);
+    } catch { toast.error("Erreur"); }
+  };
+
+  const handleSendComment = async () => {
+    if (!commentText.trim()) return;
+    try {
+      await axios.post(`${API}/posts/${post.id}/comments`, { content: commentText });
+      setComments(p => p + 1);
+      setCommentText("");
+      toast.success("Commentaire ajouté");
+    } catch { toast.error("Erreur"); }
+  };
+
+  const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1) + "k" : n;
+  const fmtDate = (d) => { try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); } catch { return ""; } };
+
+  return (
+    <div className="relative w-full h-screen flex-shrink-0 overflow-hidden" style={{ background: "#000" }}>
+      {/* Video */}
+      {post.media_type === "video" ? (
+        <video
+          ref={videoRef}
+          src={post.media_url}
+          className="w-full h-full object-cover"
+          loop
+          muted={muted}
+          playsInline
+          onClick={handleTap}
+        />
+      ) : (
+        <img src={post.media_url} alt="" className="w-full h-full object-cover" />
+      )}
+
+      {/* Gradient overlay */}
+      <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 40%, rgba(0,0,0,0.2) 100%)" }} />
+
+      {/* Pause indicator */}
+      {paused && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
+            <span className="material-symbols-outlined text-white text-4xl">pause</span>
+          </div>
+        </div>
+      )}
+
+      {/* Right action bar */}
+      <div className="absolute right-4 bottom-32 flex flex-col gap-5 items-center">
+        {/* Avatar */}
+        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="relative">
+          {post.author_profile_pic ? (
+            <img src={post.author_profile_pic} alt="" className="w-12 h-12 rounded-full object-cover border-2" style={{ borderColor: C.cyan }} />
+          ) : (
+            <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+              {post.author_username?.[0]?.toUpperCase()}
+            </div>
+          )}
+          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full flex items-center justify-center text-white" style={{ background: C.cyan }}>
+            <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
+          </div>
+        </button>
+
+        {/* Like */}
+        <button onClick={handleLike} className="flex flex-col items-center gap-1">
+          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+            <span className="material-symbols-outlined text-2xl" style={{ color: isLiked ? "#f87171" : "#fff", fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}>
+              favorite
+            </span>
+          </div>
+          <span className="text-white text-xs font-bold">{fmt(likes)}</span>
+        </button>
+
+        {/* Comment */}
+        <button onClick={(e) => { e.stopPropagation(); setShowComment(p => !p); }} className="flex flex-col items-center gap-1">
+          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+            <span className="material-symbols-outlined text-2xl text-white">chat_bubble</span>
+          </div>
+          <span className="text-white text-xs font-bold">{fmt(comments)}</span>
+        </button>
+
+        {/* Mute */}
+        {post.media_type === "video" && (
+          <button onClick={(e) => { e.stopPropagation(); setMuted(p => !p); }} className="flex flex-col items-center gap-1">
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+              <span className="material-symbols-outlined text-2xl text-white">{muted ? "volume_off" : "volume_up"}</span>
+            </div>
+          </button>
+        )}
+      </div>
+
+      {/* Bottom info */}
+      <div className="absolute bottom-24 left-4 right-20">
+        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="font-bold text-white text-sm mb-1 hover:text-cyan-300 transition-colors">
+          @{post.author_username}
+        </button>
+        <p className="text-white/80 text-sm leading-snug line-clamp-2">{post.content}</p>
+        <p className="text-white/40 text-xs mt-1">{fmtDate(post.created_at)}</p>
+      </div>
+
+      {/* Comment panel */}
+      {showComment && (
+        <div
+          className="absolute bottom-0 left-0 right-0 rounded-t-3xl p-4"
+          style={{ background: "rgba(11,19,38,0.95)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.08)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: C.outline }} />
+          <h3 className="text-white font-bold text-sm mb-4">{comments} commentaire{comments !== 1 ? "s" : ""}</h3>
+          <div className="flex gap-3 items-center">
+            <input
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder="Ajouter un commentaire…"
+              className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500 py-2 px-3 rounded-xl"
+              style={{ backgroundColor: C.high, color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSendComment(); }}
+            />
+            <button onClick={handleSendComment} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+              <span className="material-symbols-outlined text-sm">send</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ClipsPage({ user, setUser }) {
+  const [clips, setClips]         = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const containerRef = useRef(null);
+  const observerRef  = useRef(null);
+
+  useEffect(() => {
+    fetchClips();
+  }, []);
+
+  useEffect(() => {
+    if (!containerRef.current || clips.length === 0) return;
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const idx = parseInt(entry.target.dataset.index, 10);
+            setActiveIndex(idx);
+          }
+        });
+      },
+      { threshold: 0.6 }
+    );
+    const items = containerRef.current.querySelectorAll("[data-index]");
+    items.forEach((el) => observerRef.current.observe(el));
+    return () => observerRef.current?.disconnect();
+  }, [clips]);
+
+  const fetchClips = async () => {
+    try {
+      // Fetch all posts with media (videos first, then images)
+      const res = await axios.get(`${API}/posts/feed`);
+      const all = res.data || [];
+      const withMedia = all.filter(p => p.media_url);
+      // Put videos first
+      const sorted = [...withMedia.filter(p => p.media_type === "video"), ...withMedia.filter(p => p.media_type !== "video")];
+      setClips(sorted);
+    } catch (err) {
+      console.error("Erreur clips:", err);
+      toast.error("Erreur lors du chargement des clips");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Layout user={user} setUser={setUser} compact>
+        <div className="flex items-center justify-center h-screen">
+          <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
+        </div>
+      </Layout>
+    );
+  }
+
+  if (clips.length === 0) {
+    return (
+      <Layout user={user} setUser={setUser} compact>
+        <div className="flex flex-col items-center justify-center h-screen gap-4">
+          <span className="material-symbols-outlined text-6xl" style={{ color: C.outline, opacity: 0.4 }}>play_circle</span>
+          <p className="text-sm font-bold uppercase tracking-widest" style={{ color: C.outline }}>Aucun clip disponible</p>
+          <p className="text-xs text-center max-w-xs" style={{ color: C.outline }}>
+            Publiez des vidéos ou images pour qu'elles apparaissent ici
+          </p>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout user={user} setUser={setUser} compact>
+      {/* Full-screen vertical scroll snapping */}
+      <div
+        ref={containerRef}
+        className="h-screen overflow-y-scroll"
+        style={{
+          scrollSnapType: "y mandatory",
+          scrollBehavior: "smooth",
+          WebkitOverflowScrolling: "touch",
+          /* Adjust for mobile header/nav */
+          marginTop: 0,
+          scrollbarWidth: "none",
+        }}
+      >
+        <style>{`
+          div::-webkit-scrollbar { display: none; }
+          [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
+        `}</style>
+        {clips.map((clip, idx) => (
+          <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100svh" }}>
+            <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex} />
+          </div>
+        ))}
+      </div>
+
+      {/* Nexus Clips branding overlay (top-left) */}
+      <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none lg:top-4">
+        <span
+          className="text-white font-black text-sm tracking-widest uppercase"
+          style={{ fontFamily: "Space Grotesk, sans-serif", textShadow: `0 0 20px ${C.cyan}` }}
+        >
+          NEXUS CLIPS
+        </span>
+      </div>
+    </Layout>
+  );
+}
