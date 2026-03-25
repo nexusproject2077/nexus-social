@@ -3,12 +3,13 @@ import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 
-export default function Layout({ children, user, setUser, onCreatePost }) {
+export default function Layout({ children, user, setUser, onCreatePost, compact }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [suggestedUsers, setSuggestedUsers] = useState([]);
 
   useEffect(() => {
+    if (compact) return;
     axios
       .get(`${API}/users/search?q=`)
       .then((res) => {
@@ -16,7 +17,7 @@ export default function Layout({ children, user, setUser, onCreatePost }) {
         setSuggestedUsers(users.filter((u) => u.id !== user.id).slice(0, 3));
       })
       .catch(() => {});
-  }, [user.id]);
+  }, [user.id, compact]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -25,11 +26,8 @@ export default function Layout({ children, user, setUser, onCreatePost }) {
   };
 
   const handleCreatePost = () => {
-    if (onCreatePost) {
-      onCreatePost();
-    } else {
-      navigate("/");
-    }
+    if (onCreatePost) onCreatePost();
+    else navigate("/");
   };
 
   const isActive = (path) => {
@@ -38,39 +36,42 @@ export default function Layout({ children, user, setUser, onCreatePost }) {
   };
 
   const navItems = [
-    { icon: "home", label: "Accueil", path: "/", testId: "nav-home" },
-    { icon: "explore", label: "Explorer", path: "/search", testId: "nav-search" },
-    { icon: "notifications", label: "Notifications", path: "/notifications", testId: "nav-notifications" },
-    { icon: "language", label: "Navigateur", path: "/browser", testId: "nav-browser" },
-    { icon: "mail", label: "Messages", path: "/messages", testId: "nav-messages" },
-    { icon: "account_circle", label: "Profil", path: `/profile/${user.id}`, testId: "nav-profile" },
-    { icon: "settings", label: "Paramètres", path: "/settings", testId: "nav-settings" },
+    { icon: "home",           label: "Accueil",     path: "/",                     testId: "nav-home" },
+    { icon: "play_circle",    label: "Nexus Clips", path: "/clips",                testId: "nav-clips" },
+    { icon: "explore",        label: "Explorer",    path: "/search",               testId: "nav-search" },
+    { icon: "notifications",  label: "Notifications",path: "/notifications",       testId: "nav-notifications" },
+    { icon: "language",       label: "Navigateur",  path: "/browser",              testId: "nav-browser" },
+    { icon: "mail",           label: "Messages",    path: "/messages",             testId: "nav-messages" },
+    { icon: "account_circle", label: "Profil",      path: `/profile/${user.id}`,   testId: "nav-profile" },
+    { icon: "settings",       label: "Paramètres",  path: "/settings",             testId: "nav-settings" },
   ];
 
   const trending = [
-    { cat: "Technologie", tag: "#NexusTech", count: "42.5k" },
-    { cat: "Design", tag: "Interface Cinétique", count: "12.8k" },
-    { cat: "Social", tag: "#NexusSocial", count: "8.2k" },
+    { cat: "Technologie", tag: "#NexusTech",    count: "42.5k" },
+    { cat: "Design",      tag: "Interface Cinétique", count: "12.8k" },
+    { cat: "Social",      tag: "#NexusSocial",  count: "8.2k" },
   ];
 
   return (
     <div style={{ backgroundColor: "#0b1326", color: "#dae2fd" }} className="min-h-screen font-body">
+
       {/* ===== Desktop Left Sidebar ===== */}
       <aside
         className="fixed left-0 top-0 h-screen w-64 z-40 hidden lg:flex flex-col py-8 px-4 gap-4"
-        style={{ backgroundColor: "#0b1326" }}
+        style={{ backgroundColor: "#0b1326", borderRight: "1px solid rgba(255,255,255,0.04)" }}
       >
-        <div className="font-headline text-xl font-bold text-kinetic-gradient mb-4 px-4">
-          Nexus Social
+        {/* Logo */}
+        <div
+          className="font-headline text-2xl font-black tracking-tighter mb-4 px-4 bg-clip-text"
+          style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+        >
+          NEXUS
         </div>
 
         {/* Search */}
         <div className="px-2 mb-2">
           <div className="relative">
-            <span
-              className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2"
-              style={{ color: "#859397", fontSize: "18px" }}
-            >
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#859397", fontSize: "18px" }}>
               search
             </span>
             <input
@@ -78,16 +79,13 @@ export default function Layout({ children, user, setUser, onCreatePost }) {
               style={{ backgroundColor: "#131b2e", color: "#dae2fd" }}
               placeholder="Rechercher..."
               type="text"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && e.target.value)
-                  navigate(`/search?q=${e.target.value}`);
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter" && e.target.value) navigate(`/search?q=${e.target.value}`); }}
             />
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex flex-col gap-1">
+        <nav className="flex flex-col gap-0.5">
           {navItems.map((item) => {
             const active = isActive(item.path);
             return (
@@ -99,22 +97,11 @@ export default function Layout({ children, user, setUser, onCreatePost }) {
                 style={{
                   color: active ? "#22d3ee" : "#859397",
                   fontWeight: active ? "700" : "400",
-                  background: active
-                    ? "linear-gradient(to right, rgba(34,211,238,0.1), transparent)"
-                    : "transparent",
-                  borderRight: active
-                    ? "2px solid #22d3ee"
-                    : "2px solid transparent",
+                  background: active ? "linear-gradient(to right, rgba(34,211,238,0.1), transparent)" : "transparent",
+                  borderLeft: active ? "2px solid #22d3ee" : "2px solid transparent",
                 }}
               >
-                <span
-                  className="material-symbols-outlined"
-                  style={{
-                    fontVariationSettings: active
-                      ? "'FILL' 1, 'wght' 400"
-                      : "'FILL' 0, 'wght' 300",
-                  }}
-                >
+                <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1, 'wght' 400" : "'FILL' 0, 'wght' 300" }}>
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
@@ -128,51 +115,30 @@ export default function Layout({ children, user, setUser, onCreatePost }) {
           <button
             data-testid="create-post-button"
             onClick={handleCreatePost}
-            className="w-full py-4 bg-kinetic-gradient font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90"
-            style={{
-              color: "#00363e",
-              boxShadow: "0 10px 20px rgba(34,211,238,0.2)",
-            }}
+            className="w-full py-3.5 font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm"
+            style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: "#00363e", boxShadow: "0 8px 20px rgba(34,211,238,0.2)" }}
           >
             Créer un post
           </button>
         </div>
 
-        {/* User Profile */}
+        {/* User info */}
         <div className="mt-auto px-2">
           <div className="flex items-center gap-3">
             {user.profile_pic ? (
-              <img
-                src={user.profile_pic}
-                alt="Profile"
-                className="w-10 h-10 rounded-full object-cover cursor-pointer"
-                onClick={() => navigate(`/profile/${user.id}`)}
-              />
+              <img src={user.profile_pic} alt="Profile" className="w-10 h-10 rounded-full object-cover cursor-pointer" onClick={() => navigate(`/profile/${user.id}`)} />
             ) : (
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm cursor-pointer flex-shrink-0"
-                style={{
-                  background: "linear-gradient(135deg, #22d3ee, #3b82f6)",
-                  color: "#00363e",
-                }}
+                style={{ background: "linear-gradient(135deg, #22d3ee, #3b82f6)", color: "#00363e" }}
                 onClick={() => navigate(`/profile/${user.id}`)}
               >
                 {user.username[0].toUpperCase()}
               </div>
             )}
             <div className="flex flex-col flex-1 min-w-0">
-              <span
-                className="text-xs font-semibold truncate"
-                style={{ color: "#dae2fd" }}
-              >
-                @{user.username}
-              </span>
-              <button
-                data-testid="desktop-logout-button"
-                onClick={handleLogout}
-                className="text-[10px] text-left transition-colors hover:text-red-400"
-                style={{ color: "#859397" }}
-              >
+              <span className="text-xs font-semibold truncate" style={{ color: "#dae2fd" }}>@{user.username}</span>
+              <button data-testid="desktop-logout-button" onClick={handleLogout} className="text-[10px] text-left transition-colors hover:text-red-400" style={{ color: "#859397" }}>
                 Déconnexion
               </button>
             </div>
@@ -180,197 +146,114 @@ export default function Layout({ children, user, setUser, onCreatePost }) {
         </div>
       </aside>
 
-      {/* ===== Desktop Right Sidebar ===== */}
-      <aside
-        className="fixed right-0 top-0 h-screen w-80 z-40 hidden lg:flex flex-col py-8 px-6 gap-8 overflow-y-auto"
-        style={{ backgroundColor: "#0b1326" }}
-      >
-        {/* Trending */}
-        <section>
-          <h2
-            className="font-headline font-bold text-lg mb-6 tracking-tight"
-            style={{ color: "#dae2fd" }}
-          >
-            Tendances
-          </h2>
-          <div className="space-y-6">
-            {trending.map((t) => (
-              <div key={t.tag} className="group cursor-pointer">
-                <p
-                  className="text-[10px] uppercase tracking-widest font-bold mb-1"
-                  style={{ color: "#859397" }}
-                >
-                  {t.cat} • Tendance
-                </p>
-                <h3
-                  className="text-sm font-bold transition-colors group-hover:text-cyan-400"
-                  style={{ color: "#dae2fd" }}
-                >
-                  {t.tag}
-                </h3>
-                <p className="text-xs mt-1" style={{ color: "#859397" }}>
-                  {t.count} posts
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Suggested Users */}
-        {suggestedUsers.length > 0 && (
+      {/* ===== Desktop Right Sidebar (hidden when compact) ===== */}
+      {!compact && (
+        <aside
+          className="fixed right-0 top-0 h-screen w-80 z-40 hidden lg:flex flex-col py-8 px-6 gap-8 overflow-y-auto"
+          style={{ backgroundColor: "#0b1326", borderLeft: "1px solid rgba(255,255,255,0.04)" }}
+        >
+          {/* Trending */}
           <section>
-            <h2
-              className="font-headline font-bold text-lg mb-6 tracking-tight"
-              style={{ color: "#dae2fd" }}
-            >
-              Suggestions
-            </h2>
-            <div className="space-y-4">
-              {suggestedUsers.map((u) => (
-                <div key={u.id} className="flex items-center justify-between">
-                  <button
-                    className="flex items-center gap-3"
-                    onClick={() => navigate(`/profile/${u.id}`)}
-                  >
-                    {u.profile_pic ? (
-                      <img
-                        src={u.profile_pic}
-                        alt={u.username}
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                        style={{
-                          background: "linear-gradient(135deg, #22d3ee, #3b82f6)",
-                          color: "#00363e",
-                        }}
-                      >
-                        {u.username[0].toUpperCase()}
-                      </div>
-                    )}
-                    <div className="flex flex-col text-left">
-                      <span
-                        className="text-xs font-bold"
-                        style={{ color: "#dae2fd" }}
-                      >
-                        {u.first_name || u.username}
-                      </span>
-                      <span
-                        className="text-[10px]"
-                        style={{ color: "#859397" }}
-                      >
-                        @{u.username}
-                      </span>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => navigate(`/profile/${u.id}`)}
-                    className="px-3 py-1 rounded-full text-[10px] font-bold transition-colors hover:bg-cyan-400/20 hover:text-cyan-400"
-                    style={{ backgroundColor: "#222a3d", color: "#dae2fd" }}
-                  >
-                    Voir
-                  </button>
+            <h2 className="font-headline font-bold text-lg mb-6 tracking-tight" style={{ color: "#dae2fd" }}>Tendances</h2>
+            <div className="space-y-6">
+              {trending.map((t) => (
+                <div key={t.tag} className="group cursor-pointer">
+                  <p className="text-[10px] uppercase tracking-widest font-bold mb-1" style={{ color: "#859397" }}>{t.cat} • Tendance</p>
+                  <h3 className="text-sm font-bold transition-colors group-hover:text-cyan-400" style={{ color: "#dae2fd" }}>{t.tag}</h3>
+                  <p className="text-xs mt-1" style={{ color: "#859397" }}>{t.count} posts</p>
                 </div>
               ))}
             </div>
           </section>
-        )}
 
-        <footer className="mt-auto pt-8">
-          <div
-            className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-medium"
-            style={{ color: "#3c494c" }}
-          >
-            <a href="#" className="hover:text-slate-400">
-              Conditions
-            </a>
-            <a href="#" className="hover:text-slate-400">
-              Confidentialité
-            </a>
-            <a href="#" className="hover:text-slate-400">
-              Cookies
-            </a>
-            <span>© 2024 Nexus Social</span>
-          </div>
-        </footer>
-      </aside>
+          {/* Suggested Users */}
+          {suggestedUsers.length > 0 && (
+            <section>
+              <h2 className="font-headline font-bold text-lg mb-6 tracking-tight" style={{ color: "#dae2fd" }}>Suggestions</h2>
+              <div className="space-y-4">
+                {suggestedUsers.map((u) => (
+                  <div key={u.id} className="flex items-center justify-between">
+                    <button className="flex items-center gap-3" onClick={() => navigate(`/profile/${u.id}`)}>
+                      {u.profile_pic ? (
+                        <img src={u.profile_pic} alt={u.username} className="w-10 h-10 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ background: "linear-gradient(135deg, #22d3ee, #3b82f6)", color: "#00363e" }}>
+                          {u.username[0].toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex flex-col text-left">
+                        <span className="text-xs font-bold" style={{ color: "#dae2fd" }}>{u.first_name || u.username}</span>
+                        <span className="text-[10px]" style={{ color: "#859397" }}>@{u.username}</span>
+                      </div>
+                    </button>
+                    <button onClick={() => navigate(`/profile/${u.id}`)} className="px-3 py-1 rounded-full text-[10px] font-bold transition-colors hover:bg-cyan-400/20 hover:text-cyan-400" style={{ backgroundColor: "#222a3d", color: "#dae2fd" }}>
+                      Voir
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <footer className="mt-auto pt-8">
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-medium" style={{ color: "#3c494c" }}>
+              <a href="#" className="hover:text-slate-400">Conditions</a>
+              <a href="#" className="hover:text-slate-400">Confidentialité</a>
+              <a href="#" className="hover:text-slate-400">Cookies</a>
+              <span>© 2025 Nexus Social</span>
+            </div>
+          </footer>
+        </aside>
+      )}
 
       {/* ===== Mobile Header ===== */}
       <header
         className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4"
-        style={{
-          backgroundColor: "rgba(11,19,38,0.85)",
-          backdropFilter: "blur(20px)",
-          borderBottom: "1px solid rgba(255,255,255,0.05)",
-        }}
+        style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
       >
-        <div className="font-headline font-bold text-lg text-kinetic-gradient">
-          Nexus
+        <div
+          className="font-headline font-black text-xl tracking-tighter bg-clip-text"
+          style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+        >
+          NEXUS
         </div>
         <div className="flex-1 px-4 max-w-xs mx-auto">
           <div className="relative">
-            <span
-              className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2"
-              style={{ color: "#859397", fontSize: "18px" }}
-            >
-              search
-            </span>
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#859397", fontSize: "18px" }}>search</span>
             <input
               className="w-full border-none rounded-full py-1.5 pl-8 pr-4 text-xs outline-none placeholder:text-slate-500"
               style={{ backgroundColor: "#131b2e", color: "#dae2fd" }}
               placeholder="Rechercher..."
               type="text"
+              onKeyDown={(e) => { if (e.key === "Enter" && e.target.value) navigate(`/search?q=${e.target.value}`); }}
             />
           </div>
         </div>
-        <button
-          style={{ color: "#859397" }}
-          onClick={() => navigate("/notifications")}
-          data-testid="nav-notifications-mobile"
-        >
+        <button style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
           <span className="material-symbols-outlined">notifications</span>
         </button>
       </header>
 
       {/* ===== Main Content ===== */}
-      <main className="ml-0 lg:ml-64 lg:mr-80 min-h-screen pt-14 lg:pt-0 pb-20 lg:pb-0">
+      <main className={`ml-0 lg:ml-64 ${compact ? "" : "lg:mr-80"} min-h-screen pt-14 lg:pt-0 pb-20 lg:pb-0`}>
         {children}
       </main>
 
       {/* ===== Mobile Bottom Nav ===== */}
       <nav
         className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4"
-        style={{
-          backgroundColor: "rgba(11,19,38,0.9)",
-          backdropFilter: "blur(20px)",
-          borderTop: "1px solid rgba(255,255,255,0.05)",
-        }}
+        style={{ backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
       >
+        {/* Home */}
         {[
-          { icon: "home", path: "/", label: "Accueil", testId: "nav-home" },
-          { icon: "explore", path: "/search", label: "Explorer", testId: "nav-search" },
+          { icon: "home",        path: "/",        label: "Accueil",  testId: "nav-home" },
+          { icon: "play_circle", path: "/clips",   label: "Clips",    testId: "nav-clips" },
         ].map((item) => {
           const active = isActive(item.path);
           return (
-            <button
-              key={item.path}
-              data-testid={item.testId}
-              onClick={() => navigate(item.path)}
-              className="flex flex-col items-center gap-0.5"
-              style={{ color: active ? "#22d3ee" : "#859397" }}
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{
-                  fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0",
-                }}
-              >
-                {item.icon}
-              </span>
-              <span className={`text-[10px] ${active ? "font-bold" : ""}`}>
-                {item.label}
-              </span>
+            <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "#22d3ee" : "#859397" }}>
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>{item.icon}</span>
+              <span className={`text-[9px] ${active ? "font-bold" : ""}`}>{item.label}</span>
             </button>
           );
         })}
@@ -378,39 +261,22 @@ export default function Layout({ children, user, setUser, onCreatePost }) {
         {/* FAB Create Post */}
         <button
           onClick={handleCreatePost}
-          className="w-10 h-10 rounded-full flex items-center justify-center -mt-8 bg-kinetic-gradient transition-transform active:scale-95"
-          style={{
-            color: "#00363e",
-            boxShadow: "0 4px 15px rgba(34,211,238,0.4)",
-          }}
+          className="w-11 h-11 rounded-full flex items-center justify-center -mt-8 transition-transform active:scale-95"
+          style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e", boxShadow: "0 4px 16px rgba(34,211,238,0.4)" }}
         >
           <span className="material-symbols-outlined">add</span>
         </button>
 
+        {/* Messages + Profile */}
         {[
-          { icon: "notifications", path: "/notifications", label: "Notifs", testId: "nav-notifications" },
-          { icon: "account_circle", path: `/profile/${user.id}`, label: "Profil", testId: "nav-profile" },
+          { icon: "mail",           path: "/messages",           label: "Messages", testId: "nav-messages" },
+          { icon: "account_circle", path: `/profile/${user.id}`, label: "Profil",   testId: "nav-profile" },
         ].map((item) => {
           const active = isActive(item.path);
           return (
-            <button
-              key={item.path}
-              data-testid={item.testId}
-              onClick={() => navigate(item.path)}
-              className="flex flex-col items-center gap-0.5"
-              style={{ color: active ? "#22d3ee" : "#859397" }}
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{
-                  fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0",
-                }}
-              >
-                {item.icon}
-              </span>
-              <span className={`text-[10px] ${active ? "font-bold" : ""}`}>
-                {item.label}
-              </span>
+            <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "#22d3ee" : "#859397" }}>
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>{item.icon}</span>
+              <span className={`text-[9px] ${active ? "font-bold" : ""}`}>{item.label}</span>
             </button>
           );
         })}

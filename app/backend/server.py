@@ -961,6 +961,50 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
     post["is_liked"] = bool(like_raw)
     return Post(**post)
 
+@api_router.post("/posts/{post_id}/repost", response_model=Post)
+async def repost(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Repartage un post (repost/republication)"""
+    original_raw = await db.posts.find_one({"id": post_id})
+    if not original_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+    original = convert_mongo_doc_to_dict(original_raw)
+
+    # Empêcher de reposter son propre post
+    if original["author_id"] == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas reposter votre propre publication")
+
+    # Vérifier doublon
+    existing = await db.posts.find_one({
+        "repost_of": post_id,
+        "author_id": current_user["id"]
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="Vous avez déjà reposté cette publication")
+
+    now = datetime.now(timezone.utc)
+    new_id = str(uuid.uuid4())
+    repost_doc = {
+        "id": new_id,
+        "author_id": current_user["id"],
+        "author_username": current_user["username"],
+        "author_profile_pic": current_user.get("profile_pic"),
+        "content": original["content"],
+        "media_type": original.get("media_type"),
+        "media_url": original.get("media_url"),
+        "likes_count": 0,
+        "comments_count": 0,
+        "shares_count": 0,
+        "repost_of": post_id,
+        "original_author_username": original["author_username"],
+        "original_author_id": original["author_id"],
+        "created_at": now.isoformat()
+    }
+    await db.posts.insert_one(repost_doc)
+    await db.posts.update_one({"id": post_id}, {"$inc": {"shares_count": 1}})
+    result = convert_mongo_doc_to_dict(repost_doc)
+    result["is_liked"] = False
+    return Post(**result)
+
 @api_router.delete("/posts/{post_id}")
 async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
     """Supprime un post"""
@@ -1517,6 +1561,15 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                 )
     
     return list(conversations_dict.values())
+
+@api_router.get("/messages/groups-list")
+async def list_groups_alias(current_user: dict = Depends(get_current_user)):
+    """Alias pour lister les groupes (évite le conflit de route avec /{user_id})"""
+    groups_raw = await db.group_chats.find({
+        "member_ids": current_user["id"]
+    }).to_list(length=100)
+    groups = [convert_mongo_doc_to_dict(g) for g in groups_raw]
+    return {"success": True, "groups": groups}
 
 @api_router.get("/messages/{user_id}", response_model=List[Message])
 async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_current_user)):

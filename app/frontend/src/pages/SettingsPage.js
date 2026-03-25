@@ -1,726 +1,509 @@
-// src/pages/SettingsPage.jsx - RESPONSIVE + CYAN THEME
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft,
-  ChevronRight,
-  User,
-  Lock,
-  Shield,
-  Eye,
-  Download,
-  HeartCrack,
-  Smartphone,
-  Globe,
-  Moon,
-  Languages,
-  Palette,
-  HelpCircle,
-  LogOut,
-  Mail,
-  Phone,
-  Calendar,
-  MapPin,
-  Link as LinkIcon,
-  Check,
-  X,
-  Loader,
-  Save
-} from 'lucide-react';
 import { toast } from 'sonner';
 import { API } from '../App';
+import axios from 'axios';
+import Layout from '../components/Layout';
 import ChangePasswordModal from '../components/ChangePasswordModal';
-import CustomAccountIcon from '../components/CustomAccountIcon';
-import CustomNotificationIcon from '../components/CustomNotificationIcon';
-import CustomShieldIcon from '../components/CustomShieldIcon';
-import CustomEyeIcon from '../components/CustomEyeIcon';
 
-export default function SettingsPage() {
+// ── Design tokens ──────────────────────────────────────────────────────────────
+const C = {
+  surface:   "#0b1326",
+  low:       "#131b2e",
+  container: "#171f33",
+  high:      "#222a3d",
+  bright:    "#31394d",
+  cyan:      "#22d3ee",
+  onPrimary: "#00363e",
+  outline:   "#859397",
+  outlineVar:"#3c494c",
+  onSurface: "#dae2fd",
+  onVariant: "#bbc9cd",
+  error:     "#ffb4ab",
+};
+
+// ── Reusable Toggle ────────────────────────────────────────────────────────────
+function Toggle({ checked, onChange, disabled }) {
+  return (
+    <button
+      onClick={() => !disabled && onChange(!checked)}
+      disabled={disabled}
+      className={`relative w-11 h-6 rounded-full transition-all flex-shrink-0 ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+      style={{ background: checked ? "linear-gradient(90deg,#22d3ee,#3b82f6)" : C.high }}
+    >
+      <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`} />
+    </button>
+  );
+}
+
+// ── Row components ─────────────────────────────────────────────────────────────
+function NavRow({ icon, label, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-all"
+      style={{
+        color: active ? C.cyan : C.outline,
+        background: active ? `linear-gradient(to right, ${C.cyan}12, transparent)` : "transparent",
+        borderLeft: active ? `3px solid ${C.cyan}` : "3px solid transparent",
+      }}
+    >
+      <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function RowItem({ icon, label, sublabel, right, onClick, danger }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-4 px-5 py-4 transition-all text-left hover:opacity-80"
+      style={{ borderBottom: `1px solid rgba(255,255,255,0.04)` }}
+    >
+      <span className="material-symbols-outlined text-lg" style={{ color: danger ? C.error : C.outline }}>{icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium" style={{ color: danger ? C.error : C.onSurface }}>{label}</p>
+        {sublabel && <p className="text-xs mt-0.5" style={{ color: C.outline }}>{sublabel}</p>}
+      </div>
+      {right && <div className="flex-shrink-0 text-xs font-bold" style={{ color: C.cyan }}>{right}</div>}
+      {!right && <span className="material-symbols-outlined text-lg flex-shrink-0" style={{ color: C.outlineVar }}>chevron_right</span>}
+    </button>
+  );
+}
+
+function ToggleRow({ icon, label, sublabel, checked, onChange, disabled }) {
+  return (
+    <div className="flex items-center gap-4 px-5 py-4" style={{ borderBottom: `1px solid rgba(255,255,255,0.04)` }}>
+      {icon && <span className="material-symbols-outlined text-lg" style={{ color: C.outline }}>{icon}</span>}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium" style={{ color: C.onSurface }}>{label}</p>
+        {sublabel && <p className="text-xs mt-0.5" style={{ color: C.outline }}>{sublabel}</p>}
+      </div>
+      <Toggle checked={checked} onChange={onChange} disabled={disabled} />
+    </div>
+  );
+}
+
+function Card({ children, className = "" }) {
+  return (
+    <div className={`rounded-2xl overflow-hidden ${className}`} style={{ background: C.container, border: "1px solid rgba(255,255,255,0.05)" }}>
+      {children}
+    </div>
+  );
+}
+
+function CardHeader({ title, icon }) {
+  return (
+    <div className="px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      <div className="flex items-center gap-3">
+        {icon && <span className="material-symbols-outlined text-lg" style={{ color: C.cyan }}>{icon}</span>}
+        <h3 className="font-black text-sm uppercase tracking-widest" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{title}</h3>
+      </div>
+    </div>
+  );
+}
+
+// ── InputField ─────────────────────────────────────────────────────────────────
+function InputField({ label, value, onChange, disabled, type = "text", placeholder }) {
+  return (
+    <div>
+      <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: C.outline }}>{label}</label>
+      <input
+        type={type}
+        value={value || ""}
+        onChange={onChange}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="w-full px-4 py-2.5 rounded-xl text-sm border-none outline-none transition-all focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-600 disabled:opacity-50"
+        style={{ background: C.high, color: C.onSurface }}
+      />
+    </div>
+  );
+}
+
+// ── MAIN PAGE ──────────────────────────────────────────────────────────────────
+export default function SettingsPage({ user, setUser }) {
   const navigate = useNavigate();
-  const [currentView, setCurrentView] = useState('main');
-  const [settings, setSettings] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [editMode, setEditMode] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [activeSection, setActiveSection]   = useState("account");
+  const [settings, setSettings]             = useState(null);
+  const [loading, setLoading]               = useState(true);
+  const [saving, setSaving]                 = useState(false);
+  const [editMode, setEditMode]             = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   const [profileData, setProfileData] = useState({
-    first_name: '',
-    last_name: '',
-    bio: '',
-    location: '',
-    website: '',
-    phone: '',
-    birthdate: '',
-    gender: ''
+    first_name: "", last_name: "", bio: "",
+    location: "", website: "", phone: "", birthdate: "", gender: ""
   });
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
+  useEffect(() => { fetchSettings(); }, []);
 
   const fetchSettings = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API}/users/me/settings`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setSettings(data);
-        setProfileData(data.profile || {});
-      }
-    } catch (err) {
-      toast.error("Erreur chargement");
-    } finally {
-      setLoading(false);
-    }
+      const res = await axios.get(`${API}/users/me/settings`);
+      setSettings(res.data);
+      if (res.data?.profile) setProfileData(res.data.profile);
+    } catch { toast.error("Erreur chargement"); }
+    finally { setLoading(false); }
   };
 
   const updatePrivacy = async (key, value) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API}/users/me/privacy`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ [key]: value })
-      });
-
-      if (response.ok) {
-        setSettings(prev => ({
-          ...prev,
-          privacy: { ...prev.privacy, [key]: value }
-        }));
-        toast.success("✓ Mis à jour");
-      }
-    } catch (err) {
-      toast.error("Erreur");
-    }
+      await axios.put(`${API}/users/me/privacy`, { [key]: value });
+      setSettings(prev => ({ ...prev, privacy: { ...prev?.privacy, [key]: value } }));
+      toast.success("Mis à jour");
+    } catch { toast.error("Erreur"); }
   };
 
   const updateProfile = async () => {
     setSaving(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API}/users/me/profile-details`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(profileData)
-      });
-
-      if (response.ok) {
-        toast.success("✓ Profil mis à jour !");
-        setEditMode(false);
-        fetchSettings();
-      }
-    } catch (err) {
-      toast.error("Erreur");
-    } finally {
-      setSaving(false);
-    }
+      await axios.put(`${API}/users/me/profile-details`, profileData);
+      toast.success("Profil mis à jour !");
+      setEditMode(false);
+      fetchSettings();
+    } catch { toast.error("Erreur"); }
+    finally { setSaving(false); }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    navigate('/auth');
-    toast.success("Déconnexion réussie");
+    localStorage.removeItem("token");
+    if (setUser) setUser(null);
+    navigate("/auth");
   };
+
+  const handleDataExport = async () => {
+    try {
+      toast.info("Export en cours...");
+      const res = await axios.get(`${API}/users/me/data-export`);
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = "nexus-data-export.json"; a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Export téléchargé !");
+    } catch { toast.error("Export échoué"); }
+  };
+
+  const navSections = [
+    { id: "account",  icon: "manage_accounts",  label: "Compte" },
+    { id: "privacy",  icon: "gavel",             label: "Confidentialité" },
+    { id: "security", icon: "shield",            label: "Sécurité" },
+    { id: "content",  icon: "tune",              label: "Contenu" },
+    { id: "display",  icon: "palette",           label: "Affichage" },
+  ];
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950 flex items-center justify-center">
-        <Loader className="w-8 h-8 text-cyan-400 animate-spin" />
-      </div>
+      <Layout user={user} setUser={setUser}>
+        <div className="flex items-center justify-center h-screen">
+          <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
+        </div>
+      </Layout>
     );
   }
 
-  // MAIN VIEW
-  if (currentView === 'main') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
-        {/* Header - Responsive */}
-        <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-xl border-b border-cyan-500/20">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between px-4 md:px-6 lg:px-8 py-4">
-              <button
-                onClick={() => navigate(-1)}
-                className="p-2 hover:bg-cyan-500/10 rounded-full transition-all"
-              >
-                <ArrowLeft className="w-5 h-5 text-cyan-400" />
+  // ── Section renderers ────────────────────────────────────────────────────────
+
+  const renderAccount = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Votre compte</h2>
+        <p className="text-sm" style={{ color: C.outline }}>Gérez vos informations personnelles et vos préférences</p>
+      </div>
+
+      {/* Profile info card */}
+      <Card>
+        <CardHeader title="Informations du profil" icon="person" />
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <InputField label="Nom d'utilisateur" value={settings?.account?.username} disabled />
+            <InputField label="Email" value={settings?.account?.email} disabled />
+            <InputField label="Prénom" value={profileData.first_name} onChange={e => setProfileData(p => ({ ...p, first_name: e.target.value }))} disabled={!editMode} />
+            <InputField label="Nom" value={profileData.last_name} onChange={e => setProfileData(p => ({ ...p, last_name: e.target.value }))} disabled={!editMode} />
+            <InputField label="Téléphone" type="tel" value={profileData.phone} onChange={e => setProfileData(p => ({ ...p, phone: e.target.value }))} disabled={!editMode} />
+            <InputField label="Date de naissance" type="date" value={profileData.birthdate} onChange={e => setProfileData(p => ({ ...p, birthdate: e.target.value }))} disabled={!editMode} />
+            <InputField label="Localisation" value={profileData.location} onChange={e => setProfileData(p => ({ ...p, location: e.target.value }))} disabled={!editMode} />
+            <InputField label="Site web" type="url" value={profileData.website} onChange={e => setProfileData(p => ({ ...p, website: e.target.value }))} disabled={!editMode} />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: C.outline }}>Bio</label>
+            <textarea
+              value={profileData.bio || ""}
+              onChange={e => setProfileData(p => ({ ...p, bio: e.target.value }))}
+              disabled={!editMode}
+              rows={3}
+              maxLength={160}
+              placeholder="Parlez de vous..."
+              className="w-full px-4 py-2.5 rounded-xl text-sm resize-none border-none outline-none transition-all focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-600 disabled:opacity-50"
+              style={{ background: C.high, color: C.onSurface }}
+            />
+            <div className="text-right text-[10px] mt-1" style={{ color: C.outline }}>{profileData.bio?.length || 0}/160</div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            {editMode ? (
+              <>
+                <button onClick={updateProfile} disabled={saving}
+                  className="px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-50 hover:opacity-90"
+                  style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+                  {saving ? "Enregistrement..." : "Enregistrer"}
+                </button>
+                <button onClick={() => setEditMode(false)} className="px-5 py-2 rounded-xl font-bold text-sm transition-all hover:opacity-80"
+                  style={{ background: C.high, color: C.outline }}>
+                  Annuler
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setEditMode(true)} className="px-5 py-2 rounded-xl font-bold text-sm transition-all hover:opacity-80"
+                style={{ background: C.high, color: C.cyan, border: `1px solid ${C.cyan}30` }}>
+                Modifier le profil
               </button>
-              <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                Paramètres
-              </h1>
-              <div className="w-9" />
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Account actions */}
+      <Card>
+        <CardHeader title="Gestion du compte" icon="settings" />
+        <RowItem icon="lock" label="Changer le mot de passe" sublabel="Mettre à jour votre mot de passe" onClick={() => setShowPasswordModal(true)} />
+        <RowItem icon="download" label="Exporter mes données" sublabel="Télécharger une copie de vos données (RGPD)" onClick={handleDataExport} />
+        <RowItem icon="logout" label="Se déconnecter" sublabel="Terminer la session en cours" onClick={handleLogout} danger />
+      </Card>
+    </div>
+  );
+
+  const renderPrivacy = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Confidentialité</h2>
+        <p className="text-sm" style={{ color: C.outline }}>Contrôlez qui peut voir votre contenu et vos informations</p>
+      </div>
+
+      {/* RGPD Notice */}
+      <div className="flex items-start gap-4 p-5 rounded-2xl" style={{ background: `${C.cyan}08`, border: `1px solid ${C.cyan}22` }}>
+        <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${C.cyan}15` }}>
+          <span className="material-symbols-outlined text-lg" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}>verified_user</span>
+        </div>
+        <div>
+          <p className="text-sm font-bold mb-1" style={{ color: C.onSurface }}>Conformité RGPD active</p>
+          <p className="text-xs" style={{ color: C.outline }}>Vos données sont traitées conformément au RGPD. Vous avez le droit d'accéder, de corriger et de supprimer vos données.</p>
+        </div>
+      </div>
+
+      {/* Privacy toggles */}
+      <Card>
+        <CardHeader title="Visibilité du compte" icon="visibility" />
+        <ToggleRow icon="lock" label="Compte privé" sublabel="Seuls vos abonnés voient vos publications" checked={settings?.privacy?.is_private || false} onChange={v => updatePrivacy("is_private", v)} />
+        <ToggleRow icon="chat" label="Autoriser les réponses aux stories" sublabel="Les autres peuvent répondre à vos stories" checked={settings?.privacy?.allow_story_replies !== false} onChange={v => updatePrivacy("allow_story_replies", v)} />
+        <ToggleRow icon="alternate_email" label="Autoriser les mentions" sublabel="Permettre aux autres de vous mentionner" checked={settings?.privacy?.allow_mentions !== false} onChange={v => updatePrivacy("allow_mentions", v)} />
+      </Card>
+
+      {/* Data controls */}
+      <Card>
+        <CardHeader title="Contrôle des données" icon="database" />
+        <RowItem icon="download" label="Exporter mes données" sublabel="Télécharger toutes vos données personnelles" onClick={handleDataExport} />
+        <RowItem icon="delete_forever" label="Demander la suppression" sublabel="Supprimer définitivement votre compte" onClick={() => toast.info("Contactez support@nexus-social.com")} danger />
+      </Card>
+
+      {/* Ad targeting */}
+      <Card>
+        <CardHeader title="Ciblage publicitaire (DMA)" icon="target" />
+        <ToggleRow label="Publicités personnalisées" sublabel="Basées sur votre activité Nexus" checked={true} onChange={() => toast.info("Paramètre à venir")} />
+        <ToggleRow label="Données tierces" sublabel="Informations reçues de nos partenaires" checked={false} onChange={() => toast.info("Paramètre à venir")} />
+        <ToggleRow label="Ciblage géographique" sublabel="Utilisation de votre localisation GPS" checked={false} onChange={() => toast.info("Paramètre à venir")} />
+      </Card>
+    </div>
+  );
+
+  const renderSecurity = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Sécurité</h2>
+        <p className="text-sm" style={{ color: C.outline }}>Protégez votre compte et gérez vos sessions actives</p>
+      </div>
+
+      {/* 2FA */}
+      <Card>
+        <CardHeader title="Authentification à deux facteurs" icon="security" />
+        <div className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-sm font-bold" style={{ color: C.onSurface }}>Authentification 2FA</p>
+              <p className="text-xs mt-0.5" style={{ color: C.outline }}>Gratuit via application Authenticator</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase" style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80" }}>Actif</span>
+              <Toggle checked={true} onChange={() => toast.info("Configurez dans l'appli")} />
             </div>
           </div>
         </div>
+      </Card>
 
-        {/* Content - Responsive Grid */}
-        <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Votre compte */}
-            <SettingCard
-              icon={<CustomAccountIcon className="w-6 h-6" color="currentColor" />}
-              title="Votre compte"
-              subtitle={`@${settings?.account?.username}`}
-              onClick={() => setCurrentView('account')}
-              gradient="from-cyan-500/20 to-blue-500/20"
-            />
+      {/* Sessions */}
+      <Card>
+        <CardHeader title="Sessions actives" icon="devices" />
+        <div className="p-5 space-y-3">
+          {[
+            { icon: "laptop", name: "Navigateur Web", detail: "Cette session • Actif maintenant", active: true },
+            { icon: "smartphone", name: "Mobile", detail: "Dernière activité il y a 2h", active: false },
+          ].map((s, i) => (
+            <div key={i} className="flex items-center gap-4 p-3 rounded-xl" style={{ background: C.high }}>
+              <span className="material-symbols-outlined text-lg" style={{ color: s.active ? C.cyan : C.outline }}>{s.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold" style={{ color: C.onSurface }}>{s.name}</p>
+                <p className="text-[10px]" style={{ color: C.outline }}>{s.detail}</p>
+                {s.active && <p className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: C.cyan }}>Session actuelle</p>}
+              </div>
+            </div>
+          ))}
+          <button onClick={() => toast.info("Déconnexion des autres sessions...")} className="w-full mt-2 py-2 text-xs font-bold rounded-xl transition-all hover:opacity-80"
+            style={{ border: `1px solid ${C.outlineVar}`, color: C.outline }}>
+            Déconnecter tous les autres appareils
+          </button>
+        </div>
+      </Card>
 
-            {/* Sécurité */}
-            <SettingCard
-              icon={<CustomShieldIcon className="w-6 h-6" color="currentColor" />}
-              title="Sécurité"
-              subtitle="Mot de passe et sessions"
-              onClick={() => setCurrentView('security')}
-              gradient="from-purple-500/20 to-pink-500/20"
-            />
+      {/* Password */}
+      <Card>
+        <CardHeader title="Mot de passe" icon="key" />
+        <RowItem icon="lock_reset" label="Changer le mot de passe" sublabel="Mettez à jour votre mot de passe régulièrement" onClick={() => setShowPasswordModal(true)} />
+      </Card>
+    </div>
+  );
 
-            {/* Notifications */}
-            <SettingCard
-              icon={<CustomNotificationIcon className="w-6 h-6" color="currentColor" />}
-              title="Notifications"
-              subtitle="Gérer les alertes"
-              onClick={() => setCurrentView('notifications')}
-              gradient="from-orange-500/20 to-red-500/20"
-            />
+  const renderContent = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Préférences de contenu</h2>
+        <p className="text-sm" style={{ color: C.outline }}>Personnalisez ce que vous voyez sur Nexus</p>
+      </div>
+      <Card>
+        <CardHeader title="Filtre de contenu" icon="filter_alt" />
+        <ToggleRow label="Contenu sensible" sublabel="Afficher le contenu marqué comme sensible" checked={false} onChange={() => toast.info("Paramètre à venir")} />
+        <ToggleRow label="Lecture auto des vidéos" sublabel="Les vidéos se lancent automatiquement" checked={true} onChange={() => toast.info("Paramètre à venir")} />
+        <ToggleRow label="Suggestion algorithmique" sublabel="Contenu basé sur vos interactions" checked={true} onChange={() => toast.info("Paramètre à venir")} />
+      </Card>
+      <Card>
+        <CardHeader title="Transparence algorithmique (DSA)" icon="analytics" />
+        <div className="p-5">
+          <p className="text-sm mb-4" style={{ color: C.outline }}>Conformément au Digital Services Act, vous avez le droit de comprendre pourquoi vous voyez certains contenus.</p>
+          <button onClick={() => toast.info("Inspection de l'algorithme à venir")} className="px-5 py-2 rounded-xl font-bold text-sm transition-all hover:opacity-80"
+            style={{ background: `${C.cyan}15`, color: C.cyan, border: `1px solid ${C.cyan}30` }}>
+            Inspecter l'algorithme
+          </button>
+        </div>
+      </Card>
+      <Card>
+        <CardHeader title="Comptes bloqués et muets" icon="block" />
+        <RowItem icon="block" label="Comptes bloqués" sublabel="Gérer les utilisateurs bloqués" onClick={() => toast.info("Liste à venir")} />
+        <RowItem icon="volume_off" label="Mots-clés muets" sublabel="Masquer certains mots du fil" onClick={() => toast.info("Configuration à venir")} />
+      </Card>
+    </div>
+  );
 
-            {/* Confidentialité */}
-            <SettingCard
-              icon={<CustomEyeIcon className="w-6 h-6" color="currentColor" />}
-              title="Confidentialité"
-              subtitle="Compte privé et stories"
-              onClick={() => setCurrentView('privacy')}
-              gradient="from-green-500/20 to-emerald-500/20"
-            />
+  const renderDisplay = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Affichage</h2>
+        <p className="text-sm" style={{ color: C.outline }}>Personnalisez l'apparence de Nexus</p>
+      </div>
+      <Card>
+        <CardHeader title="Thème" icon="dark_mode" />
+        <ToggleRow icon="dark_mode" label="Mode sombre" sublabel="Toujours activé sur Nexus" checked={true} onChange={() => {}} disabled />
+      </Card>
+      <Card>
+        <CardHeader title="Couleur d'accentuation" icon="palette" />
+        <div className="p-5">
+          <p className="text-sm mb-4" style={{ color: C.outline }}>Choisissez la couleur principale de l'interface</p>
+          <div className="flex gap-3">
+            {[C.cyan, "#3b82f6", "#8b5cf6", "#ec4899", "#f97316"].map((color, i) => (
+              <button key={i} onClick={() => toast.info("Personnalisation à venir")}
+                className="w-10 h-10 rounded-full border-2 transition-all hover:scale-110"
+                style={{ background: color, borderColor: i === 0 ? "#fff" : "transparent" }} />
+            ))}
+          </div>
+        </div>
+      </Card>
+      <Card>
+        <CardHeader title="Langue" icon="language" />
+        <RowItem icon="translate" label="Langue de l'interface" right="Français" onClick={() => toast.info("Multilingue à venir")} />
+      </Card>
+    </div>
+  );
 
-            {/* Affichage */}
-            <SettingCard
-              icon={<Palette className="w-6 h-6" />}
-              title="Affichage"
-              subtitle="Thème et apparence"
-              onClick={() => setCurrentView('display')}
-              gradient="from-yellow-500/20 to-orange-500/20"
-            />
+  const sectionMap = {
+    account:  renderAccount,
+    privacy:  renderPrivacy,
+    security: renderSecurity,
+    content:  renderContent,
+    display:  renderDisplay,
+  };
 
-            {/* Aide */}
-            <SettingCard
-              icon={<HelpCircle className="w-6 h-6" />}
-              title="Aide"
-              subtitle="Support et assistance"
-              onClick={() => toast.info("📧 support@nexus-social.com")}
-              gradient="from-indigo-500/20 to-purple-500/20"
-            />
+  return (
+    <Layout user={user} setUser={setUser}>
+      <div className="flex min-h-screen" style={{ backgroundColor: C.surface }}>
+
+        {/* ── Settings sidebar ──────────────────────────────────────────────── */}
+        <aside className="hidden md:flex flex-col flex-shrink-0 pt-6" style={{ width: 240, borderRight: `1px solid rgba(255,255,255,0.05)` }}>
+          <div className="px-5 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: C.high }}>
+                <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>manage_accounts</span>
+              </div>
+              <div>
+                <h2 className="text-sm font-black" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Paramètres</h2>
+                <p className="text-[9px] uppercase tracking-[0.2em] font-bold" style={{ color: C.outline }}>Nexus Governance</p>
+              </div>
+            </div>
+          </div>
+          <nav className="flex-1 space-y-0.5">
+            {navSections.map(s => (
+              <NavRow key={s.id} icon={s.icon} label={s.label} active={activeSection === s.id} onClick={() => setActiveSection(s.id)} />
+            ))}
+          </nav>
+          {/* Export button */}
+          <div className="p-5 mt-auto" style={{ borderTop: `1px solid rgba(255,255,255,0.05)` }}>
+            <button onClick={handleDataExport} className="w-full py-2.5 rounded-xl font-black text-xs transition-all active:scale-95 hover:opacity-90"
+              style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+              Exporter mes données
+            </button>
+          </div>
+        </aside>
+
+        {/* ── Main content ───────────────────────────────────────────────────── */}
+        <main className="flex-1 overflow-y-auto">
+          {/* Mobile section selector */}
+          <div className="md:hidden px-4 pt-4 pb-2 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+            {navSections.map(s => (
+              <button key={s.id} onClick={() => setActiveSection(s.id)}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+                style={{
+                  background: activeSection === s.id ? "linear-gradient(90deg,#22d3ee,#3b82f6)" : C.high,
+                  color: activeSection === s.id ? C.onPrimary : C.outline,
+                }}>
+                <span className="material-symbols-outlined text-sm">{s.icon}</span>
+                {s.label}
+              </button>
+            ))}
           </div>
 
-          {/* Déconnexion */}
-          <div className="mt-8">
-            <button
-              onClick={handleLogout}
-              className="w-full bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-semibold py-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-500/20"
-            >
-              <LogOut className="w-5 h-5" />
-              Se déconnecter
-            </button>
+          <div className="px-4 md:px-8 py-6 max-w-3xl">
+            {(sectionMap[activeSection] || renderAccount)()}
           </div>
 
           {/* Footer */}
-          <div className="text-center text-cyan-400/40 text-sm py-8">
-            <p>Nexus Social © 2025</p>
+          <div className="px-8 py-6 flex flex-wrap gap-x-6 gap-y-2 text-[10px] font-bold uppercase tracking-widest" style={{ borderTop: `1px solid rgba(255,255,255,0.04)`, color: C.outlineVar }}>
+            <a href="#" className="hover:text-cyan-400 transition-colors">Conditions</a>
+            <a href="#" className="hover:text-cyan-400 transition-colors">Politique de confidentialité</a>
+            <a href="#" className="hover:text-cyan-400 transition-colors">Cookies</a>
+            <span>Nexus v4.0 · EEA Node</span>
           </div>
-        </div>
+        </main>
       </div>
-    );
-  }
 
-  // ACCOUNT VIEW
-  if (currentView === 'account') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
-        <ViewHeader 
-          title="Votre compte" 
-          subtitle={`@${settings?.account?.username}`}
-          onBack={() => setCurrentView('main')} 
-        />
-
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
-          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 overflow-hidden">
-            <div className="p-4 text-cyan-400/60 text-sm border-b border-cyan-500/10">
-              Consultez et modifiez les informations de votre compte
-            </div>
-
-            <div className="divide-y divide-cyan-500/10">
-              <SettingItem
-                icon={<User className="w-5 h-5" />}
-                title="Informations du compte"
-                subtitle="Nom, email, téléphone, bio"
-                onClick={() => setCurrentView('account-info')}
-              />
-              <SettingItem
-                icon={<Lock className="w-5 h-5" />}
-                title="Changer le mot de passe"
-                subtitle="Modifier votre mot de passe"
-                onClick={() => setShowPasswordModal(true)}
-              />
-              <SettingItem
-                icon={<Download className="w-5 h-5" />}
-                title="Télécharger vos données"
-                subtitle="Export GDPR complet"
-                onClick={() => toast.info("Téléchargement à venir")}
-              />
-              <SettingItem
-                icon={<HeartCrack className="w-5 h-5" />}
-                title="Désactiver votre compte"
-                subtitle="Temporairement ou définitivement"
-                onClick={() => toast.warning("Contactez le support")}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ACCOUNT INFO - Responsive Form
-  if (currentView === 'account-info') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
-        <ViewHeader 
-          title="Informations"
-          onBack={() => setCurrentView('account')}
-          action={
-            editMode ? (
-              <button
-                onClick={updateProfile}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full text-white font-semibold hover:from-cyan-400 hover:to-blue-400 transition-all disabled:opacity-50"
-              >
-                {saving ? (
-                  <Loader className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                Enregistrer
-              </button>
-            ) : (
-              <button
-                onClick={() => setEditMode(true)}
-                className="text-cyan-400 font-semibold hover:text-cyan-300 transition-colors"
-              >
-                Modifier
-              </button>
-            )
-          }
-        />
-
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
-          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 p-4 md:p-6">
-            {/* Grid responsive pour les champs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-              {/* Username */}
-              <InputField
-                label="Nom d'utilisateur"
-                value={settings?.account?.username}
-                icon={<User className="w-5 h-5" />}
-                disabled
-              />
-
-              {/* Email */}
-              <InputField
-                label="Email"
-                value={settings?.account?.email}
-                icon={<Mail className="w-5 h-5" />}
-                disabled
-              />
-
-              {/* Prénom */}
-              <InputField
-                label="Prénom"
-                value={profileData.first_name}
-                onChange={(e) => setProfileData({...profileData, first_name: e.target.value})}
-                icon={<User className="w-5 h-5" />}
-                disabled={!editMode}
-              />
-
-              {/* Nom */}
-              <InputField
-                label="Nom"
-                value={profileData.last_name}
-                onChange={(e) => setProfileData({...profileData, last_name: e.target.value})}
-                icon={<User className="w-5 h-5" />}
-                disabled={!editMode}
-              />
-
-              {/* Téléphone */}
-              <InputField
-                label="Téléphone"
-                value={profileData.phone}
-                onChange={(e) => setProfileData({...profileData, phone: e.target.value})}
-                icon={<Phone className="w-5 h-5" />}
-                disabled={!editMode}
-                type="tel"
-              />
-
-              {/* Date de naissance */}
-              <InputField
-                label="Date de naissance"
-                value={profileData.birthdate}
-                onChange={(e) => setProfileData({...profileData, birthdate: e.target.value})}
-                icon={<Calendar className="w-5 h-5" />}
-                disabled={!editMode}
-                type="date"
-              />
-
-              {/* Localisation */}
-              <InputField
-                label="Localisation"
-                value={profileData.location}
-                onChange={(e) => setProfileData({...profileData, location: e.target.value})}
-                icon={<MapPin className="w-5 h-5" />}
-                disabled={!editMode}
-              />
-
-              {/* Site web */}
-              <InputField
-                label="Site web"
-                value={profileData.website}
-                onChange={(e) => setProfileData({...profileData, website: e.target.value})}
-                icon={<LinkIcon className="w-5 h-5" />}
-                disabled={!editMode}
-                type="url"
-              />
-            </div>
-
-            {/* Bio - Full width */}
-            <div className="mt-6">
-              <label className="text-sm text-cyan-400/80 mb-2 block font-medium">Bio</label>
-              <textarea
-                value={profileData.bio}
-                onChange={(e) => setProfileData({...profileData, bio: e.target.value})}
-                disabled={!editMode}
-                className="w-full bg-slate-800/50 border border-cyan-500/20 rounded-xl px-4 py-3 text-white disabled:opacity-60 resize-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
-                rows={4}
-                maxLength={160}
-                placeholder="Parlez de vous..."
-              />
-              <div className="text-right text-xs text-cyan-400/60 mt-1">
-                {profileData.bio?.length || 0}/160
-              </div>
-            </div>
-
-            {/* Genre - Full width */}
-            <div className="mt-6">
-              <label className="text-sm text-cyan-400/80 mb-2 block font-medium">Genre</label>
-              <select
-                value={profileData.gender}
-                onChange={(e) => setProfileData({...profileData, gender: e.target.value})}
-                disabled={!editMode}
-                className="w-full bg-slate-800/50 border border-cyan-500/20 rounded-xl px-4 py-3 text-white disabled:opacity-60 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
-              >
-                <option value="">Préférer ne pas dire</option>
-                <option value="male">Homme</option>
-                <option value="female">Femme</option>
-                <option value="other">Autre</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // SECURITY VIEW
-  if (currentView === 'security') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
-        <ViewHeader 
-          title="Sécurité"
-          subtitle="Protection de votre compte"
-          onBack={() => setCurrentView('main')} 
-        />
-
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
-          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 overflow-hidden">
-            <div className="divide-y divide-cyan-500/10">
-              <SettingItem
-                icon={<Shield className="w-5 h-5" />}
-                title="Authentification à deux facteurs"
-                subtitle="Sécurité renforcée (à venir)"
-                onClick={() => toast.info("Bientôt disponible")}
-              />
-              <SettingItem
-                icon={<Smartphone className="w-5 h-5" />}
-                title="Appareils et sessions"
-                subtitle="Gérer les appareils connectés"
-                onClick={() => toast.info("Liste des sessions à venir")}
-              />
-              <SettingItem
-                icon={<Globe className="w-5 h-5" />}
-                title="Comptes connectés"
-                subtitle="Google, Apple (à venir)"
-                onClick={() => toast.info("Aucun compte connecté")}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // NOTIFICATIONS VIEW - Responsive
-  if (currentView === 'notifications') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
-        <ViewHeader 
-          title="Notifications"
-          subtitle="Gérer vos alertes"
-          onBack={() => setCurrentView('main')} 
-        />
-
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 space-y-4">
-          {/* Publications */}
-          <NotificationSection title="Publications des personnes que vous suivez">
-            <ToggleItem
-              title="Posts"
-              subtitle="15 personnes"
-              checked={true}
-              onChange={() => {}}
-            />
-          </NotificationSection>
-
-          {/* Interactions */}
-          <NotificationSection title="En rapport avec vous et vos posts">
-            <ToggleItem title="Mentions et réponses" subtitle="Adapté pour vous" checked={true} onChange={() => {}} />
-            <ToggleItem title="Reposts" subtitle="Adapté pour vous" checked={false} onChange={() => {}} />
-            <ToggleItem title="J'aime" subtitle="Adapté pour vous" checked={true} onChange={() => {}} />
-            <ToggleItem title="Photo tags" checked={true} onChange={() => {}} />
-            <ToggleItem title="Moments" checked={true} onChange={() => {}} />
-          </NotificationSection>
-
-          {/* Abonnés */}
-          <NotificationSection title="Abonnés et contacts">
-            <ToggleItem title="Nouveaux abonnés" checked={true} onChange={() => {}} />
-            <ToggleItem title="Contact rejoint Nexus" checked={true} onChange={() => {}} />
-          </NotificationSection>
-
-          {/* Messages */}
-          <NotificationSection title="Messages directs">
-            <ToggleItem title="Messages directs" checked={true} onChange={() => {}} />
-            <ToggleItem title="Réactions aux messages" subtitle="Vos propres messages" checked={false} onChange={() => {}} />
-          </NotificationSection>
-        </div>
-      </div>
-    );
-  }
-
-  // PRIVACY VIEW
-  if (currentView === 'privacy') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
-        <ViewHeader 
-          title="Confidentialité"
-          subtitle="Contrôlez votre visibilité"
-          onBack={() => setCurrentView('main')} 
-        />
-
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
-          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 overflow-hidden">
-            <div className="divide-y divide-cyan-500/10">
-              <ToggleItem
-                title="Compte privé"
-                subtitle="Seuls vos abonnés voient vos publications"
-                checked={settings?.privacy?.is_private || false}
-                onChange={(val) => updatePrivacy('is_private', val)}
-              />
-              <ToggleItem
-                title="Autoriser les réponses aux stories"
-                subtitle="Les autres peuvent répondre à vos stories"
-                checked={settings?.privacy?.allow_story_replies !== false}
-                onChange={(val) => updatePrivacy('allow_story_replies', val)}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // DISPLAY VIEW
-  if (currentView === 'display') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950/20 to-slate-950">
-        <ViewHeader 
-          title="Affichage"
-          subtitle="Personnaliser l'apparence"
-          onBack={() => setCurrentView('main')} 
-        />
-
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
-          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 overflow-hidden">
-            <div className="divide-y divide-cyan-500/10">
-              <ToggleItem
-                title="Mode sombre"
-                subtitle="Toujours activé"
-                checked={true}
-                onChange={() => {}}
-                disabled
-              />
-              <SettingItem
-                icon={<Palette className="w-5 h-5" />}
-                title="Couleur d'accentuation"
-                subtitle="Cyan (par défaut)"
-                onClick={() => toast.info("Personnalisation à venir")}
-              />
-              <SettingItem
-                icon={<Languages className="w-5 h-5" />}
-                title="Langue"
-                subtitle="Français"
-                onClick={() => toast.info("Multilingue à venir")}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Render modal if needed
-  return (
-    <>
-      {showPasswordModal && (
-        <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />
-      )}
-    </>
-  );
-}
-
-// COMPOSANTS UTILITAIRES
-
-function ViewHeader({ title, subtitle, onBack, action }) {
-  return (
-    <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-xl border-b border-cyan-500/20">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between px-4 md:px-6 py-4">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <button
-              onClick={onBack}
-              className="p-2 hover:bg-cyan-500/10 rounded-full transition-all flex-shrink-0"
-            >
-              <ArrowLeft className="w-5 h-5 text-cyan-400" />
-            </button>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-xl md:text-2xl font-bold text-white truncate">{title}</h1>
-              {subtitle && <p className="text-sm text-cyan-400/60 truncate">{subtitle}</p>}
-            </div>
-          </div>
-          {action && <div className="ml-4 flex-shrink-0">{action}</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SettingCard({ icon, title, subtitle, onClick, gradient }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`group relative overflow-hidden bg-slate-900/50 backdrop-blur-sm border border-cyan-500/20 rounded-2xl p-6 hover:border-cyan-500/40 transition-all duration-300 text-left`}
-    >
-      {/* Gradient Background */}
-      <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-      
-      {/* Content */}
-      <div className="relative z-10">
-        <div className="flex items-start justify-between mb-3">
-          <div className="p-3 bg-cyan-500/10 rounded-xl text-cyan-400 group-hover:bg-cyan-500/20 transition-all">
-            {icon}
-          </div>
-          <ChevronRight className="w-5 h-5 text-cyan-400/40 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
-        </div>
-        <h3 className="font-bold text-white mb-1">{title}</h3>
-        <p className="text-sm text-cyan-400/60">{subtitle}</p>
-      </div>
-    </button>
-  );
-}
-
-function SettingItem({ icon, title, subtitle, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full px-4 md:px-6 py-4 flex items-center gap-4 hover:bg-cyan-500/5 transition-all group"
-    >
-      <div className="text-cyan-400/60 group-hover:text-cyan-400 transition-colors">{icon}</div>
-      <div className="flex-1 text-left min-w-0">
-        <p className="font-medium text-white truncate">{title}</p>
-        {subtitle && <p className="text-sm text-cyan-400/60 truncate">{subtitle}</p>}
-      </div>
-      <ChevronRight className="w-5 h-5 text-cyan-400/40 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all flex-shrink-0" />
-    </button>
-  );
-}
-
-function ToggleItem({ title, subtitle, checked, onChange, disabled }) {
-  return (
-    <div className="px-4 md:px-6 py-4 flex items-center justify-between gap-4 hover:bg-cyan-500/5 transition-all">
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-white truncate">{title}</p>
-        {subtitle && <p className="text-sm text-cyan-400/60 truncate">{subtitle}</p>}
-      </div>
-      <button
-        onClick={() => !disabled && onChange(!checked)}
-        disabled={disabled}
-        className={`relative w-12 h-6 rounded-full transition-all flex-shrink-0 ${
-          checked ? 'bg-gradient-to-r from-cyan-500 to-blue-500' : 'bg-slate-700'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-      >
-        <div
-          className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow-lg ${
-            checked ? 'translate-x-6' : 'translate-x-0.5'
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
-
-function NotificationSection({ title, children }) {
-  return (
-    <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-cyan-500/20 overflow-hidden">
-      <div className="px-4 md:px-6 py-3 bg-cyan-500/5 border-b border-cyan-500/10">
-        <h2 className="text-sm font-semibold text-cyan-400">{title}</h2>
-      </div>
-      <div className="divide-y divide-cyan-500/10">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function InputField({ label, value, onChange, icon, disabled, type = "text" }) {
-  return (
-    <div className="w-full">
-      <label className="text-sm text-cyan-400/80 mb-2 block font-medium">{label}</label>
-      <div className="relative">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-cyan-400/40">
-          {icon}
-        </div>
-        <input
-          type={type}
-          value={value || ''}
-          onChange={onChange}
-          disabled={disabled}
-          className="w-full bg-slate-800/50 border border-cyan-500/20 rounded-xl pl-11 pr-4 py-3 text-white disabled:opacity-60 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all placeholder:text-cyan-400/30"
-        />
-      </div>
-    </div>
+      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
+    </Layout>
   );
 }
