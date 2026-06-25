@@ -3136,6 +3136,112 @@ async def clear_history(current_user: dict = Depends(get_current_user)):
     await db.browser_history.delete_many({"user_id": current_user["id"]})
     return {"success": True}
 
+# ==================== RECHERCHE & TENDANCES (RÉELLES) ====================
+
+@api_router.get("/search/posts", response_model=List[Post])
+async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
+    """
+    Recherche de publications par contenu ou hashtag.
+    Une requête commençant par '#' filtre sur le hashtag exact.
+    """
+    query = (q or "").strip()
+    if not query:
+        return []
+
+    # Recherche par hashtag (#python) ou texte libre
+    term = query.lstrip("#")
+    regex = {"$regex": re.escape(term), "$options": "i"}
+
+    posts_raw = await db.posts.find(
+        {"content": regex}
+    ).sort("created_at", -1).limit(50).to_list(length=50)
+
+    posts = []
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        posts.append(Post(**post))
+
+    return posts
+
+
+async def compute_trending_hashtags(limit: int = 10):
+    """
+    Calcule les hashtags tendance EN DIRECT à partir des vraies publications.
+    Score = (#posts 24h * 3) + (#posts 7j) + (likes * 0.1)
+    Aucun cron requis : la tendance reflète toujours l'état réel de la base.
+    """
+    now = datetime.now(timezone.utc)
+    since_7d = (now - timedelta(days=7)).isoformat()
+    since_24h = (now - timedelta(hours=24)).isoformat()
+
+    recent_posts = await db.posts.find(
+        {"created_at": {"$gte": since_7d}}
+    ).sort("created_at", -1).limit(3000).to_list(length=3000)
+
+    stats: Dict[str, dict] = {}
+    for post in recent_posts:
+        content = post.get("content") or ""
+        created = post.get("created_at", "")
+        likes = post.get("likes_count", 0) or 0
+
+        seen = set()
+        for raw_tag in re.findall(r'#(\w+)', content):
+            key = raw_tag.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            entry = stats.setdefault(key, {"display": raw_tag, "count": 0, "count24": 0, "likes": 0})
+            entry["count"] += 1
+            entry["likes"] += likes
+            if created >= since_24h:
+                entry["count24"] += 1
+
+    trending = []
+    for key, entry in stats.items():
+        score = (entry["count24"] * 3.0) + (entry["count"] * 1.0) + (entry["likes"] * 0.1)
+        trending.append({
+            "tag": f"#{entry['display']}",
+            "normalized": key,
+            "post_count": entry["count"],
+            "posts_24h": entry["count24"],
+            "likes": entry["likes"],
+            "score": round(score, 2),
+        })
+
+    trending.sort(key=lambda x: x["score"], reverse=True)
+    return trending[:limit]
+
+
+@api_router.get("/trending/hashtags")
+async def get_trending_hashtags(
+    limit: int = Query(10, ge=1, le=50),
+    current_user: dict = Depends(get_current_user)
+):
+    """Hashtags tendance calculés en direct depuis les publications réelles."""
+    trending = await compute_trending_hashtags(limit)
+    return {"success": True, "trending": trending}
+
+
+@api_router.get("/hashtags/{tag}/posts", response_model=List[Post])
+async def get_posts_by_hashtag(tag: str, current_user: dict = Depends(get_current_user)):
+    """Récupère les publications contenant un hashtag donné."""
+    normalized = tag.lower().lstrip("#")
+    # \b ne marche pas après #, on cherche '#tag' suivi d'une limite de mot
+    regex = {"$regex": rf"#{re.escape(normalized)}\b", "$options": "i"}
+
+    posts_raw = await db.posts.find({"content": regex}).sort("created_at", -1).limit(50).to_list(length=50)
+
+    posts = []
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        posts.append(Post(**post))
+
+    return posts
+
 # ==================== END ENHANCED FEATURES ====================
 
 # ==================== FOLLOW SYSTEM INTEGRATION ====================

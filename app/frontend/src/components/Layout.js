@@ -7,6 +7,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
   const navigate = useNavigate();
   const location = useLocation();
   const [suggestedUsers, setSuggestedUsers] = useState([]);
+  const [trending, setTrending] = useState([]);
 
   useEffect(() => {
     if (compact) return;
@@ -17,7 +18,20 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
         setSuggestedUsers(users.filter((u) => u.id !== user.id).slice(0, 3));
       })
       .catch(() => {});
+
+    axios
+      .get(`${API}/trending/hashtags?limit=5`)
+      .then((res) => {
+        setTrending(Array.isArray(res.data?.trending) ? res.data.trending : []);
+      })
+      .catch(() => setTrending([]));
   }, [user.id, compact]);
+
+  const formatCount = (n) => {
+    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+    return `${n}`;
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -44,12 +58,6 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
     { icon: "mail",           label: "Messages",    path: "/messages",             testId: "nav-messages" },
     { icon: "account_circle", label: "Profil",      path: `/profile/${user.id}`,   testId: "nav-profile" },
     { icon: "settings",       label: "Paramètres",  path: "/settings",             testId: "nav-settings" },
-  ];
-
-  const trending = [
-    { cat: "Technologie", tag: "#NexusTech",    count: "42.5k" },
-    { cat: "Design",      tag: "Interface Cinétique", count: "12.8k" },
-    { cat: "Social",      tag: "#NexusSocial",  count: "8.2k" },
   ];
 
   return (
@@ -156,13 +164,25 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
           <section>
             <h2 className="font-headline font-bold text-lg mb-6 tracking-tight" style={{ color: "#dae2fd" }}>Tendances</h2>
             <div className="space-y-6">
-              {trending.map((t) => (
-                <div key={t.tag} className="group cursor-pointer">
-                  <p className="text-[10px] uppercase tracking-widest font-bold mb-1" style={{ color: "#859397" }}>{t.cat} • Tendance</p>
-                  <h3 className="text-sm font-bold transition-colors group-hover:text-cyan-400" style={{ color: "#dae2fd" }}>{t.tag}</h3>
-                  <p className="text-xs mt-1" style={{ color: "#859397" }}>{t.count} posts</p>
-                </div>
-              ))}
+              {trending.length === 0 ? (
+                <p className="text-xs" style={{ color: "#859397" }}>
+                  Aucune tendance pour l'instant. Publiez avec des #hashtags pour lancer les tendances !
+                </p>
+              ) : (
+                trending.map((t, i) => (
+                  <button
+                    key={t.normalized || t.tag}
+                    onClick={() => navigate(`/search?q=${encodeURIComponent(t.tag)}`)}
+                    className="group cursor-pointer block w-full text-left"
+                  >
+                    <p className="text-[10px] uppercase tracking-widest font-bold mb-1" style={{ color: "#859397" }}>
+                      {i + 1} • Tendance
+                    </p>
+                    <h3 className="text-sm font-bold transition-colors group-hover:text-cyan-400" style={{ color: "#dae2fd" }}>{t.tag}</h3>
+                    <p className="text-xs mt-1" style={{ color: "#859397" }}>{formatCount(t.post_count)} posts</p>
+                  </button>
+                ))
+              )}
             </div>
           </section>
 
