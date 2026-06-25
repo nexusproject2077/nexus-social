@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
@@ -6,30 +6,30 @@ import PostCard from "@/components/PostCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, Users, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SearchPage({ user }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState("users"); // 'users' or 'posts'
   const [users, setUsers] = useState([]);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
+  const runSearch = useCallback(async (query, type) => {
+    if (!query.trim()) return;
 
     setLoading(true);
     try {
-      if (searchType === "users") {
-        const response = await axios.get(`${API}/users/search?q=${searchQuery}`);
+      if (type === "users") {
+        const response = await axios.get(`${API}/users/search?q=${encodeURIComponent(query)}`);
         setUsers(response.data);
         setPosts([]);
       } else {
-        const response = await axios.get(`${API}/search/posts?q=${searchQuery}`);
+        const response = await axios.get(`${API}/search/posts?q=${encodeURIComponent(query)}`);
         setPosts(response.data);
         setUsers([]);
       }
@@ -38,6 +38,23 @@ export default function SearchPage({ user }) {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Lance automatiquement la recherche quand on arrive avec ?q= (barre latérale / tendances)
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q) {
+      // Un hashtag ou un texte → recherche dans les publications
+      const type = q.trim().startsWith("#") ? "posts" : searchType;
+      setSearchQuery(q);
+      setSearchType(type);
+      runSearch(q, type);
+    }
+  }, [searchParams]);
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    runSearch(searchQuery, searchType);
   };
 
   const handlePostUpdate = (updatedPost) => {
