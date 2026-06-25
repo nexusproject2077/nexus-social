@@ -50,7 +50,6 @@ export default function SearchPage({ user }) {
       setSearchType(type);
       runSearch(q, type);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   const handleSearch = async (e) => {
