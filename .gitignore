@@ -27,6 +27,8 @@ next-env.d.ts
 
 # Production builds
 /build
+app/frontend/build/
+build/
 dist/
 dist
 
