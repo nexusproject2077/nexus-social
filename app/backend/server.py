@@ -3242,6 +3242,29 @@ async def get_posts_by_hashtag(tag: str, current_user: dict = Depends(get_curren
 
     return posts
 
+
+@api_router.get("/clips", response_model=List[Post])
+async def get_clips_feed(current_user: dict = Depends(get_current_user)):
+    """
+    Fil Nexus Clips : uniquement les publications vidéo, de tout le monde,
+    triées par popularité récente (comme un vrai fil de courtes vidéos).
+    """
+    videos_raw = await db.posts.find(
+        {"media_type": "video", "media_url": {"$ne": None}}
+    ).sort("created_at", -1).limit(100).to_list(length=100)
+
+    clips = []
+    for post_raw in videos_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        # Ignorer les comptes désactivés
+        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        clips.append(Post(**post))
+
+    # Tri par engagement récent : likes + commentaires, puis date
+    clips.sort(key=lambda p: (p.likes_count + p.comments_count), reverse=True)
+    return clips
+
 # ==================== END ENHANCED FEATURES ====================
 
 # ==================== FOLLOW SYSTEM INTEGRATION ====================

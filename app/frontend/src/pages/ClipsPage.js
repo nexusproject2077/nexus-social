@@ -70,20 +70,16 @@ function ClipCard({ post, currentUser, isActive }) {
 
   return (
     <div className="relative w-full h-screen flex-shrink-0 overflow-hidden" style={{ background: "#000" }}>
-      {/* Video */}
-      {post.media_type === "video" ? (
-        <video
-          ref={videoRef}
-          src={post.media_url}
-          className="w-full h-full object-cover"
-          loop
-          muted={muted}
-          playsInline
-          onClick={handleTap}
-        />
-      ) : (
-        <img src={post.media_url} alt="" className="w-full h-full object-cover" />
-      )}
+      {/* Video (Nexus Clips = vidéos uniquement) */}
+      <video
+        ref={videoRef}
+        src={post.media_url}
+        className="w-full h-full object-contain sm:object-cover"
+        loop
+        muted={muted}
+        playsInline
+        onClick={handleTap}
+      />
 
       {/* Gradient overlay */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 40%, rgba(0,0,0,0.2) 100%)" }} />
@@ -209,13 +205,12 @@ export default function ClipsPage({ user, setUser }) {
 
   const fetchClips = async () => {
     try {
-      // Fetch all posts with media (videos first, then images)
-      const res = await axios.get(`${API}/posts/feed`);
-      const all = res.data || [];
-      const withMedia = all.filter(p => p.media_url);
-      // Put videos first
-      const sorted = [...withMedia.filter(p => p.media_type === "video"), ...withMedia.filter(p => p.media_type !== "video")];
-      setClips(sorted);
+      // Nexus Clips = uniquement des vidéos courtes, de tout le monde
+      const res = await axios.get(`${API}/clips`);
+      const videos = (res.data || []).filter(
+        (p) => p.media_type === "video" && p.media_url
+      );
+      setClips(videos);
     } catch (err) {
       console.error("Erreur clips:", err);
       toast.error("Erreur lors du chargement des clips");
@@ -241,7 +236,7 @@ export default function ClipsPage({ user, setUser }) {
           <span className="material-symbols-outlined text-6xl" style={{ color: C.outline, opacity: 0.4 }}>play_circle</span>
           <p className="text-sm font-bold uppercase tracking-widest" style={{ color: C.outline }}>Aucun clip disponible</p>
           <p className="text-xs text-center max-w-xs" style={{ color: C.outline }}>
-            Publiez des vidéos ou images pour qu'elles apparaissent ici
+            Publiez une vidéo pour qu'elle apparaisse ici
           </p>
         </div>
       </Layout>

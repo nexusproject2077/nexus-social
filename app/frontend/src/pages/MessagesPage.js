@@ -312,8 +312,8 @@ export default function MessagesPage({ user }) {
   // ── Conversation list panel ──────────────────────────────────────────────────
   const ConvPanel = () => (
     <div
-      className={`flex flex-col border-r h-full ${hasSelection ? "hidden sm:flex" : "flex"}`}
-      style={{ width: 300, minWidth: 280, maxWidth: 320, borderColor: "rgba(255,255,255,0.05)", background: `${C.surface}cc` }}
+      className={`flex flex-col border-r h-full w-full sm:w-[300px] sm:min-w-[280px] sm:max-w-[320px] ${hasSelection ? "hidden sm:flex" : "flex"}`}
+      style={{ borderColor: "rgba(255,255,255,0.05)", background: `${C.surface}cc` }}
     >
       {/* Header */}
       <div className="px-5 pt-5 pb-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
@@ -592,10 +592,13 @@ export default function MessagesPage({ user }) {
         <div className="absolute rounded-full blur-3xl" style={{ width: "40%", height: "40%", bottom: "-10%", right: "-5%", background: "radial-gradient(circle, rgba(59,130,246,0.04), transparent)" }} />
       </div>
 
-      {/* Main 2-column layout */}
-      <div className="relative z-10 flex" style={{ height: "calc(100vh - 56px)", marginTop: 56 }}>
-        <ConvPanel />
-        <ChatPanel />
+      {/* Main 2-column layout.
+          On appelle les panneaux comme fonctions {ConvPanel()} et non <ConvPanel />
+          pour éviter que React ne les remonte à chaque frappe (sinon le champ
+          de saisie perd le focus et le clavier se ferme). */}
+      <div className="relative z-10 flex h-[calc(100dvh-136px)] lg:h-screen">
+        {ConvPanel()}
+        {ChatPanel()}
       </div>
 
       {/* ── New Group Modal ── */}
