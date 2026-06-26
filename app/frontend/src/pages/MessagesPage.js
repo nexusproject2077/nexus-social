@@ -592,10 +592,13 @@ export default function MessagesPage({ user }) {
         <div className="absolute rounded-full blur-3xl" style={{ width: "40%", height: "40%", bottom: "-10%", right: "-5%", background: "radial-gradient(circle, rgba(59,130,246,0.04), transparent)" }} />
       </div>
 
-      {/* Main 2-column layout */}
-      <div className="relative z-10 flex" style={{ height: "calc(100vh - 56px)", marginTop: 56 }}>
-        <ConvPanel />
-        <ChatPanel />
+      {/* Main 2-column layout.
+          On appelle les panneaux comme fonctions {ConvPanel()} et non <ConvPanel />
+          pour éviter que React ne les remonte à chaque frappe (sinon le champ
+          de saisie perd le focus et le clavier se ferme). */}
+      <div className="relative z-10 flex h-[calc(100dvh-136px)] lg:h-screen">
+        {ConvPanel()}
+        {ChatPanel()}
       </div>
 
       {/* ── New Group Modal ── */}
