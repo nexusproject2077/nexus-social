@@ -55,7 +55,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
     { icon: "explore",        label: "Explorer",    path: "/search",               testId: "nav-search" },
     { icon: "notifications",  label: "Notifications",path: "/notifications",       testId: "nav-notifications" },
     { icon: "language",       label: "Navigateur",  path: "/browser",              testId: "nav-browser" },
-    { icon: "mail",           label: "Messages",    path: "/messages",             testId: "nav-messages" },
+    { icon: "chat",           label: "Messages",    path: "/messages",             testId: "nav-messages" },
+    { icon: "mail",           label: "Nexus Mail",  path: "/mail",                 testId: "nav-mail" },
     { icon: "account_circle", label: "Profil",      path: `/profile/${user.id}`,   testId: "nav-profile" },
     { icon: "settings",       label: "Paramètres",  path: "/settings",             testId: "nav-settings" },
   ];
@@ -289,7 +290,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
 
         {/* Messages + Profile */}
         {[
-          { icon: "mail",           path: "/messages",           label: "Messages", testId: "nav-messages" },
+          { icon: "mail",           path: "/mail",               label: "Mail",     testId: "nav-mail" },
           { icon: "account_circle", path: `/profile/${user.id}`, label: "Profil",   testId: "nav-profile" },
         ].map((item) => {
           const active = isActive(item.path);

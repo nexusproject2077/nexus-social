@@ -33,6 +33,13 @@ Un réseau social complet et moderne inspiré de Twitter et Instagram, construit
 - ✅ Recherche d'utilisateurs par nom d'utilisateur ou bio
 - ✅ Recherche de publications par contenu
 
+### Nexus Mail (messagerie e-mail type Gmail)
+- ✅ Adresse personnelle automatique `username@nexus.mail`
+- ✅ Boîte de réception, Envoyés, Brouillons, Favoris, Archives, Corbeille
+- ✅ Composition avec destinataires multiples (À / Cc), réponse et transfert
+- ✅ Étoiles (favoris), lu/non-lu, archivage, corbeille et suppression définitive
+- ✅ Recherche dans les e-mails et carnet de contacts Nexus
+
 ### Messagerie
 - ✅ Messages directs privés
 - ✅ Liste des conversations
@@ -156,6 +163,22 @@ L'application utilise un design moderne avec :
 
 ### Recherche
 - `GET /api/search/posts` - Rechercher des publications
+
+### Nexus Mail
+- `GET /api/mail/me` - Mon adresse Nexus Mail et nombre de non-lus
+- `GET /api/mail/counts` - Compteurs par dossier
+- `GET /api/mail/contacts` - Carnet de contacts Nexus
+- `GET /api/mail/folder/{folder}` - Lister un dossier (inbox, sent, drafts, starred, archive, trash)
+- `GET /api/mail/{mail_id}` - Lire un e-mail (marque comme lu)
+- `GET /api/mail/search?q=` - Rechercher dans les e-mails
+- `POST /api/mail/send` - Envoyer un e-mail
+- `POST /api/mail/draft` - Créer / mettre à jour un brouillon
+- `PUT /api/mail/{mail_id}/read` - Marquer lu / non-lu
+- `PUT /api/mail/{mail_id}/star` - Ajouter / retirer des favoris
+- `PUT /api/mail/{mail_id}/trash` - Déplacer vers la corbeille
+- `PUT /api/mail/{mail_id}/archive` - Archiver
+- `PUT /api/mail/{mail_id}/restore` - Restaurer
+- `DELETE /api/mail/{mail_id}` - Supprimer définitivement
 
 ## 🧪 Tests
 

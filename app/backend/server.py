@@ -39,6 +39,17 @@ except ImportError:
         follow_router = None
         set_database = None
 
+# Import du module Nexus Mail (avec gestion des chemins)
+try:
+    from backend.nexus_mail import mail_router, set_database as set_mail_database
+except ImportError:
+    try:
+        from nexus_mail import mail_router, set_database as set_mail_database
+    except ImportError:
+        print("⚠️ WARNING: Module 'nexus_mail' not found. Nexus Mail will not be available.")
+        mail_router = None
+        set_mail_database = None
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -3277,6 +3288,15 @@ if set_database is not None:
 if follow_router is not None:
     app.include_router(follow_router)
     print("✅ Follow system router registered")
+
+# ==================== NEXUS MAIL INTEGRATION ====================
+if set_mail_database is not None:
+    set_mail_database(db)
+    print("✅ Nexus Mail database injected")
+
+if mail_router is not None:
+    app.include_router(mail_router)
+    print("✅ Nexus Mail router registered")
 
 # Inclure le routeur principal
 app.include_router(api_router)

@@ -17,6 +17,7 @@ import BrowserPage from "./pages/BrowserPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import PrivacyCenter from './pages/PrivacyCenter';
 import ClipsPage from './pages/ClipsPage';
+import MailPage from './pages/MailPage';
 
 // URL du backend (NE CHANGE PLUS JAMAIS)
 const BACKEND_URL = "https://nexus-social-4k3v.onrender.com";
@@ -139,6 +140,10 @@ function App() {
           <Route
             path="/clips"
             element={user ? <ClipsPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/mail"
+            element={user ? <MailPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           <Route
             path="/settings"
