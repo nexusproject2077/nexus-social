@@ -21,22 +21,49 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
   const [mediaType, setMediaType] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const MAX_VIDEO_SECONDS = 60;   // Nexus Clips = vidéos courtes
+  const MAX_FILE_MB = 25;
+
+  const readAndSet = (file, type) => {
+    setMedia(file);
+    setMediaType(type);
+    const reader = new FileReader();
+    reader.onloadend = () => setMediaPreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
   const handleMediaChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setMedia(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setMediaPreview(reader.result);
-      // Le reader.result est déjà en base64
-    };
-    reader.readAsDataURL(file);
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      toast.error(`Fichier trop volumineux (max ${MAX_FILE_MB} Mo)`);
+      e.target.value = "";
+      return;
+    }
 
     if (file.type.startsWith('image')) {
-      setMediaType('image');
+      readAndSet(file, 'image');
     } else if (file.type.startsWith('video')) {
-      setMediaType('video');
+      // Vérifier la durée : on n'accepte que les vidéos courtes
+      const url = URL.createObjectURL(file);
+      const probe = document.createElement('video');
+      probe.preload = 'metadata';
+      probe.onloadedmetadata = () => {
+        URL.revokeObjectURL(url);
+        if (probe.duration > MAX_VIDEO_SECONDS + 0.5) {
+          toast.error(`Vidéo trop longue (max ${MAX_VIDEO_SECONDS}s pour un clip)`);
+          e.target.value = "";
+          return;
+        }
+        readAndSet(file, 'video');
+      };
+      probe.onerror = () => {
+        URL.revokeObjectURL(url);
+        toast.error("Impossible de lire cette vidéo");
+        e.target.value = "";
+      };
+      probe.src = url;
     }
   };
 

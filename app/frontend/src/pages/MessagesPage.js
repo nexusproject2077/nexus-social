@@ -312,8 +312,8 @@ export default function MessagesPage({ user }) {
   // ── Conversation list panel ──────────────────────────────────────────────────
   const ConvPanel = () => (
     <div
-      className={`flex flex-col border-r h-full ${hasSelection ? "hidden sm:flex" : "flex"}`}
-      style={{ width: 300, minWidth: 280, maxWidth: 320, borderColor: "rgba(255,255,255,0.05)", background: `${C.surface}cc` }}
+      className={`flex flex-col border-r h-full w-full sm:w-[300px] sm:min-w-[280px] sm:max-w-[320px] ${hasSelection ? "hidden sm:flex" : "flex"}`}
+      style={{ borderColor: "rgba(255,255,255,0.05)", background: `${C.surface}cc` }}
     >
       {/* Header */}
       <div className="px-5 pt-5 pb-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
