@@ -8,6 +8,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import InvalidURI, ConnectionFailure
 import os
@@ -27,6 +28,15 @@ import hashlib
 import random
 import math
 import re
+
+# E2EE (chiffrement des messages / données sensibles)
+from cryptography.fernet import Fernet
+
+# Geo-blocking (optionnel — nécessite geoip2 + base GeoLite2-Country.mmdb)
+try:
+    import geoip2.database
+except ImportError:
+    geoip2 = None
 
 # Import du module follows (avec gestion des chemins)
 try:
@@ -103,6 +113,76 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ==================== EU GEO-BLOCK ====================
+# Bloque les visiteurs des pays de l'UE (réponse HTTP 451) sauf sur les pages
+# légales. Le middleware "fail-open" : s'il n'y a pas de base GeoIP disponible
+# (ou si geoip2 n'est pas installé), toutes les requêtes passent normalement.
+EU_COUNTRIES = {
+    'AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR',
+    'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO',
+    'SE', 'SI', 'SK'
+}
+
+# Chemins toujours accessibles, même depuis l'UE (obligations légales + santé)
+GEO_BLOCK_ALLOWED_PATHS = ("/privacy", "/gdpr", "/legal", "/healthz", "/docs", "/openapi.json")
+
+EU_GEO_BLOCK_ENABLED = os.environ.get("EU_GEO_BLOCK_ENABLED", "true").lower() == "true"
+GEOIP_DB_PATH = os.environ.get("GEOIP_DB_PATH", str(ROOT_DIR / "GeoLite2-Country.mmdb"))
+
+_geoip_reader = None
+if EU_GEO_BLOCK_ENABLED and geoip2 is not None and os.path.exists(GEOIP_DB_PATH):
+    try:
+        _geoip_reader = geoip2.database.Reader(GEOIP_DB_PATH)
+        print(f"✅ EU geo-block actif (base GeoIP: {GEOIP_DB_PATH})")
+    except Exception as e:
+        print(f"⚠️ Impossible d'ouvrir la base GeoIP ({e}) — geo-block désactivé")
+        _geoip_reader = None
+elif EU_GEO_BLOCK_ENABLED:
+    print("⚠️ EU geo-block demandé mais base GeoLite2-Country.mmdb introuvable — les requêtes passent normalement")
+
+
+@app.middleware("http")
+async def eu_geo_block(request, call_next):
+    """Retourne 451 aux visiteurs de l'UE, sauf sur les pages légales."""
+    if _geoip_reader is not None:
+        path = request.url.path
+        if not any(p in path for p in GEO_BLOCK_ALLOWED_PATHS):
+            client_host = request.client.host if request.client else ""
+            forwarded = request.headers.get("x-forwarded-for", client_host)
+            ip = forwarded.split(",")[0].strip() if forwarded else client_host
+            try:
+                iso_code = _geoip_reader.country(ip).country.iso_code
+                if iso_code in EU_COUNTRIES:
+                    return JSONResponse(
+                        status_code=451,
+                        content={"error": "EU restricted - VPN/Tor required"}
+                    )
+            except Exception:
+                # IP privée / introuvable dans la base → on laisse passer
+                pass
+    return await call_next(request)
+
+# ==================== E2EE HELPER ====================
+# Chiffrement symétrique (Fernet) pour les données sensibles / messages.
+# Définissez ENCRYPTION_KEY (clé Fernet base64) en variable d'environnement.
+_encryption_key = os.environ.get("ENCRYPTION_KEY")
+if _encryption_key:
+    cipher = Fernet(_encryption_key.encode())
+    print("✅ E2EE cipher initialisé (ENCRYPTION_KEY)")
+else:
+    cipher = Fernet(Fernet.generate_key())
+    print("⚠️ ENCRYPTION_KEY absente — clé éphémère générée (les données ne se déchiffreront pas après un redémarrage)")
+
+
+def encrypt(data) -> str:
+    """Chiffre une valeur et renvoie une chaîne (token Fernet)."""
+    return cipher.encrypt(str(data).encode()).decode()
+
+
+def decrypt(token: str) -> str:
+    """Déchiffre un token Fernet et renvoie la chaîne d'origine."""
+    return cipher.decrypt(token.encode()).decode()
 
 # Health check pour Render
 @app.get("/healthz")
@@ -3264,6 +3344,67 @@ async def get_clips_feed(current_user: dict = Depends(get_current_user)):
     # Tri par engagement récent : likes + commentaires, puis date
     clips.sort(key=lambda p: (p.likes_count + p.comments_count), reverse=True)
     return clips
+
+
+@api_router.post("/clips", response_model=Post)
+async def create_clip(
+    file: UploadFile = File(...),
+    caption: str = Form(""),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Créer un Clip / Reel : la vidéo uploadée est stockée comme publication vidéo,
+    ce qui la fait apparaître dans le fil Nexus Clips (GET /api/clips) et le feed.
+    """
+    if not (file.content_type or "").startswith("video/"):
+        raise HTTPException(status_code=400, detail="Le fichier doit être une vidéo")
+
+    contents = await file.read()
+    media_url = f"data:{file.content_type};base64," + base64.b64encode(contents).decode("utf-8")
+
+    clip_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    clip_to_insert = {
+        "id": clip_id,
+        "author_id": current_user["id"],
+        "author_username": current_user["username"],
+        "author_profile_pic": current_user.get("profile_pic"),
+        "content": caption,
+        "media_type": "video",
+        "media_url": media_url,
+        "likes_count": 0,
+        "comments_count": 0,
+        "shares_count": 0,
+        "created_at": now.isoformat(),
+    }
+    await db.posts.insert_one(clip_to_insert)
+
+    clip = convert_mongo_doc_to_dict(clip_to_insert)
+    clip["is_liked"] = False
+    return Post(**clip)
+
+
+@api_router.get("/feed/foryou", response_model=List[Post])
+async def for_you_feed(current_user: dict = Depends(get_current_user)):
+    """
+    Feed "Pour toi" : sélectionne les publications récentes de tout le monde
+    et les classe par score d'engagement (likes + commentaires + partages).
+    """
+    posts_raw = await db.posts.find().sort("created_at", -1).limit(100).to_list(length=100)
+
+    posts = []
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        posts.append(Post(**post))
+
+    # Algorithme simple : score d'engagement (les partages pèsent le plus)
+    posts.sort(
+        key=lambda p: p.likes_count * 2 + p.comments_count * 3 + p.shares_count * 4,
+        reverse=True,
+    )
+    return posts
 
 # ==================== END ENHANCED FEATURES ====================
 
