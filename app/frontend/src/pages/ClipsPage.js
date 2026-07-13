@@ -179,6 +179,7 @@ export default function ClipsPage({ user, setUser }) {
   const [loading, setLoading]     = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [view, setView] = useState("immersive"); // "immersive" | "grid"
   const containerRef = useRef(null);
   const observerRef  = useRef(null);
   const fileInputRef = useRef(null);
@@ -188,7 +189,7 @@ export default function ClipsPage({ user, setUser }) {
   }, []);
 
   useEffect(() => {
-    if (!containerRef.current || clips.length === 0) return;
+    if (view !== "immersive" || !containerRef.current || clips.length === 0) return;
     observerRef.current = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -203,7 +204,7 @@ export default function ClipsPage({ user, setUser }) {
     const items = containerRef.current.querySelectorAll("[data-index]");
     items.forEach((el) => observerRef.current.observe(el));
     return () => observerRef.current?.disconnect();
-  }, [clips]);
+  }, [clips, view]);
 
   const fetchClips = async () => {
     try {
@@ -287,6 +288,21 @@ export default function ClipsPage({ user, setUser }) {
     </>
   );
 
+  // Bascule entre la vue immersive (défilement vertical) et la vue grille
+  const viewToggle = (
+    <button
+      onClick={() => setView((v) => (v === "immersive" ? "grid" : "immersive"))}
+      data-testid="toggle-clips-view"
+      title={view === "immersive" ? "Vue grille" : "Vue immersive"}
+      className="fixed z-50 top-16 left-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+      style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
+    >
+      <span className="material-symbols-outlined text-2xl">
+        {view === "immersive" ? "grid_view" : "smart_display"}
+      </span>
+    </button>
+  );
+
   if (loading) {
     return (
       <Layout user={user} setUser={setUser} compact>
@@ -331,29 +347,70 @@ export default function ClipsPage({ user, setUser }) {
 
   return (
     <Layout user={user} setUser={setUser} compact>
-      {/* Full-screen vertical scroll snapping */}
-      <div
-        ref={containerRef}
-        className="h-screen overflow-y-scroll"
-        style={{
-          scrollSnapType: "y mandatory",
-          scrollBehavior: "smooth",
-          WebkitOverflowScrolling: "touch",
-          /* Adjust for mobile header/nav */
-          marginTop: 0,
-          scrollbarWidth: "none",
-        }}
-      >
-        <style>{`
-          div::-webkit-scrollbar { display: none; }
-          [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
-        `}</style>
-        {clips.map((clip, idx) => (
-          <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100svh" }}>
-            <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex} />
+      {view === "immersive" ? (
+        /* Full-screen vertical scroll snapping */
+        <div
+          ref={containerRef}
+          className="h-screen overflow-y-scroll"
+          style={{
+            scrollSnapType: "y mandatory",
+            scrollBehavior: "smooth",
+            WebkitOverflowScrolling: "touch",
+            /* Adjust for mobile header/nav */
+            marginTop: 0,
+            scrollbarWidth: "none",
+          }}
+        >
+          <style>{`
+            div::-webkit-scrollbar { display: none; }
+            [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
+          `}</style>
+          {clips.map((clip, idx) => (
+            <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100svh" }}>
+              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* Grille des clips (style Reels) */
+        <div className="h-screen overflow-y-auto px-2 pt-16 pb-24 lg:pt-6" style={{ background: "#000" }}>
+          <div className="grid grid-cols-3 gap-1.5 max-w-4xl mx-auto">
+            {clips.map((clip, idx) => (
+              <button
+                key={clip.id}
+                onClick={() => { setActiveIndex(idx); setView("immersive"); }}
+                data-testid={`clip-grid-${clip.id}`}
+                className="relative rounded-lg overflow-hidden active:scale-95 transition-transform"
+                style={{ aspectRatio: "9 / 16", background: "#111" }}
+              >
+                <video
+                  src={clip.media_url}
+                  className="w-full h-full object-cover"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent 55%)" }}
+                />
+                {clip.content && (
+                  <div className="absolute top-1.5 left-2 right-2 text-white text-[10px] line-clamp-1 opacity-80 text-left">
+                    {clip.content}
+                  </div>
+                )}
+                <div className="absolute bottom-1.5 left-2 right-2 flex items-center gap-1 text-white text-[11px]">
+                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1", color: "#f87171" }}>favorite</span>
+                  <span className="font-bold">{clip.likes_count || 0}</span>
+                </div>
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {/* Bascule grille / immersif */}
+      {viewToggle}
 
       {/* Nexus Clips branding overlay (top-left) */}
       <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none lg:top-4">

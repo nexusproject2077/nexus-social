@@ -3522,12 +3522,45 @@ async def create_clip(
 
 
 @api_router.get("/feed/foryou", response_model=List[Post])
-async def for_you_feed(current_user: dict = Depends(get_current_user)):
+async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current_user)):
     """
-    Feed "Pour toi" : sélectionne les publications récentes de tout le monde
-    et les classe par score d'engagement (likes + commentaires + partages).
+    Feed "Pour toi" : mélange les publications des comptes suivis et les
+    contenus tendance (fort engagement), classés par un score d'engagement
+    pondéré avec un bonus de personnalisation pour les comptes suivis.
+
+    Le score est calculé côté base via un pipeline d'agrégation (plus efficace
+    qu'un chargement massif suivi d'un tri en mémoire).
     """
-    posts_raw = await db.posts.find().sort("created_at", -1).limit(100).to_list(length=100)
+    limit = max(1, min(limit, 100))
+
+    # Comptes suivis (formats followed_id et following_id supportés)
+    follows_raw = await db.follows.find({
+        "follower_id": current_user["id"],
+        "status": "following"
+    }).to_list(length=1000)
+    followed_ids = []
+    for f in follows_raw:
+        fid = f.get("followed_id") or f.get("following_id")
+        if fid:
+            followed_ids.append(fid)
+
+    pipeline = [
+        {"$addFields": {
+            "engagement_score": {
+                "$add": [
+                    {"$multiply": [{"$ifNull": ["$likes_count", 0]}, 2]},
+                    {"$multiply": [{"$ifNull": ["$comments_count", 0]}, 3]},
+                    {"$multiply": [{"$ifNull": ["$shares_count", 0]}, 4]},
+                    # Bonus de personnalisation : les comptes suivis remontent
+                    {"$cond": [{"$in": ["$author_id", followed_ids]}, 15, 0]},
+                ]
+            }
+        }},
+        {"$sort": {"engagement_score": -1, "created_at": -1}},
+        {"$limit": limit},
+    ]
+
+    posts_raw = await db.posts.aggregate(pipeline).to_list(length=limit)
 
     posts = []
     for post_raw in posts_raw:
@@ -3537,11 +3570,6 @@ async def for_you_feed(current_user: dict = Depends(get_current_user)):
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 
-    # Algorithme simple : score d'engagement (les partages pèsent le plus)
-    posts.sort(
-        key=lambda p: p.likes_count * 2 + p.comments_count * 3 + p.shares_count * 4,
-        reverse=True,
-    )
     return posts
 
 # ==================== END ENHANCED FEATURES ====================
