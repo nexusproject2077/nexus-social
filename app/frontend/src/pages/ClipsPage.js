@@ -178,8 +178,10 @@ export default function ClipsPage({ user, setUser }) {
   const [clips, setClips]         = useState([]);
   const [loading, setLoading]     = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const containerRef = useRef(null);
   const observerRef  = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     fetchClips();
@@ -219,6 +221,72 @@ export default function ClipsPage({ user, setUser }) {
     }
   };
 
+  const handleUploadClick = () => fileInputRef.current?.click();
+
+  const uploadClip = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permet de re-sélectionner le même fichier
+    if (!file) return;
+    if (!file.type.startsWith("video/")) {
+      toast.error("Veuillez choisir un fichier vidéo");
+      return;
+    }
+    const caption = window.prompt("Légende de votre clip (optionnel)") || "";
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("caption", caption);
+      // axios ajoute le token via l'intercepteur + gère la limite multipart
+      await axios.post(`${API}/clips`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("Clip publié !");
+      setActiveIndex(0);
+      await fetchClips();
+    } catch (err) {
+      console.error("Erreur upload clip:", err);
+      toast.error("Erreur lors de la publication du clip");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Bouton flottant d'upload (réutilisé dans l'état vide et l'état principal)
+  const uploadControls = (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={uploadClip}
+        data-testid="clip-file-input"
+      />
+      <button
+        onClick={handleUploadClick}
+        disabled={uploading}
+        data-testid="upload-clip"
+        title="Publier un clip"
+        className="fixed z-50 top-16 right-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+        style={{
+          background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+          color: C.onPrimary,
+          opacity: uploading ? 0.6 : 1,
+        }}
+      >
+        {uploading ? (
+          <div
+            className="w-5 h-5 rounded-full border-2 animate-spin"
+            style={{ borderColor: "rgba(0,54,62,0.35)", borderTopColor: C.onPrimary }}
+          />
+        ) : (
+          <span className="material-symbols-outlined text-2xl">add</span>
+        )}
+      </button>
+    </>
+  );
+
   if (loading) {
     return (
       <Layout user={user} setUser={setUser} compact>
@@ -238,7 +306,25 @@ export default function ClipsPage({ user, setUser }) {
           <p className="text-xs text-center max-w-xs" style={{ color: C.outline }}>
             Publiez une vidéo pour qu'elle apparaisse ici
           </p>
+          <button
+            onClick={handleUploadClick}
+            disabled={uploading}
+            data-testid="upload-clip-empty"
+            className="mt-2 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 active:scale-95 transition-all"
+            style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary, opacity: uploading ? 0.6 : 1 }}
+          >
+            <span className="material-symbols-outlined text-lg">upload</span>
+            {uploading ? "Publication…" : "Publier un clip"}
+          </button>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={uploadClip}
+          data-testid="clip-file-input"
+        />
       </Layout>
     );
   }
@@ -278,6 +364,9 @@ export default function ClipsPage({ user, setUser }) {
           NEXUS CLIPS
         </span>
       </div>
+
+      {/* Bouton flottant : publier un clip */}
+      {uploadControls}
     </Layout>
   );
 }
