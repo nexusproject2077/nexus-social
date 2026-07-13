@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
 import Layout from "../components/Layout";
@@ -8,17 +9,25 @@ import StoriesFeed from "../components/StoriesFeed";
 import { toast } from "sonner";
 
 export default function HomePage({ user, setUser }) {
+  const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreatePost, setShowCreatePost] = useState(false);
+  const [feedType, setFeedType] = useState("following"); // "following" | "foryou"
 
   useEffect(() => {
     fetchFeed();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedType]);
 
   const fetchFeed = async () => {
+    setLoading(true);
     try {
-      const response = await axios.get(`${API}/posts/feed`);
+      // "For You" utilise l'algorithme d'engagement du backend,
+      // "Following" garde le fil classique des comptes suivis.
+      const endpoint =
+        feedType === "foryou" ? `${API}/feed/foryou` : `${API}/posts/feed`;
+      const response = await axios.get(endpoint);
       setPosts(response.data);
     } catch (error) {
       console.error("Erreur lors du chargement du fil:", error);
@@ -66,6 +75,47 @@ export default function HomePage({ user, setUser }) {
 
         {/* Stories */}
         <StoriesFeed />
+
+        {/* Feed Toggle: Following / For You */}
+        <div className="flex items-center gap-2 mx-4 mt-4">
+          {[
+            { key: "following", label: "Abonnements" },
+            { key: "foryou", label: "Pour toi" },
+          ].map(({ key, label }) => {
+            const active = feedType === key;
+            return (
+              <button
+                key={key}
+                data-testid={`feed-toggle-${key}`}
+                onClick={() => setFeedType(key)}
+                className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
+                style={{
+                  backgroundColor: active ? "#22d3ee" : "#171f33",
+                  color: active ? "#00363e" : "#859397",
+                  border: "1px solid rgba(255,255,255,0.05)",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Accès aux Clips (page immersive) depuis "Pour toi" */}
+        {feedType === "foryou" && (
+          <button
+            data-testid="open-clips"
+            onClick={() => navigate("/clips")}
+            className="flex items-center justify-center gap-2 mx-4 mt-3 w-[calc(100%-2rem)] py-3 rounded-xl text-sm font-bold transition-all active:scale-95"
+            style={{
+              background: "linear-gradient(135deg, #22d3ee, #3b82f6)",
+              color: "#00363e",
+            }}
+          >
+            <span className="material-symbols-outlined text-xl">play_circle</span>
+            Voir les Clips
+          </button>
+        )}
 
         {/* Post Creation Box */}
         <section
@@ -155,7 +205,9 @@ export default function HomePage({ user, setUser }) {
             <div className="text-center py-12" style={{ color: "#859397" }}>
               <p className="text-lg">Aucune publication pour le moment</p>
               <p className="text-sm mt-2">
-                Suivez des utilisateurs pour voir leurs publications ici
+                {feedType === "foryou"
+                  ? "Revenez bientôt : le fil « Pour toi » se remplit avec les publications populaires"
+                  : "Suivez des utilisateurs pour voir leurs publications ici"}
               </p>
             </div>
           ) : (
