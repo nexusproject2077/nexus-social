@@ -17,7 +17,6 @@ export default function HomePage({ user, setUser }) {
 
   useEffect(() => {
     fetchFeed();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedType]);
 
   const fetchFeed = async () => {
