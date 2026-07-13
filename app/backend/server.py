@@ -184,6 +184,34 @@ def decrypt(token: str) -> str:
     """Déchiffre un token Fernet et renvoie la chaîne d'origine."""
     return cipher.decrypt(token.encode()).decode()
 
+# Chiffrement des messages au repos. Activé uniquement si une clé STABLE
+# (ENCRYPTION_KEY) est fournie : avec la clé éphémère générée au démarrage,
+# les messages deviendraient illisibles après un redémarrage. Le déchiffrement
+# reste toujours tolérant (renvoie la valeur brute si non chiffrée), ce qui
+# assure la rétro-compatibilité avec les messages en clair existants.
+E2EE_MESSAGES = bool(_encryption_key)
+if E2EE_MESSAGES:
+    print("✅ Chiffrement des messages au repos activé")
+
+def encrypt_message(text):
+    """Chiffre le contenu d'un message si le chiffrement est activé."""
+    if E2EE_MESSAGES and isinstance(text, str) and text:
+        try:
+            return encrypt(text)
+        except Exception:
+            return text
+    return text
+
+def decrypt_message(value):
+    """Déchiffre le contenu d'un message ; renvoie la valeur telle quelle
+    si elle n'est pas (ou plus) déchiffrable (message en clair, clé changée)."""
+    if isinstance(value, str) and value:
+        try:
+            return decrypt(value)
+        except Exception:
+            return value
+    return value
+
 # Health check pour Render
 @app.get("/healthz")
 async def health_check():
@@ -1733,7 +1761,7 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     user_id=other_user["id"],
                     username=other_user["username"],
                     profile_pic=other_user.get("profile_pic"),
-                    last_message=msg["content"],
+                    last_message=decrypt_message(msg["content"]),
                     last_message_time=msg["created_at"],
                     unread_count=unread_count
                 )
@@ -1762,8 +1790,9 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
     messages = []
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
+        msg["content"] = decrypt_message(msg.get("content"))
         messages.append(Message(**msg))
-    
+
     # Marquer les messages reçus comme lus
     await db.messages.update_many(
         {"sender_id": user_id, "recipient_id": current_user["id"], "read": False},
@@ -1789,14 +1818,15 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "sender_profile_pic": current_user.get("profile_pic"),
         "recipient_id": message_data.recipient_id,
         "recipient_username": recipient["username"],
-        "content": message_data.content,
+        "content": encrypt_message(message_data.content),
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     await db.messages.insert_one(message_to_insert)
-    
+
     message = convert_mongo_doc_to_dict(message_to_insert)
+    message["content"] = message_data.content  # renvoyer en clair à l'expéditeur
     return Message(**message)
 
 # ==================== ENHANCED MESSAGES FEATURES ====================
@@ -2124,7 +2154,7 @@ async def send_group_message(
             "sender_id": current_user["id"],
             "sender_username": current_user["username"],
             "sender_profile_pic": current_user.get("profile_pic"),
-            "content": message_data["content"].strip(),
+            "content": encrypt_message(message_data["content"].strip()),
             "media_urls": message_data.get("media_urls", []),
             "reply_to_id": message_data.get("reply_to_id"),
             "reactions": [],
@@ -2138,9 +2168,11 @@ async def send_group_message(
         if not result.inserted_id:
             raise HTTPException(status_code=500, detail="Erreur lors de l'envoi du message")
 
+        response_message = convert_mongo_doc_to_dict(message)
+        response_message["content"] = message_data["content"].strip()  # clair pour l'expéditeur
         return {
             "success": True,
-            "message": convert_mongo_doc_to_dict(message)
+            "message": response_message
         }
     except HTTPException:
         raise
@@ -2173,9 +2205,13 @@ async def get_group_messages(
         "deleted_for": {"$ne": current_user["id"]}
     }).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
     
-    messages = [convert_mongo_doc_to_dict(m) for m in messages_raw]
+    messages = []
+    for m in messages_raw:
+        msg = convert_mongo_doc_to_dict(m)
+        msg["content"] = decrypt_message(msg.get("content"))
+        messages.append(msg)
     messages.reverse()  # Ordre chronologique
-    
+
     return {
         "success": True,
         "messages": messages
