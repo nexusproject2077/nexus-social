@@ -143,7 +143,14 @@ function ClipCard({ post, currentUser, isActive }) {
           @{post.author_username}
         </button>
         <p className="text-white/80 text-sm leading-snug line-clamp-2">{post.content}</p>
-        <p className="text-white/40 text-xs mt-1">{fmtDate(post.created_at)}</p>
+        <p className="text-white/40 text-xs mt-1 flex items-center gap-1.5">
+          <span>{fmtDate(post.created_at)}</span>
+          <span>·</span>
+          <span className="flex items-center gap-0.5">
+            <span className="material-symbols-outlined text-xs">play_arrow</span>
+            {fmt(post.views || 0)} vues
+          </span>
+        </p>
       </div>
 
       {/* Comment panel */}
@@ -184,10 +191,19 @@ export default function ClipsPage({ user, setUser }) {
   const containerRef = useRef(null);
   const observerRef  = useRef(null);
   const fileInputRef = useRef(null);
+  const viewedRef    = useRef(new Set());
 
   useEffect(() => {
     fetchClips();
   }, []);
+
+  // Compte une vue quand un clip devient actif (une fois par clip et par visite)
+  useEffect(() => {
+    const clip = clips[activeIndex];
+    if (!clip || viewedRef.current.has(clip.id)) return;
+    viewedRef.current.add(clip.id);
+    axios.post(`${API}/clips/${clip.id}/view`).catch(() => {});
+  }, [activeIndex, clips]);
 
   useEffect(() => {
     if (view !== "immersive" || !containerRef.current || clips.length === 0) return;
@@ -404,9 +420,15 @@ export default function ClipsPage({ user, setUser }) {
                     {clip.content}
                   </div>
                 )}
-                <div className="absolute bottom-1.5 left-2 right-2 flex items-center gap-1 text-white text-[11px]">
-                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1", color: "#f87171" }}>favorite</span>
-                  <span className="font-bold">{clip.likes_count || 0}</span>
+                <div className="absolute bottom-1.5 left-2 right-2 flex items-center gap-2 text-white text-[11px]">
+                  <span className="flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1", color: "#f87171" }}>favorite</span>
+                    <span className="font-bold">{clip.likes_count || 0}</span>
+                  </span>
+                  <span className="flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-sm">play_arrow</span>
+                    <span className="font-bold">{clip.views || 0}</span>
+                  </span>
                 </div>
               </button>
             ))}

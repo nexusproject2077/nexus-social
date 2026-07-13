@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
+import { toast } from "sonner";
 
 export default function Layout({ children, user, setUser, onCreatePost, compact }) {
   const navigate = useNavigate();
@@ -26,6 +27,49 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
       })
       .catch(() => setTrending([]));
   }, [user.id, compact]);
+
+  // Connexion WebSocket temps réel (notifications + messages en direct)
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token || !user?.id) return;
+
+    // Dérive l'URL WS de l'API : https://host/api -> wss://host
+    const wsBase = API.replace(/^http/, "ws").replace(/\/api\/?$/, "");
+    let ws;
+    let heartbeat;
+    try {
+      ws = new WebSocket(`${wsBase}/ws/${user.id}?token=${token}`);
+    } catch {
+      return;
+    }
+
+    ws.onopen = () => {
+      heartbeat = setInterval(() => {
+        try { ws.send("ping"); } catch { /* socket fermé */ }
+      }, 25000);
+    };
+
+    ws.onmessage = (event) => {
+      let data;
+      try { data = JSON.parse(event.data); } catch { return; }
+      if (!data || !data.type) return;
+      // Les pages peuvent réagir (ex. chat live) via cet événement
+      window.dispatchEvent(new CustomEvent("nexus:realtime", { detail: data }));
+      const label =
+        data.data?.message ||
+        (data.type === "new_message"
+          ? `Nouveau message de @${data.data?.sender_username || ""}`
+          : null);
+      if (label) toast(label);
+    };
+
+    ws.onclose = () => clearInterval(heartbeat);
+
+    return () => {
+      clearInterval(heartbeat);
+      try { ws.close(); } catch { /* déjà fermé */ }
+    };
+  }, [user?.id]);
 
   const formatCount = (n) => {
     if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;

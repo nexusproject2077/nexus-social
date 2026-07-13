@@ -4,7 +4,7 @@ from pathlib import Path
 # Cette ligne magique règle TOUT le problème Render
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response, Query, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response, Query, Body, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -48,6 +48,16 @@ except ImportError:
         print("⚠️ WARNING: Module 'follows' not found. Follow system will not be available.")
         follow_router = None
         set_database = None
+
+# Gestionnaire de connexions WebSocket temps réel (module existant)
+try:
+    from backend.websocket_notifications import manager as ws_manager
+except ImportError:
+    try:
+        from websocket_notifications import manager as ws_manager
+    except ImportError:
+        print("⚠️ WARNING: Module 'websocket_notifications' introuvable. Temps réel désactivé.")
+        ws_manager = None
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -211,6 +221,45 @@ def decrypt_message(value):
         except Exception:
             return value
     return value
+
+# ==================== WEBSOCKET TEMPS RÉEL ====================
+# Endpoint authentifié : le client se connecte à /ws/{user_id}?token=<JWT>.
+# Le token doit correspondre au user_id, sinon la connexion est refusée.
+# (Le service Render tourne avec 1 worker uvicorn, donc le registre en mémoire
+#  du ConnectionManager est cohérent.)
+if ws_manager is not None:
+    @app.websocket("/ws/{user_id}")
+    async def realtime_ws(websocket: WebSocket, user_id: str, token: str = Query(None)):
+        # Authentification : le token JWT doit correspondre au user_id
+        try:
+            payload = jwt.decode(token or "", SECRET_KEY, algorithms=[ALGORITHM])
+            if payload.get("sub") != user_id:
+                await websocket.close(code=1008)
+                return
+        except Exception:
+            await websocket.close(code=1008)
+            return
+
+        await ws_manager.connect(websocket, user_id)
+        try:
+            while True:
+                data = await websocket.receive_text()
+                if data == "ping":
+                    await websocket.send_text("pong")
+        except WebSocketDisconnect:
+            ws_manager.disconnect(websocket, user_id)
+        except Exception:
+            ws_manager.disconnect(websocket, user_id)
+
+
+async def push_realtime(user_id: str, payload: dict):
+    """Envoi temps réel best-effort : n'interrompt jamais la requête REST."""
+    if ws_manager is None:
+        return
+    try:
+        await ws_manager.send_personal_message(payload, user_id)
+    except Exception:
+        pass
 
 # Health check pour Render
 @app.get("/healthz")
@@ -394,6 +443,7 @@ class Post(BaseModel):
     comments_count: int = 0
     shares_count: int = 0
     is_liked: bool = False
+    views: int = 0
     poll: Optional[Poll] = None
     poll_user_vote: Optional[str] = None  # id de l'option votée par l'utilisateur courant
     created_at: str
@@ -1827,6 +1877,21 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
 
     message = convert_mongo_doc_to_dict(message_to_insert)
     message["content"] = message_data.content  # renvoyer en clair à l'expéditeur
+
+    # Push temps réel au destinataire (best-effort, contenu en clair)
+    await push_realtime(message_data.recipient_id, {
+        "type": "new_message",
+        "data": {
+            "id": message_id,
+            "sender_id": current_user["id"],
+            "sender_username": current_user["username"],
+            "sender_profile_pic": current_user.get("profile_pic"),
+            "recipient_id": message_data.recipient_id,
+            "content": message_data.content,
+            "created_at": message_to_insert["created_at"],
+        },
+    })
+
     return Message(**message)
 
 # ==================== ENHANCED MESSAGES FEATURES ====================
@@ -3512,6 +3577,7 @@ async def create_clip(
         "likes_count": 0,
         "comments_count": 0,
         "shares_count": 0,
+        "views": 0,
         "created_at": now.isoformat(),
     }
     await db.posts.insert_one(clip_to_insert)
@@ -3519,6 +3585,16 @@ async def create_clip(
     clip = convert_mongo_doc_to_dict(clip_to_insert)
     clip["is_liked"] = False
     return Post(**clip)
+
+
+@api_router.post("/clips/{clip_id}/view")
+async def register_clip_view(clip_id: str, current_user: dict = Depends(get_current_user)):
+    """Incrémente le compteur de vues d'un clip (best-effort)."""
+    result = await db.posts.update_one({"id": clip_id}, {"$inc": {"views": 1}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Clip introuvable")
+    post = await db.posts.find_one({"id": clip_id})
+    return {"success": True, "views": (post or {}).get("views", 0)}
 
 
 @api_router.get("/feed/foryou", response_model=List[Post])
