@@ -179,6 +179,7 @@ export default function ClipsPage({ user, setUser }) {
   const [loading, setLoading]     = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [view, setView] = useState("immersive"); // "immersive" | "grid"
   const containerRef = useRef(null);
   const observerRef  = useRef(null);
@@ -234,6 +235,7 @@ export default function ClipsPage({ user, setUser }) {
     }
     const caption = window.prompt("Légende de votre clip (optionnel)") || "";
     setUploading(true);
+    setUploadProgress(0);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -241,6 +243,11 @@ export default function ClipsPage({ user, setUser }) {
       // axios ajoute le token via l'intercepteur + gère la limite multipart
       await axios.post(`${API}/clips`, form, {
         headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (evt) => {
+          if (evt.total) {
+            setUploadProgress(Math.round((evt.loaded * 100) / evt.total));
+          }
+        },
       });
       toast.success("Clip publié !");
       setActiveIndex(0);
@@ -250,6 +257,7 @@ export default function ClipsPage({ user, setUser }) {
       toast.error("Erreur lors de la publication du clip");
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -277,10 +285,7 @@ export default function ClipsPage({ user, setUser }) {
         }}
       >
         {uploading ? (
-          <div
-            className="w-5 h-5 rounded-full border-2 animate-spin"
-            style={{ borderColor: "rgba(0,54,62,0.35)", borderTopColor: C.onPrimary }}
-          />
+          <span className="text-[11px] font-black">{uploadProgress}%</span>
         ) : (
           <span className="material-symbols-outlined text-2xl">add</span>
         )}
@@ -330,7 +335,7 @@ export default function ClipsPage({ user, setUser }) {
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary, opacity: uploading ? 0.6 : 1 }}
           >
             <span className="material-symbols-outlined text-lg">upload</span>
-            {uploading ? "Publication…" : "Publier un clip"}
+            {uploading ? `Publication… ${uploadProgress}%` : "Publier un clip"}
           </button>
         </div>
         <input
