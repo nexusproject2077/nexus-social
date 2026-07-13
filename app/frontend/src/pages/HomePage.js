@@ -75,46 +75,32 @@ export default function HomePage({ user, setUser }) {
         {/* Stories */}
         <StoriesFeed />
 
-        {/* Feed Toggle: Following / For You */}
+        {/* Switch Feed / Reels : Abonnements · Pour toi · Reels (ouvre le lecteur immersif) */}
         <div className="flex items-center gap-2 mx-4 mt-4">
           {[
             { key: "following", label: "Abonnements" },
             { key: "foryou", label: "Pour toi" },
-          ].map(({ key, label }) => {
-            const active = feedType === key;
+            { key: "reels", label: "Reels", nav: "/clips", icon: "play_circle" },
+          ].map(({ key, label, nav, icon }) => {
+            const active = !nav && feedType === key;
             return (
               <button
                 key={key}
                 data-testid={`feed-toggle-${key}`}
-                onClick={() => setFeedType(key)}
-                className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
+                onClick={() => (nav ? navigate(nav) : setFeedType(key))}
+                className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5"
                 style={{
                   backgroundColor: active ? "#22d3ee" : "#171f33",
                   color: active ? "#00363e" : "#859397",
                   border: "1px solid rgba(255,255,255,0.05)",
                 }}
               >
+                {icon && <span className="material-symbols-outlined text-base">{icon}</span>}
                 {label}
               </button>
             );
           })}
         </div>
-
-        {/* Accès aux Clips (page immersive) depuis "Pour toi" */}
-        {feedType === "foryou" && (
-          <button
-            data-testid="open-clips"
-            onClick={() => navigate("/clips")}
-            className="flex items-center justify-center gap-2 mx-4 mt-3 w-[calc(100%-2rem)] py-3 rounded-xl text-sm font-bold transition-all active:scale-95"
-            style={{
-              background: "linear-gradient(135deg, #22d3ee, #3b82f6)",
-              color: "#00363e",
-            }}
-          >
-            <span className="material-symbols-outlined text-xl">play_circle</span>
-            Voir les Clips
-          </button>
-        )}
 
         {/* Post Creation Box */}
         <section
