@@ -251,6 +251,37 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
     return new_doc
 
 
+def build_poll(poll_options: Optional[List[str]]) -> Optional[dict]:
+    """Construit un sondage à partir d'une liste de textes d'options.
+    Renvoie None si moins de 2 options valides (non vides)."""
+    if not poll_options:
+        return None
+    cleaned = [o.strip() for o in poll_options if o and o.strip()]
+    if len(cleaned) < 2:
+        return None
+    # Dédoublonne en gardant l'ordre, limite à 6 options
+    seen, options = set(), []
+    for text in cleaned:
+        if text not in seen:
+            seen.add(text)
+            options.append({"id": str(uuid.uuid4()), "text": text, "votes": 0})
+        if len(options) >= 6:
+            break
+    if len(options) < 2:
+        return None
+    return {"options": options, "total_votes": 0, "voters": {}}
+
+
+def enrich_post_poll(post: dict, user_id: str) -> dict:
+    """Ajoute poll_user_vote (option votée par user_id) et masque la liste
+    des votants avant sérialisation dans le modèle Post."""
+    poll = post.get("poll")
+    if isinstance(poll, dict):
+        voters = poll.get("voters") or {}
+        post["poll_user_vote"] = voters.get(user_id)
+    return post
+
+
 async def check_is_following(follower_id: str, followed_id: str) -> bool:
     """
     Vérifie si follower_id suit followed_id
@@ -302,10 +333,25 @@ class UserProfile(BaseModel):
     is_following: bool = False
     created_at: str
 
+class PollOption(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    text: str
+    votes: int = 0
+
+class Poll(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    options: List[PollOption]
+    total_votes: int = 0
+
+class PollVote(BaseModel):
+    option_id: str
+
 class PostCreate(BaseModel):
     content: str
     media_type: Optional[str] = None
     media_url: Optional[str] = None
+    poll_options: Optional[List[str]] = None  # >= 2 options => sondage attaché au post
 
 class Post(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -320,6 +366,8 @@ class Post(BaseModel):
     comments_count: int = 0
     shares_count: int = 0
     is_liked: bool = False
+    poll: Optional[Poll] = None
+    poll_user_vote: Optional[str] = None  # id de l'option votée par l'utilisateur courant
     created_at: str
 
 class CommentCreate(BaseModel):
@@ -986,13 +1034,60 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
         "likes_count": 0,
         "comments_count": 0,
         "shares_count": 0,
+        "poll": build_poll(post_data.poll_options),
         "created_at": now.isoformat()
     }
-    
+
     await db.posts.insert_one(post_to_insert)
-    
+
     post = convert_mongo_doc_to_dict(post_to_insert)
     post["is_liked"] = False
+    post["poll_user_vote"] = None
+    return Post(**post)
+
+
+@api_router.post("/posts/{post_id}/vote", response_model=Post)
+async def vote_poll(post_id: str, vote: PollVote, current_user: dict = Depends(get_current_user)):
+    """Voter (ou changer de vote) sur le sondage d'un post."""
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    poll = post_raw.get("poll")
+    if not poll:
+        raise HTTPException(status_code=400, detail="Ce post ne contient pas de sondage")
+
+    options = poll.get("options", [])
+    valid_ids = {o["id"] for o in options}
+    if vote.option_id not in valid_ids:
+        raise HTTPException(status_code=400, detail="Option invalide")
+
+    voters = dict(poll.get("voters") or {})
+    previous = voters.get(current_user["id"])
+    if previous == vote.option_id:
+        # Vote inchangé : on renvoie l'état courant sans modification
+        post = enrich_post_poll(convert_mongo_doc_to_dict(post_raw), current_user["id"])
+        like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        return Post(**post)
+
+    total_votes = int(poll.get("total_votes") or 0)
+    for opt in options:
+        if previous and opt["id"] == previous:
+            opt["votes"] = max(0, int(opt.get("votes") or 0) - 1)
+        if opt["id"] == vote.option_id:
+            opt["votes"] = int(opt.get("votes") or 0) + 1
+    if not previous:
+        total_votes += 1
+    voters[current_user["id"]] = vote.option_id
+
+    updated_poll = {"options": options, "total_votes": total_votes, "voters": voters}
+    await db.posts.update_one({"id": post_id}, {"$set": {"poll": updated_poll}})
+
+    post_raw["poll"] = updated_poll
+    post = enrich_post_poll(convert_mongo_doc_to_dict(post_raw), current_user["id"])
+    like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
+    post["is_liked"] = bool(like_raw)
     return Post(**post)
 
 @api_router.get("/posts/feed", response_model=List[Post])
@@ -1025,6 +1120,7 @@ async def get_posts_feed(current_user: dict = Depends(get_current_user)):
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
     
     return posts
@@ -1039,6 +1135,7 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
     post = convert_mongo_doc_to_dict(post_raw)
     like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
     post["is_liked"] = bool(like_raw)
+    enrich_post_poll(post, current_user["id"])
     return Post(**post)
 
 @api_router.post("/posts/{post_id}/repost", response_model=Post)
@@ -1361,6 +1458,7 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
     
     return posts
@@ -2243,6 +2341,7 @@ async def search(q: str, current_user: dict = Depends(get_current_user)):
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
     
     return {"users": users, "posts": posts}
@@ -3241,6 +3340,7 @@ async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 
     return posts
@@ -3318,6 +3418,7 @@ async def get_posts_by_hashtag(tag: str, current_user: dict = Depends(get_curren
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 
     return posts
@@ -3397,6 +3498,7 @@ async def for_you_feed(current_user: dict = Depends(get_current_user)):
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 
     # Algorithme simple : score d'engagement (les partages pèsent le plus)
