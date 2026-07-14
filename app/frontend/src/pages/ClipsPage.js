@@ -16,7 +16,7 @@ const C = {
   onSurface: "#dae2fd",
 };
 
-function ClipCard({ post, currentUser, isActive }) {
+function ClipCard({ post, currentUser, isActive, onDelete }) {
   const navigate  = useNavigate();
   const videoRef  = useRef(null);
   const [isLiked, setIsLiked]       = useState(post.is_liked || false);
@@ -135,6 +135,20 @@ function ClipCard({ post, currentUser, isActive }) {
             </div>
           </button>
         )}
+
+        {/* Supprimer (auteur uniquement) */}
+        {currentUser?.id === post.author_id && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete?.(post.id); }}
+            data-testid="delete-clip"
+            title="Supprimer ce clip"
+            className="flex flex-col items-center gap-1"
+          >
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+              <span className="material-symbols-outlined text-2xl" style={{ color: "#f87171" }}>delete</span>
+            </div>
+          </button>
+        )}
       </div>
 
       {/* Bottom info */}
@@ -240,6 +254,22 @@ export default function ClipsPage({ user, setUser }) {
   };
 
   const handleUploadClick = () => fileInputRef.current?.click();
+
+  const handleDeleteClip = async (clipId) => {
+    if (!window.confirm("Supprimer définitivement ce clip ?")) return;
+    try {
+      await axios.delete(`${API}/posts/${clipId}`);
+      setClips((prev) => {
+        const next = prev.filter((c) => c.id !== clipId);
+        setActiveIndex((idx) => Math.max(0, Math.min(idx, next.length - 1)));
+        return next;
+      });
+      toast.success("Clip supprimé");
+    } catch (err) {
+      console.error("Erreur suppression clip:", err);
+      toast.error("Erreur lors de la suppression");
+    }
+  };
 
   const uploadClip = async (e) => {
     const file = e.target.files?.[0];
@@ -388,7 +418,7 @@ export default function ClipsPage({ user, setUser }) {
           `}</style>
           {clips.map((clip, idx) => (
             <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100svh" }}>
-              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex} />
+              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex} onDelete={handleDeleteClip} />
             </div>
           ))}
         </div>

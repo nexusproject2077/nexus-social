@@ -88,6 +88,27 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
   const getInitials = (u) => (u ? u.substring(0, 2).toUpperCase() : "??");
 
+  // Rend le contenu avec les hashtags cliquables (#tag -> recherche)
+  const renderContent = (text) => {
+    if (!text) return null;
+    return text.split(/(\s+)/).map((part, i) => {
+      if (/^#[\p{L}0-9_]+$/u.test(part)) {
+        return (
+          <Link
+            key={i}
+            to={`/search?q=${encodeURIComponent(part)}`}
+            onClick={(e) => e.stopPropagation()}
+            className="hover:underline"
+            style={{ color: C.cyan }}
+          >
+            {part}
+          </Link>
+        );
+      }
+      return part;
+    });
+  };
+
   const formatDate = (d) => {
     try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); }
     catch { return "À l'instant"; }
@@ -136,7 +157,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
         {/* Content */}
         <p className="leading-relaxed text-sm lg:text-base whitespace-pre-wrap" style={{ color: C.onVariant }}>
-          {post.content}
+          {renderContent(post.content)}
         </p>
 
         {/* Poll / Sondage */}
