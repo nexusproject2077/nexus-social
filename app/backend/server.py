@@ -261,6 +261,44 @@ async def push_realtime(user_id: str, payload: dict):
     except Exception:
         pass
 
+# ==================== LIVE (WebRTC signaling) ====================
+# Relais de signaling minimal pour un direct 1:1 (offre/réponse/ICE).
+# Gratuit : les pairs utilisent un STUN public (pas de TURN => échoue derrière
+# NAT symétrique). Registre en mémoire, cohérent car Render tourne en 1 worker.
+live_rooms: Dict[str, list] = {}
+
+@app.websocket("/ws/live/{room_id}")
+async def live_signaling(websocket: WebSocket, room_id: str, token: str = Query(None)):
+    # Authentification : token JWT valide requis (utilisateur connecté)
+    try:
+        jwt.decode(token or "", SECRET_KEY, algorithms=[ALGORITHM])
+    except Exception:
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    live_rooms.setdefault(room_id, []).append(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Relaie le message de signaling aux autres pairs de la room
+            for client in list(live_rooms.get(room_id, [])):
+                if client is not websocket:
+                    try:
+                        await client.send_text(data)
+                    except Exception:
+                        pass
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        conns = live_rooms.get(room_id, [])
+        if websocket in conns:
+            conns.remove(websocket)
+        if not conns:
+            live_rooms.pop(room_id, None)
+
 # Health check pour Render
 @app.get("/healthz")
 async def health_check():

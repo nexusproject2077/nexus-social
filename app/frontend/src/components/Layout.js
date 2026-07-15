@@ -96,6 +96,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
   const navItems = [
     { icon: "home",           label: "Accueil",     path: "/",                     testId: "nav-home" },
     { icon: "play_circle",    label: "Nexus Clips", path: "/clips",                testId: "nav-clips" },
+    { icon: "sensors",        label: "Direct",      path: "/live",                 testId: "nav-live" },
     { icon: "explore",        label: "Explorer",    path: "/search",               testId: "nav-search" },
     { icon: "notifications",  label: "Notifications",path: "/notifications",       testId: "nav-notifications" },
     { icon: "language",       label: "Navigateur",  path: "/browser",              testId: "nav-browser" },
