@@ -454,6 +454,7 @@ class User(BaseModel):
     profile_pic: Optional[str] = None
     followers_count: int = 0
     following_count: int = 0
+    is_verified: bool = False
     created_at: str
 
 class UserProfile(BaseModel):
@@ -465,6 +466,7 @@ class UserProfile(BaseModel):
     followers_count: int = 0
     following_count: int = 0
     is_following: bool = False
+    is_verified: bool = False
     crypto_wallet: Optional[str] = None  # adresse de tips crypto (Solana/USDT…)
     created_at: str
 
@@ -495,6 +497,7 @@ class Post(BaseModel):
     author_id: str
     author_username: str
     author_profile_pic: Optional[str] = None
+    author_is_verified: bool = False
     content: str
     media_type: Optional[str] = None
     media_url: Optional[str] = None
@@ -1208,6 +1211,7 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "content": post_data.content,
         "media_type": post_data.media_type,
         "media_url": post_data.media_url,
@@ -1359,6 +1363,7 @@ async def repost(post_id: str, current_user: dict = Depends(get_current_user)):
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "content": original["content"],
         "media_type": original.get("media_type"),
         "media_url": original.get("media_url"),
@@ -1462,6 +1467,7 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "content": comment_data.content,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1558,6 +1564,7 @@ async def create_comment_reply(comment_id: str, reply_data: CommentCreate, curre
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "content": reply_data.content,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1617,6 +1624,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         followers_count=user.get("followers_count", 0),
         following_count=user.get("following_count", 0),
         is_following=is_following,
+        is_verified=user.get("is_verified", False),
         crypto_wallet=user.get("crypto_wallet"),
         created_at=user["created_at"]
     )
@@ -2603,6 +2611,7 @@ async def create_story(
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "media_type": media_type,
         "media_url": media_url,
         "views_count": 0,
@@ -3688,6 +3697,7 @@ async def create_clip(
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "content": caption,
         "media_type": "video",
         "media_url": media_url,

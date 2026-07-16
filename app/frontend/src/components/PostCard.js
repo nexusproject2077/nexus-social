@@ -142,8 +142,17 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               </div>
             )}
             <div>
-              <p className="font-bold text-sm transition-colors hover:text-cyan-400" style={{ color: C.onSurface }}>
+              <p className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1" style={{ color: C.onSurface }}>
                 {post.author_username}
+                {post.author_is_verified && (
+                  <span
+                    className="material-symbols-outlined text-sm"
+                    style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1" }}
+                    title="Compte vérifié"
+                  >
+                    verified
+                  </span>
+                )}
               </p>
               <p className="text-xs" style={{ color: C.outline }}>{formatDate(post.created_at)}</p>
             </div>

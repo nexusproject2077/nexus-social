@@ -261,6 +261,15 @@ export default function ProfilePage({ user, setUser }) {
                 >
                   {profile.username}
                 </h1>
+                {profile.is_verified && (
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1", fontSize: "24px" }}
+                    title="Compte vérifié"
+                  >
+                    verified
+                  </span>
+                )}
                 {profile.is_private && <Lock size={18} color={C.outline} />}
                 <FollowButton />
                 {!isOwnProfile && profile.crypto_wallet && (
