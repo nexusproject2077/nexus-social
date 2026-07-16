@@ -3625,6 +3625,15 @@ async def create_clip(
     return Post(**clip)
 
 
+@api_router.get("/adsense")
+async def get_adsense_config():
+    """Config AdSense côté client (vide par défaut => aucune pub)."""
+    return {
+        "client": os.environ.get("ADSENSE_CLIENT", ""),
+        "slot": os.environ.get("ADSENSE_SLOT", ""),
+    }
+
+
 @api_router.post("/clips/{clip_id}/view")
 async def register_clip_view(clip_id: str, current_user: dict = Depends(get_current_user)):
     """Incrémente le compteur de vues d'un clip (best-effort)."""

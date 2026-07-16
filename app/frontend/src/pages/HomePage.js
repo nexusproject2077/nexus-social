@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
@@ -6,6 +6,7 @@ import Layout from "../components/Layout";
 import PostCard from "../components/PostCard";
 import CreatePostModal from "../components/CreatePostModal";
 import StoriesFeed from "../components/StoriesFeed";
+import AdSense from "../components/AdSense";
 import { toast } from "sonner";
 
 export default function HomePage({ user, setUser }) {
@@ -196,14 +197,21 @@ export default function HomePage({ user, setUser }) {
               </p>
             </div>
           ) : (
-            posts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                currentUser={user}
-                onUpdate={handlePostUpdate}
-                onDelete={handlePostDelete}
-              />
+            posts.map((post, index) => (
+              <Fragment key={post.id}>
+                <PostCard
+                  post={post}
+                  currentUser={user}
+                  onUpdate={handlePostUpdate}
+                  onDelete={handlePostDelete}
+                />
+                {/* Emplacement pub tous les 5 posts — inerte tant qu'AdSense n'est pas configuré + consenti */}
+                {index % 5 === 4 && (
+                  <div className="my-2">
+                    <AdSense slot={process.env.REACT_APP_ADSENSE_SLOT} />
+                  </div>
+                )}
+              </Fragment>
             ))
           )}
         </div>
