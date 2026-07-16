@@ -29,3 +29,5 @@ gunicorn
 cloudinary
 schedule
 geoip2>=4.8.0
+
+sib-api-v3-sdk>=7.6.0

@@ -4,7 +4,7 @@ from pathlib import Path
 # Cette ligne magique règle TOUT le problème Render
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response, Query, Body, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response, Query, Body, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -58,6 +58,15 @@ except ImportError:
     except ImportError:
         print("⚠️ WARNING: Module 'websocket_notifications' introuvable. Temps réel désactivé.")
         ws_manager = None
+
+# Emails transactionnels (Brevo) — no-op si BREVO_API_KEY absente
+try:
+    from backend.brevo import send_email as send_brevo_email
+except ImportError:
+    try:
+        from brevo import send_email as send_brevo_email
+    except ImportError:
+        send_brevo_email = None
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -615,7 +624,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 # ==================== AUTH ROUTES ====================
 @api_router.post("/auth/register")
-async def register(user_data: UserCreate):
+async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
     """Enregistre un nouvel utilisateur"""
     existing_user_raw = await db.users.find_one({
         "$or": [
@@ -640,9 +649,19 @@ async def register(user_data: UserCreate):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_to_insert)
-   
+
     token = create_access_token({"sub": user_id})
-   
+
+    # Email de bienvenue (best-effort, en tâche de fond : ne bloque pas l'inscription)
+    if send_brevo_email:
+        background_tasks.add_task(
+            send_brevo_email,
+            user_data.email,
+            "Bienvenue sur Nexus Social 🎉",
+            f"<h1>Bienvenue {user_data.username} !</h1>"
+            "<p>Ton compte est prêt. Publie ton premier post et rejoins la communauté 🚀</p>",
+        )
+
     return {
         "token": token,
         "user": {
