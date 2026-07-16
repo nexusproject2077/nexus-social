@@ -603,9 +603,9 @@ export default function SettingsPage({ user, setUser }) {
 
           {/* Footer */}
           <div className="px-8 py-6 flex flex-wrap gap-x-6 gap-y-2 text-[10px] font-bold uppercase tracking-widest" style={{ borderTop: `1px solid rgba(255,255,255,0.04)`, color: C.outlineVar }}>
-            <a href="#" className="hover:text-cyan-400 transition-colors">Conditions</a>
-            <a href="#" className="hover:text-cyan-400 transition-colors">Politique de confidentialité</a>
-            <a href="#" className="hover:text-cyan-400 transition-colors">Cookies</a>
+            <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Conditions</a>
+            <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Politique de confidentialité</a>
+            <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Cookies</a>
             <span>Nexus v4.0 · EEA Node</span>
           </div>
         </main>

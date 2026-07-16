@@ -262,9 +262,9 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
 
           <footer className="mt-auto pt-8">
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-medium" style={{ color: "#3c494c" }}>
-              <a href="#" className="hover:text-slate-400">Conditions</a>
-              <a href="#" className="hover:text-slate-400">Confidentialité</a>
-              <a href="#" className="hover:text-slate-400">Cookies</a>
+              <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">Conditions</a>
+              <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">Confidentialité</a>
+              <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">Cookies</a>
               <span>© 2025 Nexus Social</span>
             </div>
           </footer>
