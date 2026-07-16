@@ -22,6 +22,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState("post"); // "post" | "story" | "poll"
   const [pollOptions, setPollOptions] = useState(["", ""]);
+  const [affiliateLink, setAffiliateLink] = useState("");
 
   const updateOption = (i, value) =>
     setPollOptions((opts) => opts.map((o, idx) => (idx === i ? value : o)));
@@ -88,6 +89,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     setMediaPreview(null);
     setMediaType(null);
     setPollOptions(["", ""]);
+    setAffiliateLink("");
     setMode("post");
   };
 
@@ -141,6 +143,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
         media_type: mediaType || null,
         media_url: mediaPreview || null, // Base64 string
         poll_options, // null pour un post simple
+        affiliate_link: affiliateLink.trim() || null,
       };
 
       const response = await axios.post(`${API}/posts`, postData, {
@@ -254,6 +257,25 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
             <p className="text-sm text-slate-400">
               Votre story sera visible 24h puis disparaîtra. Ajoutez une photo ou une vidéo ci-dessous.
             </p>
+          )}
+
+          {/* Lien affilié (optionnel) */}
+          {mode !== "story" && (
+            <div>
+              <Label htmlFor="affiliate">Lien affilié (optionnel)</Label>
+              <Input
+                id="affiliate"
+                data-testid="affiliate-input"
+                type="url"
+                value={affiliateLink}
+                onChange={(e) => setAffiliateLink(e.target.value)}
+                placeholder="https://amzn.to/…"
+                className="bg-slate-800 border-slate-700 text-white"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Affiche un bouton « Shop » sur votre publication (liens http/https uniquement).
+              </p>
+            </div>
           )}
 
           {mediaPreview && (

@@ -134,8 +134,15 @@ export default function SettingsPage({ user, setUser }) {
 
   const [profileData, setProfileData] = useState({
     first_name: "", last_name: "", bio: "",
-    location: "", website: "", phone: "", birthdate: "", gender: ""
+    location: "", website: "", phone: "", birthdate: "", gender: "", crypto_wallet: ""
   });
+
+  const saveCryptoWallet = async () => {
+    try {
+      await axios.put(`${API}/users/me/profile-details`, { crypto_wallet: profileData.crypto_wallet });
+      toast.success("Wallet enregistré");
+    } catch { toast.error("Erreur"); }
+  };
   const [creatorStats, setCreatorStats] = useState(null);
   const [monetization, setMonetization] = useState(
     () => localStorage.getItem("creator_monetization") === "1"
@@ -344,6 +351,30 @@ export default function SettingsPage({ user, setUser }) {
           />
           <div className="px-5 py-4 text-xs" style={{ color: C.outline }}>
             Les versements nécessitent la configuration d'un prestataire de paiement, bientôt disponible.
+          </div>
+        </Card>
+
+        {/* Tips crypto */}
+        <Card>
+          <CardHeader title="Tips crypto" icon="currency_bitcoin" />
+          <div className="p-5 space-y-3">
+            <p className="text-sm" style={{ color: C.outline }}>
+              Ajoutez votre adresse (Solana, USDT, BTC…) pour recevoir des tips directement, sans intermédiaire ni frais de plateforme.
+            </p>
+            <InputField
+              label="Adresse wallet"
+              value={profileData.crypto_wallet}
+              onChange={(e) => setProfileData((p) => ({ ...p, crypto_wallet: e.target.value }))}
+              placeholder="Ex : 7xKX…（Solana / USDT / BTC）"
+            />
+            <button
+              onClick={saveCryptoWallet}
+              data-testid="save-wallet"
+              className="px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
+              style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
+            >
+              Enregistrer le wallet
+            </button>
           </div>
         </Card>
       </div>

@@ -216,6 +216,25 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           </div>
         )}
 
+        {/* Lien affilié (bouton Shop) */}
+        {post.affiliate_link && /^https?:\/\//.test(post.affiliate_link) && (
+          <a
+            href={post.affiliate_link}
+            target="_blank"
+            rel="noopener noreferrer nofollow sponsored"
+            data-testid="affiliate-shop"
+            onClick={(e) => {
+              e.stopPropagation();
+              axios.post(`${API}/posts/${post.id}/affiliate-click`).catch(() => {});
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
+            style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
+          >
+            <span className="material-symbols-outlined text-lg">shopping_bag</span>
+            Shop
+          </a>
+        )}
+
         {/* Media */}
         {post.media_url && post.media_type === "image" && (
           <div className="rounded-xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>

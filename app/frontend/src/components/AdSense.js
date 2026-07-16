@@ -4,6 +4,10 @@ import { useEffect, useRef } from "react";
 // Vide par défaut => aucune publicité, aucun script chargé.
 const ADSENSE_CLIENT = process.env.REACT_APP_ADSENSE_CLIENT || "";
 
+// Pubs non personnalisées par défaut (moins risqué RGPD).
+// Mettre REACT_APP_ADSENSE_NPA="false" pour autoriser la personnalisation.
+const NON_PERSONALIZED = process.env.REACT_APP_ADSENSE_NPA !== "false";
+
 // Les publicités ne se chargent QUE si l'utilisateur a accepté les cookies.
 // (Obligation RGPD : pas de tracking publicitaire avant consentement.)
 const adsAllowed = () =>
@@ -28,7 +32,12 @@ export default function AdSense({ slot, format = "auto" }) {
     }
 
     try {
-      (window.adsbygoogle = window.adsbygoogle || []).push({});
+      window.adsbygoogle = window.adsbygoogle || [];
+      if (NON_PERSONALIZED) {
+        // Demande des pubs non personnalisées (pas de profilage)
+        window.adsbygoogle.requestNonPersonalizedAds = 1;
+      }
+      window.adsbygoogle.push({});
     } catch {
       /* le script n'est pas encore prêt : AdSense réessaiera au chargement */
     }

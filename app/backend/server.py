@@ -366,6 +366,15 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
     return new_doc
 
 
+def safe_http_url(url: Optional[str]) -> Optional[str]:
+    """N'accepte qu'une URL http(s) (évite javascript: et autres schémas dangereux)."""
+    if isinstance(url, str):
+        u = url.strip()
+        if u.startswith("http://") or u.startswith("https://"):
+            return u[:2000]
+    return None
+
+
 def build_poll(poll_options: Optional[List[str]]) -> Optional[dict]:
     """Construit un sondage à partir d'une liste de textes d'options.
     Renvoie None si moins de 2 options valides (non vides)."""
@@ -446,6 +455,7 @@ class UserProfile(BaseModel):
     followers_count: int = 0
     following_count: int = 0
     is_following: bool = False
+    crypto_wallet: Optional[str] = None  # adresse de tips crypto (Solana/USDT…)
     created_at: str
 
 class PollOption(BaseModel):
@@ -467,6 +477,7 @@ class PostCreate(BaseModel):
     media_type: Optional[str] = None
     media_url: Optional[str] = None
     poll_options: Optional[List[str]] = None  # >= 2 options => sondage attaché au post
+    affiliate_link: Optional[str] = None  # lien affilié optionnel (http/https)
 
 class Post(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -482,6 +493,8 @@ class Post(BaseModel):
     shares_count: int = 0
     is_liked: bool = False
     views: int = 0
+    affiliate_link: Optional[str] = None
+    affiliate_clicks: int = 0
     poll: Optional[Poll] = None
     poll_user_vote: Optional[str] = None  # id de l'option votée par l'utilisateur courant
     created_at: str
@@ -736,8 +749,8 @@ async def update_profile_details(
     """Met à jour les détails du profil (nom, prénom, etc.)"""
     try:
         allowed_fields = [
-            "first_name", "last_name", "bio", "location", 
-            "phone", "birthdate", "gender", "website"
+            "first_name", "last_name", "bio", "location",
+            "phone", "birthdate", "gender", "website", "crypto_wallet"
         ]
         
         update_data = {
@@ -812,7 +825,8 @@ async def get_user_settings(current_user: dict = Depends(get_current_user)):
                 "phone": user_dict.get("phone", ""),
                 "birthdate": user_dict.get("birthdate", ""),
                 "gender": user_dict.get("gender", ""),
-                "website": user_dict.get("website", "")
+                "website": user_dict.get("website", ""),
+                "crypto_wallet": user_dict.get("crypto_wallet", "")
             },
             "account": {
                 "username": user_dict.get("username"),
@@ -1151,6 +1165,8 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
         "comments_count": 0,
         "shares_count": 0,
         "poll": build_poll(post_data.poll_options),
+        "affiliate_link": safe_http_url(post_data.affiliate_link),
+        "affiliate_clicks": 0,
         "created_at": now.isoformat()
     }
 
@@ -1160,6 +1176,18 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
     post["is_liked"] = False
     post["poll_user_vote"] = None
     return Post(**post)
+
+
+@api_router.post("/posts/{post_id}/affiliate-click")
+async def track_affiliate_click(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Incrémente le compteur de clics d'un lien affilié (best-effort)."""
+    result = await db.posts.update_one(
+        {"id": post_id, "affiliate_link": {"$ne": None}},
+        {"$inc": {"affiliate_clicks": 1}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Lien affilié introuvable")
+    return {"success": True}
 
 
 @api_router.post("/posts/{post_id}/vote", response_model=Post)
@@ -1539,6 +1567,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         followers_count=user.get("followers_count", 0),
         following_count=user.get("following_count", 0),
         is_following=is_following,
+        crypto_wallet=user.get("crypto_wallet"),
         created_at=user["created_at"]
     )
 
