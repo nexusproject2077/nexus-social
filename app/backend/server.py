@@ -39,6 +39,12 @@ try:
 except ImportError:
     geoip2 = None
 
+# Paiements (optionnel — nécessite le SDK stripe + clés en env)
+try:
+    import stripe
+except ImportError:
+    stripe = None
+
 # Import du module follows (avec gestion des chemins)
 try:
     from backend.follows import follow_router, set_database
@@ -231,6 +237,22 @@ def decrypt_message(value):
         except Exception:
             return value
     return value
+
+# ==================== PAIEMENTS (Stripe) ====================
+# Abonnements via Stripe Checkout. Désactivé proprement si les clés sont
+# absentes : les endpoints renvoient 503 et rien n'est facturé.
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID", "")  # prix d'abonnement récurrent
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://nexus-social-3ta5.onrender.com")
+STRIPE_ENABLED = bool(stripe and STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
+if STRIPE_ENABLED:
+    stripe.api_key = STRIPE_SECRET_KEY
+    print("✅ Stripe activé (abonnements)")
+elif stripe is None:
+    print("ℹ️ Stripe indisponible (SDK non installé) — abonnements désactivés")
+else:
+    print("ℹ️ Stripe désactivé (STRIPE_SECRET_KEY/STRIPE_PRICE_ID absents) — abonnements désactivés")
 
 # ==================== WEBSOCKET TEMPS RÉEL ====================
 # Endpoint authentifié : le client se connecte à /ws/{user_id}?token=<JWT>.
@@ -455,6 +477,7 @@ class User(BaseModel):
     followers_count: int = 0
     following_count: int = 0
     is_verified: bool = False
+    is_premium: bool = False
     created_at: str
 
 class UserProfile(BaseModel):
@@ -740,6 +763,82 @@ async def login(credentials: UserLogin, request: Request):
 async def get_me(current_user: dict = Depends(get_current_user)):
     """Récupère le profil de l'utilisateur actuel"""
     return User(**current_user)
+
+# ==================== BILLING (abonnements Stripe) ====================
+@api_router.get("/billing/status")
+async def billing_status(current_user: dict = Depends(get_current_user)):
+    """Indique si les paiements sont configurés et l'état d'abonnement de l'utilisateur."""
+    return {
+        "enabled": STRIPE_ENABLED,
+        "is_premium": bool(current_user.get("is_premium")),
+        "subscription_status": current_user.get("subscription_status"),
+    }
+
+
+@api_router.post("/billing/create-checkout-session")
+async def create_checkout_session(current_user: dict = Depends(get_current_user)):
+    """Crée une session Stripe Checkout d'abonnement et renvoie l'URL de paiement."""
+    if not STRIPE_ENABLED:
+        raise HTTPException(status_code=503, detail="Les paiements ne sont pas configurés")
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            customer_email=current_user.get("email"),
+            client_reference_id=current_user["id"],
+            metadata={"user_id": current_user["id"]},
+            subscription_data={"metadata": {"user_id": current_user["id"]}},
+            success_url=f"{FRONTEND_URL}/settings?sub=success",
+            cancel_url=f"{FRONTEND_URL}/settings?sub=cancel",
+        )
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
+
+
+@app.post("/api/billing/webhook")
+async def stripe_webhook(request: Request):
+    """Webhook Stripe (signature vérifiée) : met à jour l'abonnement de l'utilisateur."""
+    if not STRIPE_ENABLED or not STRIPE_WEBHOOK_SECRET:
+        return {"received": False, "reason": "stripe disabled"}
+
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Signature webhook invalide")
+
+    etype = event["type"]
+    obj = event["data"]["object"]
+
+    if etype == "checkout.session.completed":
+        user_id = (obj.get("metadata") or {}).get("user_id") or obj.get("client_reference_id")
+        if user_id:
+            await db.users.update_one({"id": user_id}, {"$set": {
+                "is_premium": True,
+                "subscription_status": "active",
+                "stripe_customer_id": obj.get("customer"),
+                "stripe_subscription_id": obj.get("subscription"),
+            }})
+            if send_brevo_email:
+                u = await db.users.find_one({"id": user_id})
+                if u and u.get("email"):
+                    send_brevo_email(
+                        u["email"],
+                        "Abonnement Nexus Premium activé ✅",
+                        "<h1>Merci !</h1><p>Ton abonnement Nexus Premium est actif. Profite des avantages créateur 🚀</p>",
+                    )
+    elif etype in ("customer.subscription.deleted", "customer.subscription.paused"):
+        sub_id = obj.get("id")
+        if sub_id:
+            await db.users.update_one(
+                {"stripe_subscription_id": sub_id},
+                {"$set": {"is_premium": False, "subscription_status": "canceled"}},
+            )
+
+    return {"received": True}
+
 
 @api_router.put("/auth/profile")
 async def update_profile(

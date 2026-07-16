@@ -29,3 +29,5 @@ gunicorn
 cloudinary
 geoip2>=4.8.0
 sib-api-v3-sdk>=7.6.0
+
+stripe>=9.0.0

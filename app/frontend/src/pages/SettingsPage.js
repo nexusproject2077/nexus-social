@@ -143,6 +143,22 @@ export default function SettingsPage({ user, setUser }) {
       toast.success("Wallet enregistré");
     } catch { toast.error("Erreur"); }
   };
+
+  const startSubscription = async () => {
+    try {
+      const res = await axios.post(`${API}/billing/create-checkout-session`);
+      if (res.data?.url) window.location.href = res.data.url;
+      else toast.error("Abonnement indisponible");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Les paiements ne sont pas encore configurés");
+    }
+  };
+
+  useEffect(() => {
+    const sub = new URLSearchParams(window.location.search).get("sub");
+    if (sub === "success") toast.success("Abonnement activé — bienvenue chez Premium 🎉");
+    else if (sub === "cancel") toast.info("Abonnement annulé");
+  }, []);
   const [creatorStats, setCreatorStats] = useState(null);
   const [monetization, setMonetization] = useState(
     () => localStorage.getItem("creator_monetization") === "1"
@@ -327,6 +343,34 @@ export default function SettingsPage({ user, setUser }) {
             </div>
           ))}
         </div>
+
+        {/* Abonnement Premium */}
+        <Card>
+          <CardHeader title="Nexus Premium" icon="workspace_premium" />
+          <div className="p-5 space-y-3">
+            {user?.is_premium ? (
+              <p className="text-sm font-bold flex items-center gap-2" style={{ color: C.cyan }}>
+                <span className="material-symbols-outlined text-lg">verified</span>
+                Abonnement Premium actif
+              </p>
+            ) : (
+              <>
+                <p className="text-sm" style={{ color: C.outline }}>
+                  Passe Premium pour soutenir Nexus et débloquer les avantages créateur.
+                </p>
+                <button
+                  onClick={startSubscription}
+                  data-testid="subscribe-premium"
+                  className="px-5 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all active:scale-95"
+                  style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
+                >
+                  <span className="material-symbols-outlined text-lg">workspace_premium</span>
+                  Passer Premium
+                </button>
+              </>
+            )}
+          </div>
+        </Card>
 
         {/* Analytique */}
         <Card>
