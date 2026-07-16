@@ -1979,6 +1979,10 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
 @api_router.post("/messages", response_model=Message)
 async def send_message(message_data: MessageCreate, current_user: dict = Depends(get_current_user)):
     """Envoie un message"""
+    # Anti-spam : max 30 messages / 60 s par utilisateur
+    if not rate_limit(f"msg:{current_user['id']}", max_attempts=30, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Trop de messages envoyés. Ralentissez un peu.")
+
     recipient_raw = await db.users.find_one({"id": message_data.recipient_id})
     if not recipient_raw:
         raise HTTPException(status_code=404, detail="Recipient not found")
@@ -2317,6 +2321,10 @@ async def send_group_message(
 ):
     """Envoyer un message dans un groupe"""
     try:
+        # Anti-spam : max 30 messages / 60 s par utilisateur
+        if not rate_limit(f"msg:{current_user['id']}", max_attempts=30, window_seconds=60):
+            raise HTTPException(status_code=429, detail="Trop de messages envoyés. Ralentissez un peu.")
+
         # Validation du contenu
         if not message_data.get("content"):
             raise HTTPException(status_code=400, detail="Le contenu du message est requis")

@@ -294,9 +294,14 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
             />
           </div>
         </div>
-        <button style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
-          <span className="material-symbols-outlined">notifications</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
+            <span className="material-symbols-outlined">notifications</span>
+          </button>
+          <button style={{ color: "#859397" }} onClick={() => navigate("/settings")} data-testid="nav-settings-mobile" title="Paramètres">
+            <span className="material-symbols-outlined">settings</span>
+          </button>
+        </div>
       </header>
 
       {/* ===== Main Content ===== */}
