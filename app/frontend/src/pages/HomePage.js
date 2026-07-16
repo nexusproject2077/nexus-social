@@ -7,6 +7,7 @@ import PostCard from "../components/PostCard";
 import CreatePostModal from "../components/CreatePostModal";
 import StoriesFeed from "../components/StoriesFeed";
 import AdSense from "../components/AdSense";
+import { Skeleton } from "../components/ui/skeleton";
 import { toast } from "sonner";
 
 export default function HomePage({ user, setUser }) {
@@ -184,8 +185,28 @@ export default function HomePage({ user, setUser }) {
         {/* Feed */}
         <div className="px-4 py-4 lg:py-6 space-y-4 lg:space-y-6">
           {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500" />
+            <div className="space-y-4 lg:space-y-6" data-testid="feed-skeleton">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl border p-4 lg:p-5"
+                  style={{ backgroundColor: "#171f33", borderColor: "rgba(255,255,255,0.05)" }}
+                >
+                  <div className="flex items-center gap-3 mb-4">
+                    <Skeleton className="w-10 h-10 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-3 w-32" />
+                      <Skeleton className="h-2.5 w-20" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-11/12" />
+                    <Skeleton className="h-3 w-2/3" />
+                  </div>
+                  <Skeleton className="h-40 w-full rounded-xl mt-4" />
+                </div>
+              ))}
             </div>
           ) : posts.length === 0 ? (
             <div className="text-center py-12" style={{ color: "#859397" }}>

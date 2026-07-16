@@ -4,7 +4,7 @@ from pathlib import Path
 # Cette ligne magique règle TOUT le problème Render
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response, Query, Body, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response, Query, Body, WebSocket, WebSocketDisconnect, BackgroundTasks, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -22,7 +22,8 @@ import jwt
 import base64
 from bson import ObjectId
 import json
-from collections import defaultdict
+from collections import defaultdict, deque
+import time
 from enum import Enum
 import hashlib
 import random
@@ -622,6 +623,29 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Authentication error: {str(e)}")
 
+# ==================== RATE LIMITING (anti brute-force) ====================
+# Limiteur en mémoire (cohérent car Render tourne en 1 worker). Fenêtre
+# glissante par clé (IP). Suffisant pour freiner le bruteforce de login.
+_rate_buckets: Dict[str, deque] = defaultdict(deque)
+
+def rate_limit(key: str, max_attempts: int, window_seconds: int) -> bool:
+    """Renvoie True si l'appel est autorisé, False si la limite est atteinte."""
+    now = time.monotonic()
+    bucket = _rate_buckets[key]
+    while bucket and now - bucket[0] > window_seconds:
+        bucket.popleft()
+    if len(bucket) >= max_attempts:
+        return False
+    bucket.append(now)
+    return True
+
+def client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 # ==================== AUTH ROUTES ====================
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
@@ -677,10 +701,17 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
     }
 
 @api_router.post("/auth/login")
-async def login(credentials: UserLogin):
+async def login(credentials: UserLogin, request: Request):
     """Connecte un utilisateur existant"""
+    # Anti brute-force : max 10 tentatives / 5 min par IP
+    if not rate_limit(f"login:{client_ip(request)}", max_attempts=10, window_seconds=300):
+        raise HTTPException(
+            status_code=429,
+            detail="Trop de tentatives de connexion. Réessayez dans quelques minutes.",
+        )
+
     user_raw = await db.users.find_one({"email": credentials.email})
-    
+
     # Vérification avec protection contre les utilisateurs sans mot de passe
     if not user_raw or "password" not in user_raw or not pwd_context.verify(credentials.password, user_raw["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
