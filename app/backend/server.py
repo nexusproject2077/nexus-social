@@ -3687,17 +3687,17 @@ async def compute_trending_hashtags(limit: int = 10):
     Aucun cron requis : la tendance reflète toujours l'état réel de la base.
     """
     now = datetime.now(timezone.utc)
-    since_7d = (now - timedelta(days=7)).isoformat()
     since_24h = (now - timedelta(hours=24)).isoformat()
 
+    # Fenêtre glissante 24h : on ne considère QUE les posts des dernières 24h,
+    # donc un hashtag sort automatiquement des tendances passé ce délai.
     recent_posts = await db.posts.find(
-        {"created_at": {"$gte": since_7d}}
+        {"created_at": {"$gte": since_24h}}
     ).sort("created_at", -1).limit(3000).to_list(length=3000)
 
     stats: Dict[str, dict] = {}
     for post in recent_posts:
         content = post.get("content") or ""
-        created = post.get("created_at", "")
         likes = post.get("likes_count", 0) or 0
 
         seen = set()
@@ -3706,20 +3706,18 @@ async def compute_trending_hashtags(limit: int = 10):
             if key in seen:
                 continue
             seen.add(key)
-            entry = stats.setdefault(key, {"display": raw_tag, "count": 0, "count24": 0, "likes": 0})
+            entry = stats.setdefault(key, {"display": raw_tag, "count": 0, "likes": 0})
             entry["count"] += 1
             entry["likes"] += likes
-            if created >= since_24h:
-                entry["count24"] += 1
 
     trending = []
     for key, entry in stats.items():
-        score = (entry["count24"] * 3.0) + (entry["count"] * 1.0) + (entry["likes"] * 0.1)
+        score = (entry["count"] * 3.0) + (entry["likes"] * 0.1)
         trending.append({
             "tag": f"#{entry['display']}",
             "normalized": key,
             "post_count": entry["count"],
-            "posts_24h": entry["count24"],
+            "posts_24h": entry["count"],
             "likes": entry["likes"],
             "score": round(score, 2),
         })
