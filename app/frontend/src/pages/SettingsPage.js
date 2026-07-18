@@ -5,6 +5,7 @@ import { API } from '../App';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
@@ -579,7 +580,13 @@ export default function SettingsPage({ user, setUser }) {
       </Card>
       <Card>
         <CardHeader title="Langue" icon="language" />
-        <RowItem icon="translate" label="Langue de l'interface" right="Français" onClick={() => toast.info("Multilingue à venir")} />
+        <div className="p-5 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold" style={{ color: C.onSurface }}>Langue de l'interface</p>
+            <p className="text-xs mt-0.5" style={{ color: C.outline }}>Détectée automatiquement selon votre pays</p>
+          </div>
+          <LanguageSwitcher />
+        </div>
       </Card>
     </div>
   );

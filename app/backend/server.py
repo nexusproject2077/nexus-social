@@ -672,6 +672,55 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+# ==================== GEO / LANGUE ====================
+# Détection de la langue à partir du pays (adresse IP) pour adapter
+# automatiquement l'interface. Langues gérées côté frontend :
+# en, fr, tr, ru, uk. Les autres pays retombent sur l'anglais.
+SUPPORTED_UI_LANGS = {"en", "fr", "tr", "ru", "uk"}
+
+# Pays -> langue de l'interface (code ISO 3166-1 alpha-2 -> code i18n)
+COUNTRY_TO_LANG = {
+    # Français
+    "FR": "fr", "BE": "fr", "CH": "fr", "LU": "fr", "MC": "fr",
+    "CI": "fr", "SN": "fr", "CM": "fr", "ML": "fr", "BF": "fr",
+    "NE": "fr", "CD": "fr", "CG": "fr", "GA": "fr", "TG": "fr",
+    "BJ": "fr", "MG": "fr", "GN": "fr", "TD": "fr", "DZ": "fr",
+    "MA": "fr", "TN": "fr", "HT": "fr", "GP": "fr", "MQ": "fr",
+    # Turc
+    "TR": "tr", "CY": "tr",
+    # Russe
+    "RU": "ru", "BY": "ru", "KZ": "ru", "KG": "ru", "TJ": "ru",
+    "AM": "ru", "AZ": "ru", "MD": "ru", "UZ": "ru", "TM": "ru",
+    # Ukrainien
+    "UA": "uk",
+}
+
+
+def lang_for_country(iso_code: Optional[str]) -> str:
+    """Retourne le code de langue de l'interface pour un pays donné."""
+    if not iso_code:
+        return "en"
+    return COUNTRY_TO_LANG.get(iso_code.upper(), "en")
+
+
+@api_router.get("/geo/language")
+async def detect_language(request: Request):
+    """Détecte le pays via l'IP et suggère une langue d'interface.
+
+    Best-effort : si la base GeoIP est absente, renvoie 'en' et le frontend
+    retombe sur la détection navigateur. Ne bloque jamais.
+    """
+    ip = client_ip(request)
+    country = None
+    if _geoip_reader is not None:
+        try:
+            country = _geoip_reader.country(ip).country.iso_code
+        except Exception:
+            country = None
+    lang = lang_for_country(country)
+    return {"country": country, "language": lang, "supported": sorted(SUPPORTED_UI_LANGS)}
+
+
 # ==================== AUTH ROUTES ====================
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
@@ -3683,7 +3732,9 @@ async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
 async def compute_trending_hashtags(limit: int = 10):
     """
     Calcule les hashtags tendance EN DIRECT à partir des vraies publications.
-    Score = (#posts 24h * 3) + (#posts 7j) + (likes * 0.1)
+    Fenêtre glissante 24h : seuls les posts des dernières 24h comptent, donc un
+    hashtag sort automatiquement des tendances et est remplacé au-delà de 24h.
+    Score = (#posts 24h * 3) + (likes * 0.1)
     Aucun cron requis : la tendance reflète toujours l'état réel de la base.
     """
     now = datetime.now(timezone.utc)

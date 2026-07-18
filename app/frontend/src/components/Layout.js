@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
@@ -7,8 +8,27 @@ import { toast } from "sonner";
 export default function Layout({ children, user, setUser, onCreatePost, compact }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t, i18n } = useTranslation();
   const [suggestedUsers, setSuggestedUsers] = useState([]);
   const [trending, setTrending] = useState([]);
+
+  // Détection automatique de la langue via le pays (adresse IP).
+  // On n'écrase jamais un choix explicite de l'utilisateur.
+  useEffect(() => {
+    if (localStorage.getItem("nexus_lang_explicit")) return;
+    let cancelled = false;
+    axios
+      .get(`${API}/geo/language`)
+      .then((res) => {
+        const lang = res.data?.language;
+        const supported = res.data?.supported || [];
+        if (!cancelled && lang && supported.includes(lang) && lang !== i18n.resolvedLanguage) {
+          i18n.changeLanguage(lang);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [i18n]);
 
   useEffect(() => {
     if (compact) return;
@@ -94,15 +114,15 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
   };
 
   const navItems = [
-    { icon: "home",           label: "Accueil",     path: "/",                     testId: "nav-home" },
-    { icon: "play_circle",    label: "Nexus Clips", path: "/clips",                testId: "nav-clips" },
-    { icon: "sensors",        label: "Direct",      path: "/live",                 testId: "nav-live" },
-    { icon: "explore",        label: "Explorer",    path: "/search",               testId: "nav-search" },
-    { icon: "notifications",  label: "Notifications",path: "/notifications",       testId: "nav-notifications" },
-    { icon: "language",       label: "Navigateur",  path: "/browser",              testId: "nav-browser" },
-    { icon: "mail",           label: "Messages",    path: "/messages",             testId: "nav-messages" },
-    { icon: "account_circle", label: "Profil",      path: `/profile/${user.id}`,   testId: "nav-profile" },
-    { icon: "settings",       label: "Paramètres",  path: "/settings",             testId: "nav-settings" },
+    { icon: "home",           label: t("home"),          path: "/",                     testId: "nav-home" },
+    { icon: "play_circle",    label: "Nexus Clips",      path: "/clips",                testId: "nav-clips" },
+    { icon: "sensors",        label: t("nav_live"),      path: "/live",                 testId: "nav-live" },
+    { icon: "explore",        label: t("explore"),       path: "/search",               testId: "nav-search" },
+    { icon: "notifications",  label: t("notifications"), path: "/notifications",        testId: "nav-notifications" },
+    { icon: "language",       label: t("browser"),       path: "/browser",              testId: "nav-browser" },
+    { icon: "mail",           label: t("messages"),      path: "/messages",             testId: "nav-messages" },
+    { icon: "account_circle", label: t("profile"),       path: `/profile/${user.id}`,   testId: "nav-profile" },
+    { icon: "settings",       label: t("settings"),      path: "/settings",             testId: "nav-settings" },
   ];
 
   return (
@@ -130,7 +150,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
             <input
               className="w-full border-none rounded-xl py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-500"
               style={{ backgroundColor: "#131b2e", color: "#dae2fd" }}
-              placeholder="Rechercher..."
+              placeholder={`${t("search")}...`}
               type="text"
               onKeyDown={(e) => { if (e.key === "Enter" && e.target.value) navigate(`/search?q=${e.target.value}`); }}
             />
@@ -171,7 +191,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
             className="w-full py-3.5 font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm"
             style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: "#00363e", boxShadow: "0 8px 20px rgba(34,211,238,0.2)" }}
           >
-            Créer un post
+            {t("create_post")}
           </button>
         </div>
 
@@ -192,7 +212,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
             <div className="flex flex-col flex-1 min-w-0">
               <span className="text-xs font-semibold truncate" style={{ color: "#dae2fd" }}>@{user.username}</span>
               <button data-testid="desktop-logout-button" onClick={handleLogout} className="text-[10px] text-left transition-colors hover:text-red-400" style={{ color: "#859397" }}>
-                Déconnexion
+                {t("logout")}
               </button>
             </div>
           </div>
@@ -207,7 +227,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
         >
           {/* Trending */}
           <section>
-            <h2 className="font-headline font-bold text-lg mb-6 tracking-tight" style={{ color: "#dae2fd" }}>Tendances</h2>
+            <h2 className="font-headline font-bold text-lg mb-6 tracking-tight" style={{ color: "#dae2fd" }}>{t("trending")}</h2>
             <div className="space-y-6">
               {trending.length === 0 ? (
                 <p className="text-xs" style={{ color: "#859397" }}>
@@ -234,7 +254,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
           {/* Suggested Users */}
           {suggestedUsers.length > 0 && (
             <section>
-              <h2 className="font-headline font-bold text-lg mb-6 tracking-tight" style={{ color: "#dae2fd" }}>Suggestions</h2>
+              <h2 className="font-headline font-bold text-lg mb-6 tracking-tight" style={{ color: "#dae2fd" }}>{t("suggestions")}</h2>
               <div className="space-y-4">
                 {suggestedUsers.map((u) => (
                   <div key={u.id} className="flex items-center justify-between">
@@ -288,7 +308,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
             <input
               className="w-full border-none rounded-full py-1.5 pl-8 pr-4 text-xs outline-none placeholder:text-slate-500"
               style={{ backgroundColor: "#131b2e", color: "#dae2fd" }}
-              placeholder="Rechercher..."
+              placeholder={`${t("search")}...`}
               type="text"
               onKeyDown={(e) => { if (e.key === "Enter" && e.target.value) navigate(`/search?q=${e.target.value}`); }}
             />

@@ -4,6 +4,9 @@
   "private": true,
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
+    "i18next": "^23.15.1",
+    "i18next-browser-languagedetector": "^8.0.0",
+    "react-i18next": "^15.1.1",
     "@radix-ui/react-accordion": "^1.2.8",
     "@radix-ui/react-alert-dialog": "^1.1.11",
     "@radix-ui/react-aspect-ratio": "^1.1.4",
