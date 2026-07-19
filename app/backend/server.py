@@ -24,6 +24,7 @@ from bson import ObjectId
 import json
 from collections import defaultdict, deque
 import time
+import asyncio
 from enum import Enum
 import hashlib
 import random
@@ -4560,6 +4561,64 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ==================== TÂCHE DE FOND : NOTIF « POST EN TENDANCE » ====================
+# Notifie l'auteur quand sa publication entre dans le top des posts les plus
+# engageants des dernières 24h. Boucle intégrée au process (Render 1 worker),
+# pas de cron externe. Anti-doublon via db.trending_notified (24h).
+TRENDING_NOTIFY_INTERVAL = int(os.environ.get("TRENDING_NOTIFY_INTERVAL", "1800"))  # 30 min
+TRENDING_TOP_N = int(os.environ.get("TRENDING_TOP_N", "10"))
+
+
+async def _notify_trending_once():
+    since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    raw = await db.posts.find(
+        {"created_at": {"$gte": since}, "repost_of": None}
+    ).to_list(length=3000)
+
+    scored = []
+    for p in raw:
+        likes = p.get("likes_count", 0) or 0
+        comments = p.get("comments_count", 0) or 0
+        views = p.get("views", 0) or 0
+        score = likes * 2 + comments * 3 + views * 0.1
+        if score <= 0:
+            continue
+        scored.append((score, p))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:TRENDING_TOP_N]
+
+    for _, p in top:
+        post_id = p.get("id")
+        author_id = p.get("author_id")
+        if not post_id or not author_id:
+            continue
+        # Déjà notifié dans les dernières 24h ?
+        already = await db.trending_notified.find_one({"post_id": post_id, "notified_at": {"$gte": since}})
+        if already:
+            continue
+        await db.trending_notified.update_one(
+            {"post_id": post_id},
+            {"$set": {"post_id": post_id, "notified_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        await create_notification(
+            author_id, "trending",
+            {"id": "system", "username": "Nexus", "profile_pic": None},
+            post_id=post_id,
+        )
+
+
+async def trending_notifier_loop():
+    # Petit délai initial pour laisser l'app démarrer.
+    await asyncio.sleep(60)
+    while True:
+        try:
+            await _notify_trending_once()
+        except Exception as e:
+            logger.error(f"trending notifier: {e}")
+        await asyncio.sleep(TRENDING_NOTIFY_INTERVAL)
+
+
 # Event handlers
 @app.on_event("startup")
 async def startup_db_client():
@@ -4570,6 +4629,12 @@ async def startup_db_client():
     except Exception as e:
         logger.error(f"❌ MongoDB connection failed: {e}")
         raise
+    # Lance la boucle de notifications « tendance » en tâche de fond.
+    try:
+        asyncio.create_task(trending_notifier_loop())
+        logger.info("✅ Trending notifier lancé")
+    except Exception as e:
+        logger.error(f"Impossible de lancer le trending notifier: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
