@@ -598,7 +598,12 @@ class Comment(BaseModel):
     author_id: str
     author_username: str
     author_profile_pic: Optional[str] = None
+    author_is_verified: bool = False
     content: str
+    likes_count: int = 0
+    replies_count: int = 0
+    is_liked: bool = False
+    parent_comment_id: Optional[str] = None
     created_at: str
 
 class MessageCreate(BaseModel):
@@ -1794,12 +1799,21 @@ async def like_post(post_id: str, current_user: dict = Depends(get_current_user)
 async def get_post_comments(post_id: str, current_user: dict = Depends(get_current_user)):
     """Récupère les commentaires d'un post"""
     comments_raw = await db.comments.find({"post_id": post_id}).sort("created_at", -1).to_list(length=100)
-    
+
+    comment_ids = [c.get("id") for c in comments_raw]
+    liked_ids = set()
+    if comment_ids:
+        likes = await db.comment_likes.find(
+            {"comment_id": {"$in": comment_ids}, "user_id": current_user["id"]}
+        ).to_list(length=len(comment_ids))
+        liked_ids = {l.get("comment_id") for l in likes}
+
     comments = []
     for comment_raw in comments_raw:
         comment = convert_mongo_doc_to_dict(comment_raw)
+        comment["is_liked"] = comment.get("id") in liked_ids
         comments.append(Comment(**comment))
-    
+
     return comments
 
 @api_router.post("/posts/{post_id}/comments", response_model=Comment)
@@ -1856,8 +1870,10 @@ async def delete_comment(post_id: str, comment_id: str, current_user: dict = Dep
         raise HTTPException(status_code=403, detail="Not authorized")
     
     await db.comments.delete_one({"id": comment_id})
+    await db.comment_replies.delete_many({"parent_comment_id": comment_id})
+    await db.comment_likes.delete_many({"comment_id": comment_id})
     await db.posts.update_one({"id": post_id}, {"$inc": {"comments_count": -1}})
-    
+
     return {"message": "Comment deleted successfully"}
 
 @api_router.post("/comments/{comment_id}/like")
@@ -1884,6 +1900,12 @@ async def like_comment(comment_id: str, current_user: dict = Depends(get_current
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         await db.comments.update_one({"id": comment_id}, {"$inc": {"likes_count": 1}})
+        # Notifier l'auteur du commentaire (jamais soi-même).
+        comment = convert_mongo_doc_to_dict(comment_raw)
+        await create_notification(
+            comment.get("author_id"), "comment_like", current_user,
+            post_id=comment.get("post_id"), comment_content=comment.get("content"),
+        )
         return {"liked": True}
 
 @api_router.get("/comments/{comment_id}/replies")
@@ -1920,9 +1942,29 @@ async def create_comment_reply(comment_id: str, reply_data: CommentCreate, curre
     
     await db.comment_replies.insert_one(reply_to_insert)
     await db.comments.update_one({"id": comment_id}, {"$inc": {"replies_count": 1}})
-    
+
+    # Notifier l'auteur du commentaire parent (jamais soi-même).
+    parent = convert_mongo_doc_to_dict(comment_raw)
+    await create_notification(
+        parent.get("author_id"), "comment_reply", current_user,
+        post_id=parent.get("post_id"), comment_content=reply_data.content,
+    )
+
     reply = convert_mongo_doc_to_dict(reply_to_insert)
     return Comment(**reply)
+
+@api_router.delete("/comments/{comment_id}/replies/{reply_id}")
+async def delete_comment_reply(comment_id: str, reply_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprime une réponse (uniquement par son auteur)."""
+    reply_raw = await db.comment_replies.find_one({"id": reply_id, "parent_comment_id": comment_id})
+    if not reply_raw:
+        raise HTTPException(status_code=404, detail="Reply not found")
+    reply = convert_mongo_doc_to_dict(reply_raw)
+    if reply["author_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await db.comment_replies.delete_one({"id": reply_id})
+    await db.comments.update_one({"id": comment_id}, {"$inc": {"replies_count": -1}})
+    return {"message": "Reply deleted successfully"}
 
 # ==================== USERS ROUTES ====================
 @api_router.get("/users/search")
@@ -4045,26 +4087,11 @@ async def create_report(report_data: dict = Body(...), current_user: dict = Depe
     return {"success": True, "report_id": report_id}
 
 # ==================== NOTIFICATIONS ====================
+# NB : le helper create_notification() est défini plus haut (près de
+# push_realtime) et pousse aussi la notification en temps réel. On ne le
+# redéfinit pas ici pour ne pas masquer cette version.
 
-async def create_notification(user_id: str, type: str, content: str, metadata: dict = None):
-    notification_id = str(uuid.uuid4())
-    await db.notifications.insert_one({
-        "id": notification_id,
-        "user_id": user_id,
-        "type": type,
-        "content": content,
-        "metadata": metadata or {},
-        "read": False,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    return notification_id
-
-@api_router.get("/notifications")
-async def get_notifications(limit: int = 20, current_user: dict = Depends(get_current_user)):
-    notifications = await db.notifications.find(
-        {"user_id": current_user["id"]}
-    ).sort("created_at", -1).limit(limit).to_list(length=limit)
-    return {"success": True, "notifications": [convert_mongo_doc_to_dict(n) for n in notifications]}
+# NB : GET /notifications est défini plus haut (response_model=List[Notification]).
 
 # ==================== BROWSER (NAVIGATEUR) ====================
 

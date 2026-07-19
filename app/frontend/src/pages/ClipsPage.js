@@ -16,6 +16,145 @@ const C = {
   onSurface: "#dae2fd",
 };
 
+const fmtNum = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
+const fmtRel = (d) => { try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); } catch { return ""; } };
+
+// Un commentaire de clip : like, réponses, et suppression par son auteur.
+function CommentItem({ comment, currentUser, onDeleted }) {
+  const [liked, setLiked]   = useState(comment.is_liked || false);
+  const [likes, setLikes]   = useState(comment.likes_count || 0);
+  const [repCount, setRepCount] = useState(comment.replies_count || 0);
+  const [showReplies, setShowReplies] = useState(false);
+  const [replies, setReplies] = useState([]);
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyText, setReplyText] = useState("");
+
+  const toggleLike = async () => {
+    // Optimiste : on inverse tout de suite, on corrige avec la réponse serveur.
+    setLiked((v) => !v);
+    setLikes((n) => (liked ? n - 1 : n + 1));
+    try {
+      const r = await axios.post(`${API}/comments/${comment.id}/like`);
+      setLiked(r.data.liked);
+    } catch {
+      setLiked((v) => !v);
+      setLikes((n) => (liked ? n + 1 : n - 1));
+    }
+  };
+
+  const loadReplies = async () => {
+    const next = !showReplies;
+    setShowReplies(next);
+    if (next && replies.length === 0 && repCount > 0) {
+      try {
+        const r = await axios.get(`${API}/comments/${comment.id}/replies`);
+        setReplies(r.data || []);
+      } catch { /* ignore */ }
+    }
+  };
+
+  const sendReply = async () => {
+    if (!replyText.trim()) return;
+    try {
+      const r = await axios.post(`${API}/comments/${comment.id}/replies`, { content: replyText });
+      if (r.data && r.data.id) setReplies((prev) => [...prev, r.data]);
+      setRepCount((n) => n + 1);
+      setReplyText("");
+      setShowReplies(true);
+    } catch { toast.error("Erreur"); }
+  };
+
+  const deleteReply = async (rid) => {
+    try {
+      await axios.delete(`${API}/comments/${comment.id}/replies/${rid}`);
+      setReplies((prev) => prev.filter((x) => x.id !== rid));
+      setRepCount((n) => Math.max(0, n - 1));
+    } catch { toast.error("Erreur"); }
+  };
+
+  const Avatar = ({ pic, name, size = "w-7 h-7" }) => (
+    pic ? (
+      <img src={pic} alt={name} className={`${size} rounded-full object-cover flex-shrink-0`} />
+    ) : (
+      <div className={`${size} rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0`} style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+        {(name || "?")[0].toUpperCase()}
+      </div>
+    )
+  );
+
+  return (
+    <div className="flex gap-2.5 items-start">
+      <Avatar pic={comment.author_profile_pic} name={comment.author_username} />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs" style={{ color: C.onSurface }}>
+          <span className="font-bold">@{comment.author_username}</span>{" "}
+          <span>{comment.content}</span>
+        </p>
+        <div className="flex items-center gap-4 mt-1">
+          <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(comment.created_at)}</span>
+          <button onClick={() => setReplyOpen((v) => !v)} className="text-[10px] font-semibold" style={{ color: C.outline }}>
+            Répondre
+          </button>
+          {repCount > 0 && (
+            <button onClick={loadReplies} className="text-[10px] font-semibold" style={{ color: C.cyan }}>
+              {showReplies ? "Masquer" : `${repCount} réponse${repCount > 1 ? "s" : ""}`}
+            </button>
+          )}
+          {currentUser?.id === comment.author_id && (
+            <button onClick={() => onDeleted?.(comment.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>
+              Supprimer
+            </button>
+          )}
+        </div>
+
+        {replyOpen && (
+          <div className="flex gap-2 items-center mt-2">
+            <input
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder={`Répondre à @${comment.author_username}…`}
+              className="flex-1 bg-transparent outline-none text-xs py-1.5 px-2.5 rounded-lg"
+              style={{ backgroundColor: C.high, color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}
+              onKeyDown={(e) => { if (e.key === "Enter") sendReply(); }}
+            />
+            <button onClick={sendReply} className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+              <span className="material-symbols-outlined text-xs">send</span>
+            </button>
+          </div>
+        )}
+
+        {showReplies && replies.map((rp) => (
+          <div key={rp.id} className="flex gap-2 items-start mt-2 pl-1">
+            <Avatar pic={rp.author_profile_pic} name={rp.author_username} size="w-6 h-6" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs" style={{ color: C.onSurface }}>
+                <span className="font-bold">@{rp.author_username}</span>{" "}
+                <span>{rp.content}</span>
+              </p>
+              <div className="flex items-center gap-3 mt-0.5">
+                <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(rp.created_at)}</span>
+                {currentUser?.id === rp.author_id && (
+                  <button onClick={() => deleteReply(rp.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>
+                    Supprimer
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Like du commentaire */}
+      <button onClick={toggleLike} className="flex flex-col items-center gap-0.5 flex-shrink-0">
+        <span className="material-symbols-outlined text-base" style={{ color: liked ? "#f87171" : C.outline, fontVariationSettings: liked ? "'FILL' 1" : "'FILL' 0" }}>
+          favorite
+        </span>
+        {likes > 0 && <span className="text-[10px]" style={{ color: C.outline }}>{fmtNum(likes)}</span>}
+      </button>
+    </div>
+  );
+}
+
 function ClipCard({ post, currentUser, isActive, onDelete }) {
   const navigate  = useNavigate();
   const videoRef  = useRef(null);
@@ -79,6 +218,14 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
       if (res.data && res.data.id) setCommentsList((prev) => [res.data, ...prev]);
       else setCommentsList((prev) => [{ id: `tmp-${Date.now()}`, author_username: currentUser?.username, content: commentText, created_at: new Date().toISOString() }, ...prev]);
       setCommentText("");
+    } catch { toast.error("Erreur"); }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    try {
+      await axios.delete(`${API}/posts/${post.id}/comments/${commentId}`);
+      setCommentsList((prev) => prev.filter((c) => c.id !== commentId));
+      setComments((p) => Math.max(0, p - 1));
     } catch { toast.error("Erreur"); }
   };
 
@@ -202,22 +349,12 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
               <p className="text-xs text-center py-4" style={{ color: C.outline }}>Aucun commentaire. Soyez le premier !</p>
             ) : (
               commentsList.map((c) => (
-                <div key={c.id} className="flex gap-2.5 items-start">
-                  {c.author_profile_pic ? (
-                    <img src={c.author_profile_pic} alt={c.author_username} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
-                  ) : (
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
-                      {(c.author_username || "?")[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs" style={{ color: C.onSurface }}>
-                      <span className="font-bold">@{c.author_username}</span>{" "}
-                      <span style={{ color: C.onVariant }}>{c.content}</span>
-                    </p>
-                    <p className="text-[10px] mt-0.5" style={{ color: C.outline }}>{fmtDate(c.created_at)}</p>
-                  </div>
-                </div>
+                <CommentItem
+                  key={c.id}
+                  comment={c}
+                  currentUser={currentUser}
+                  onDeleted={handleDeleteComment}
+                />
               ))
             )}
           </div>

@@ -104,7 +104,10 @@ export default function NotificationsPage({ user }) {
       case 'like':
         return <Heart className="w-5 h-5 text-red-500" fill="currentColor" />;
       case 'comment':
+      case 'comment_reply':
         return <MessageCircle className="w-5 h-5 text-blue-500" />;
+      case 'comment_like':
+        return <Heart className="w-5 h-5 text-red-500" fill="currentColor" />;
       case 'follow':
       case 'follow_request':
       case 'follow_accepted':
@@ -128,6 +131,8 @@ export default function NotificationsPage({ user }) {
     switch (notif.type) {
       case 'like':     return "a aimé votre publication";
       case 'comment':  return notif.comment_content ? `a commenté : « ${notif.comment_content} »` : "a commenté votre publication";
+      case 'comment_like':  return "a aimé votre commentaire";
+      case 'comment_reply': return notif.comment_content ? `a répondu : « ${notif.comment_content} »` : "a répondu à votre commentaire";
       case 'follow':   return "s'est abonné(e) à vous";
       case 'repost':   return "a reposté votre publication";
       case 'mention':  return "vous a mentionné dans une publication";
