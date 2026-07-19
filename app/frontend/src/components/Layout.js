@@ -121,7 +121,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
     { icon: "notifications",  label: t("notifications"), path: "/notifications",        testId: "nav-notifications" },
     { icon: "mail",           label: t("messages"),      path: "/messages",             testId: "nav-messages" },
     { icon: "account_circle", label: t("profile"),       path: `/profile/${user.id}`,   testId: "nav-profile" },
-    { icon: "settings",       label: t("settings"),      path: "/settings",             testId: "nav-settings" },
+    { icon: "settings",       label: t("settings.title"),      path: "/settings",             testId: "nav-settings" },
   ];
 
   return (
@@ -318,7 +318,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           <button style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
             <span className="material-symbols-outlined">notifications</span>
           </button>
-          <button style={{ color: "#859397" }} onClick={() => navigate("/settings")} data-testid="nav-settings-mobile" title={t("settings")}>
+          <button style={{ color: "#859397" }} onClick={() => navigate("/settings")} data-testid="nav-settings-mobile" title={t("settings.title")}>
             <span className="material-symbols-outlined">settings</span>
           </button>
         </div>

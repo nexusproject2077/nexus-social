@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { API } from '../App';
 import axios from 'axios';
@@ -128,6 +129,7 @@ function InputField({ label, value, onChange, disabled, type = "text", placehold
 // ── MAIN PAGE ──────────────────────────────────────────────────────────────────
 export default function SettingsPage({ user, setUser }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [activeSection, setActiveSection]   = useState("account");
   const [settings, setSettings]             = useState(null);
   const [loading, setLoading]               = useState(true);
@@ -236,12 +238,12 @@ export default function SettingsPage({ user, setUser }) {
   };
 
   const navSections = [
-    { id: "account",  icon: "manage_accounts",  label: "Compte" },
-    { id: "creator",  icon: "paid",              label: "Créateur" },
-    { id: "privacy",  icon: "gavel",             label: "Confidentialité" },
-    { id: "security", icon: "shield",            label: "Sécurité" },
-    { id: "content",  icon: "tune",              label: "Contenu" },
-    { id: "display",  icon: "palette",           label: "Affichage" },
+    { id: "account",  icon: "manage_accounts",  label: t("settings.account") },
+    { id: "creator",  icon: "paid",              label: t("settings.creator") },
+    { id: "privacy",  icon: "gavel",             label: t("settings.privacy") },
+    { id: "security", icon: "shield",            label: t("settings.security") },
+    { id: "content",  icon: "tune",              label: t("settings.content") },
+    { id: "display",  icon: "palette",           label: t("settings.display") },
   ];
 
   if (loading) {
@@ -259,7 +261,7 @@ export default function SettingsPage({ user, setUser }) {
   const renderAccount = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Votre compte</h2>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.your_account")}</h2>
         <p className="text-sm" style={{ color: C.outline }}>Gérez vos informations personnelles et vos préférences</p>
       </div>
 
@@ -433,7 +435,7 @@ export default function SettingsPage({ user, setUser }) {
   const renderPrivacy = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Confidentialité</h2>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.privacy_title")}</h2>
         <p className="text-sm" style={{ color: C.outline }}>Contrôlez qui peut voir votre contenu et vos informations</p>
       </div>
 
@@ -562,7 +564,7 @@ export default function SettingsPage({ user, setUser }) {
   const renderDisplay = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Affichage</h2>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.display_title")}</h2>
         <p className="text-sm" style={{ color: C.outline }}>Personnalisez l'apparence de Nexus</p>
       </div>
       <Card>
