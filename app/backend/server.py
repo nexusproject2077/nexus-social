@@ -306,6 +306,33 @@ async def push_realtime(user_id: str, payload: dict):
     except Exception:
         pass
 
+
+async def create_notification(user_id, notif_type, from_user, post_id=None,
+                              comment_content=None):
+    """Crée une notification (et la pousse en temps réel). Best-effort.
+
+    N'auto-notifie jamais : si l'émetteur est le destinataire, on ignore.
+    """
+    if not user_id or user_id == from_user.get("id"):
+        return
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "type": notif_type,
+        "from_user_id": from_user.get("id"),
+        "from_username": from_user.get("username", ""),
+        "from_profile_pic": from_user.get("profile_pic"),
+        "post_id": post_id,
+        "comment_content": comment_content,
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        await db.notifications.insert_one(dict(doc))
+        await push_realtime(user_id, {"type": "notification", "data": doc})
+    except Exception:
+        pass
+
 # ==================== LIVE (WebRTC signaling) ====================
 # Relais de signaling minimal pour un direct 1:1 (offre/réponse/ICE).
 # Gratuit : les pairs utilisent un STUN public (pas de TURN => échoue derrière
@@ -547,6 +574,15 @@ class Post(BaseModel):
     affiliate_clicks: int = 0
     poll: Optional[Poll] = None
     poll_user_vote: Optional[str] = None  # id de l'option votée par l'utilisateur courant
+    # Republication : si repost_of est défini, ce post est un repartage.
+    # author_* = la personne qui a reposté ; original_author_* = l'auteur d'origine.
+    repost_of: Optional[str] = None
+    original_author_id: Optional[str] = None
+    original_author_username: Optional[str] = None
+    original_author_profile_pic: Optional[str] = None
+    original_author_is_verified: bool = False
+    is_reposted: bool = False  # l'utilisateur courant a-t-il reposté ce post ?
+    mentioned_user_ids: Optional[List[str]] = None
     created_at: str
 
 class CommentCreate(BaseModel):
@@ -1404,12 +1440,32 @@ async def end_user_session(
         raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
 # ==================== POSTS ROUTES ====================
+async def resolve_mentions(content: str, exclude_id: str = None):
+    """Extrait les @mentions du contenu et renvoie la liste des user_ids
+    correspondant à des comptes existants (hors exclude_id)."""
+    if not content:
+        return []
+    usernames = {u.lower() for u in re.findall(r'@(\w+)', content)}
+    if not usernames:
+        return []
+    ids = []
+    async for u in db.users.find(
+        {"username": {"$in": list(usernames)}}, {"id": 1, "username": 1}
+    ):
+        # match insensible à la casse
+        if u.get("username", "").lower() in usernames and u.get("id") != exclude_id:
+            ids.append(u["id"])
+    return ids
+
+
 @api_router.post("/posts", response_model=Post)
 async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
     """Créer un nouveau post"""
     post_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    
+
+    mentioned_ids = await resolve_mentions(post_data.content, exclude_id=current_user["id"])
+
     post_to_insert = {
         "id": post_id,
         "author_id": current_user["id"],
@@ -1425,10 +1481,15 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
         "poll": build_poll(post_data.poll_options),
         "affiliate_link": safe_http_url(post_data.affiliate_link),
         "affiliate_clicks": 0,
+        "mentioned_user_ids": mentioned_ids,
         "created_at": now.isoformat()
     }
 
     await db.posts.insert_one(post_to_insert)
+
+    # Notifier les personnes mentionnées.
+    for uid in mentioned_ids:
+        await create_notification(uid, "mention", current_user, post_id=post_id)
 
     post = convert_mongo_doc_to_dict(post_to_insert)
     post["is_liked"] = False
@@ -1577,13 +1638,48 @@ async def repost(post_id: str, current_user: dict = Depends(get_current_user)):
         "repost_of": post_id,
         "original_author_username": original["author_username"],
         "original_author_id": original["author_id"],
+        "original_author_profile_pic": original.get("author_profile_pic"),
+        "original_author_is_verified": original.get("author_is_verified", False),
         "created_at": now.isoformat()
     }
     await db.posts.insert_one(repost_doc)
     await db.posts.update_one({"id": post_id}, {"$inc": {"shares_count": 1}})
+
+    # Notifier l'auteur d'origine (sauf soi-même, déjà exclu plus haut).
+    await create_notification(
+        user_id=original["author_id"],
+        notif_type="repost",
+        from_user=current_user,
+        post_id=post_id,
+    )
+
     result = convert_mongo_doc_to_dict(repost_doc)
     result["is_liked"] = False
+    result["is_reposted"] = True
     return Post(**result)
+
+
+@api_router.delete("/posts/{post_id}/repost")
+async def unrepost(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Annule la republication d'un post par l'utilisateur courant."""
+    existing = await db.posts.find_one({"repost_of": post_id, "author_id": current_user["id"]})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Vous n'avez pas reposté cette publication")
+
+    await db.posts.delete_one({"id": existing["id"]})
+    # Décrémente le compteur de partages de l'original (jamais en dessous de 0).
+    await db.posts.update_one(
+        {"id": post_id, "shares_count": {"$gt": 0}},
+        {"$inc": {"shares_count": -1}},
+    )
+    # Retire la notification de republication associée.
+    await db.notifications.delete_many({
+        "type": "repost", "post_id": post_id, "from_user_id": current_user["id"],
+    })
+
+    updated = await db.posts.find_one({"id": post_id})
+    shares = (updated or {}).get("shares_count", 0) if updated else 0
+    return {"reposted": False, "shares_count": shares}
 
 @api_router.delete("/posts/{post_id}")
 async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
@@ -1857,9 +1953,11 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
                     detail="Ce compte est privé. Vous devez être abonné pour voir ses publications."
                 )
     
-    # Récupérer les posts
-    posts_raw = await db.posts.find({"author_id": user_id}).sort("created_at", -1).to_list(length=50)
-    
+    # Publications originales uniquement (les reposts ont leur propre section).
+    posts_raw = await db.posts.find(
+        {"author_id": user_id, "repost_of": None}
+    ).sort("created_at", -1).to_list(length=50)
+
     posts = []
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
@@ -1867,7 +1965,62 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
         post["is_liked"] = bool(like_raw)
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
-    
+
+    return posts
+
+
+async def _visible_profile_or_403(user_id: str, current_user: dict):
+    """Vérifie l'accès à un profil (comptes privés) et renvoie l'utilisateur cible."""
+    if current_user["id"] == user_id:
+        return None
+    target_user = await db.users.find_one({"id": user_id})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user.get("is_private", False):
+        if not await check_is_following(current_user["id"], user_id):
+            raise HTTPException(status_code=403, detail="Ce compte est privé. Vous devez être abonné pour voir ses publications.")
+    return target_user
+
+
+@api_router.get("/users/{user_id}/reposts", response_model=List[Post])
+async def get_user_reposts(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Publications repartagées (reposts) par l'utilisateur."""
+    await _visible_profile_or_403(user_id, current_user)
+
+    reposts_raw = await db.posts.find(
+        {"author_id": user_id, "repost_of": {"$ne": None}}
+    ).sort("created_at", -1).to_list(length=50)
+
+    posts = []
+    for post_raw in reposts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        # Like/état calculés sur la publication d'origine.
+        original_id = post.get("repost_of")
+        like_raw = await db.likes.find_one({"post_id": original_id, "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        post["is_reposted"] = (user_id == current_user["id"])
+        posts.append(Post(**post))
+
+    return posts
+
+
+@api_router.get("/users/{user_id}/mentions", response_model=List[Post])
+async def get_user_mentions(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Publications où l'utilisateur a été mentionné (@)."""
+    await _visible_profile_or_403(user_id, current_user)
+
+    posts_raw = await db.posts.find(
+        {"mentioned_user_ids": user_id, "repost_of": None}
+    ).sort("created_at", -1).to_list(length=50)
+
+    posts = []
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
+        posts.append(Post(**post))
+
     return posts
 
 # ==================== USER SETTINGS ROUTES ====================
@@ -2109,6 +2262,33 @@ async def mark_notification_read(notification_id: str, current_user: dict = Depe
     
     await db.notifications.update_one({"id": notification_id}, {"$set": {"read": True}})
     return {"message": "Notification marked as read"}
+
+
+@api_router.put("/notifications/read-all")
+async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
+    """Marque toutes les notifications de l'utilisateur comme lues."""
+    await db.notifications.update_many(
+        {"user_id": current_user["id"], "read": False}, {"$set": {"read": True}}
+    )
+    return {"success": True}
+
+
+@api_router.delete("/notifications/{notification_id}")
+async def delete_notification(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprime une notification de l'utilisateur."""
+    result = await db.notifications.delete_one(
+        {"id": notification_id, "user_id": current_user["id"]}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"success": True}
+
+
+@api_router.delete("/notifications")
+async def clear_notifications(current_user: dict = Depends(get_current_user)):
+    """Supprime toutes les notifications de l'utilisateur."""
+    await db.notifications.delete_many({"user_id": current_user["id"]})
+    return {"success": True}
 
 # ==================== MESSAGES ROUTES ====================
 @api_router.get("/messages/conversations", response_model=List[Conversation])

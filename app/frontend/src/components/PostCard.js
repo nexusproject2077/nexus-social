@@ -24,8 +24,19 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const [sharesCount, setSharesCount] = useState(post.shares_count || 0);
   const [commentsCount, setCommentsCount] = useState(post.comments_count || 0);
   const [showComments, setShowComments]   = useState(false);
-  const [reposted, setReposted]       = useState(!!post.repost_of && post.author_id === currentUser?.id);
+  const [reposted, setReposted]       = useState(
+    post.is_reposted || (!!post.repost_of && post.author_id === currentUser?.id)
+  );
   const [repostLoading, setRepostLoading] = useState(false);
+
+  // Republication : on agit toujours sur la publication D'ORIGINE.
+  const isRepost = !!post.repost_of;
+  const originalId = post.repost_of || post.id;
+  // Auteur affiché : l'auteur d'origine pour un repost, sinon l'auteur du post.
+  const displayAuthorId = isRepost ? post.original_author_id : post.author_id;
+  const displayAuthorName = isRepost ? post.original_author_username : post.author_username;
+  const displayAuthorPic = isRepost ? post.original_author_profile_pic : post.author_profile_pic;
+  const displayAuthorVerified = isRepost ? post.original_author_is_verified : post.author_is_verified;
   const [poll, setPoll]               = useState(post.poll || null);
   const [pollVote, setPollVote]       = useState(post.poll_user_vote || null);
   const [pollLoading, setPollLoading] = useState(false);
@@ -42,15 +53,25 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
   const handleRepost = async () => {
     if (!currentUser) { toast.error("Vous devez être connecté"); return; }
-    if (reposted) { toast.info("Vous avez déjà reposté cette publication"); return; }
-    if (post.author_id === currentUser.id) { toast.error("Vous ne pouvez pas reposter votre propre publication"); return; }
+    if (repostLoading) return;
+    if (displayAuthorId === currentUser.id) { toast.error("Vous ne pouvez pas reposter votre propre publication"); return; }
 
     try {
       setRepostLoading(true);
-      await axios.post(`${API}/posts/${post.id}/repost`);
-      setReposted(true);
-      setSharesCount((p) => p + 1);
-      toast.success("Publication repostée !");
+      if (reposted) {
+        // Annuler la republication : le compteur se met à jour.
+        const res = await axios.delete(`${API}/posts/${originalId}/repost`);
+        setReposted(false);
+        setSharesCount((p) => (typeof res.data?.shares_count === "number" ? res.data.shares_count : Math.max(0, p - 1)));
+        toast.success("Republication annulée");
+        // Si on regardait notre propre repost, il disparaît de la liste.
+        if (isRepost && post.author_id === currentUser.id) onDelete?.(post.id);
+      } else {
+        await axios.post(`${API}/posts/${originalId}/repost`);
+        setReposted(true);
+        setSharesCount((p) => p + 1);
+        toast.success("Publication repostée !");
+      }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors du repost");
     } finally {
@@ -59,10 +80,18 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm("Êtes-vous sûr de vouloir supprimer ce post ?")) return;
+    // Pour un repost, « supprimer » = annuler la republication (met à jour le
+    // compteur de partages de l'original et retire le repost du profil).
+    const label = isRepost ? "Annuler cette republication ?" : "Êtes-vous sûr de vouloir supprimer ce post ?";
+    if (!window.confirm(label)) return;
     try {
-      await axios.delete(`${API}/posts/${post.id}`);
-      toast.success("Post supprimé avec succès");
+      if (isRepost) {
+        await axios.delete(`${API}/posts/${originalId}/repost`);
+        toast.success("Republication annulée");
+      } else {
+        await axios.delete(`${API}/posts/${post.id}`);
+        toast.success("Post supprimé avec succès");
+      }
       onDelete?.(post.id);
     } catch {
       toast.error("Erreur lors de la suppression");
@@ -88,7 +117,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
   const getInitials = (u) => (u ? u.substring(0, 2).toUpperCase() : "??");
 
-  // Rend le contenu avec les hashtags cliquables (#tag -> recherche)
+  // Rend le contenu avec les hashtags et @mentions cliquables (-> recherche)
   const renderContent = (text) => {
     if (!text) return null;
     return text.split(/(\s+)/).map((part, i) => {
@@ -97,6 +126,19 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           <Link
             key={i}
             to={`/search?q=${encodeURIComponent(part)}`}
+            onClick={(e) => e.stopPropagation()}
+            className="hover:underline"
+            style={{ color: C.cyan }}
+          >
+            {part}
+          </Link>
+        );
+      }
+      if (/^@[\p{L}0-9_]+$/u.test(part)) {
+        return (
+          <Link
+            key={i}
+            to={`/search?q=${encodeURIComponent(part.slice(1))}`}
             onClick={(e) => e.stopPropagation()}
             className="hover:underline"
             style={{ color: C.cyan }}
@@ -132,19 +174,19 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
       <div className="p-4 lg:p-5 space-y-4">
         {/* Header */}
         <div className="flex justify-between items-start">
-          <Link to={`/profile/${post.author_id}`} className="flex gap-3 items-center">
-            {post.author_profile_pic ? (
-              <img src={post.author_profile_pic} alt={post.author_username} className="w-10 h-10 rounded-full object-cover" />
+          <Link to={`/profile/${displayAuthorId}`} className="flex gap-3 items-center">
+            {displayAuthorPic ? (
+              <img src={displayAuthorPic} alt={displayAuthorName} className="w-10 h-10 rounded-full object-cover" />
             ) : (
               <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
                 style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
-                {getInitials(post.author_username)}
+                {getInitials(displayAuthorName)}
               </div>
             )}
             <div>
               <p className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1" style={{ color: C.onSurface }}>
-                {post.author_username}
-                {post.author_is_verified && (
+                {displayAuthorName}
+                {displayAuthorVerified && (
                   <span
                     className="material-symbols-outlined text-sm"
                     style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1" }}
@@ -287,7 +329,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             <button
               onClick={handleRepost}
               disabled={repostLoading}
-              title={reposted ? "Déjà reposté" : "Reposter"}
+              title={reposted ? "Annuler la republication" : "Reposter"}
               className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
               style={{ color: reposted ? C.cyan : C.outline, opacity: repostLoading ? 0.6 : 1 }}
             >

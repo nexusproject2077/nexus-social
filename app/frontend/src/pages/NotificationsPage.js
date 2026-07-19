@@ -5,7 +5,7 @@ import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, UserPlus, Share2 } from "lucide-react";
+import { Heart, MessageCircle, UserPlus, Share2, Repeat, AtSign, TrendingUp, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function NotificationsPage({ user }) {
@@ -57,6 +57,27 @@ export default function NotificationsPage({ user }) {
     }
   };
 
+  const handleDelete = async (e, id) => {
+    e.stopPropagation();
+    try {
+      await axios.delete(`${API}/notifications/${id}`);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    } catch {
+      toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!window.confirm("Supprimer toutes les notifications ?")) return;
+    try {
+      await axios.delete(`${API}/notifications`);
+      setNotifications([]);
+      toast.success("Notifications supprimées");
+    } catch {
+      toast.error("Erreur lors de la suppression");
+    }
+  };
+
   const getNotificationIcon = (type) => {
     switch (type) {
       case 'like':
@@ -65,10 +86,29 @@ export default function NotificationsPage({ user }) {
         return <MessageCircle className="w-5 h-5 text-blue-500" />;
       case 'follow':
         return <UserPlus className="w-5 h-5 text-green-500" />;
+      case 'repost':
       case 'share':
-        return <Share2 className="w-5 h-5 text-purple-500" />;
+        return <Repeat className="w-5 h-5 text-purple-500" />;
+      case 'mention':
+        return <AtSign className="w-5 h-5 text-cyan-500" />;
+      case 'trending':
+        return <TrendingUp className="w-5 h-5 text-orange-500" />;
       default:
         return null;
+    }
+  };
+
+  const getNotificationText = (notif) => {
+    if (notif.message) return notif.message;
+    switch (notif.type) {
+      case 'like':     return "a aimé votre publication";
+      case 'comment':  return notif.comment_content ? `a commenté : « ${notif.comment_content} »` : "a commenté votre publication";
+      case 'follow':   return "s'est abonné(e) à vous";
+      case 'repost':   return "a reposté votre publication";
+      case 'mention':  return "vous a mentionné dans une publication";
+      case 'trending': return "Votre publication est dans les tendances 🔥";
+      case 'follow_request': return "souhaite s'abonner à vous";
+      default:         return "";
     }
   };
 
@@ -77,17 +117,29 @@ export default function NotificationsPage({ user }) {
       <div className="max-w-2xl mx-auto">
         <div className="sticky top-0 z-10 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800 p-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Notifications</h1>
-          {notifications.some(n => !n.read) && (
-            <Button
-              data-testid="mark-all-read-button"
-              onClick={handleMarkAllRead}
-              variant="outline"
-              size="sm"
-              className="border-slate-700 text-cyan-500 hover:bg-slate-800"
-            >
-              Tout marquer comme lu
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {notifications.some(n => !n.read) && (
+              <Button
+                data-testid="mark-all-read-button"
+                onClick={handleMarkAllRead}
+                variant="outline"
+                size="sm"
+                className="border-slate-700 text-cyan-500 hover:bg-slate-800"
+              >
+                Tout lire
+              </Button>
+            )}
+            {notifications.length > 0 && (
+              <Button
+                onClick={handleClearAll}
+                variant="outline"
+                size="sm"
+                className="border-slate-700 text-red-400 hover:bg-slate-800"
+              >
+                Tout effacer
+              </Button>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -121,15 +173,22 @@ export default function NotificationsPage({ user }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm">
                     <span className="font-semibold">{notif.from_username}</span>{' '}
-                    <span className="text-slate-400">{notif.message}</span>
+                    <span className="text-slate-400">{getNotificationText(notif)}</span>
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
                     {new Date(notif.created_at).toLocaleString('fr-FR')}
                   </p>
                 </div>
                 {!notif.read && (
-                  <div className="flex-shrink-0 w-2 h-2 bg-cyan-500 rounded-full"></div>
+                  <div className="flex-shrink-0 w-2 h-2 bg-cyan-500 rounded-full mt-2"></div>
                 )}
+                <button
+                  onClick={(e) => handleDelete(e, notif.id)}
+                  className="flex-shrink-0 text-slate-500 hover:text-red-400 transition-colors p-1"
+                  title="Supprimer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>

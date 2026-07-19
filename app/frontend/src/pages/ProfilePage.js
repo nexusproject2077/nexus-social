@@ -40,6 +40,8 @@ export default function ProfilePage({ user, setUser }) {
   const [followStatus, setFollowStatus] = useState("not_following");
   const [stats, setStats]             = useState({ followers: 0, following: 0, posts: 0 });
   const [activeTab, setActiveTab]     = useState("media");
+  const [reposts, setReposts]         = useState([]);
+  const [mentions, setMentions]       = useState([]);
 
   const isOwnProfile = user && userId && user.id === userId;
 
@@ -92,6 +94,17 @@ export default function ProfilePage({ user, setUser }) {
         toast.error("Erreur lors du chargement des publications");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Change d'onglet et charge reposts / mentions à la demande.
+  const switchTab = (id) => {
+    setActiveTab(id);
+    if (id === "reposts" && userId) {
+      axios.get(`${API}/users/${userId}/reposts`).then((r) => setReposts(r.data || [])).catch(() => {});
+    }
+    if (id === "mentions" && userId) {
+      axios.get(`${API}/users/${userId}/mentions`).then((r) => setMentions(r.data || [])).catch(() => {});
     }
   };
 
@@ -206,8 +219,10 @@ export default function ProfilePage({ user, setUser }) {
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
   const tabs = [
-    { id: "posts",  label: "Publications", icon: "article"  },
-    { id: "media",  label: "Médias",       icon: "grid_on"  },
+    { id: "posts",    label: "Publications", icon: "article"         },
+    { id: "media",    label: "Médias",       icon: "grid_on"         },
+    { id: "reposts",  label: "Reposts",      icon: "repeat"          },
+    { id: "mentions", label: "Mentions",     icon: "alternate_email" },
   ];
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -349,7 +364,7 @@ export default function ProfilePage({ user, setUser }) {
             return (
               <button
                 key={id}
-                onClick={() => setActiveTab(id)}
+                onClick={() => switchTab(id)}
                 className="flex-1 py-4 flex items-center justify-center gap-2 relative transition-all"
               >
                 <span
@@ -462,6 +477,39 @@ export default function ProfilePage({ user, setUser }) {
               ) : (
                 <div className="space-y-4">
                   {posts.map((post) => (
+                    <PostCard key={post.id} post={post} currentUser={user} onUpdate={handlePostUpdate} onDelete={handlePostDelete} />
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* ── Reposts ───────────────────────────────────────────────── */}
+            {activeTab === "reposts" && (
+              reposts.length === 0 ? (
+                <div className="text-center py-16" style={{ color: C.outline }}>
+                  <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">repeat</span>
+                  <p className="text-sm">Aucune republication</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reposts.map((post) => (
+                    <PostCard key={post.id} post={post} currentUser={user} onUpdate={handlePostUpdate}
+                      onDelete={(id) => { setReposts((r) => r.filter((p) => p.id !== id)); handlePostDelete(id); }} />
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* ── Mentions ──────────────────────────────────────────────── */}
+            {activeTab === "mentions" && (
+              mentions.length === 0 ? (
+                <div className="text-center py-16" style={{ color: C.outline }}>
+                  <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">alternate_email</span>
+                  <p className="text-sm">Aucune mention</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {mentions.map((post) => (
                     <PostCard key={post.id} post={post} currentUser={user} onUpdate={handlePostUpdate} onDelete={handlePostDelete} />
                   ))}
                 </div>
