@@ -110,7 +110,7 @@ function CardHeader({ title, icon }) {
 // ── InputField ─────────────────────────────────────────────────────────────────
 function InputField({ label, value, onChange, disabled, type = "text", placeholder }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: C.outline }}>{label}</label>
       <input
         type={type}
@@ -118,8 +118,8 @@ function InputField({ label, value, onChange, disabled, type = "text", placehold
         onChange={onChange}
         disabled={disabled}
         placeholder={placeholder}
-        className="w-full px-4 py-2.5 rounded-xl text-sm border-none outline-none transition-all focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-600 disabled:opacity-50"
-        style={{ background: C.high, color: C.onSurface }}
+        className="w-full min-w-0 box-border px-4 py-2.5 rounded-xl text-sm border-none outline-none transition-all focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-600 disabled:opacity-50"
+        style={{ background: C.high, color: C.onSurface, appearance: "none", WebkitAppearance: "none" }}
       />
     </div>
   );
@@ -246,7 +246,7 @@ export default function SettingsPage({ user, setUser }) {
 
   if (loading) {
     return (
-      <Layout user={user} setUser={setUser}>
+      <Layout user={user} setUser={setUser} compact>
         <div className="flex items-center justify-center h-screen">
           <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
         </div>
@@ -620,7 +620,7 @@ export default function SettingsPage({ user, setUser }) {
   };
 
   return (
-    <Layout user={user} setUser={setUser}>
+    <Layout user={user} setUser={setUser} compact>
       <div className="flex min-h-screen" style={{ backgroundColor: C.surface }}>
 
         {/* ── Settings sidebar ──────────────────────────────────────────────── */}

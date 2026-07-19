@@ -60,6 +60,13 @@ export default function MessagesPage({ user }) {
   const [searchQuery,      setSearchQuery]      = useState("");
   const [searchResults,    setSearchResults]    = useState([]);
   const [showNewMsg,       setShowNewMsg]       = useState(false);
+  const newMsgSearchRef = useRef(null);
+
+  // Ouvre la recherche « nouveau message » et met le focus sur le champ.
+  const openNewMessage = () => {
+    setShowNewMsg(true);
+    setTimeout(() => newMsgSearchRef.current?.focus(), 50);
+  };
 
   // New group modal
   const [showNewGroup,     setShowNewGroup]     = useState(false);
@@ -364,7 +371,7 @@ export default function MessagesPage({ user }) {
             style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa" }}>
             <span className="material-symbols-outlined text-sm">group_add</span>
           </button>
-          <button onClick={() => setShowNewMsg(true)} title="Nouveau message"
+          <button onClick={openNewMessage} title="Nouveau message"
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:opacity-80"
             style={{ background: `${C.cyan}18`, color: C.cyan }}>
             <span className="material-symbols-outlined text-sm">add</span>
@@ -377,9 +384,10 @@ export default function MessagesPage({ user }) {
         <div className="relative">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: C.outline }}>search</span>
           <input
+            ref={newMsgSearchRef}
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); if (!e.target.value.trim()) setShowNewMsg(false); else setShowNewMsg(true); }}
-            placeholder="Rechercher..."
+            placeholder="Rechercher ou démarrer une conversation..."
             className="w-full text-sm pl-9 pr-4 py-2 rounded-xl border-none outline-none placeholder:text-slate-600"
             style={{ background: C.high, color: C.onSurface }}
           />
@@ -416,7 +424,7 @@ export default function MessagesPage({ user }) {
             <div className="px-4 py-8 text-center">
               <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
               <p className="text-xs" style={{ color: C.outline }}>Aucune conversation</p>
-              <button onClick={() => setShowNewMsg(true)} className="mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ background: `${C.cyan}18`, color: C.cyan }}>
+              <button onClick={openNewMessage} className="mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ background: `${C.cyan}18`, color: C.cyan }}>
                 Commencer
               </button>
             </div>
@@ -614,7 +622,7 @@ export default function MessagesPage({ user }) {
             <h3 className="font-black text-lg mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Centre de communication</h3>
             <p className="text-sm" style={{ color: C.outline }}>Sélectionnez une conversation pour commencer</p>
           </div>
-          <button onClick={() => setShowNewMsg(true)} className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
+          <button onClick={openNewMessage} className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
             Nouvelle conversation
           </button>
@@ -625,7 +633,7 @@ export default function MessagesPage({ user }) {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <Layout user={user} compact>
+    <Layout user={user} compact hideMobileChrome>
       {/* Nebula background */}
       <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
         <div className="absolute rounded-full blur-3xl" style={{ width: "40%", height: "40%", top: "-10%", left: "-5%", background: "radial-gradient(circle, rgba(34,211,238,0.04), transparent)" }} />
@@ -636,7 +644,7 @@ export default function MessagesPage({ user }) {
           On appelle les panneaux comme fonctions {ConvPanel()} et non <ConvPanel />
           pour éviter que React ne les remonte à chaque frappe (sinon le champ
           de saisie perd le focus et le clavier se ferme). */}
-      <div className="relative z-10 flex h-[calc(100dvh-136px)] lg:h-screen">
+      <div className="relative z-10 flex h-[100dvh] lg:h-screen">
         {ConvPanel()}
         {ChatPanel()}
       </div>

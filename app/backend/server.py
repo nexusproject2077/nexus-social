@@ -2720,23 +2720,48 @@ async def remove_group_member(
         raise HTTPException(status_code=404, detail="Group not found")
     
     group = convert_mongo_doc_to_dict(group_raw)
-    
-    # Vérifier si admin ou si c'est l'utilisateur lui-même
-    if current_user["id"] not in group["admin_ids"] and current_user["id"] != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    # Ne pas retirer le créateur
-    if user_id == group["creator_id"]:
-        raise HTTPException(status_code=400, detail="Cannot remove creator")
-    
-    await db.group_chats.update_one(
-        {"id": group_id},
-        {
-            "$pull": {"member_ids": user_id, "admin_ids": user_id},
-            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
-        }
-    )
-    
+
+    is_self_leave = current_user["id"] == user_id
+
+    # Un membre peut toujours se retirer lui-même (quitter le groupe).
+    # Pour retirer QUELQU'UN D'AUTRE, il faut être admin.
+    if not is_self_leave and current_user["id"] not in group.get("admin_ids", []):
+        raise HTTPException(status_code=403, detail="Seuls les admins peuvent retirer un membre")
+
+    # On ne peut retirer le créateur QUE s'il se retire lui-même (il quitte).
+    if user_id == group.get("creator_id") and not is_self_leave:
+        raise HTTPException(status_code=400, detail="Impossible de retirer le créateur du groupe")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Listes finales après le départ (calcul en Python pour éviter tout conflit
+    # d'opérateurs sur le même champ dans un update MongoDB).
+    remaining = [m for m in group.get("member_ids", []) if m != user_id]
+    new_admins = [a for a in group.get("admin_ids", []) if a != user_id]
+
+    # Si plus personne ne reste, on supprime le groupe et ses messages.
+    if not remaining:
+        await db.group_chats.delete_one({"id": group_id})
+        await db.group_messages.delete_many({"group_id": group_id})
+        return {"success": True, "message": "Group deleted (last member left)"}
+
+    set_fields = {
+        "member_ids": remaining,
+        "admin_ids": new_admins,
+        "updated_at": now_iso,
+    }
+
+    # Si le créateur quitte, on transfère la propriété à un autre membre
+    # (de préférence un admin existant) pour ne pas laisser le groupe orphelin.
+    if user_id == group.get("creator_id"):
+        new_owner = new_admins[0] if new_admins else remaining[0]
+        set_fields["creator_id"] = new_owner
+        if new_owner not in new_admins:
+            new_admins.append(new_owner)
+            set_fields["admin_ids"] = new_admins
+
+    await db.group_chats.update_one({"id": group_id}, {"$set": set_fields})
+
     return {"success": True, "message": "Member removed"}
 
 # ==================== SEARCH ROUTES ====================

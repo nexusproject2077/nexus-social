@@ -5,7 +5,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 
-export default function Layout({ children, user, setUser, onCreatePost, compact }) {
+export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
@@ -119,7 +119,6 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
     { icon: "sensors",        label: t("nav_live"),      path: "/live",                 testId: "nav-live" },
     { icon: "explore",        label: t("explore"),       path: "/search",               testId: "nav-search" },
     { icon: "notifications",  label: t("notifications"), path: "/notifications",        testId: "nav-notifications" },
-    { icon: "language",       label: t("browser"),       path: "/browser",              testId: "nav-browser" },
     { icon: "mail",           label: t("messages"),      path: "/messages",             testId: "nav-messages" },
     { icon: "account_circle", label: t("profile"),       path: `/profile/${user.id}`,   testId: "nav-profile" },
     { icon: "settings",       label: t("settings"),      path: "/settings",             testId: "nav-settings" },
@@ -292,6 +291,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
       )}
 
       {/* ===== Mobile Header ===== */}
+      {!hideMobileChrome && (
       <header
         className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4"
         style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
@@ -318,26 +318,28 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
           <button style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
             <span className="material-symbols-outlined">notifications</span>
           </button>
-          <button style={{ color: "#859397" }} onClick={() => navigate("/settings")} data-testid="nav-settings-mobile" title="Paramètres">
+          <button style={{ color: "#859397" }} onClick={() => navigate("/settings")} data-testid="nav-settings-mobile" title={t("settings")}>
             <span className="material-symbols-outlined">settings</span>
           </button>
         </div>
       </header>
+      )}
 
       {/* ===== Main Content ===== */}
-      <main className={`ml-0 lg:ml-64 ${compact ? "" : "lg:mr-80"} min-h-screen pt-14 lg:pt-0 pb-20 lg:pb-0`}>
+      <main className={`ml-0 lg:ml-64 ${compact ? "" : "lg:mr-80"} min-h-screen ${hideMobileChrome ? "pt-0 pb-0" : "pt-14 pb-20"} lg:pt-0 lg:pb-0`}>
         {children}
       </main>
 
       {/* ===== Mobile Bottom Nav ===== */}
+      {!hideMobileChrome && (
       <nav
         className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4"
         style={{ backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
       >
         {/* Home */}
         {[
-          { icon: "home",        path: "/",        label: "Accueil",  testId: "nav-home" },
-          { icon: "play_circle", path: "/clips",   label: "Clips",    testId: "nav-clips" },
+          { icon: "home",        path: "/",        label: t("home"),      testId: "nav-home" },
+          { icon: "play_circle", path: "/clips",   label: "Nexus Clips",  testId: "nav-clips" },
         ].map((item) => {
           const active = isActive(item.path);
           return (
@@ -359,8 +361,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
 
         {/* Messages + Profile */}
         {[
-          { icon: "mail",           path: "/messages",           label: "Messages", testId: "nav-messages" },
-          { icon: "account_circle", path: `/profile/${user.id}`, label: "Profil",   testId: "nav-profile" },
+          { icon: "mail",           path: "/messages",           label: t("messages"), testId: "nav-messages" },
+          { icon: "account_circle", path: `/profile/${user.id}`, label: t("profile"),  testId: "nav-profile" },
         ].map((item) => {
           const active = isActive(item.path);
           return (
@@ -371,6 +373,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
           );
         })}
       </nav>
+      )}
     </div>
   );
 }
