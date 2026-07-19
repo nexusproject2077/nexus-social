@@ -313,11 +313,15 @@ export default function MessagesPage({ user }) {
 
   const handleLeaveGroup = async () => {
     if (!selectedGroupId) return;
+    if (!window.confirm("Quitter ce groupe ?")) return;
+    const gid = selectedGroupId;
     try {
-      await axios.delete(`${API}/messages/groups/${selectedGroupId}/members/${user.id}`);
+      await axios.delete(`${API}/messages/groups/${gid}/members/${user.id}`);
+      // Retire immédiatement le groupe de la liste (plus d'attente / de cache).
+      setGroups((prev) => prev.filter((g) => g.id !== gid));
       toast.success("Vous avez quitté le groupe");
       navigate("/messages");
-      await fetchGroups();
+      fetchGroups();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur");
     }
@@ -396,7 +400,13 @@ export default function MessagesPage({ user }) {
     >
       {/* Header */}
       <div className="px-5 pt-5 pb-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-        <h2 className="font-black text-xl tracking-tight" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Comms</h2>
+        <div className="flex items-center gap-2">
+          {/* Retour à l'accueil (mobile : le footer est masqué sur Messages) */}
+          <button onClick={() => navigate("/")} className="lg:hidden -ml-1" title="Retour" style={{ color: C.outline }}>
+            <span className="material-symbols-outlined">arrow_back</span>
+          </button>
+          <h2 className="font-black text-xl tracking-tight" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Comms</h2>
+        </div>
         <div className="flex gap-2">
           <button onClick={() => setShowNewGroup(true)} title="Nouveau groupe"
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:opacity-80"

@@ -2448,18 +2448,18 @@ async def clear_notifications(current_user: dict = Depends(get_current_user)):
 @api_router.get("/messages/conversations", response_model=List[Conversation])
 async def get_conversations(current_user: dict = Depends(get_current_user)):
     """Récupère les conversations de l'utilisateur"""
-    messages_raw = await db.messages.find({
-        "$or": [
-            {"sender_id": current_user["id"]},
-            {"recipient_id": current_user["id"]}
-        ]
-    }).sort("created_at", -1).to_list(length=1000)
-    
+    # Projection : on N'INCLUT PAS media_url (data URL base64 potentiellement
+    # lourd) pour garder la liste des conversations légère et rapide.
+    messages_raw = await db.messages.find(
+        {"$or": [{"sender_id": current_user["id"]}, {"recipient_id": current_user["id"]}]},
+        {"content": 1, "sender_id": 1, "recipient_id": 1, "created_at": 1, "media_type": 1},
+    ).sort("created_at", -1).to_list(length=1000)
+
     conversations_dict = {}
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
         other_user_id = msg["recipient_id"] if msg["sender_id"] == current_user["id"] else msg["sender_id"]
-        
+
         if other_user_id not in conversations_dict:
             other_user_raw = await db.users.find_one({"id": other_user_id})
             if other_user_raw:
@@ -2469,16 +2469,19 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     "recipient_id": current_user["id"],
                     "read": False
                 })
-                
+
+                # Aperçu : texte déchiffré, ou « 📷 Photo » si message média seul.
+                text = decrypt_message(msg.get("content") or "")
+                preview = text if text else ("📷 Photo" if msg.get("media_type") else "")
                 conversations_dict[other_user_id] = Conversation(
                     user_id=other_user["id"],
                     username=other_user["username"],
                     profile_pic=other_user.get("profile_pic"),
-                    last_message=decrypt_message(msg["content"]),
+                    last_message=preview,
                     last_message_time=msg["created_at"],
                     unread_count=unread_count
                 )
-    
+
     return list(conversations_dict.values())
 
 @api_router.get("/messages/groups-list")
@@ -2493,13 +2496,17 @@ async def list_groups_alias(current_user: dict = Depends(get_current_user)):
 @api_router.get("/messages/{user_id}", response_model=List[Message])
 async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_current_user)):
     """Récupère les messages avec un utilisateur spécifique"""
+    # On récupère les 60 messages LES PLUS RÉCENTS (tri décroissant + limite),
+    # puis on rétablit l'ordre chronologique. Évite de charger tout l'historique
+    # (images base64 comprises) qui faisait ramer/planter la page.
     messages_raw = await db.messages.find({
         "$or": [
             {"sender_id": current_user["id"], "recipient_id": user_id},
             {"sender_id": user_id, "recipient_id": current_user["id"]}
         ]
-    }).sort("created_at", 1).to_list(length=100)
-    
+    }).sort("created_at", -1).to_list(length=60)
+    messages_raw.reverse()
+
     messages = []
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
