@@ -394,17 +394,38 @@ export default function ProfilePage({ user, setUser }) {
       {/* ── Content ───────────────────────────────────────────────────────── */}
       <div className="max-w-5xl mx-auto px-4 py-8 pb-28 md:pb-8">
 
-        {/* Private lock */}
+        {/* Private lock — cadenas SVG 100% personnalisé */}
         {!canViewContent ? (
-          <div className="text-center py-16 rounded-2xl" style={{ background: `${C.surfaceContainer}80`, border: `1px solid ${C.outlineVariant}18` }}>
-            <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5" style={{ background: `${C.primaryContainer}12` }}>
-              <Lock size={40} color={C.outline} />
-            </div>
+          <div className="text-center py-16 px-6 rounded-2xl" style={{ background: `${C.surfaceContainer}80`, border: `1px solid ${C.outlineVariant}18` }}>
+            <svg
+              width="96" height="96" viewBox="0 0 96 96" fill="none"
+              className="mx-auto mb-6" role="img" aria-label="Profil privé"
+            >
+              <defs>
+                <linearGradient id="nexusLockGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor={C.primaryContainer || "#22d3ee"} />
+                  <stop offset="100%" stopColor="#3b82f6" />
+                </linearGradient>
+              </defs>
+              {/* halo */}
+              <circle cx="48" cy="48" r="46" fill={`${C.primaryContainer || "#22d3ee"}14`} />
+              {/* anse du cadenas */}
+              <path
+                d="M32 44 V34 a16 16 0 0 1 32 0 V44"
+                stroke="url(#nexusLockGrad)" strokeWidth="6"
+                strokeLinecap="round" fill="none"
+              />
+              {/* corps du cadenas */}
+              <rect x="26" y="43" width="44" height="34" rx="8" fill="url(#nexusLockGrad)" />
+              {/* trou de serrure */}
+              <circle cx="48" cy="57" r="5" fill={C.surface || "#0b1326"} />
+              <rect x="46" y="59" width="4" height="10" rx="2" fill={C.surface || "#0b1326"} />
+            </svg>
             <h3 className="text-2xl font-black text-white mb-2" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-              Compte privé
+              Ce profil est privé
             </h3>
             <p className="text-sm" style={{ color: C.outline }}>
-              Abonnez-vous pour voir les publications de ce compte
+              Suivez ce profil pour voir ces contenus
             </p>
           </div>
 
