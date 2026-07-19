@@ -136,7 +136,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
         {/* Logo */}
         <div
           className="font-headline text-2xl font-black tracking-tighter mb-4 px-4 bg-clip-text"
-          style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+          style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
         >
           NEXUS
         </div>
@@ -168,10 +168,10 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
                 onClick={() => navigate(item.path)}
                 className="flex items-center gap-4 py-3 px-4 rounded-xl transition-all duration-200 text-left"
                 style={{
-                  color: active ? "#22d3ee" : "#859397",
+                  color: active ? "var(--nexus-accent)" : "#859397",
                   fontWeight: active ? "700" : "400",
                   background: active ? "linear-gradient(to right, rgba(34,211,238,0.1), transparent)" : "transparent",
-                  borderLeft: active ? "2px solid #22d3ee" : "2px solid transparent",
+                  borderLeft: active ? "2px solid var(--nexus-accent)" : "2px solid transparent",
                 }}
               >
                 <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1, 'wght' 400" : "'FILL' 0, 'wght' 300" }}>
@@ -189,7 +189,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
             data-testid="create-post-button"
             onClick={handleCreatePost}
             className="w-full py-3.5 font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm"
-            style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: "#00363e", boxShadow: "0 8px 20px rgba(34,211,238,0.2)" }}
+            style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 8px 20px rgba(34,211,238,0.2)" }}
           >
             {t("create_post")}
           </button>
@@ -203,7 +203,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
             ) : (
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm cursor-pointer flex-shrink-0"
-                style={{ background: "linear-gradient(135deg, #22d3ee, #3b82f6)", color: "#00363e" }}
+                style={{ background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)", color: "#00363e" }}
                 onClick={() => navigate(`/profile/${user.id}`)}
               >
                 {user.username[0].toUpperCase()}
@@ -262,7 +262,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
                       {u.profile_pic ? (
                         <img src={u.profile_pic} alt={u.username} className="w-10 h-10 rounded-full object-cover" />
                       ) : (
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ background: "linear-gradient(135deg, #22d3ee, #3b82f6)", color: "#00363e" }}>
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)", color: "#00363e" }}>
                           {u.username[0].toUpperCase()}
                         </div>
                       )}
@@ -298,7 +298,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
       >
         <div
           className="font-headline font-black text-xl tracking-tighter bg-clip-text"
-          style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+          style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
         >
           NEXUS
         </div>
@@ -341,7 +341,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
         ].map((item) => {
           const active = isActive(item.path);
           return (
-            <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "#22d3ee" : "#859397" }}>
+            <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "var(--nexus-accent)" : "#859397" }}>
               <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>{item.icon}</span>
               <span className={`text-[9px] ${active ? "font-bold" : ""}`}>{item.label}</span>
             </button>
@@ -352,7 +352,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
         <button
           onClick={handleCreatePost}
           className="w-11 h-11 rounded-full flex items-center justify-center -mt-8 transition-transform active:scale-95"
-          style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e", boxShadow: "0 4px 16px rgba(34,211,238,0.4)" }}
+          style={{ background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 4px 16px rgba(34,211,238,0.4)" }}
         >
           <span className="material-symbols-outlined">add</span>
         </button>
@@ -364,7 +364,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact 
         ].map((item) => {
           const active = isActive(item.path);
           return (
-            <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "#22d3ee" : "#859397" }}>
+            <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "var(--nexus-accent)" : "#859397" }}>
               <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>{item.icon}</span>
               <span className={`text-[9px] ${active ? "font-bold" : ""}`}>{item.label}</span>
             </button>

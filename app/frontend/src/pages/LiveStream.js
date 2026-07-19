@@ -7,7 +7,7 @@ import { toast } from "sonner";
 // STUN public gratuit (Google). Pas de TURN => peut échouer derrière NAT symétrique.
 const RTC_CONFIG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
-const C = { cyan: "#22d3ee", onPrimary: "#00363e", surface: "#0b1326", outline: "#859397", onSurface: "#dae2fd" };
+const C = { cyan: (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee", onPrimary: "#00363e", surface: "#0b1326", outline: "#859397", onSurface: "#dae2fd" };
 
 export default function LiveStream({ user, setUser }) {
   const { roomId: paramRoom } = useParams();

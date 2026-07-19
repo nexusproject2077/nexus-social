@@ -701,18 +701,34 @@ def client_ip(request: Request) -> str:
 
 # ==================== GEO / LANGUE ====================
 # Détection de la langue à partir du pays (adresse IP) pour adapter
-# automatiquement l'interface. Langues gérées côté frontend :
-# en, fr, tr, ru, uk. Les autres pays retombent sur l'anglais.
-SUPPORTED_UI_LANGS = {"en", "fr", "tr", "ru", "uk"}
+# automatiquement l'interface. Les pays non listés retombent sur l'anglais.
+SUPPORTED_UI_LANGS = {
+    "en", "fr", "es", "de", "it", "pt", "nl", "pl",
+    "tr", "ru", "uk", "ar", "hi", "zh", "ja", "ko",
+}
 
 # Pays -> langue de l'interface (code ISO 3166-1 alpha-2 -> code i18n)
 COUNTRY_TO_LANG = {
     # Français
-    "FR": "fr", "BE": "fr", "CH": "fr", "LU": "fr", "MC": "fr",
-    "CI": "fr", "SN": "fr", "CM": "fr", "ML": "fr", "BF": "fr",
-    "NE": "fr", "CD": "fr", "CG": "fr", "GA": "fr", "TG": "fr",
-    "BJ": "fr", "MG": "fr", "GN": "fr", "TD": "fr", "DZ": "fr",
-    "MA": "fr", "TN": "fr", "HT": "fr", "GP": "fr", "MQ": "fr",
+    "FR": "fr", "BE": "fr", "LU": "fr", "MC": "fr", "CI": "fr",
+    "SN": "fr", "CM": "fr", "ML": "fr", "BF": "fr", "NE": "fr",
+    "CD": "fr", "CG": "fr", "GA": "fr", "TG": "fr", "BJ": "fr",
+    "MG": "fr", "GN": "fr", "TD": "fr", "HT": "fr", "GP": "fr", "MQ": "fr",
+    # Espagnol
+    "ES": "es", "MX": "es", "AR": "es", "CO": "es", "CL": "es",
+    "PE": "es", "VE": "es", "EC": "es", "GT": "es", "CU": "es",
+    "BO": "es", "DO": "es", "HN": "es", "PY": "es", "SV": "es",
+    "NI": "es", "CR": "es", "PA": "es", "UY": "es",
+    # Allemand
+    "DE": "de", "AT": "de", "CH": "de", "LI": "de",
+    # Italien
+    "IT": "it", "SM": "it", "VA": "it",
+    # Portugais
+    "PT": "pt", "BR": "pt", "AO": "pt", "MZ": "pt", "CV": "pt",
+    # Néerlandais
+    "NL": "nl", "SR": "nl",
+    # Polonais
+    "PL": "pl",
     # Turc
     "TR": "tr", "CY": "tr",
     # Russe
@@ -720,6 +736,18 @@ COUNTRY_TO_LANG = {
     "AM": "ru", "AZ": "ru", "MD": "ru", "UZ": "ru", "TM": "ru",
     # Ukrainien
     "UA": "uk",
+    # Arabe
+    "SA": "ar", "AE": "ar", "EG": "ar", "DZ": "ar", "MA": "ar",
+    "TN": "ar", "IQ": "ar", "JO": "ar", "KW": "ar", "QA": "ar",
+    "OM": "ar", "BH": "ar", "LB": "ar", "LY": "ar", "YE": "ar", "SD": "ar",
+    # Hindi
+    "IN": "hi",
+    # Chinois
+    "CN": "zh", "TW": "zh", "HK": "zh", "SG": "zh", "MO": "zh",
+    # Japonais
+    "JP": "ja",
+    # Coréen
+    "KR": "ko",
 }
 
 

@@ -5,6 +5,7 @@ import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
 import CookieConsent from "./components/CookieConsent";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
+import { initAccent } from "@/lib/accent";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
 import ProfilePage from "./pages/ProfilePage";
@@ -72,6 +73,7 @@ function App() {
   };
 
   useEffect(() => {
+    initAccent(); // Applique la couleur d'accentuation choisie
     checkAuth();
   }, []);
 

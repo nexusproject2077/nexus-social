@@ -92,7 +92,7 @@ export default function HomePage({ user, setUser }) {
                 onClick={() => (nav ? navigate(nav) : setFeedType(key))}
                 className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5"
                 style={{
-                  backgroundColor: active ? "#22d3ee" : "#171f33",
+                  backgroundColor: active ? "var(--nexus-accent)" : "#171f33",
                   color: active ? "#00363e" : "#859397",
                   border: "1px solid rgba(255,255,255,0.05)",
                 }}
@@ -124,7 +124,7 @@ export default function HomePage({ user, setUser }) {
               <div
                 className="w-10 h-10 lg:w-12 lg:h-12 rounded-full flex items-center justify-center font-bold flex-shrink-0"
                 style={{
-                  background: "linear-gradient(135deg, #22d3ee, #3b82f6)",
+                  background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)",
                   color: "#00363e",
                 }}
               >
@@ -173,7 +173,7 @@ export default function HomePage({ user, setUser }) {
                   data-testid="create-post-button"
                   onClick={() => setShowCreatePost(true)}
                   className="px-5 lg:px-6 py-1.5 lg:py-2 font-bold rounded-lg text-sm transition-all active:scale-95"
-                  style={{ backgroundColor: "#22d3ee", color: "#00363e" }}
+                  style={{ backgroundColor: "var(--nexus-accent)", color: "#00363e" }}
                 >
                   Post
                 </button>

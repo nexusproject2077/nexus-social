@@ -78,7 +78,7 @@ export default function StoriesFeed() {
           <div
             className="p-0.5 rounded-full"
             style={{
-              background: "linear-gradient(135deg, #22d3ee, #3b82f6)",
+              background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)",
             }}
           >
             <div
@@ -90,7 +90,7 @@ export default function StoriesFeed() {
             >
               <span
                 className="material-symbols-outlined text-2xl transition-transform group-hover:scale-110"
-                style={{ color: "#22d3ee" }}
+                style={{ color: "var(--nexus-accent)" }}
               >
                 add
               </span>
@@ -118,7 +118,7 @@ export default function StoriesFeed() {
                   className="p-0.5 lg:p-1 rounded-full transition-all duration-300"
                   style={{
                     background: hasUnviewed
-                      ? "linear-gradient(135deg, #22d3ee, #3b82f6)"
+                      ? "linear-gradient(135deg, var(--nexus-accent), #3b82f6)"
                       : "#222a3d",
                     opacity: hasUnviewed ? 1 : 0.7,
                   }}
@@ -140,7 +140,7 @@ export default function StoriesFeed() {
                       <div
                         className="w-full h-full flex items-center justify-center font-bold text-sm"
                         style={{
-                          background: "linear-gradient(135deg, #22d3ee, #3b82f6)",
+                          background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)",
                           color: "#00363e",
                         }}
                       >
@@ -153,7 +153,7 @@ export default function StoriesFeed() {
                   <div
                     className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 animate-pulse hidden"
                     style={{
-                      backgroundColor: "#22d3ee",
+                      backgroundColor: "var(--nexus-accent)",
                       borderColor: "#0b1326",
                     }}
                   />

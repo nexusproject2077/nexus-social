@@ -17,7 +17,7 @@ const C = {
   surfaceHighest:   "#2d3449",
   surfaceBright:    "#31394d",
   primary:          "#8aebff",
-  primaryContainer: "#22d3ee",
+  primaryContainer: "var(--nexus-accent)",
   onPrimary:        "#00363e",
   outline:          "#859397",
   outlineVariant:   "#3c494c",
@@ -184,7 +184,7 @@ export default function ProfilePage({ user, setUser }) {
         onClick={handleFollow}
         disabled={followLoading}
         className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
-        style={{ background: "linear-gradient(135deg, #22d3ee, #3b82f6)", color: C.onPrimary, boxShadow: "0 4px 14px rgba(34,211,238,0.25)" }}
+        style={{ background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)", color: C.onPrimary, boxShadow: "0 4px 14px rgba(34,211,238,0.25)" }}
       >
         {followLoading ? spinner(C.onPrimary) : <UserPlus size={14} />}
         {profile?.is_private ? "Demander à suivre" : "Suivre"}

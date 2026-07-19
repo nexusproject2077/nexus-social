@@ -13,7 +13,7 @@ const C = {
   container:  "#171f33",
   high:       "#222a3d",
   bright:     "#31394d",
-  cyan:       "#22d3ee",
+  cyan:       (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
   onPrimary:  "#00363e",
   outline:    "#859397",
   outlineVar: "#3c494c",

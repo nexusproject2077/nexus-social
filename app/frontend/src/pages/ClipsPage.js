@@ -10,7 +10,7 @@ import { fr } from "date-fns/locale";
 const C = {
   surface:   "#0b1326",
   high:      "#222a3d",
-  cyan:      "#22d3ee",
+  cyan:      (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
   onPrimary: "#00363e",
   outline:   "#859397",
   onSurface: "#dae2fd",

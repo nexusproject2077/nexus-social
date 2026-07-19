@@ -6,6 +6,8 @@ import axios from 'axios';
 import Layout from '../components/Layout';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import AlgorithmTransparencyModal from '../components/AlgorithmTransparencyModal';
+import { ACCENTS, applyAccent, getAccent } from '../lib/accent';
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
@@ -14,7 +16,7 @@ const C = {
   container: "#171f33",
   high:      "#222a3d",
   bright:    "#31394d",
-  cyan:      "#22d3ee",
+  cyan:      (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
   onPrimary: "#00363e",
   outline:   "#859397",
   outlineVar:"#3c494c",
@@ -132,6 +134,8 @@ export default function SettingsPage({ user, setUser }) {
   const [saving, setSaving]                 = useState(false);
   const [editMode, setEditMode]             = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showAlgoModal, setShowAlgoModal] = useState(false);
+  const [accent, setAccent] = useState(getAccent());
 
   const [profileData, setProfileData] = useState({
     first_name: "", last_name: "", bio: "",
@@ -541,7 +545,7 @@ export default function SettingsPage({ user, setUser }) {
         <CardHeader title="Transparence algorithmique (DSA)" icon="analytics" />
         <div className="p-5">
           <p className="text-sm mb-4" style={{ color: C.outline }}>Conformément au Digital Services Act, vous avez le droit de comprendre pourquoi vous voyez certains contenus.</p>
-          <button onClick={() => toast.info("Inspection de l'algorithme à venir")} className="px-5 py-2 rounded-xl font-bold text-sm transition-all hover:opacity-80"
+          <button onClick={() => setShowAlgoModal(true)} className="px-5 py-2 rounded-xl font-bold text-sm transition-all hover:opacity-80"
             style={{ background: `${C.cyan}15`, color: C.cyan, border: `1px solid ${C.cyan}30` }}>
             Inspecter l'algorithme
           </button>
@@ -569,13 +573,28 @@ export default function SettingsPage({ user, setUser }) {
         <CardHeader title="Couleur d'accentuation" icon="palette" />
         <div className="p-5">
           <p className="text-sm mb-4" style={{ color: C.outline }}>Choisissez la couleur principale de l'interface</p>
-          <div className="flex gap-3">
-            {[C.cyan, "#3b82f6", "#8b5cf6", "#ec4899", "#f97316"].map((color, i) => (
-              <button key={i} onClick={() => toast.info("Personnalisation à venir")}
-                className="w-10 h-10 rounded-full border-2 transition-all hover:scale-110"
-                style={{ background: color, borderColor: i === 0 ? "#fff" : "transparent" }} />
-            ))}
+          <div className="flex flex-wrap gap-3">
+            {ACCENTS.map((a) => {
+              const selected = accent.toLowerCase() === a.value.toLowerCase();
+              return (
+                <button
+                  key={a.value}
+                  title={a.name}
+                  aria-label={a.name}
+                  onClick={() => {
+                    applyAccent(a.value);
+                    setAccent(a.value);
+                    toast.success(`Couleur « ${a.name} » appliquée`);
+                  }}
+                  className="w-10 h-10 rounded-full border-2 transition-all hover:scale-110"
+                  style={{ background: a.value, borderColor: selected ? "#fff" : "transparent" }}
+                />
+              );
+            })}
           </div>
+          <p className="text-xs mt-3" style={{ color: C.outlineVar }}>
+            La navigation, le logo et les boutons se recolorent aussitôt. Rechargez la page pour l'appliquer partout.
+          </p>
         </div>
       </Card>
       <Card>
@@ -663,6 +682,7 @@ export default function SettingsPage({ user, setUser }) {
       </div>
 
       {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
+      {showAlgoModal && <AlgorithmTransparencyModal onClose={() => setShowAlgoModal(false)} />}
     </Layout>
   );
 }
