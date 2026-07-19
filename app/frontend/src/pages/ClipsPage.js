@@ -26,6 +26,21 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
   const [paused, setPaused]         = useState(false);
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
+  const [commentsList, setCommentsList] = useState([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+
+  const openComments = async () => {
+    const next = !showComment;
+    setShowComment(next);
+    if (next) {
+      try {
+        setLoadingComments(true);
+        const r = await axios.get(`${API}/posts/${post.id}/comments`);
+        setCommentsList(r.data || []);
+      } catch { /* ignore */ }
+      finally { setLoadingComments(false); }
+    }
+  };
 
   useEffect(() => {
     const video = videoRef.current;
@@ -58,10 +73,12 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
   const handleSendComment = async () => {
     if (!commentText.trim()) return;
     try {
-      await axios.post(`${API}/posts/${post.id}/comments`, { content: commentText });
+      const res = await axios.post(`${API}/posts/${post.id}/comments`, { content: commentText });
       setComments(p => p + 1);
+      // Ajoute le commentaire en tête de liste immédiatement.
+      if (res.data && res.data.id) setCommentsList((prev) => [res.data, ...prev]);
+      else setCommentsList((prev) => [{ id: `tmp-${Date.now()}`, author_username: currentUser?.username, content: commentText, created_at: new Date().toISOString() }, ...prev]);
       setCommentText("");
-      toast.success("Commentaire ajouté");
     } catch { toast.error("Erreur"); }
   };
 
@@ -120,7 +137,7 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
         </button>
 
         {/* Comment */}
-        <button onClick={(e) => { e.stopPropagation(); setShowComment(p => !p); }} className="flex flex-col items-center gap-1">
+        <button onClick={(e) => { e.stopPropagation(); openComments(); }} className="flex flex-col items-center gap-1">
           <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
             <span className="material-symbols-outlined text-2xl text-white">chat_bubble</span>
           </div>
@@ -175,7 +192,36 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: C.outline }} />
-          <h3 className="text-white font-bold text-sm mb-4">{comments} commentaire{comments !== 1 ? "s" : ""}</h3>
+          <h3 className="text-white font-bold text-sm mb-3">{comments} commentaire{comments !== 1 ? "s" : ""}</h3>
+
+          {/* Liste des commentaires */}
+          <div className="max-h-[40vh] overflow-y-auto space-y-3 mb-3" style={{ scrollbarWidth: "none" }}>
+            {loadingComments ? (
+              <p className="text-xs text-center py-4" style={{ color: C.outline }}>Chargement…</p>
+            ) : commentsList.length === 0 ? (
+              <p className="text-xs text-center py-4" style={{ color: C.outline }}>Aucun commentaire. Soyez le premier !</p>
+            ) : (
+              commentsList.map((c) => (
+                <div key={c.id} className="flex gap-2.5 items-start">
+                  {c.author_profile_pic ? (
+                    <img src={c.author_profile_pic} alt={c.author_username} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+                      {(c.author_username || "?")[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs" style={{ color: C.onSurface }}>
+                      <span className="font-bold">@{c.author_username}</span>{" "}
+                      <span style={{ color: C.onVariant }}>{c.content}</span>
+                    </p>
+                    <p className="text-[10px] mt-0.5" style={{ color: C.outline }}>{fmtDate(c.created_at)}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
           <div className="flex gap-3 items-center">
             <input
               value={commentText}
