@@ -255,11 +255,10 @@ else:
     print("ℹ️ Stripe désactivé (STRIPE_SECRET_KEY/STRIPE_PRICE_ID absents) — abonnements désactivés")
 
 # ==================== ADMINISTRATION ====================
-# Le tableau de bord Analytics expose des données globales de la plateforme et
-# des actions sensibles (bloquer un compte, notifier tous les utilisateurs,
-# exporter les données). Il est donc réservé aux administrateurs.
-# Définissez ADMIN_EMAILS (emails séparés par des virgules) en variable
-# d'environnement. Tant qu'aucun admin n'est défini, l'accès est refusé.
+# ADMIN_EMAILS (emails séparés par des virgules) identifie les comptes
+# administrateurs, exposés via is_admin sur /auth/me. Optionnel : réservé à
+# d'éventuelles fonctions d'administration. Le tableau de bord Analytics, lui,
+# est personnel (chaque utilisateur voit ses propres statistiques).
 ADMIN_EMAILS = {
     e.strip().lower()
     for e in os.environ.get("ADMIN_EMAILS", "").split(",")
@@ -267,8 +266,6 @@ ADMIN_EMAILS = {
 }
 if ADMIN_EMAILS:
     print(f"✅ Administrateurs configurés ({len(ADMIN_EMAILS)})")
-else:
-    print("ℹ️ Aucun ADMIN_EMAILS défini — le tableau de bord Analytics est verrouillé")
 
 # ==================== WEBSOCKET TEMPS RÉEL ====================
 # Endpoint authentifié : le client se connecte à /ws/{user_id}?token=<JWT>.
@@ -3838,8 +3835,8 @@ async def get_posts_by_hashtag(tag: str, current_user: dict = Depends(get_curren
     return posts
 
 
-# ==================== ANALYTICS & MODÉRATION (ADMIN) ====================
-# Toutes ces routes sont réservées aux administrateurs (require_admin).
+# ==================== ANALYTICS PERSONNEL (créateur) ====================
+# Chaque utilisateur voit UNIQUEMENT les statistiques de SON PROPRE compte.
 # Les dates (created_at) sont stockées en chaînes ISO 8601 : la comparaison
 # lexicographique est donc valide pour filtrer par période.
 
@@ -3856,41 +3853,66 @@ def _days_ago_iso(days: int) -> str:
     return (_utc_now() - timedelta(days=days)).isoformat()
 
 
-@api_router.get("/analytics/stats/global")
-async def analytics_global_stats(admin: dict = Depends(require_admin)):
-    """Statistiques globales de la plateforme (temps réel)."""
+async def _my_post_ids(user_id: str) -> List[str]:
+    """Identifiants des publications de l'utilisateur."""
+    ids = []
+    async for p in db.posts.find({"author_id": user_id}, {"id": 1}):
+        pid = p.get("id")
+        if pid:
+            ids.append(pid)
+    return ids
+
+
+@api_router.get("/analytics/me/stats")
+async def analytics_my_stats(current_user: dict = Depends(get_current_user)):
+    """Statistiques du compte de l'utilisateur connecté (temps réel)."""
+    uid = current_user["id"]
     start_today = _start_of_day_iso()
 
-    total_users = await db.users.count_documents({})
-    new_users_today = await db.users.count_documents({"created_at": {"$gte": start_today}})
-    total_posts = await db.posts.count_documents({})
-    posts_today = await db.posts.count_documents({"created_at": {"$gte": start_today}})
-    total_comments = await db.comments.count_documents({})
-    total_likes = await db.likes.count_documents({})
+    my_posts = await db.posts.find({"author_id": uid}).to_list(length=100000)
+    total_posts = len(my_posts)
+    total_likes = sum((p.get("likes_count") or 0) for p in my_posts)
+    total_comments = sum((p.get("comments_count") or 0) for p in my_posts)
+    total_views = sum((p.get("views") or 0) for p in my_posts)
+    posts_today = sum(1 for p in my_posts if (p.get("created_at") or "") >= start_today)
 
-    # Taux d'engagement : interactions moyennes par publication.
+    followers_count = await db.follows.count_documents({"followed_id": uid})
+    following_count = await db.follows.count_documents({"follower_id": uid})
+    new_followers_today = await db.follows.count_documents(
+        {"followed_id": uid, "created_at": {"$gte": start_today}}
+    )
+
     interactions = total_likes + total_comments
     engagement_rate = round(interactions / total_posts, 1) if total_posts else 0.0
 
     return {
-        "total_users": total_users,
-        "new_users_today": new_users_today,
         "total_posts": total_posts,
         "posts_today": posts_today,
-        "total_comments": total_comments,
         "total_likes": total_likes,
+        "total_comments": total_comments,
+        "total_views": total_views,
+        "followers_count": followers_count,
+        "following_count": following_count,
+        "new_followers_today": new_followers_today,
         "engagement_rate": engagement_rate,
     }
 
 
-@api_router.get("/analytics/trends")
-async def analytics_trends(days: int = Query(30, ge=1, le=365), admin: dict = Depends(require_admin)):
-    """Croissance quotidienne (users, posts, commentaires, likes) sur N jours."""
+@api_router.get("/analytics/me/trends")
+async def analytics_my_trends(
+    days: int = Query(30, ge=1, le=365),
+    current_user: dict = Depends(get_current_user),
+):
+    """Croissance quotidienne du compte : posts publiés, likes et commentaires
+    reçus, nouveaux abonnés — sur N jours."""
+    uid = current_user["id"]
     since = _days_ago_iso(days)
+    my_ids = await _my_post_ids(uid)
 
-    async def daily_counts(collection):
+    async def daily_counts(collection, match):
+        match = {**match, "created_at": {"$gte": since}}
         pipeline = [
-            {"$match": {"created_at": {"$gte": since}}},
+            {"$match": match},
             {"$group": {"_id": {"$substrBytes": ["$created_at", 0, 10]}, "n": {"$sum": 1}}},
         ]
         out = {}
@@ -3898,68 +3920,36 @@ async def analytics_trends(days: int = Query(30, ge=1, le=365), admin: dict = De
             out[row["_id"]] = row["n"]
         return out
 
-    users_by_day = await daily_counts(db.users)
-    posts_by_day = await daily_counts(db.posts)
-    comments_by_day = await daily_counts(db.comments)
-    likes_by_day = await daily_counts(db.likes)
+    posts_by_day = await daily_counts(db.posts, {"author_id": uid})
+    followers_by_day = await daily_counts(db.follows, {"followed_id": uid})
+    if my_ids:
+        likes_by_day = await daily_counts(db.likes, {"post_id": {"$in": my_ids}})
+        comments_by_day = await daily_counts(db.comments, {"post_id": {"$in": my_ids}})
+    else:
+        likes_by_day, comments_by_day = {}, {}
 
-    # Construit une série continue (zéros compris) sur la fenêtre demandée.
     today = _utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
     series = []
     for i in range(days - 1, -1, -1):
         d = (today - timedelta(days=i)).strftime("%Y-%m-%d")
         series.append({
             "date": d[5:],  # MM-DD, plus lisible sur le graphe
-            "users": users_by_day.get(d, 0),
             "posts": posts_by_day.get(d, 0),
-            "comments": comments_by_day.get(d, 0),
             "likes": likes_by_day.get(d, 0),
+            "comments": comments_by_day.get(d, 0),
+            "followers": followers_by_day.get(d, 0),
         })
     return series
 
 
-@api_router.get("/analytics/top/users")
-async def analytics_top_users(limit: int = Query(10, ge=1, le=50), admin: dict = Depends(require_admin)):
-    """Meilleurs utilisateurs par score d'engagement."""
-    pipeline = [
-        {"$group": {
-            "_id": "$author_id",
-            "posts_count": {"$sum": 1},
-            "likes": {"$sum": {"$ifNull": ["$likes_count", 0]}},
-            "comments": {"$sum": {"$ifNull": ["$comments_count", 0]}},
-        }},
-        {"$lookup": {"from": "users", "localField": "_id", "foreignField": "id", "as": "u"}},
-        {"$unwind": "$u"},
-        {"$project": {
-            "_id": 0,
-            "user_id": "$_id",
-            "username": "$u.username",
-            "followers_count": {"$ifNull": ["$u.followers_count", 0]},
-            "posts_count": 1,
-            "engagement_score": {
-                "$add": [
-                    {"$multiply": ["$posts_count", 2]},
-                    {"$ifNull": ["$u.followers_count", 0]},
-                    {"$multiply": ["$likes", 0.5]},
-                    "$comments",
-                ]
-            },
-        }},
-        {"$sort": {"engagement_score": -1}},
-        {"$limit": limit},
-    ]
-    return await db.posts.aggregate(pipeline).to_list(length=limit)
-
-
-@api_router.get("/analytics/top/posts")
-async def analytics_top_posts(
+@api_router.get("/analytics/me/top-posts")
+async def analytics_my_top_posts(
     limit: int = Query(10, ge=1, le=50),
-    days: int = Query(7, ge=1, le=365),
-    admin: dict = Depends(require_admin),
+    current_user: dict = Depends(get_current_user),
 ):
-    """Publications les plus engageantes sur N jours."""
-    since = _days_ago_iso(days)
-    raw = await db.posts.find({"created_at": {"$gte": since}}).to_list(length=2000)
+    """Publications les plus engageantes de l'utilisateur."""
+    uid = current_user["id"]
+    raw = await db.posts.find({"author_id": uid}).to_list(length=5000)
 
     scored = []
     for p in raw:
@@ -3969,24 +3959,32 @@ async def analytics_top_posts(
         score = likes * 2 + comments * 3 + views * 0.1
         scored.append({
             "post_id": p.get("id"),
-            "author": p.get("author_username", ""),
             "content": (p.get("content") or "")[:200],
             "likes_count": likes,
             "comments_count": comments,
+            "views": views,
+            "created_at": p.get("created_at"),
             "engagement_score": score,
         })
     scored.sort(key=lambda x: x["engagement_score"], reverse=True)
     return scored[:limit]
 
 
-@api_router.get("/analytics/activity/hourly")
-async def analytics_hourly(days: int = Query(7, ge=1, le=90), admin: dict = Depends(require_admin)):
-    """Activité agrégée par heure de la journée (0-23) sur N jours."""
+@api_router.get("/analytics/me/activity/hourly")
+async def analytics_my_hourly(
+    days: int = Query(30, ge=1, le=90),
+    current_user: dict = Depends(get_current_user),
+):
+    """Quand l'audience interagit avec mon contenu : likes et commentaires reçus
+    par heure de la journée (0-23), plus mes publications par heure."""
+    uid = current_user["id"]
     since = _days_ago_iso(days)
+    my_ids = await _my_post_ids(uid)
 
-    async def by_hour(collection):
+    async def by_hour(collection, match):
+        match = {**match, "created_at": {"$gte": since}}
         pipeline = [
-            {"$match": {"created_at": {"$gte": since}}},
+            {"$match": match},
             {"$group": {"_id": {"$substrBytes": ["$created_at", 11, 2]}, "n": {"$sum": 1}}},
         ]
         out = {}
@@ -3997,9 +3995,12 @@ async def analytics_hourly(days: int = Query(7, ge=1, le=90), admin: dict = Depe
                 continue
         return out
 
-    posts_h = await by_hour(db.posts)
-    comments_h = await by_hour(db.comments)
-    likes_h = await by_hour(db.likes)
+    posts_h = await by_hour(db.posts, {"author_id": uid})
+    if my_ids:
+        likes_h = await by_hour(db.likes, {"post_id": {"$in": my_ids}})
+        comments_h = await by_hour(db.comments, {"post_id": {"$in": my_ids}})
+    else:
+        likes_h, comments_h = {}, {}
 
     result = []
     for h in range(24):
@@ -4007,114 +4008,6 @@ async def analytics_hourly(days: int = Query(7, ge=1, le=90), admin: dict = Depe
         result.append({"hour": h, "type": "comments", "activity_count": comments_h.get(h, 0)})
         result.append({"hour": h, "type": "likes", "activity_count": likes_h.get(h, 0)})
     return result
-
-
-async def _compute_suspicious():
-    """Détection heuristique de comptes suspects (spam / bot)."""
-    flagged = []
-    # Beaucoup d'abonnements, aucun abonné → typique des bots de spam.
-    async for u in db.users.find({
-        "following_count": {"$gte": 50},
-        "followers_count": {"$lte": 1},
-    }).limit(100):
-        flagged.append({
-            "user_id": u.get("id"),
-            "username": u.get("username", ""),
-            "reason": "Beaucoup d'abonnements pour aucun abonné (comportement de bot)",
-            "score": min(100, int(u.get("following_count", 0))),
-        })
-    return flagged
-
-
-@api_router.get("/analytics/suspicious/accounts")
-async def analytics_suspicious(status: str = Query("pending"), admin: dict = Depends(require_admin)):
-    """Comptes suspects en attente de modération."""
-    flagged = await _compute_suspicious()
-
-    # Exclut les comptes déjà traités (bloqués ou marqués sûrs).
-    decided = {}
-    async for m in db.moderation.find({}):
-        decided[m.get("user_id")] = m.get("status")
-
-    now_iso = _utc_now().isoformat()
-    pending = []
-    for f in flagged:
-        if decided.get(f["user_id"]) in ("blocked", "cleared"):
-            continue
-        f["status"] = "pending"
-        f["detected_at"] = now_iso
-        pending.append(f)
-    return pending
-
-
-@api_router.post("/analytics/suspicious/block/{user_id}")
-async def analytics_block_account(user_id: str, admin: dict = Depends(require_admin)):
-    """Bloque un compte suspect."""
-    await db.users.update_one({"id": user_id}, {"$set": {"is_blocked": True}})
-    await db.moderation.update_one(
-        {"user_id": user_id},
-        {"$set": {"user_id": user_id, "status": "blocked", "at": _utc_now().isoformat()}},
-        upsert=True,
-    )
-    return {"success": True}
-
-
-@api_router.post("/analytics/suspicious/clear/{user_id}")
-async def analytics_clear_account(user_id: str, admin: dict = Depends(require_admin)):
-    """Marque un compte comme sûr (retiré de la liste des suspects)."""
-    await db.moderation.update_one(
-        {"user_id": user_id},
-        {"$set": {"user_id": user_id, "status": "cleared", "at": _utc_now().isoformat()}},
-        upsert=True,
-    )
-    return {"success": True}
-
-
-@api_router.post("/analytics/automation/run")
-async def analytics_run_automation(admin: dict = Depends(require_admin)):
-    """Tâche de maintenance : recense les comptes suspects du moment."""
-    flagged = await _compute_suspicious()
-    return {"success": True, "suspicious_found": len(flagged)}
-
-
-class AdminNotification(BaseModel):
-    title: str
-    message: str
-    type: str = "info"
-
-
-@api_router.post("/analytics/notifications/send")
-async def analytics_send_notification(payload: AdminNotification, admin: dict = Depends(require_admin)):
-    """Envoie une notification à tous les utilisateurs (annonce plateforme)."""
-    now_iso = _utc_now().isoformat()
-    docs = []
-    async for u in db.users.find({}, {"id": 1}):
-        docs.append({
-            "id": str(uuid.uuid4()),
-            "user_id": u.get("id"),
-            "type": f"admin_{payload.type}",
-            "title": payload.title,
-            "message": payload.message,
-            "read": False,
-            "created_at": now_iso,
-        })
-    if docs:
-        await db.notifications.insert_many(docs)
-    return {"success": True, "sent": len(docs)}
-
-
-@api_router.get("/analytics/export/{data_type}")
-async def analytics_export(data_type: str, admin: dict = Depends(require_admin)):
-    """Exporte les données (users ou posts) au format JSON, sans champs sensibles."""
-    if data_type == "users":
-        rows = await db.users.find(
-            {}, {"_id": 0, "password": 0, "hashed_password": 0}
-        ).to_list(length=100000)
-        return rows
-    if data_type == "posts":
-        rows = await db.posts.find({}, {"_id": 0}).to_list(length=100000)
-        return rows
-    raise HTTPException(status_code=400, detail="Type d'export invalide (users ou posts)")
 
 
 @api_router.get("/clips", response_model=List[Post])
