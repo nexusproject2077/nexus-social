@@ -2338,6 +2338,19 @@ async def follow_user(user_id: str, current_user: dict = Depends(get_current_use
     return {"following": True, "status": "following"}
 
 
+@api_router.delete("/users/{user_id}/follow")
+async def unfollow_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Se désabonner explicitement (et annuler une éventuelle demande en attente)."""
+    result = await db.follows.delete_one({"follower_id": current_user["id"], "followed_id": user_id})
+    if result.deleted_count:
+        await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": -1}})
+        await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": -1}})
+    # Annule aussi une demande d'abonnement en attente, le cas échéant.
+    await db.follow_requests.delete_many({"requester_id": current_user["id"], "target_id": user_id})
+    await db.notifications.delete_many({"type": "follow_request", "from_user_id": current_user["id"], "user_id": user_id})
+    return {"following": False, "status": "not_following"}
+
+
 @api_router.get("/users/{user_id}/follow-status")
 async def get_follow_status(user_id: str, current_user: dict = Depends(get_current_user)):
     """État de la relation d'abonnement avec un utilisateur."""
