@@ -600,7 +600,10 @@ class Comment(BaseModel):
 
 class MessageCreate(BaseModel):
     recipient_id: str
-    content: str
+    content: str = ""
+    media_url: Optional[str] = None   # image compressée (data URL) éventuelle
+    media_type: Optional[str] = None  # "image" pour l'instant
+    reply_to_id: Optional[str] = None
 
 class Message(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -610,7 +613,9 @@ class Message(BaseModel):
     sender_profile_pic: Optional[str] = None
     recipient_id: str
     recipient_username: str
-    content: str
+    content: str = ""
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
     read: bool = False
     created_at: str
 
@@ -2436,9 +2441,13 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     if not recipient_raw:
         raise HTTPException(status_code=404, detail="Recipient not found")
     
+    # Un message doit avoir du texte OU un média.
+    if not (message_data.content or "").strip() and not message_data.media_url:
+        raise HTTPException(status_code=400, detail="Message vide")
+
     recipient = convert_mongo_doc_to_dict(recipient_raw)
     message_id = str(uuid.uuid4())
-    
+
     message_to_insert = {
         "id": message_id,
         "sender_id": current_user["id"],
@@ -2446,7 +2455,9 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "sender_profile_pic": current_user.get("profile_pic"),
         "recipient_id": message_data.recipient_id,
         "recipient_username": recipient["username"],
-        "content": encrypt_message(message_data.content),
+        "content": encrypt_message(message_data.content or ""),
+        "media_url": message_data.media_url,
+        "media_type": message_data.media_type,
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -2454,7 +2465,7 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     await db.messages.insert_one(message_to_insert)
 
     message = convert_mongo_doc_to_dict(message_to_insert)
-    message["content"] = message_data.content  # renvoyer en clair à l'expéditeur
+    message["content"] = message_data.content or ""  # renvoyer en clair à l'expéditeur
 
     # Push temps réel au destinataire (best-effort, contenu en clair)
     await push_realtime(message_data.recipient_id, {
@@ -2465,7 +2476,9 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
             "sender_username": current_user["username"],
             "sender_profile_pic": current_user.get("profile_pic"),
             "recipient_id": message_data.recipient_id,
-            "content": message_data.content,
+            "content": message_data.content or "",
+            "media_url": message_data.media_url,
+            "media_type": message_data.media_type,
             "created_at": message_to_insert["created_at"],
         },
     })

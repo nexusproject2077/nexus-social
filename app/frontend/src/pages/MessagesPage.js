@@ -5,6 +5,7 @@ import { API } from "@/App";
 import Layout from "@/components/Layout";
 import { toast } from "sonner";
 import { Check, CheckCheck } from "lucide-react";
+import { compressImage, dataUrlBytes } from "@/lib/compressImage";
 
 const C = {
   bg:         "#020617",
@@ -78,6 +79,29 @@ export default function MessagesPage({ user }) {
   const messagesEndRef = useRef(null);
   const longPressTimer = useRef(null);
 
+  // Image en attente d'envoi (data URL compressée) + sélecteur de fichier.
+  const [pendingImage, setPendingImage] = useState(null);
+  const [compressing, setCompressing] = useState(false);
+  const imageInputRef = useRef(null);
+
+  const handlePickImage = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permet de re-sélectionner le même fichier
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast.error("Sélectionnez une image"); return; }
+    try {
+      setCompressing(true);
+      const dataUrl = await compressImage(file);
+      setPendingImage(dataUrl);
+      const kb = Math.max(1, Math.round(dataUrlBytes(dataUrl) / 1024));
+      toast.success(`Image prête (~${kb} Ko)`);
+    } catch {
+      toast.error("Impossible de traiter cette image");
+    } finally {
+      setCompressing(false);
+    }
+  };
+
   const hasSelection = Boolean(selectedUserId || selectedGroupId);
   const currentName  = selectedUser?.username || selectedGroup?.name || "";
   const currentPic   = selectedUser?.profile_pic || selectedGroup?.avatar_url || "";
@@ -117,6 +141,8 @@ export default function MessagesPage({ user }) {
                 sender_profile_pic: m.sender_profile_pic,
                 recipient_id: m.recipient_id,
                 content: m.content,
+                media_url: m.media_url,
+                media_type: m.media_type,
                 created_at: m.created_at,
               }]
         );
@@ -208,20 +234,26 @@ export default function MessagesPage({ user }) {
 
   const handleSendMessage = async (e) => {
     e?.preventDefault();
-    if (!messageContent.trim()) return;
+    const text = messageContent.trim();
+    if (!text && !pendingImage) return;
     try {
       if (isGroup && selectedGroupId) {
+        if (pendingImage) { toast.error("Les images ne sont pas encore disponibles dans les groupes"); return; }
         const res = await axios.post(`${API}/messages/groups/${selectedGroupId}/messages`, {
-          content: messageContent.trim(), reply_to_id: replyingTo?.id
+          content: text, reply_to_id: replyingTo?.id
         });
         if (res.data?.message) setMessages(p => [...p, res.data.message]);
       } else if (selectedUserId) {
         const res = await axios.post(`${API}/messages`, {
-          recipient_id: selectedUserId, content: messageContent.trim(), reply_to_id: replyingTo?.id
+          recipient_id: selectedUserId,
+          content: text,
+          media_url: pendingImage || null,
+          media_type: pendingImage ? "image" : null,
+          reply_to_id: replyingTo?.id,
         });
         if (res.data) setMessages(p => [...p, res.data]);
       }
-      setMessageContent(""); setReplyingTo(null);
+      setMessageContent(""); setReplyingTo(null); setPendingImage(null);
       fetchConversations();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors de l'envoi");
@@ -514,6 +546,15 @@ export default function MessagesPage({ user }) {
                           {!isOwn && isGroup && (
                             <p className="text-[10px] font-bold mb-0.5" style={{ color: C.cyan }}>{msg.sender_username}</p>
                           )}
+                          {msg.media_url && (
+                            <img
+                              src={msg.media_url}
+                              alt="image"
+                              className="rounded-xl max-w-full mb-1 cursor-pointer"
+                              style={{ maxHeight: 280 }}
+                              onClick={() => window.open(msg.media_url, "_blank")}
+                            />
+                          )}
                           {msg.content}
                         </div>
 
@@ -595,7 +636,41 @@ export default function MessagesPage({ user }) {
 
           {/* Input */}
           <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(11,19,38,0.7)" }}>
+            {/* Aperçu de l'image en attente */}
+            {pendingImage && (
+              <div className="mb-2 relative inline-block">
+                <img src={pendingImage} alt="aperçu" className="h-20 rounded-xl object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setPendingImage(null)}
+                  className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs"
+                  style={{ background: "#ef4444", color: "#fff" }}
+                  title="Retirer"
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+            )}
             <form onSubmit={handleSendMessage} className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={glass}>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePickImage}
+              />
+              {!isGroup && (
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={compressing}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-50"
+                  style={{ background: C.high, color: C.cyan }}
+                  title="Envoyer une image"
+                >
+                  <span className="material-symbols-outlined text-sm">{compressing ? "hourglass_top" : "image"}</span>
+                </button>
+              )}
               <input
                 value={messageContent}
                 onChange={(e) => setMessageContent(e.target.value)}
@@ -604,9 +679,9 @@ export default function MessagesPage({ user }) {
                 style={{ color: C.onSurface }}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) handleSendMessage(e); }}
               />
-              <button type="submit" disabled={!messageContent.trim()}
+              <button type="submit" disabled={!messageContent.trim() && !pendingImage}
                 className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-40"
-                style={{ background: messageContent.trim() ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: messageContent.trim() ? C.onPrimary : C.outline }}>
+                style={{ background: (messageContent.trim() || pendingImage) ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: (messageContent.trim() || pendingImage) ? C.onPrimary : C.outline }}>
                 <span className="material-symbols-outlined text-sm">send</span>
               </button>
             </form>
