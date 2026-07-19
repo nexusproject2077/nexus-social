@@ -520,6 +520,8 @@ class User(BaseModel):
     is_verified: bool = False
     is_premium: bool = False
     is_admin: bool = False
+    accent_color: Optional[str] = None
+    theme: Optional[str] = None
     created_at: str
 
 class UserProfile(BaseModel):
@@ -929,6 +931,28 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     """Récupère le profil de l'utilisateur actuel"""
     current_user["is_admin"] = is_admin_user(current_user)
     return User(**current_user)
+
+
+@api_router.put("/users/me/appearance")
+async def update_appearance(
+    appearance: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Enregistre la personnalisation (couleur d'accent, thème) côté serveur
+    pour qu'elle suive l'utilisateur sur tous ses appareils/navigateurs."""
+    update_data = {}
+    accent = appearance.get("accent_color")
+    theme = appearance.get("theme")
+    if isinstance(accent, str) and accent.strip():
+        update_data["accent_color"] = accent.strip()[:32]
+    if isinstance(theme, str) and theme.strip():
+        update_data["theme"] = theme.strip()[:32]
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Aucune donnée valide")
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
+    return {"success": True, **update_data}
+
 
 # ==================== BILLING (abonnements Stripe) ====================
 @api_router.get("/billing/status")

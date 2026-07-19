@@ -587,6 +587,9 @@ export default function SettingsPage({ user, setUser }) {
                     applyAccent(a.value);
                     setAccent(a.value);
                     toast.success(`Couleur « ${a.name} » appliquée`);
+                    // On enregistre côté serveur pour que le choix suive
+                    // l'utilisateur sur ses autres appareils/navigateurs.
+                    axios.put(`${API}/users/me/appearance`, { accent_color: a.value }).catch(() => {});
                   }}
                   className="w-10 h-10 rounded-full border-2 transition-all hover:scale-110"
                   style={{ background: a.value, borderColor: selected ? "#fff" : "transparent" }}
@@ -595,7 +598,7 @@ export default function SettingsPage({ user, setUser }) {
             })}
           </div>
           <p className="text-xs mt-3" style={{ color: C.outlineVar }}>
-            La navigation, le logo et les boutons se recolorent aussitôt. Rechargez la page pour l'appliquer partout.
+            La navigation, le logo et les boutons se recolorent aussitôt. Votre choix est enregistré et vous suit sur tous vos appareils et navigateurs.
           </p>
         </div>
       </Card>

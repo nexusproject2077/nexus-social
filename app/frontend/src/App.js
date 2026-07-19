@@ -5,7 +5,7 @@ import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
 import CookieConsent from "./components/CookieConsent";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
-import { initAccent } from "@/lib/accent";
+import { initAccent, applyAccent } from "@/lib/accent";
 import { GeoProvider } from "@/context/GeoContext";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
@@ -65,6 +65,12 @@ function App() {
     try {
       const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
+      // La personnalisation enregistrée côté serveur prime : elle suit
+      // l'utilisateur sur tous ses appareils/navigateurs. Sinon, on garde
+      // la valeur locale (ou le défaut) déjà appliquée par initAccent().
+      if (response.data?.accent_color) {
+        applyAccent(response.data.accent_color);
+      }
     } catch (error) {
       localStorage.removeItem("token");
     } finally {
