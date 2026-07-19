@@ -16,7 +16,7 @@ const C = {
   onSurface: "#dae2fd",
 };
 
-function ClipCard({ post, currentUser, isActive }) {
+function ClipCard({ post, currentUser, isActive, onDelete }) {
   const navigate  = useNavigate();
   const videoRef  = useRef(null);
   const [isLiked, setIsLiked]       = useState(post.is_liked || false);
@@ -135,6 +135,20 @@ function ClipCard({ post, currentUser, isActive }) {
             </div>
           </button>
         )}
+
+        {/* Supprimer (auteur uniquement) */}
+        {currentUser?.id === post.author_id && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete?.(post.id); }}
+            data-testid="delete-clip"
+            title="Supprimer ce clip"
+            className="flex flex-col items-center gap-1"
+          >
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+              <span className="material-symbols-outlined text-2xl" style={{ color: "#f87171" }}>delete</span>
+            </div>
+          </button>
+        )}
       </div>
 
       {/* Bottom info */}
@@ -143,7 +157,14 @@ function ClipCard({ post, currentUser, isActive }) {
           @{post.author_username}
         </button>
         <p className="text-white/80 text-sm leading-snug line-clamp-2">{post.content}</p>
-        <p className="text-white/40 text-xs mt-1">{fmtDate(post.created_at)}</p>
+        <p className="text-white/40 text-xs mt-1 flex items-center gap-1.5">
+          <span>{fmtDate(post.created_at)}</span>
+          <span>·</span>
+          <span className="flex items-center gap-0.5">
+            <span className="material-symbols-outlined text-xs">play_arrow</span>
+            {fmt(post.views || 0)} vues
+          </span>
+        </p>
       </div>
 
       {/* Comment panel */}
@@ -178,15 +199,28 @@ export default function ClipsPage({ user, setUser }) {
   const [clips, setClips]         = useState([]);
   const [loading, setLoading]     = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [view, setView] = useState("immersive"); // "immersive" | "grid"
   const containerRef = useRef(null);
   const observerRef  = useRef(null);
+  const fileInputRef = useRef(null);
+  const viewedRef    = useRef(new Set());
 
   useEffect(() => {
     fetchClips();
   }, []);
 
+  // Compte une vue quand un clip devient actif (une fois par clip et par visite)
   useEffect(() => {
-    if (!containerRef.current || clips.length === 0) return;
+    const clip = clips[activeIndex];
+    if (!clip || viewedRef.current.has(clip.id)) return;
+    viewedRef.current.add(clip.id);
+    axios.post(`${API}/clips/${clip.id}/view`).catch(() => {});
+  }, [activeIndex, clips]);
+
+  useEffect(() => {
+    if (view !== "immersive" || !containerRef.current || clips.length === 0) return;
     observerRef.current = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -201,7 +235,7 @@ export default function ClipsPage({ user, setUser }) {
     const items = containerRef.current.querySelectorAll("[data-index]");
     items.forEach((el) => observerRef.current.observe(el));
     return () => observerRef.current?.disconnect();
-  }, [clips]);
+  }, [clips, view]);
 
   const fetchClips = async () => {
     try {
@@ -218,6 +252,107 @@ export default function ClipsPage({ user, setUser }) {
       setLoading(false);
     }
   };
+
+  const handleUploadClick = () => fileInputRef.current?.click();
+
+  const handleDeleteClip = async (clipId) => {
+    if (!window.confirm("Supprimer définitivement ce clip ?")) return;
+    try {
+      await axios.delete(`${API}/posts/${clipId}`);
+      setClips((prev) => {
+        const next = prev.filter((c) => c.id !== clipId);
+        setActiveIndex((idx) => Math.max(0, Math.min(idx, next.length - 1)));
+        return next;
+      });
+      toast.success("Clip supprimé");
+    } catch (err) {
+      console.error("Erreur suppression clip:", err);
+      toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  const uploadClip = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permet de re-sélectionner le même fichier
+    if (!file) return;
+    if (!file.type.startsWith("video/")) {
+      toast.error("Veuillez choisir un fichier vidéo");
+      return;
+    }
+    const caption = window.prompt("Légende de votre clip (optionnel)") || "";
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("caption", caption);
+      // axios ajoute le token via l'intercepteur + gère la limite multipart
+      await axios.post(`${API}/clips`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (evt) => {
+          if (evt.total) {
+            setUploadProgress(Math.round((evt.loaded * 100) / evt.total));
+          }
+        },
+      });
+      toast.success("Clip publié !");
+      setActiveIndex(0);
+      await fetchClips();
+    } catch (err) {
+      console.error("Erreur upload clip:", err);
+      toast.error("Erreur lors de la publication du clip");
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  // Bouton flottant d'upload (réutilisé dans l'état vide et l'état principal)
+  const uploadControls = (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={uploadClip}
+        data-testid="clip-file-input"
+      />
+      <button
+        onClick={handleUploadClick}
+        disabled={uploading}
+        data-testid="upload-clip"
+        title="Publier un clip"
+        className="fixed z-50 top-16 right-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+        style={{
+          background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+          color: C.onPrimary,
+          opacity: uploading ? 0.6 : 1,
+        }}
+      >
+        {uploading ? (
+          <span className="text-[11px] font-black">{uploadProgress}%</span>
+        ) : (
+          <span className="material-symbols-outlined text-2xl">add</span>
+        )}
+      </button>
+    </>
+  );
+
+  // Bascule entre la vue immersive (défilement vertical) et la vue grille
+  const viewToggle = (
+    <button
+      onClick={() => setView((v) => (v === "immersive" ? "grid" : "immersive"))}
+      data-testid="toggle-clips-view"
+      title={view === "immersive" ? "Vue grille" : "Vue immersive"}
+      className="fixed z-50 top-16 left-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+      style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
+    >
+      <span className="material-symbols-outlined text-2xl">
+        {view === "immersive" ? "grid_view" : "smart_display"}
+      </span>
+    </button>
+  );
 
   if (loading) {
     return (
@@ -238,36 +373,101 @@ export default function ClipsPage({ user, setUser }) {
           <p className="text-xs text-center max-w-xs" style={{ color: C.outline }}>
             Publiez une vidéo pour qu'elle apparaisse ici
           </p>
+          <button
+            onClick={handleUploadClick}
+            disabled={uploading}
+            data-testid="upload-clip-empty"
+            className="mt-2 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 active:scale-95 transition-all"
+            style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary, opacity: uploading ? 0.6 : 1 }}
+          >
+            <span className="material-symbols-outlined text-lg">upload</span>
+            {uploading ? `Publication… ${uploadProgress}%` : "Publier un clip"}
+          </button>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={uploadClip}
+          data-testid="clip-file-input"
+        />
       </Layout>
     );
   }
 
   return (
     <Layout user={user} setUser={setUser} compact>
-      {/* Full-screen vertical scroll snapping */}
-      <div
-        ref={containerRef}
-        className="h-screen overflow-y-scroll"
-        style={{
-          scrollSnapType: "y mandatory",
-          scrollBehavior: "smooth",
-          WebkitOverflowScrolling: "touch",
-          /* Adjust for mobile header/nav */
-          marginTop: 0,
-          scrollbarWidth: "none",
-        }}
-      >
-        <style>{`
-          div::-webkit-scrollbar { display: none; }
-          [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
-        `}</style>
-        {clips.map((clip, idx) => (
-          <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100svh" }}>
-            <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex} />
+      {view === "immersive" ? (
+        /* Full-screen vertical scroll snapping */
+        <div
+          ref={containerRef}
+          className="h-screen overflow-y-scroll"
+          style={{
+            scrollSnapType: "y mandatory",
+            scrollBehavior: "smooth",
+            WebkitOverflowScrolling: "touch",
+            /* Adjust for mobile header/nav */
+            marginTop: 0,
+            scrollbarWidth: "none",
+          }}
+        >
+          <style>{`
+            div::-webkit-scrollbar { display: none; }
+            [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
+          `}</style>
+          {clips.map((clip, idx) => (
+            <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100svh" }}>
+              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex} onDelete={handleDeleteClip} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* Grille des clips (style Reels) */
+        <div className="h-screen overflow-y-auto px-2 pt-16 pb-24 lg:pt-6" style={{ background: "#000" }}>
+          <div className="grid grid-cols-3 gap-1.5 max-w-4xl mx-auto">
+            {clips.map((clip, idx) => (
+              <button
+                key={clip.id}
+                onClick={() => { setActiveIndex(idx); setView("immersive"); }}
+                data-testid={`clip-grid-${clip.id}`}
+                className="relative rounded-lg overflow-hidden active:scale-95 transition-transform"
+                style={{ aspectRatio: "9 / 16", background: "#111" }}
+              >
+                <video
+                  src={clip.media_url}
+                  className="w-full h-full object-cover"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent 55%)" }}
+                />
+                {clip.content && (
+                  <div className="absolute top-1.5 left-2 right-2 text-white text-[10px] line-clamp-1 opacity-80 text-left">
+                    {clip.content}
+                  </div>
+                )}
+                <div className="absolute bottom-1.5 left-2 right-2 flex items-center gap-2 text-white text-[11px]">
+                  <span className="flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1", color: "#f87171" }}>favorite</span>
+                    <span className="font-bold">{clip.likes_count || 0}</span>
+                  </span>
+                  <span className="flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-sm">play_arrow</span>
+                    <span className="font-bold">{clip.views || 0}</span>
+                  </span>
+                </div>
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {/* Bascule grille / immersif */}
+      {viewToggle}
 
       {/* Nexus Clips branding overlay (top-left) */}
       <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none lg:top-4">
@@ -278,6 +478,9 @@ export default function ClipsPage({ user, setUser }) {
           NEXUS CLIPS
         </span>
       </div>
+
+      {/* Bouton flottant : publier un clip */}
+      {uploadControls}
     </Layout>
   );
 }

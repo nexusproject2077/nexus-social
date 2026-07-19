@@ -4,10 +4,11 @@ from pathlib import Path
 # Cette ligne magique règle TOUT le problème Render
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response, Query, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Form, Response, Query, Body, WebSocket, WebSocketDisconnect, BackgroundTasks, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import InvalidURI, ConnectionFailure
 import os
@@ -21,12 +22,28 @@ import jwt
 import base64
 from bson import ObjectId
 import json
-from collections import defaultdict
+from collections import defaultdict, deque
+import time
 from enum import Enum
 import hashlib
 import random
 import math
 import re
+
+# E2EE (chiffrement des messages / données sensibles)
+from cryptography.fernet import Fernet
+
+# Geo-blocking (optionnel — nécessite geoip2 + base GeoLite2-Country.mmdb)
+try:
+    import geoip2.database
+except ImportError:
+    geoip2 = None
+
+# Paiements (optionnel — nécessite le SDK stripe + clés en env)
+try:
+    import stripe
+except ImportError:
+    stripe = None
 
 # Import du module follows (avec gestion des chemins)
 try:
@@ -38,6 +55,25 @@ except ImportError:
         print("⚠️ WARNING: Module 'follows' not found. Follow system will not be available.")
         follow_router = None
         set_database = None
+
+# Gestionnaire de connexions WebSocket temps réel (module existant)
+try:
+    from backend.websocket_notifications import manager as ws_manager
+except ImportError:
+    try:
+        from websocket_notifications import manager as ws_manager
+    except ImportError:
+        print("⚠️ WARNING: Module 'websocket_notifications' introuvable. Temps réel désactivé.")
+        ws_manager = None
+
+# Emails transactionnels (Brevo) — no-op si BREVO_API_KEY absente
+try:
+    from backend.brevo import send_email as send_brevo_email
+except ImportError:
+    try:
+        from brevo import send_email as send_brevo_email
+    except ImportError:
+        send_brevo_email = None
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -103,6 +139,213 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ==================== EU GEO-BLOCK ====================
+# Bloque les visiteurs des pays de l'UE (réponse HTTP 451) sauf sur les pages
+# légales. Le middleware "fail-open" : s'il n'y a pas de base GeoIP disponible
+# (ou si geoip2 n'est pas installé), toutes les requêtes passent normalement.
+EU_COUNTRIES = {
+    'AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR',
+    'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO',
+    'SE', 'SI', 'SK'
+}
+
+# Chemins toujours accessibles, même depuis l'UE (obligations légales + santé)
+GEO_BLOCK_ALLOWED_PATHS = ("/privacy", "/gdpr", "/legal", "/healthz", "/docs", "/openapi.json")
+
+EU_GEO_BLOCK_ENABLED = os.environ.get("EU_GEO_BLOCK_ENABLED", "true").lower() == "true"
+GEOIP_DB_PATH = os.environ.get("GEOIP_DB_PATH", str(ROOT_DIR / "GeoLite2-Country.mmdb"))
+
+_geoip_reader = None
+if EU_GEO_BLOCK_ENABLED and geoip2 is not None and os.path.exists(GEOIP_DB_PATH):
+    try:
+        _geoip_reader = geoip2.database.Reader(GEOIP_DB_PATH)
+        print(f"✅ EU geo-block actif (base GeoIP: {GEOIP_DB_PATH})")
+    except Exception as e:
+        print(f"⚠️ Impossible d'ouvrir la base GeoIP ({e}) — geo-block désactivé")
+        _geoip_reader = None
+elif EU_GEO_BLOCK_ENABLED:
+    print("⚠️ EU geo-block demandé mais base GeoLite2-Country.mmdb introuvable — les requêtes passent normalement")
+
+
+@app.middleware("http")
+async def eu_geo_block(request, call_next):
+    """Retourne 451 aux visiteurs de l'UE, sauf sur les pages légales."""
+    if _geoip_reader is not None:
+        path = request.url.path
+        if not any(p in path for p in GEO_BLOCK_ALLOWED_PATHS):
+            client_host = request.client.host if request.client else ""
+            forwarded = request.headers.get("x-forwarded-for", client_host)
+            ip = forwarded.split(",")[0].strip() if forwarded else client_host
+            try:
+                iso_code = _geoip_reader.country(ip).country.iso_code
+                if iso_code in EU_COUNTRIES:
+                    return JSONResponse(
+                        status_code=451,
+                        content={"error": "EU restricted - VPN/Tor required"}
+                    )
+            except Exception:
+                # IP privée / introuvable dans la base → on laisse passer
+                pass
+    return await call_next(request)
+
+# ==================== E2EE HELPER ====================
+# Chiffrement symétrique (Fernet) pour les données sensibles / messages.
+# Définissez ENCRYPTION_KEY (clé Fernet base64) en variable d'environnement.
+_encryption_key = os.environ.get("ENCRYPTION_KEY")
+if _encryption_key:
+    cipher = Fernet(_encryption_key.encode())
+    print("✅ E2EE cipher initialisé (ENCRYPTION_KEY)")
+else:
+    cipher = Fernet(Fernet.generate_key())
+    print("⚠️ ENCRYPTION_KEY absente — clé éphémère générée (les données ne se déchiffreront pas après un redémarrage)")
+
+
+def encrypt(data) -> str:
+    """Chiffre une valeur et renvoie une chaîne (token Fernet)."""
+    return cipher.encrypt(str(data).encode()).decode()
+
+
+def decrypt(token: str) -> str:
+    """Déchiffre un token Fernet et renvoie la chaîne d'origine."""
+    return cipher.decrypt(token.encode()).decode()
+
+# Chiffrement des messages au repos. Activé uniquement si une clé STABLE
+# (ENCRYPTION_KEY) est fournie : avec la clé éphémère générée au démarrage,
+# les messages deviendraient illisibles après un redémarrage. Le déchiffrement
+# reste toujours tolérant (renvoie la valeur brute si non chiffrée), ce qui
+# assure la rétro-compatibilité avec les messages en clair existants.
+E2EE_MESSAGES = bool(_encryption_key)
+if E2EE_MESSAGES:
+    print("✅ Chiffrement des messages au repos activé")
+
+def encrypt_message(text):
+    """Chiffre le contenu d'un message si le chiffrement est activé."""
+    if E2EE_MESSAGES and isinstance(text, str) and text:
+        try:
+            return encrypt(text)
+        except Exception:
+            return text
+    return text
+
+def decrypt_message(value):
+    """Déchiffre le contenu d'un message ; renvoie la valeur telle quelle
+    si elle n'est pas (ou plus) déchiffrable (message en clair, clé changée)."""
+    if isinstance(value, str) and value:
+        try:
+            return decrypt(value)
+        except Exception:
+            return value
+    return value
+
+# ==================== PAIEMENTS (Stripe) ====================
+# Abonnements via Stripe Checkout. Désactivé proprement si les clés sont
+# absentes : les endpoints renvoient 503 et rien n'est facturé.
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID", "")  # prix d'abonnement récurrent
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://nexus-social-3ta5.onrender.com")
+STRIPE_ENABLED = bool(stripe and STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
+if STRIPE_ENABLED:
+    stripe.api_key = STRIPE_SECRET_KEY
+    print("✅ Stripe activé (abonnements)")
+elif stripe is None:
+    print("ℹ️ Stripe indisponible (SDK non installé) — abonnements désactivés")
+else:
+    print("ℹ️ Stripe désactivé (STRIPE_SECRET_KEY/STRIPE_PRICE_ID absents) — abonnements désactivés")
+
+# ==================== ADMINISTRATION ====================
+# Le tableau de bord Analytics expose des données globales de la plateforme et
+# des actions sensibles (bloquer un compte, notifier tous les utilisateurs,
+# exporter les données). Il est donc réservé aux administrateurs.
+# Définissez ADMIN_EMAILS (emails séparés par des virgules) en variable
+# d'environnement. Tant qu'aucun admin n'est défini, l'accès est refusé.
+ADMIN_EMAILS = {
+    e.strip().lower()
+    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+    if e.strip()
+}
+if ADMIN_EMAILS:
+    print(f"✅ Administrateurs configurés ({len(ADMIN_EMAILS)})")
+else:
+    print("ℹ️ Aucun ADMIN_EMAILS défini — le tableau de bord Analytics est verrouillé")
+
+# ==================== WEBSOCKET TEMPS RÉEL ====================
+# Endpoint authentifié : le client se connecte à /ws/{user_id}?token=<JWT>.
+# Le token doit correspondre au user_id, sinon la connexion est refusée.
+# (Le service Render tourne avec 1 worker uvicorn, donc le registre en mémoire
+#  du ConnectionManager est cohérent.)
+if ws_manager is not None:
+    @app.websocket("/ws/{user_id}")
+    async def realtime_ws(websocket: WebSocket, user_id: str, token: str = Query(None)):
+        # Authentification : le token JWT doit correspondre au user_id
+        try:
+            payload = jwt.decode(token or "", SECRET_KEY, algorithms=[ALGORITHM])
+            if payload.get("sub") != user_id:
+                await websocket.close(code=1008)
+                return
+        except Exception:
+            await websocket.close(code=1008)
+            return
+
+        await ws_manager.connect(websocket, user_id)
+        try:
+            while True:
+                data = await websocket.receive_text()
+                if data == "ping":
+                    await websocket.send_text("pong")
+        except WebSocketDisconnect:
+            ws_manager.disconnect(websocket, user_id)
+        except Exception:
+            ws_manager.disconnect(websocket, user_id)
+
+
+async def push_realtime(user_id: str, payload: dict):
+    """Envoi temps réel best-effort : n'interrompt jamais la requête REST."""
+    if ws_manager is None:
+        return
+    try:
+        await ws_manager.send_personal_message(payload, user_id)
+    except Exception:
+        pass
+
+# ==================== LIVE (WebRTC signaling) ====================
+# Relais de signaling minimal pour un direct 1:1 (offre/réponse/ICE).
+# Gratuit : les pairs utilisent un STUN public (pas de TURN => échoue derrière
+# NAT symétrique). Registre en mémoire, cohérent car Render tourne en 1 worker.
+live_rooms: Dict[str, list] = {}
+
+@app.websocket("/ws/live/{room_id}")
+async def live_signaling(websocket: WebSocket, room_id: str, token: str = Query(None)):
+    # Authentification : token JWT valide requis (utilisateur connecté)
+    try:
+        jwt.decode(token or "", SECRET_KEY, algorithms=[ALGORITHM])
+    except Exception:
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    live_rooms.setdefault(room_id, []).append(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Relaie le message de signaling aux autres pairs de la room
+            for client in list(live_rooms.get(room_id, [])):
+                if client is not websocket:
+                    try:
+                        await client.send_text(data)
+                    except Exception:
+                        pass
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        conns = live_rooms.get(room_id, [])
+        if websocket in conns:
+            conns.remove(websocket)
+        if not conns:
+            live_rooms.pop(room_id, None)
 
 # Health check pour Render
 @app.get("/healthz")
@@ -171,6 +414,46 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
     return new_doc
 
 
+def safe_http_url(url: Optional[str]) -> Optional[str]:
+    """N'accepte qu'une URL http(s) (évite javascript: et autres schémas dangereux)."""
+    if isinstance(url, str):
+        u = url.strip()
+        if u.startswith("http://") or u.startswith("https://"):
+            return u[:2000]
+    return None
+
+
+def build_poll(poll_options: Optional[List[str]]) -> Optional[dict]:
+    """Construit un sondage à partir d'une liste de textes d'options.
+    Renvoie None si moins de 2 options valides (non vides)."""
+    if not poll_options:
+        return None
+    cleaned = [o.strip() for o in poll_options if o and o.strip()]
+    if len(cleaned) < 2:
+        return None
+    # Dédoublonne en gardant l'ordre, limite à 6 options
+    seen, options = set(), []
+    for text in cleaned:
+        if text not in seen:
+            seen.add(text)
+            options.append({"id": str(uuid.uuid4()), "text": text, "votes": 0})
+        if len(options) >= 6:
+            break
+    if len(options) < 2:
+        return None
+    return {"options": options, "total_votes": 0, "voters": {}}
+
+
+def enrich_post_poll(post: dict, user_id: str) -> dict:
+    """Ajoute poll_user_vote (option votée par user_id) et masque la liste
+    des votants avant sérialisation dans le modèle Post."""
+    poll = post.get("poll")
+    if isinstance(poll, dict):
+        voters = poll.get("voters") or {}
+        post["poll_user_vote"] = voters.get(user_id)
+    return post
+
+
 async def check_is_following(follower_id: str, followed_id: str) -> bool:
     """
     Vérifie si follower_id suit followed_id
@@ -209,6 +492,9 @@ class User(BaseModel):
     profile_pic: Optional[str] = None
     followers_count: int = 0
     following_count: int = 0
+    is_verified: bool = False
+    is_premium: bool = False
+    is_admin: bool = False
     created_at: str
 
 class UserProfile(BaseModel):
@@ -220,12 +506,30 @@ class UserProfile(BaseModel):
     followers_count: int = 0
     following_count: int = 0
     is_following: bool = False
+    is_verified: bool = False
+    crypto_wallet: Optional[str] = None  # adresse de tips crypto (Solana/USDT…)
     created_at: str
+
+class PollOption(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    text: str
+    votes: int = 0
+
+class Poll(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    options: List[PollOption]
+    total_votes: int = 0
+
+class PollVote(BaseModel):
+    option_id: str
 
 class PostCreate(BaseModel):
     content: str
     media_type: Optional[str] = None
     media_url: Optional[str] = None
+    poll_options: Optional[List[str]] = None  # >= 2 options => sondage attaché au post
+    affiliate_link: Optional[str] = None  # lien affilié optionnel (http/https)
 
 class Post(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -233,6 +537,7 @@ class Post(BaseModel):
     author_id: str
     author_username: str
     author_profile_pic: Optional[str] = None
+    author_is_verified: bool = False
     content: str
     media_type: Optional[str] = None
     media_url: Optional[str] = None
@@ -240,6 +545,11 @@ class Post(BaseModel):
     comments_count: int = 0
     shares_count: int = 0
     is_liked: bool = False
+    views: int = 0
+    affiliate_link: Optional[str] = None
+    affiliate_clicks: int = 0
+    poll: Optional[Poll] = None
+    poll_user_vote: Optional[str] = None  # id de l'option votée par l'utilisateur courant
     created_at: str
 
 class CommentCreate(BaseModel):
@@ -356,9 +666,94 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Authentication error: {str(e)}")
 
+
+def is_admin_user(user: dict) -> bool:
+    """Vrai si l'utilisateur fait partie des administrateurs (ADMIN_EMAILS)."""
+    email = (user.get("email") or "").strip().lower()
+    return bool(email) and email in ADMIN_EMAILS
+
+
+async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """Dépendance : n'autorise que les administrateurs (ADMIN_EMAILS)."""
+    if not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
+    return current_user
+
+# ==================== RATE LIMITING (anti brute-force) ====================
+# Limiteur en mémoire (cohérent car Render tourne en 1 worker). Fenêtre
+# glissante par clé (IP). Suffisant pour freiner le bruteforce de login.
+_rate_buckets: Dict[str, deque] = defaultdict(deque)
+
+def rate_limit(key: str, max_attempts: int, window_seconds: int) -> bool:
+    """Renvoie True si l'appel est autorisé, False si la limite est atteinte."""
+    now = time.monotonic()
+    bucket = _rate_buckets[key]
+    while bucket and now - bucket[0] > window_seconds:
+        bucket.popleft()
+    if len(bucket) >= max_attempts:
+        return False
+    bucket.append(now)
+    return True
+
+def client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+# ==================== GEO / LANGUE ====================
+# Détection de la langue à partir du pays (adresse IP) pour adapter
+# automatiquement l'interface. Langues gérées côté frontend :
+# en, fr, tr, ru, uk. Les autres pays retombent sur l'anglais.
+SUPPORTED_UI_LANGS = {"en", "fr", "tr", "ru", "uk"}
+
+# Pays -> langue de l'interface (code ISO 3166-1 alpha-2 -> code i18n)
+COUNTRY_TO_LANG = {
+    # Français
+    "FR": "fr", "BE": "fr", "CH": "fr", "LU": "fr", "MC": "fr",
+    "CI": "fr", "SN": "fr", "CM": "fr", "ML": "fr", "BF": "fr",
+    "NE": "fr", "CD": "fr", "CG": "fr", "GA": "fr", "TG": "fr",
+    "BJ": "fr", "MG": "fr", "GN": "fr", "TD": "fr", "DZ": "fr",
+    "MA": "fr", "TN": "fr", "HT": "fr", "GP": "fr", "MQ": "fr",
+    # Turc
+    "TR": "tr", "CY": "tr",
+    # Russe
+    "RU": "ru", "BY": "ru", "KZ": "ru", "KG": "ru", "TJ": "ru",
+    "AM": "ru", "AZ": "ru", "MD": "ru", "UZ": "ru", "TM": "ru",
+    # Ukrainien
+    "UA": "uk",
+}
+
+
+def lang_for_country(iso_code: Optional[str]) -> str:
+    """Retourne le code de langue de l'interface pour un pays donné."""
+    if not iso_code:
+        return "en"
+    return COUNTRY_TO_LANG.get(iso_code.upper(), "en")
+
+
+@api_router.get("/geo/language")
+async def detect_language(request: Request):
+    """Détecte le pays via l'IP et suggère une langue d'interface.
+
+    Best-effort : si la base GeoIP est absente, renvoie 'en' et le frontend
+    retombe sur la détection navigateur. Ne bloque jamais.
+    """
+    ip = client_ip(request)
+    country = None
+    if _geoip_reader is not None:
+        try:
+            country = _geoip_reader.country(ip).country.iso_code
+        except Exception:
+            country = None
+    lang = lang_for_country(country)
+    return {"country": country, "language": lang, "supported": sorted(SUPPORTED_UI_LANGS)}
+
+
 # ==================== AUTH ROUTES ====================
 @api_router.post("/auth/register")
-async def register(user_data: UserCreate):
+async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
     """Enregistre un nouvel utilisateur"""
     existing_user_raw = await db.users.find_one({
         "$or": [
@@ -383,9 +778,19 @@ async def register(user_data: UserCreate):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_to_insert)
-   
+
     token = create_access_token({"sub": user_id})
-   
+
+    # Email de bienvenue (best-effort, en tâche de fond : ne bloque pas l'inscription)
+    if send_brevo_email:
+        background_tasks.add_task(
+            send_brevo_email,
+            user_data.email,
+            "Bienvenue sur Nexus Social 🎉",
+            f"<h1>Bienvenue {user_data.username} !</h1>"
+            "<p>Ton compte est prêt. Publie ton premier post et rejoins la communauté 🚀</p>",
+        )
+
     return {
         "token": token,
         "user": {
@@ -401,10 +806,17 @@ async def register(user_data: UserCreate):
     }
 
 @api_router.post("/auth/login")
-async def login(credentials: UserLogin):
+async def login(credentials: UserLogin, request: Request):
     """Connecte un utilisateur existant"""
+    # Anti brute-force : max 10 tentatives / 5 min par IP
+    if not rate_limit(f"login:{client_ip(request)}", max_attempts=10, window_seconds=300):
+        raise HTTPException(
+            status_code=429,
+            detail="Trop de tentatives de connexion. Réessayez dans quelques minutes.",
+        )
+
     user_raw = await db.users.find_one({"email": credentials.email})
-    
+
     # Vérification avec protection contre les utilisateurs sans mot de passe
     if not user_raw or "password" not in user_raw or not pwd_context.verify(credentials.password, user_raw["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -429,7 +841,84 @@ async def login(credentials: UserLogin):
 @api_router.get("/auth/me", response_model=User)
 async def get_me(current_user: dict = Depends(get_current_user)):
     """Récupère le profil de l'utilisateur actuel"""
+    current_user["is_admin"] = is_admin_user(current_user)
     return User(**current_user)
+
+# ==================== BILLING (abonnements Stripe) ====================
+@api_router.get("/billing/status")
+async def billing_status(current_user: dict = Depends(get_current_user)):
+    """Indique si les paiements sont configurés et l'état d'abonnement de l'utilisateur."""
+    return {
+        "enabled": STRIPE_ENABLED,
+        "is_premium": bool(current_user.get("is_premium")),
+        "subscription_status": current_user.get("subscription_status"),
+    }
+
+
+@api_router.post("/billing/create-checkout-session")
+async def create_checkout_session(current_user: dict = Depends(get_current_user)):
+    """Crée une session Stripe Checkout d'abonnement et renvoie l'URL de paiement."""
+    if not STRIPE_ENABLED:
+        raise HTTPException(status_code=503, detail="Les paiements ne sont pas configurés")
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            customer_email=current_user.get("email"),
+            client_reference_id=current_user["id"],
+            metadata={"user_id": current_user["id"]},
+            subscription_data={"metadata": {"user_id": current_user["id"]}},
+            success_url=f"{FRONTEND_URL}/settings?sub=success",
+            cancel_url=f"{FRONTEND_URL}/settings?sub=cancel",
+        )
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
+
+
+@app.post("/api/billing/webhook")
+async def stripe_webhook(request: Request):
+    """Webhook Stripe (signature vérifiée) : met à jour l'abonnement de l'utilisateur."""
+    if not STRIPE_ENABLED or not STRIPE_WEBHOOK_SECRET:
+        return {"received": False, "reason": "stripe disabled"}
+
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Signature webhook invalide")
+
+    etype = event["type"]
+    obj = event["data"]["object"]
+
+    if etype == "checkout.session.completed":
+        user_id = (obj.get("metadata") or {}).get("user_id") or obj.get("client_reference_id")
+        if user_id:
+            await db.users.update_one({"id": user_id}, {"$set": {
+                "is_premium": True,
+                "subscription_status": "active",
+                "stripe_customer_id": obj.get("customer"),
+                "stripe_subscription_id": obj.get("subscription"),
+            }})
+            if send_brevo_email:
+                u = await db.users.find_one({"id": user_id})
+                if u and u.get("email"):
+                    send_brevo_email(
+                        u["email"],
+                        "Abonnement Nexus Premium activé ✅",
+                        "<h1>Merci !</h1><p>Ton abonnement Nexus Premium est actif. Profite des avantages créateur 🚀</p>",
+                    )
+    elif etype in ("customer.subscription.deleted", "customer.subscription.paused"):
+        sub_id = obj.get("id")
+        if sub_id:
+            await db.users.update_one(
+                {"stripe_subscription_id": sub_id},
+                {"$set": {"is_premium": False, "subscription_status": "canceled"}},
+            )
+
+    return {"received": True}
+
 
 @api_router.put("/auth/profile")
 async def update_profile(
@@ -492,8 +981,8 @@ async def update_profile_details(
     """Met à jour les détails du profil (nom, prénom, etc.)"""
     try:
         allowed_fields = [
-            "first_name", "last_name", "bio", "location", 
-            "phone", "birthdate", "gender", "website"
+            "first_name", "last_name", "bio", "location",
+            "phone", "birthdate", "gender", "website", "crypto_wallet"
         ]
         
         update_data = {
@@ -568,7 +1057,8 @@ async def get_user_settings(current_user: dict = Depends(get_current_user)):
                 "phone": user_dict.get("phone", ""),
                 "birthdate": user_dict.get("birthdate", ""),
                 "gender": user_dict.get("gender", ""),
-                "website": user_dict.get("website", "")
+                "website": user_dict.get("website", ""),
+                "crypto_wallet": user_dict.get("crypto_wallet", "")
             },
             "account": {
                 "username": user_dict.get("username"),
@@ -900,19 +1390,81 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "content": post_data.content,
         "media_type": post_data.media_type,
         "media_url": post_data.media_url,
         "likes_count": 0,
         "comments_count": 0,
         "shares_count": 0,
+        "poll": build_poll(post_data.poll_options),
+        "affiliate_link": safe_http_url(post_data.affiliate_link),
+        "affiliate_clicks": 0,
         "created_at": now.isoformat()
     }
-    
+
     await db.posts.insert_one(post_to_insert)
-    
+
     post = convert_mongo_doc_to_dict(post_to_insert)
     post["is_liked"] = False
+    post["poll_user_vote"] = None
+    return Post(**post)
+
+
+@api_router.post("/posts/{post_id}/affiliate-click")
+async def track_affiliate_click(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Incrémente le compteur de clics d'un lien affilié (best-effort)."""
+    result = await db.posts.update_one(
+        {"id": post_id, "affiliate_link": {"$ne": None}},
+        {"$inc": {"affiliate_clicks": 1}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Lien affilié introuvable")
+    return {"success": True}
+
+
+@api_router.post("/posts/{post_id}/vote", response_model=Post)
+async def vote_poll(post_id: str, vote: PollVote, current_user: dict = Depends(get_current_user)):
+    """Voter (ou changer de vote) sur le sondage d'un post."""
+    post_raw = await db.posts.find_one({"id": post_id})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    poll = post_raw.get("poll")
+    if not poll:
+        raise HTTPException(status_code=400, detail="Ce post ne contient pas de sondage")
+
+    options = poll.get("options", [])
+    valid_ids = {o["id"] for o in options}
+    if vote.option_id not in valid_ids:
+        raise HTTPException(status_code=400, detail="Option invalide")
+
+    voters = dict(poll.get("voters") or {})
+    previous = voters.get(current_user["id"])
+    if previous == vote.option_id:
+        # Vote inchangé : on renvoie l'état courant sans modification
+        post = enrich_post_poll(convert_mongo_doc_to_dict(post_raw), current_user["id"])
+        like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        return Post(**post)
+
+    total_votes = int(poll.get("total_votes") or 0)
+    for opt in options:
+        if previous and opt["id"] == previous:
+            opt["votes"] = max(0, int(opt.get("votes") or 0) - 1)
+        if opt["id"] == vote.option_id:
+            opt["votes"] = int(opt.get("votes") or 0) + 1
+    if not previous:
+        total_votes += 1
+    voters[current_user["id"]] = vote.option_id
+
+    updated_poll = {"options": options, "total_votes": total_votes, "voters": voters}
+    await db.posts.update_one({"id": post_id}, {"$set": {"poll": updated_poll}})
+
+    post_raw["poll"] = updated_poll
+    post = enrich_post_poll(convert_mongo_doc_to_dict(post_raw), current_user["id"])
+    like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
+    post["is_liked"] = bool(like_raw)
     return Post(**post)
 
 @api_router.get("/posts/feed", response_model=List[Post])
@@ -945,6 +1497,7 @@ async def get_posts_feed(current_user: dict = Depends(get_current_user)):
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
     
     return posts
@@ -959,6 +1512,7 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
     post = convert_mongo_doc_to_dict(post_raw)
     like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
     post["is_liked"] = bool(like_raw)
+    enrich_post_poll(post, current_user["id"])
     return Post(**post)
 
 @api_router.post("/posts/{post_id}/repost", response_model=Post)
@@ -988,6 +1542,7 @@ async def repost(post_id: str, current_user: dict = Depends(get_current_user)):
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "content": original["content"],
         "media_type": original.get("media_type"),
         "media_url": original.get("media_url"),
@@ -1091,6 +1646,7 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "content": comment_data.content,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1187,6 +1743,7 @@ async def create_comment_reply(comment_id: str, reply_data: CommentCreate, curre
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "content": reply_data.content,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1246,6 +1803,8 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         followers_count=user.get("followers_count", 0),
         following_count=user.get("following_count", 0),
         is_following=is_following,
+        is_verified=user.get("is_verified", False),
+        crypto_wallet=user.get("crypto_wallet"),
         created_at=user["created_at"]
     )
 
@@ -1281,6 +1840,7 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
     
     return posts
@@ -1555,7 +2115,7 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     user_id=other_user["id"],
                     username=other_user["username"],
                     profile_pic=other_user.get("profile_pic"),
-                    last_message=msg["content"],
+                    last_message=decrypt_message(msg["content"]),
                     last_message_time=msg["created_at"],
                     unread_count=unread_count
                 )
@@ -1584,8 +2144,9 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
     messages = []
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
+        msg["content"] = decrypt_message(msg.get("content"))
         messages.append(Message(**msg))
-    
+
     # Marquer les messages reçus comme lus
     await db.messages.update_many(
         {"sender_id": user_id, "recipient_id": current_user["id"], "read": False},
@@ -1597,6 +2158,10 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
 @api_router.post("/messages", response_model=Message)
 async def send_message(message_data: MessageCreate, current_user: dict = Depends(get_current_user)):
     """Envoie un message"""
+    # Anti-spam : max 30 messages / 60 s par utilisateur
+    if not rate_limit(f"msg:{current_user['id']}", max_attempts=30, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Trop de messages envoyés. Ralentissez un peu.")
+
     recipient_raw = await db.users.find_one({"id": message_data.recipient_id})
     if not recipient_raw:
         raise HTTPException(status_code=404, detail="Recipient not found")
@@ -1611,14 +2176,30 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "sender_profile_pic": current_user.get("profile_pic"),
         "recipient_id": message_data.recipient_id,
         "recipient_username": recipient["username"],
-        "content": message_data.content,
+        "content": encrypt_message(message_data.content),
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     await db.messages.insert_one(message_to_insert)
-    
+
     message = convert_mongo_doc_to_dict(message_to_insert)
+    message["content"] = message_data.content  # renvoyer en clair à l'expéditeur
+
+    # Push temps réel au destinataire (best-effort, contenu en clair)
+    await push_realtime(message_data.recipient_id, {
+        "type": "new_message",
+        "data": {
+            "id": message_id,
+            "sender_id": current_user["id"],
+            "sender_username": current_user["username"],
+            "sender_profile_pic": current_user.get("profile_pic"),
+            "recipient_id": message_data.recipient_id,
+            "content": message_data.content,
+            "created_at": message_to_insert["created_at"],
+        },
+    })
+
     return Message(**message)
 
 # ==================== ENHANCED MESSAGES FEATURES ====================
@@ -1919,6 +2500,10 @@ async def send_group_message(
 ):
     """Envoyer un message dans un groupe"""
     try:
+        # Anti-spam : max 30 messages / 60 s par utilisateur
+        if not rate_limit(f"msg:{current_user['id']}", max_attempts=30, window_seconds=60):
+            raise HTTPException(status_code=429, detail="Trop de messages envoyés. Ralentissez un peu.")
+
         # Validation du contenu
         if not message_data.get("content"):
             raise HTTPException(status_code=400, detail="Le contenu du message est requis")
@@ -1946,7 +2531,7 @@ async def send_group_message(
             "sender_id": current_user["id"],
             "sender_username": current_user["username"],
             "sender_profile_pic": current_user.get("profile_pic"),
-            "content": message_data["content"].strip(),
+            "content": encrypt_message(message_data["content"].strip()),
             "media_urls": message_data.get("media_urls", []),
             "reply_to_id": message_data.get("reply_to_id"),
             "reactions": [],
@@ -1960,9 +2545,11 @@ async def send_group_message(
         if not result.inserted_id:
             raise HTTPException(status_code=500, detail="Erreur lors de l'envoi du message")
 
+        response_message = convert_mongo_doc_to_dict(message)
+        response_message["content"] = message_data["content"].strip()  # clair pour l'expéditeur
         return {
             "success": True,
-            "message": convert_mongo_doc_to_dict(message)
+            "message": response_message
         }
     except HTTPException:
         raise
@@ -1995,9 +2582,13 @@ async def get_group_messages(
         "deleted_for": {"$ne": current_user["id"]}
     }).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
     
-    messages = [convert_mongo_doc_to_dict(m) for m in messages_raw]
+    messages = []
+    for m in messages_raw:
+        msg = convert_mongo_doc_to_dict(m)
+        msg["content"] = decrypt_message(msg.get("content"))
+        messages.append(msg)
     messages.reverse()  # Ordre chronologique
-    
+
     return {
         "success": True,
         "messages": messages
@@ -2163,6 +2754,7 @@ async def search(q: str, current_user: dict = Depends(get_current_user)):
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
     
     return {"users": users, "posts": posts}
@@ -2206,6 +2798,7 @@ async def create_story(
         "author_id": current_user["id"],
         "author_username": current_user["username"],
         "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
         "media_type": media_type,
         "media_url": media_url,
         "views_count": 0,
@@ -3161,6 +3754,7 @@ async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 
     return posts
@@ -3169,21 +3763,23 @@ async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
 async def compute_trending_hashtags(limit: int = 10):
     """
     Calcule les hashtags tendance EN DIRECT à partir des vraies publications.
-    Score = (#posts 24h * 3) + (#posts 7j) + (likes * 0.1)
+    Fenêtre glissante 24h : seuls les posts des dernières 24h comptent, donc un
+    hashtag sort automatiquement des tendances et est remplacé au-delà de 24h.
+    Score = (#posts 24h * 3) + (likes * 0.1)
     Aucun cron requis : la tendance reflète toujours l'état réel de la base.
     """
     now = datetime.now(timezone.utc)
-    since_7d = (now - timedelta(days=7)).isoformat()
     since_24h = (now - timedelta(hours=24)).isoformat()
 
+    # Fenêtre glissante 24h : on ne considère QUE les posts des dernières 24h,
+    # donc un hashtag sort automatiquement des tendances passé ce délai.
     recent_posts = await db.posts.find(
-        {"created_at": {"$gte": since_7d}}
+        {"created_at": {"$gte": since_24h}}
     ).sort("created_at", -1).limit(3000).to_list(length=3000)
 
     stats: Dict[str, dict] = {}
     for post in recent_posts:
         content = post.get("content") or ""
-        created = post.get("created_at", "")
         likes = post.get("likes_count", 0) or 0
 
         seen = set()
@@ -3192,20 +3788,18 @@ async def compute_trending_hashtags(limit: int = 10):
             if key in seen:
                 continue
             seen.add(key)
-            entry = stats.setdefault(key, {"display": raw_tag, "count": 0, "count24": 0, "likes": 0})
+            entry = stats.setdefault(key, {"display": raw_tag, "count": 0, "likes": 0})
             entry["count"] += 1
             entry["likes"] += likes
-            if created >= since_24h:
-                entry["count24"] += 1
 
     trending = []
     for key, entry in stats.items():
-        score = (entry["count24"] * 3.0) + (entry["count"] * 1.0) + (entry["likes"] * 0.1)
+        score = (entry["count"] * 3.0) + (entry["likes"] * 0.1)
         trending.append({
             "tag": f"#{entry['display']}",
             "normalized": key,
             "post_count": entry["count"],
-            "posts_24h": entry["count24"],
+            "posts_24h": entry["count"],
             "likes": entry["likes"],
             "score": round(score, 2),
         })
@@ -3238,9 +3832,289 @@ async def get_posts_by_hashtag(tag: str, current_user: dict = Depends(get_curren
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 
     return posts
+
+
+# ==================== ANALYTICS & MODÉRATION (ADMIN) ====================
+# Toutes ces routes sont réservées aux administrateurs (require_admin).
+# Les dates (created_at) sont stockées en chaînes ISO 8601 : la comparaison
+# lexicographique est donc valide pour filtrer par période.
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _start_of_day_iso() -> str:
+    now = _utc_now()
+    return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+
+def _days_ago_iso(days: int) -> str:
+    return (_utc_now() - timedelta(days=days)).isoformat()
+
+
+@api_router.get("/analytics/stats/global")
+async def analytics_global_stats(admin: dict = Depends(require_admin)):
+    """Statistiques globales de la plateforme (temps réel)."""
+    start_today = _start_of_day_iso()
+
+    total_users = await db.users.count_documents({})
+    new_users_today = await db.users.count_documents({"created_at": {"$gte": start_today}})
+    total_posts = await db.posts.count_documents({})
+    posts_today = await db.posts.count_documents({"created_at": {"$gte": start_today}})
+    total_comments = await db.comments.count_documents({})
+    total_likes = await db.likes.count_documents({})
+
+    # Taux d'engagement : interactions moyennes par publication.
+    interactions = total_likes + total_comments
+    engagement_rate = round(interactions / total_posts, 1) if total_posts else 0.0
+
+    return {
+        "total_users": total_users,
+        "new_users_today": new_users_today,
+        "total_posts": total_posts,
+        "posts_today": posts_today,
+        "total_comments": total_comments,
+        "total_likes": total_likes,
+        "engagement_rate": engagement_rate,
+    }
+
+
+@api_router.get("/analytics/trends")
+async def analytics_trends(days: int = Query(30, ge=1, le=365), admin: dict = Depends(require_admin)):
+    """Croissance quotidienne (users, posts, commentaires, likes) sur N jours."""
+    since = _days_ago_iso(days)
+
+    async def daily_counts(collection):
+        pipeline = [
+            {"$match": {"created_at": {"$gte": since}}},
+            {"$group": {"_id": {"$substrBytes": ["$created_at", 0, 10]}, "n": {"$sum": 1}}},
+        ]
+        out = {}
+        async for row in collection.aggregate(pipeline):
+            out[row["_id"]] = row["n"]
+        return out
+
+    users_by_day = await daily_counts(db.users)
+    posts_by_day = await daily_counts(db.posts)
+    comments_by_day = await daily_counts(db.comments)
+    likes_by_day = await daily_counts(db.likes)
+
+    # Construit une série continue (zéros compris) sur la fenêtre demandée.
+    today = _utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    series = []
+    for i in range(days - 1, -1, -1):
+        d = (today - timedelta(days=i)).strftime("%Y-%m-%d")
+        series.append({
+            "date": d[5:],  # MM-DD, plus lisible sur le graphe
+            "users": users_by_day.get(d, 0),
+            "posts": posts_by_day.get(d, 0),
+            "comments": comments_by_day.get(d, 0),
+            "likes": likes_by_day.get(d, 0),
+        })
+    return series
+
+
+@api_router.get("/analytics/top/users")
+async def analytics_top_users(limit: int = Query(10, ge=1, le=50), admin: dict = Depends(require_admin)):
+    """Meilleurs utilisateurs par score d'engagement."""
+    pipeline = [
+        {"$group": {
+            "_id": "$author_id",
+            "posts_count": {"$sum": 1},
+            "likes": {"$sum": {"$ifNull": ["$likes_count", 0]}},
+            "comments": {"$sum": {"$ifNull": ["$comments_count", 0]}},
+        }},
+        {"$lookup": {"from": "users", "localField": "_id", "foreignField": "id", "as": "u"}},
+        {"$unwind": "$u"},
+        {"$project": {
+            "_id": 0,
+            "user_id": "$_id",
+            "username": "$u.username",
+            "followers_count": {"$ifNull": ["$u.followers_count", 0]},
+            "posts_count": 1,
+            "engagement_score": {
+                "$add": [
+                    {"$multiply": ["$posts_count", 2]},
+                    {"$ifNull": ["$u.followers_count", 0]},
+                    {"$multiply": ["$likes", 0.5]},
+                    "$comments",
+                ]
+            },
+        }},
+        {"$sort": {"engagement_score": -1}},
+        {"$limit": limit},
+    ]
+    return await db.posts.aggregate(pipeline).to_list(length=limit)
+
+
+@api_router.get("/analytics/top/posts")
+async def analytics_top_posts(
+    limit: int = Query(10, ge=1, le=50),
+    days: int = Query(7, ge=1, le=365),
+    admin: dict = Depends(require_admin),
+):
+    """Publications les plus engageantes sur N jours."""
+    since = _days_ago_iso(days)
+    raw = await db.posts.find({"created_at": {"$gte": since}}).to_list(length=2000)
+
+    scored = []
+    for p in raw:
+        likes = p.get("likes_count", 0) or 0
+        comments = p.get("comments_count", 0) or 0
+        views = p.get("views", 0) or 0
+        score = likes * 2 + comments * 3 + views * 0.1
+        scored.append({
+            "post_id": p.get("id"),
+            "author": p.get("author_username", ""),
+            "content": (p.get("content") or "")[:200],
+            "likes_count": likes,
+            "comments_count": comments,
+            "engagement_score": score,
+        })
+    scored.sort(key=lambda x: x["engagement_score"], reverse=True)
+    return scored[:limit]
+
+
+@api_router.get("/analytics/activity/hourly")
+async def analytics_hourly(days: int = Query(7, ge=1, le=90), admin: dict = Depends(require_admin)):
+    """Activité agrégée par heure de la journée (0-23) sur N jours."""
+    since = _days_ago_iso(days)
+
+    async def by_hour(collection):
+        pipeline = [
+            {"$match": {"created_at": {"$gte": since}}},
+            {"$group": {"_id": {"$substrBytes": ["$created_at", 11, 2]}, "n": {"$sum": 1}}},
+        ]
+        out = {}
+        async for row in collection.aggregate(pipeline):
+            try:
+                out[int(row["_id"])] = row["n"]
+            except (ValueError, TypeError):
+                continue
+        return out
+
+    posts_h = await by_hour(db.posts)
+    comments_h = await by_hour(db.comments)
+    likes_h = await by_hour(db.likes)
+
+    result = []
+    for h in range(24):
+        result.append({"hour": h, "type": "posts", "activity_count": posts_h.get(h, 0)})
+        result.append({"hour": h, "type": "comments", "activity_count": comments_h.get(h, 0)})
+        result.append({"hour": h, "type": "likes", "activity_count": likes_h.get(h, 0)})
+    return result
+
+
+async def _compute_suspicious():
+    """Détection heuristique de comptes suspects (spam / bot)."""
+    flagged = []
+    # Beaucoup d'abonnements, aucun abonné → typique des bots de spam.
+    async for u in db.users.find({
+        "following_count": {"$gte": 50},
+        "followers_count": {"$lte": 1},
+    }).limit(100):
+        flagged.append({
+            "user_id": u.get("id"),
+            "username": u.get("username", ""),
+            "reason": "Beaucoup d'abonnements pour aucun abonné (comportement de bot)",
+            "score": min(100, int(u.get("following_count", 0))),
+        })
+    return flagged
+
+
+@api_router.get("/analytics/suspicious/accounts")
+async def analytics_suspicious(status: str = Query("pending"), admin: dict = Depends(require_admin)):
+    """Comptes suspects en attente de modération."""
+    flagged = await _compute_suspicious()
+
+    # Exclut les comptes déjà traités (bloqués ou marqués sûrs).
+    decided = {}
+    async for m in db.moderation.find({}):
+        decided[m.get("user_id")] = m.get("status")
+
+    now_iso = _utc_now().isoformat()
+    pending = []
+    for f in flagged:
+        if decided.get(f["user_id"]) in ("blocked", "cleared"):
+            continue
+        f["status"] = "pending"
+        f["detected_at"] = now_iso
+        pending.append(f)
+    return pending
+
+
+@api_router.post("/analytics/suspicious/block/{user_id}")
+async def analytics_block_account(user_id: str, admin: dict = Depends(require_admin)):
+    """Bloque un compte suspect."""
+    await db.users.update_one({"id": user_id}, {"$set": {"is_blocked": True}})
+    await db.moderation.update_one(
+        {"user_id": user_id},
+        {"$set": {"user_id": user_id, "status": "blocked", "at": _utc_now().isoformat()}},
+        upsert=True,
+    )
+    return {"success": True}
+
+
+@api_router.post("/analytics/suspicious/clear/{user_id}")
+async def analytics_clear_account(user_id: str, admin: dict = Depends(require_admin)):
+    """Marque un compte comme sûr (retiré de la liste des suspects)."""
+    await db.moderation.update_one(
+        {"user_id": user_id},
+        {"$set": {"user_id": user_id, "status": "cleared", "at": _utc_now().isoformat()}},
+        upsert=True,
+    )
+    return {"success": True}
+
+
+@api_router.post("/analytics/automation/run")
+async def analytics_run_automation(admin: dict = Depends(require_admin)):
+    """Tâche de maintenance : recense les comptes suspects du moment."""
+    flagged = await _compute_suspicious()
+    return {"success": True, "suspicious_found": len(flagged)}
+
+
+class AdminNotification(BaseModel):
+    title: str
+    message: str
+    type: str = "info"
+
+
+@api_router.post("/analytics/notifications/send")
+async def analytics_send_notification(payload: AdminNotification, admin: dict = Depends(require_admin)):
+    """Envoie une notification à tous les utilisateurs (annonce plateforme)."""
+    now_iso = _utc_now().isoformat()
+    docs = []
+    async for u in db.users.find({}, {"id": 1}):
+        docs.append({
+            "id": str(uuid.uuid4()),
+            "user_id": u.get("id"),
+            "type": f"admin_{payload.type}",
+            "title": payload.title,
+            "message": payload.message,
+            "read": False,
+            "created_at": now_iso,
+        })
+    if docs:
+        await db.notifications.insert_many(docs)
+    return {"success": True, "sent": len(docs)}
+
+
+@api_router.get("/analytics/export/{data_type}")
+async def analytics_export(data_type: str, admin: dict = Depends(require_admin)):
+    """Exporte les données (users ou posts) au format JSON, sans champs sensibles."""
+    if data_type == "users":
+        rows = await db.users.find(
+            {}, {"_id": 0, "password": 0, "hashed_password": 0}
+        ).to_list(length=100000)
+        return rows
+    if data_type == "posts":
+        rows = await db.posts.find({}, {"_id": 0}).to_list(length=100000)
+        return rows
+    raise HTTPException(status_code=400, detail="Type d'export invalide (users ou posts)")
 
 
 @api_router.get("/clips", response_model=List[Post])
@@ -3264,6 +4138,117 @@ async def get_clips_feed(current_user: dict = Depends(get_current_user)):
     # Tri par engagement récent : likes + commentaires, puis date
     clips.sort(key=lambda p: (p.likes_count + p.comments_count), reverse=True)
     return clips
+
+
+@api_router.post("/clips", response_model=Post)
+async def create_clip(
+    file: UploadFile = File(...),
+    caption: str = Form(""),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Créer un Clip / Reel : la vidéo uploadée est stockée comme publication vidéo,
+    ce qui la fait apparaître dans le fil Nexus Clips (GET /api/clips) et le feed.
+    """
+    if not (file.content_type or "").startswith("video/"):
+        raise HTTPException(status_code=400, detail="Le fichier doit être une vidéo")
+
+    contents = await file.read()
+    media_url = f"data:{file.content_type};base64," + base64.b64encode(contents).decode("utf-8")
+
+    clip_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    clip_to_insert = {
+        "id": clip_id,
+        "author_id": current_user["id"],
+        "author_username": current_user["username"],
+        "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
+        "content": caption,
+        "media_type": "video",
+        "media_url": media_url,
+        "likes_count": 0,
+        "comments_count": 0,
+        "shares_count": 0,
+        "views": 0,
+        "created_at": now.isoformat(),
+    }
+    await db.posts.insert_one(clip_to_insert)
+
+    clip = convert_mongo_doc_to_dict(clip_to_insert)
+    clip["is_liked"] = False
+    return Post(**clip)
+
+
+@api_router.get("/adsense")
+async def get_adsense_config():
+    """Config AdSense côté client (vide par défaut => aucune pub)."""
+    return {
+        "client": os.environ.get("ADSENSE_CLIENT", ""),
+        "slot": os.environ.get("ADSENSE_SLOT", ""),
+    }
+
+
+@api_router.post("/clips/{clip_id}/view")
+async def register_clip_view(clip_id: str, current_user: dict = Depends(get_current_user)):
+    """Incrémente le compteur de vues d'un clip (best-effort)."""
+    result = await db.posts.update_one({"id": clip_id}, {"$inc": {"views": 1}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Clip introuvable")
+    post = await db.posts.find_one({"id": clip_id})
+    return {"success": True, "views": (post or {}).get("views", 0)}
+
+
+@api_router.get("/feed/foryou", response_model=List[Post])
+async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current_user)):
+    """
+    Feed "Pour toi" : mélange les publications des comptes suivis et les
+    contenus tendance (fort engagement), classés par un score d'engagement
+    pondéré avec un bonus de personnalisation pour les comptes suivis.
+
+    Le score est calculé côté base via un pipeline d'agrégation (plus efficace
+    qu'un chargement massif suivi d'un tri en mémoire).
+    """
+    limit = max(1, min(limit, 100))
+
+    # Comptes suivis (formats followed_id et following_id supportés)
+    follows_raw = await db.follows.find({
+        "follower_id": current_user["id"],
+        "status": "following"
+    }).to_list(length=1000)
+    followed_ids = []
+    for f in follows_raw:
+        fid = f.get("followed_id") or f.get("following_id")
+        if fid:
+            followed_ids.append(fid)
+
+    pipeline = [
+        {"$addFields": {
+            "engagement_score": {
+                "$add": [
+                    {"$multiply": [{"$ifNull": ["$likes_count", 0]}, 2]},
+                    {"$multiply": [{"$ifNull": ["$comments_count", 0]}, 3]},
+                    {"$multiply": [{"$ifNull": ["$shares_count", 0]}, 4]},
+                    # Bonus de personnalisation : les comptes suivis remontent
+                    {"$cond": [{"$in": ["$author_id", followed_ids]}, 15, 0]},
+                ]
+            }
+        }},
+        {"$sort": {"engagement_score": -1, "created_at": -1}},
+        {"$limit": limit},
+    ]
+
+    posts_raw = await db.posts.aggregate(pipeline).to_list(length=limit)
+
+    posts = []
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
+        posts.append(Post(**post))
+
+    return posts
 
 # ==================== END ENHANCED FEATURES ====================
 

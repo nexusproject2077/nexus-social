@@ -17,6 +17,7 @@ import BrowserPage from "./pages/BrowserPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import PrivacyCenter from './pages/PrivacyCenter';
 import ClipsPage from './pages/ClipsPage';
+import LiveStream from './pages/LiveStream';
 
 // URL du backend (NE CHANGE PLUS JAMAIS)
 const BACKEND_URL = "https://nexus-social-4k3v.onrender.com";
@@ -143,6 +144,14 @@ function App() {
           <Route
             path="/settings"
             element={user ? <SettingsPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/live"
+            element={user ? <LiveStream user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/live/:roomId"
+            element={user ? <LiveStream user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
         </Routes>
       </BrowserRouter>

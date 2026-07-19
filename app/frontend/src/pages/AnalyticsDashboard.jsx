@@ -69,6 +69,7 @@ const COLORS = ['#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
 
 export default function AnalyticsDashboard({ user, setUser }) {
   const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   
   // Stats
@@ -87,8 +88,18 @@ export default function AnalyticsDashboard({ user, setUser }) {
   const [sendingNotif, setSendingNotif] = useState(false);
 
   useEffect(() => {
-    loadAllData();
-    const interval = setInterval(loadAllData, 30000); // Rafraîchir toutes les 30s
+    let interval;
+    let stopped = false;
+    const tick = async () => {
+      const denied = await loadAllData();
+      // Accès refusé (non-admin) : inutile de réessayer en boucle.
+      if (denied && interval && !stopped) {
+        stopped = true;
+        clearInterval(interval);
+      }
+    };
+    tick();
+    interval = setInterval(tick, 30000); // Rafraîchir toutes les 30s
     return () => clearInterval(interval);
   }, []);
 
@@ -129,10 +140,17 @@ export default function AnalyticsDashboard({ user, setUser }) {
       setHourlyActivity(Object.values(activityByHour));
       
       setSuspiciousAccounts(suspiciousRes.data);
-      
+      setForbidden(false);
+      return false;
     } catch (error) {
       console.error("Erreur chargement données:", error);
+      if (error?.response?.status === 403) {
+        // Réservé aux administrateurs : on affiche un écran dédié, sans spam de toasts.
+        setForbidden(true);
+        return true;
+      }
       toast.error("Erreur de chargement des données");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -209,6 +227,25 @@ export default function AnalyticsDashboard({ user, setUser }) {
       toast.error("Erreur export");
     }
   };
+
+  if (forbidden) {
+    return (
+      <Layout user={user} setUser={setUser}>
+        <div className="flex items-center justify-center h-screen px-4">
+          <div className="text-center max-w-md">
+            <Shield className="h-12 w-12 text-orange-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+              Réservé à l'administrateur
+            </h2>
+            <p className="text-slate-400 text-sm">
+              Ce tableau de bord affiche les données globales de la plateforme. Il n'est
+              accessible qu'aux comptes administrateurs (variable <code>ADMIN_EMAILS</code>).
+            </p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   if (loading && !globalStats) {
     return (

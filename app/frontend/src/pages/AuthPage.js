@@ -374,7 +374,9 @@ export default function AuthPage({ setUser }) {
                     <a
                       className="hover:underline transition-all"
                       style={{ color: "#8aebff" }}
-                      href="#"
+                      href={`${API}/legal/terms-of-service`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
                       conditions d'utilisation
                     </a>

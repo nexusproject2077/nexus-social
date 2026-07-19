@@ -1,24 +1,34 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
 import Layout from "../components/Layout";
 import PostCard from "../components/PostCard";
 import CreatePostModal from "../components/CreatePostModal";
 import StoriesFeed from "../components/StoriesFeed";
+import AdSense from "../components/AdSense";
+import { Skeleton } from "../components/ui/skeleton";
 import { toast } from "sonner";
 
 export default function HomePage({ user, setUser }) {
+  const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreatePost, setShowCreatePost] = useState(false);
+  const [feedType, setFeedType] = useState("following"); // "following" | "foryou"
 
   useEffect(() => {
     fetchFeed();
-  }, []);
+  }, [feedType]);
 
   const fetchFeed = async () => {
+    setLoading(true);
     try {
-      const response = await axios.get(`${API}/posts/feed`);
+      // "For You" utilise l'algorithme d'engagement du backend,
+      // "Following" garde le fil classique des comptes suivis.
+      const endpoint =
+        feedType === "foryou" ? `${API}/feed/foryou` : `${API}/posts/feed`;
+      const response = await axios.get(endpoint);
       setPosts(response.data);
     } catch (error) {
       console.error("Erreur lors du chargement du fil:", error);
@@ -66,6 +76,33 @@ export default function HomePage({ user, setUser }) {
 
         {/* Stories */}
         <StoriesFeed />
+
+        {/* Switch Feed / Reels : Abonnements · Pour toi · Reels (ouvre le lecteur immersif) */}
+        <div className="flex items-center gap-2 mx-4 mt-4">
+          {[
+            { key: "following", label: "Abonnements" },
+            { key: "foryou", label: "Pour toi" },
+            { key: "reels", label: "Reels", nav: "/clips", icon: "play_circle" },
+          ].map(({ key, label, nav, icon }) => {
+            const active = !nav && feedType === key;
+            return (
+              <button
+                key={key}
+                data-testid={`feed-toggle-${key}`}
+                onClick={() => (nav ? navigate(nav) : setFeedType(key))}
+                className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                style={{
+                  backgroundColor: active ? "#22d3ee" : "#171f33",
+                  color: active ? "#00363e" : "#859397",
+                  border: "1px solid rgba(255,255,255,0.05)",
+                }}
+              >
+                {icon && <span className="material-symbols-outlined text-base">{icon}</span>}
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
         {/* Post Creation Box */}
         <section
@@ -148,25 +185,54 @@ export default function HomePage({ user, setUser }) {
         {/* Feed */}
         <div className="px-4 py-4 lg:py-6 space-y-4 lg:space-y-6">
           {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500" />
+            <div className="space-y-4 lg:space-y-6" data-testid="feed-skeleton">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl border p-4 lg:p-5"
+                  style={{ backgroundColor: "#171f33", borderColor: "rgba(255,255,255,0.05)" }}
+                >
+                  <div className="flex items-center gap-3 mb-4">
+                    <Skeleton className="w-10 h-10 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-3 w-32" />
+                      <Skeleton className="h-2.5 w-20" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-11/12" />
+                    <Skeleton className="h-3 w-2/3" />
+                  </div>
+                  <Skeleton className="h-40 w-full rounded-xl mt-4" />
+                </div>
+              ))}
             </div>
           ) : posts.length === 0 ? (
             <div className="text-center py-12" style={{ color: "#859397" }}>
               <p className="text-lg">Aucune publication pour le moment</p>
               <p className="text-sm mt-2">
-                Suivez des utilisateurs pour voir leurs publications ici
+                {feedType === "foryou"
+                  ? "Revenez bientôt : le fil « Pour toi » se remplit avec les publications populaires"
+                  : "Suivez des utilisateurs pour voir leurs publications ici"}
               </p>
             </div>
           ) : (
-            posts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                currentUser={user}
-                onUpdate={handlePostUpdate}
-                onDelete={handlePostDelete}
-              />
+            posts.map((post, index) => (
+              <Fragment key={post.id}>
+                <PostCard
+                  post={post}
+                  currentUser={user}
+                  onUpdate={handlePostUpdate}
+                  onDelete={handlePostDelete}
+                />
+                {/* Emplacement pub tous les 5 posts — inerte tant qu'AdSense n'est pas configuré + consenti */}
+                {index % 5 === 4 && (
+                  <div className="my-2">
+                    <AdSense slot={process.env.REACT_APP_ADSENSE_SLOT} />
+                  </div>
+                )}
+              </Fragment>
             ))
           )}
         </div>

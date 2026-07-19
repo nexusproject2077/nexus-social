@@ -261,8 +261,34 @@ export default function ProfilePage({ user, setUser }) {
                 >
                   {profile.username}
                 </h1>
+                {profile.is_verified && (
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1", fontSize: "24px" }}
+                    title="Compte vérifié"
+                  >
+                    verified
+                  </span>
+                )}
                 {profile.is_private && <Lock size={18} color={C.outline} />}
                 <FollowButton />
+                {!isOwnProfile && profile.crypto_wallet && (
+                  <button
+                    data-testid="tip-crypto"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(profile.crypto_wallet).then(
+                        () => toast.success("Adresse wallet copiée — envoyez votre tip 🙌"),
+                        () => toast.info(profile.crypto_wallet)
+                      );
+                    }}
+                    title={profile.crypto_wallet}
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
+                    style={{ background: "rgba(34,211,238,0.12)", color: C.primary, border: `1px solid ${C.primaryContainer}33` }}
+                  >
+                    <span className="material-symbols-outlined text-base">volunteer_activism</span>
+                    Tip crypto
+                  </button>
+                )}
               </div>
               {profile.bio && (
                 <p className="text-sm leading-relaxed max-w-md" style={{ color: C.outline }}>

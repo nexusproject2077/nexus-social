@@ -5,6 +5,7 @@ import { API } from '../App';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
@@ -134,10 +135,37 @@ export default function SettingsPage({ user, setUser }) {
 
   const [profileData, setProfileData] = useState({
     first_name: "", last_name: "", bio: "",
-    location: "", website: "", phone: "", birthdate: "", gender: ""
+    location: "", website: "", phone: "", birthdate: "", gender: "", crypto_wallet: ""
   });
 
-  useEffect(() => { fetchSettings(); }, []);
+  const saveCryptoWallet = async () => {
+    try {
+      await axios.put(`${API}/users/me/profile-details`, { crypto_wallet: profileData.crypto_wallet });
+      toast.success("Wallet enregistré");
+    } catch { toast.error("Erreur"); }
+  };
+
+  const startSubscription = async () => {
+    try {
+      const res = await axios.post(`${API}/billing/create-checkout-session`);
+      if (res.data?.url) window.location.href = res.data.url;
+      else toast.error("Abonnement indisponible");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Les paiements ne sont pas encore configurés");
+    }
+  };
+
+  useEffect(() => {
+    const sub = new URLSearchParams(window.location.search).get("sub");
+    if (sub === "success") toast.success("Abonnement activé — bienvenue chez Premium 🎉");
+    else if (sub === "cancel") toast.info("Abonnement annulé");
+  }, []);
+  const [creatorStats, setCreatorStats] = useState(null);
+  const [monetization, setMonetization] = useState(
+    () => localStorage.getItem("creator_monetization") === "1"
+  );
+
+  useEffect(() => { fetchSettings(); fetchCreatorStats(); }, []);
 
   const fetchSettings = async () => {
     try {
@@ -146,6 +174,23 @@ export default function SettingsPage({ user, setUser }) {
       if (res.data?.profile) setProfileData(res.data.profile);
     } catch { toast.error("Erreur chargement"); }
     finally { setLoading(false); }
+  };
+
+  const fetchCreatorStats = async () => {
+    try {
+      const res = await axios.get(`${API}/users/me/stats`);
+      setCreatorStats(res.data);
+    } catch { /* stats optionnelles */ }
+  };
+
+  const toggleMonetization = (value) => {
+    setMonetization(value);
+    localStorage.setItem("creator_monetization", value ? "1" : "0");
+    toast.info(
+      value
+        ? "Monétisation activée — la configuration des paiements arrive bientôt"
+        : "Monétisation désactivée"
+    );
   };
 
   const updatePrivacy = async (key, value) => {
@@ -188,6 +233,7 @@ export default function SettingsPage({ user, setUser }) {
 
   const navSections = [
     { id: "account",  icon: "manage_accounts",  label: "Compte" },
+    { id: "creator",  icon: "paid",              label: "Créateur" },
     { id: "privacy",  icon: "gavel",             label: "Confidentialité" },
     { id: "security", icon: "shield",            label: "Sécurité" },
     { id: "content",  icon: "tune",              label: "Contenu" },
@@ -273,6 +319,112 @@ export default function SettingsPage({ user, setUser }) {
       </Card>
     </div>
   );
+
+  const renderCreator = () => {
+    const stats = [
+      { label: "Abonnés",       value: creatorStats?.followers_count, icon: "group" },
+      { label: "J'aime reçus",  value: creatorStats?.total_likes,     icon: "favorite" },
+      { label: "Publications",  value: creatorStats?.posts_count,     icon: "article" },
+      { label: "Commentaires",  value: creatorStats?.total_comments,  icon: "chat_bubble" },
+    ];
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Espace créateur</h2>
+          <p className="text-sm" style={{ color: C.outline }}>Suivez vos performances et gérez la monétisation de vos contenus</p>
+        </div>
+
+        {/* Aperçu des statistiques */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {stats.map((s, i) => (
+            <div key={i} className="rounded-2xl p-4" style={{ background: C.container, border: "1px solid rgba(255,255,255,0.05)" }}>
+              <span className="material-symbols-outlined text-lg" style={{ color: C.cyan }}>{s.icon}</span>
+              <p className="text-2xl font-black mt-1" style={{ color: C.onSurface }}>{s.value ?? "—"}</p>
+              <p className="text-[10px] uppercase tracking-wider font-bold" style={{ color: C.outline }}>{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Abonnement Premium */}
+        <Card>
+          <CardHeader title="Nexus Premium" icon="workspace_premium" />
+          <div className="p-5 space-y-3">
+            {user?.is_premium ? (
+              <p className="text-sm font-bold flex items-center gap-2" style={{ color: C.cyan }}>
+                <span className="material-symbols-outlined text-lg">verified</span>
+                Abonnement Premium actif
+              </p>
+            ) : (
+              <>
+                <p className="text-sm" style={{ color: C.outline }}>
+                  Passe Premium pour soutenir Nexus et débloquer les avantages créateur.
+                </p>
+                <button
+                  onClick={startSubscription}
+                  data-testid="subscribe-premium"
+                  className="px-5 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all active:scale-95"
+                  style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
+                >
+                  <span className="material-symbols-outlined text-lg">workspace_premium</span>
+                  Passer Premium
+                </button>
+              </>
+            )}
+          </div>
+        </Card>
+
+        {/* Analytique */}
+        <Card>
+          <CardHeader title="Analytique" icon="insights" />
+          <RowItem
+            icon="bar_chart"
+            label="Tableau de bord analytique"
+            sublabel="Vues, engagement et croissance détaillés"
+            onClick={() => navigate("/analytics")}
+          />
+        </Card>
+
+        {/* Monétisation */}
+        <Card>
+          <CardHeader title="Monétisation" icon="paid" />
+          <ToggleRow
+            icon="toll"
+            label="Activer la monétisation"
+            sublabel="Recevez des revenus de vos contenus — la configuration des paiements arrive bientôt"
+            checked={monetization}
+            onChange={toggleMonetization}
+          />
+          <div className="px-5 py-4 text-xs" style={{ color: C.outline }}>
+            Les versements nécessitent la configuration d'un prestataire de paiement, bientôt disponible.
+          </div>
+        </Card>
+
+        {/* Tips crypto */}
+        <Card>
+          <CardHeader title="Tips crypto" icon="currency_bitcoin" />
+          <div className="p-5 space-y-3">
+            <p className="text-sm" style={{ color: C.outline }}>
+              Ajoutez votre adresse (Solana, USDT, BTC…) pour recevoir des tips directement, sans intermédiaire ni frais de plateforme.
+            </p>
+            <InputField
+              label="Adresse wallet"
+              value={profileData.crypto_wallet}
+              onChange={(e) => setProfileData((p) => ({ ...p, crypto_wallet: e.target.value }))}
+              placeholder="Ex : 7xKX…（Solana / USDT / BTC）"
+            />
+            <button
+              onClick={saveCryptoWallet}
+              data-testid="save-wallet"
+              className="px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
+              style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
+            >
+              Enregistrer le wallet
+            </button>
+          </div>
+        </Card>
+      </div>
+    );
+  };
 
   const renderPrivacy = () => (
     <div className="space-y-6">
@@ -428,13 +580,20 @@ export default function SettingsPage({ user, setUser }) {
       </Card>
       <Card>
         <CardHeader title="Langue" icon="language" />
-        <RowItem icon="translate" label="Langue de l'interface" right="Français" onClick={() => toast.info("Multilingue à venir")} />
+        <div className="p-5 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold" style={{ color: C.onSurface }}>Langue de l'interface</p>
+            <p className="text-xs mt-0.5" style={{ color: C.outline }}>Détectée automatiquement selon votre pays</p>
+          </div>
+          <LanguageSwitcher />
+        </div>
       </Card>
     </div>
   );
 
   const sectionMap = {
     account:  renderAccount,
+    creator:  renderCreator,
     privacy:  renderPrivacy,
     security: renderSecurity,
     content:  renderContent,
@@ -495,9 +654,9 @@ export default function SettingsPage({ user, setUser }) {
 
           {/* Footer */}
           <div className="px-8 py-6 flex flex-wrap gap-x-6 gap-y-2 text-[10px] font-bold uppercase tracking-widest" style={{ borderTop: `1px solid rgba(255,255,255,0.04)`, color: C.outlineVar }}>
-            <a href="#" className="hover:text-cyan-400 transition-colors">Conditions</a>
-            <a href="#" className="hover:text-cyan-400 transition-colors">Politique de confidentialité</a>
-            <a href="#" className="hover:text-cyan-400 transition-colors">Cookies</a>
+            <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Conditions</a>
+            <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Politique de confidentialité</a>
+            <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Cookies</a>
             <span>Nexus v4.0 · EEA Node</span>
           </div>
         </main>

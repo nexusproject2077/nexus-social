@@ -92,6 +92,36 @@ export default function MessagesPage({ user }) {
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // Messages entrants en temps réel (émis par la couche WebSocket dans Layout)
+  useEffect(() => {
+    const onRealtime = (e) => {
+      const data = e.detail;
+      if (!data || data.type !== "new_message") return;
+      const m = data.data || {};
+      // Message de la conversation ouverte -> on l'ajoute en direct
+      if (selectedUserId && m.sender_id === selectedUserId) {
+        setMessages((prev) =>
+          prev.some((x) => x.id === m.id)
+            ? prev
+            : [...prev, {
+                id: m.id,
+                sender_id: m.sender_id,
+                sender_username: m.sender_username,
+                sender_profile_pic: m.sender_profile_pic,
+                recipient_id: m.recipient_id,
+                content: m.content,
+                created_at: m.created_at,
+              }]
+        );
+        markAsRead(selectedUserId);
+      }
+      // Rafraîchit la liste (dernier message + non lus)
+      fetchConversations();
+    };
+    window.addEventListener("nexus:realtime", onRealtime);
+    return () => window.removeEventListener("nexus:realtime", onRealtime);
+  }, [selectedUserId]);
+
   // Search with debounce
   useEffect(() => {
     if (!searchQuery.trim()) { setSearchResults([]); return; }
@@ -157,14 +187,14 @@ export default function MessagesPage({ user }) {
 
   const searchUsers = async (q) => {
     try {
-      const res = await axios.get(`${API}/users/search?q=${q}`);
+      const res = await axios.get(`${API}/users/search?q=${encodeURIComponent(q)}`);
       setSearchResults((res.data || []).filter(u => u.id !== user.id));
     } catch {}
   };
 
   const searchGroupUsers = async (q) => {
     try {
-      const res = await axios.get(`${API}/users/search?q=${q}`);
+      const res = await axios.get(`${API}/users/search?q=${encodeURIComponent(q)}`);
       setGroupSearchRes((res.data || []).filter(u => u.id !== user.id));
     } catch {}
   };
@@ -189,6 +219,16 @@ export default function MessagesPage({ user }) {
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors de l'envoi");
     }
+  };
+
+  // Le backend renvoie reactions sous forme de LISTE [{user_id, emoji}] ;
+  // on regroupe par emoji pour l'affichage.
+  const groupReactions = (reactions) => {
+    const counts = {};
+    (Array.isArray(reactions) ? reactions : []).forEach((r) => {
+      if (r && r.emoji) counts[r.emoji] = (counts[r.emoji] || 0) + 1;
+    });
+    return Object.entries(counts);
   };
 
   const handleReaction = async (messageId, emoji) => {
@@ -450,7 +490,7 @@ export default function MessagesPage({ user }) {
                       {/* Bubble */}
                       <div className="relative">
                         <div
-                          className="px-3 py-2 rounded-2xl text-sm leading-relaxed"
+                          className="px-3 py-2 rounded-2xl text-sm leading-relaxed break-words whitespace-pre-wrap"
                           style={isOwn ? {
                             background: "rgba(59,130,246,0.15)",
                             border: "1px solid rgba(59,130,246,0.25)",
@@ -470,13 +510,13 @@ export default function MessagesPage({ user }) {
                         </div>
 
                         {/* Reactions */}
-                        {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                        {groupReactions(msg.reactions).length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
-                            {Object.entries(msg.reactions).map(([emoji, users]) => (
+                            {groupReactions(msg.reactions).map(([emoji, count]) => (
                               <button key={emoji} onClick={() => handleReaction(msg.id, emoji)}
                                 className="text-xs px-1.5 py-0.5 rounded-full transition-all hover:opacity-80"
                                 style={{ background: C.high, border: `1px solid ${C.outlineVar}` }}>
-                                {emoji} {users.length}
+                                {emoji} {count}
                               </button>
                             ))}
                           </div>

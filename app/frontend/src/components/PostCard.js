@@ -26,6 +26,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const [showComments, setShowComments]   = useState(false);
   const [reposted, setReposted]       = useState(!!post.repost_of && post.author_id === currentUser?.id);
   const [repostLoading, setRepostLoading] = useState(false);
+  const [poll, setPoll]               = useState(post.poll || null);
+  const [pollVote, setPollVote]       = useState(post.poll_user_vote || null);
+  const [pollLoading, setPollLoading] = useState(false);
 
   const handleLike = async () => {
     try {
@@ -66,10 +69,45 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     }
   };
 
+  const handleVote = async (optionId) => {
+    if (pollLoading || pollVote === optionId) return;
+    try {
+      setPollLoading(true);
+      const res = await axios.post(`${API}/posts/${post.id}/vote`, { option_id: optionId });
+      setPoll(res.data.poll);
+      setPollVote(res.data.poll_user_vote);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erreur lors du vote");
+    } finally {
+      setPollLoading(false);
+    }
+  };
+
   const handleCommentAdded   = () => setCommentsCount((p) => p + 1);
   const handleCommentDeleted = () => setCommentsCount((p) => Math.max(0, p - 1));
 
   const getInitials = (u) => (u ? u.substring(0, 2).toUpperCase() : "??");
+
+  // Rend le contenu avec les hashtags cliquables (#tag -> recherche)
+  const renderContent = (text) => {
+    if (!text) return null;
+    return text.split(/(\s+)/).map((part, i) => {
+      if (/^#[\p{L}0-9_]+$/u.test(part)) {
+        return (
+          <Link
+            key={i}
+            to={`/search?q=${encodeURIComponent(part)}`}
+            onClick={(e) => e.stopPropagation()}
+            className="hover:underline"
+            style={{ color: C.cyan }}
+          >
+            {part}
+          </Link>
+        );
+      }
+      return part;
+    });
+  };
 
   const formatDate = (d) => {
     try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); }
@@ -104,8 +142,17 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               </div>
             )}
             <div>
-              <p className="font-bold text-sm transition-colors hover:text-cyan-400" style={{ color: C.onSurface }}>
+              <p className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1" style={{ color: C.onSurface }}>
                 {post.author_username}
+                {post.author_is_verified && (
+                  <span
+                    className="material-symbols-outlined text-sm"
+                    style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1" }}
+                    title="Compte vérifié"
+                  >
+                    verified
+                  </span>
+                )}
               </p>
               <p className="text-xs" style={{ color: C.outline }}>{formatDate(post.created_at)}</p>
             </div>
@@ -119,8 +166,83 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
         {/* Content */}
         <p className="leading-relaxed text-sm lg:text-base whitespace-pre-wrap" style={{ color: C.onVariant }}>
-          {post.content}
+          {renderContent(post.content)}
         </p>
+
+        {/* Poll / Sondage */}
+        {poll && Array.isArray(poll.options) && poll.options.length > 0 && (
+          <div className="space-y-2">
+            {poll.options.map((opt) => {
+              const total = poll.total_votes || 0;
+              const pct = total > 0 ? Math.round((opt.votes / total) * 100) : 0;
+              const voted = !!pollVote;
+              const selected = pollVote === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => handleVote(opt.id)}
+                  disabled={pollLoading}
+                  data-testid={`poll-option-${opt.id}`}
+                  className="relative w-full text-left rounded-xl overflow-hidden border px-3 py-2.5 text-sm transition-all"
+                  style={{
+                    borderColor: selected ? C.cyan : "rgba(255,255,255,0.08)",
+                    backgroundColor: C.high,
+                    opacity: pollLoading ? 0.7 : 1,
+                    cursor: pollLoading ? "default" : "pointer",
+                  }}
+                >
+                  {/* Barre de progression (résultats après vote) */}
+                  <div
+                    className="absolute inset-y-0 left-0"
+                    style={{
+                      width: voted ? `${pct}%` : "0%",
+                      background: selected ? "rgba(34,211,238,0.25)" : "rgba(255,255,255,0.06)",
+                      transition: "width 0.4s ease",
+                    }}
+                  />
+                  <div className="relative flex items-center justify-between gap-2" style={{ color: C.onSurface }}>
+                    <span className="flex items-center gap-1.5 font-medium">
+                      {selected && (
+                        <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>
+                          check_circle
+                        </span>
+                      )}
+                      {opt.text}
+                    </span>
+                    {voted && (
+                      <span className="text-xs font-bold flex-shrink-0" style={{ color: C.onVariant }}>
+                        {pct}%
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+            <p className="text-xs" style={{ color: C.outline }}>
+              {poll.total_votes || 0} vote{(poll.total_votes || 0) !== 1 ? "s" : ""}
+              {!pollVote && " · Appuyez pour voter"}
+            </p>
+          </div>
+        )}
+
+        {/* Lien affilié (bouton Shop) */}
+        {post.affiliate_link && /^https?:\/\//.test(post.affiliate_link) && (
+          <a
+            href={post.affiliate_link}
+            target="_blank"
+            rel="noopener noreferrer nofollow sponsored"
+            data-testid="affiliate-shop"
+            onClick={(e) => {
+              e.stopPropagation();
+              axios.post(`${API}/posts/${post.id}/affiliate-click`).catch(() => {});
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
+            style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
+          >
+            <span className="material-symbols-outlined text-lg">shopping_bag</span>
+            Shop
+          </a>
+        )}
 
         {/* Media */}
         {post.media_url && post.media_type === "image" && (

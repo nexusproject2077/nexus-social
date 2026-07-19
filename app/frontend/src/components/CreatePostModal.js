@@ -20,6 +20,16 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
   const [mediaPreview, setMediaPreview] = useState(null);
   const [mediaType, setMediaType] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("post"); // "post" | "story" | "poll"
+  const [pollOptions, setPollOptions] = useState(["", ""]);
+  const [affiliateLink, setAffiliateLink] = useState("");
+
+  const updateOption = (i, value) =>
+    setPollOptions((opts) => opts.map((o, idx) => (idx === i ? value : o)));
+  const addOption = () =>
+    setPollOptions((opts) => (opts.length >= 6 ? opts : [...opts, ""]));
+  const removeOption = (i) =>
+    setPollOptions((opts) => (opts.length <= 2 ? opts : opts.filter((_, idx) => idx !== i)));
 
   const MAX_VIDEO_SECONDS = 60;   // Nexus Clips = vidéos courtes
   const MAX_FILE_MB = 25;
@@ -73,11 +83,56 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     setMediaType(null);
   };
 
+  const resetForm = () => {
+    setContent("");
+    setMedia(null);
+    setMediaPreview(null);
+    setMediaType(null);
+    setPollOptions(["", ""]);
+    setAffiliateLink("");
+    setMode("post");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!content.trim()) {
-      toast.error("Le contenu ne peut pas être vide");
+
+    // --- Story : média obligatoire, publié vers /stories (expire en 24h) ---
+    if (mode === "story") {
+      if (!mediaPreview) {
+        toast.error("Ajoutez une photo ou une vidéo pour votre story");
+        return;
+      }
+      setLoading(true);
+      try {
+        const form = new FormData();
+        form.append("media_type", mediaType);
+        form.append("media_url", mediaPreview); // base64 (CAS URL du backend)
+        await axios.post(`${API}/stories`, form);
+        toast.success("Story publiée (disparaît dans 24h)");
+        resetForm();
+        onClose?.();
+      } catch (error) {
+        console.error("Erreur création story:", error);
+        toast.error(error.response?.data?.detail || "Erreur lors de la publication de la story");
+      } finally {
+        setLoading(false);
+      }
       return;
+    }
+
+    // --- Post / Sondage ---
+    if (!content.trim()) {
+      toast.error(mode === "poll" ? "Posez une question pour votre sondage" : "Le contenu ne peut pas être vide");
+      return;
+    }
+
+    let poll_options = null;
+    if (mode === "poll") {
+      poll_options = pollOptions.map((o) => o.trim()).filter(Boolean);
+      if (poll_options.length < 2) {
+        toast.error("Ajoutez au moins 2 options de sondage");
+        return;
+      }
     }
 
     setLoading(true);
@@ -87,6 +142,8 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
         content: content,
         media_type: mediaType || null,
         media_url: mediaPreview || null, // Base64 string
+        poll_options, // null pour un post simple
+        affiliate_link: affiliateLink.trim() || null,
       };
 
       const response = await axios.post(`${API}/posts`, postData, {
@@ -96,11 +153,8 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
       });
 
       onPostCreated(response.data);
-      setContent("");
-      setMedia(null);
-      setMediaPreview(null);
-      setMediaType(null);
-      toast.success("Publication créée avec succès");
+      resetForm();
+      toast.success(mode === "poll" ? "Sondage publié" : "Publication créée avec succès");
     } catch (error) {
       console.error("Erreur création post:", error);
       toast.error(error.response?.data?.detail || "Erreur lors de la création de la publication");
@@ -113,22 +167,116 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl">Créer une publication</DialogTitle>
+          <DialogTitle className="text-xl">
+            {mode === "story" ? "Créer une story" : mode === "poll" ? "Créer un sondage" : "Créer une publication"}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="content">Contenu</Label>
-            <Textarea
-              id="content"
-              data-testid="create-post-content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Que voulez-vous partager?"
-              className="bg-slate-800 border-slate-700 text-white min-h-32"
-              rows={5}
-            />
+          {/* Mode selector : Post / Story / Sondage */}
+          <div className="flex gap-2">
+            {[
+              { key: "post", label: "Publication", icon: "article" },
+              { key: "story", label: "Story", icon: "auto_stories" },
+              { key: "poll", label: "Sondage", icon: "bar_chart" },
+            ].map(({ key, label, icon }) => (
+              <button
+                key={key}
+                type="button"
+                data-testid={`mode-${key}`}
+                onClick={() => setMode(key)}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-bold transition-colors ${
+                  mode === key
+                    ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-900"
+                    : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                }`}
+              >
+                <span className="material-symbols-outlined text-base">{icon}</span>
+                {label}
+              </button>
+            ))}
           </div>
+
+          {mode !== "story" && (
+            <div>
+              <Label htmlFor="content">{mode === "poll" ? "Question" : "Contenu"}</Label>
+              <Textarea
+                id="content"
+                data-testid="create-post-content"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder={mode === "poll" ? "Posez votre question…" : "Que voulez-vous partager?"}
+                className="bg-slate-800 border-slate-700 text-white min-h-32"
+                rows={mode === "poll" ? 2 : 5}
+              />
+            </div>
+          )}
+
+          {/* Options de sondage */}
+          {mode === "poll" && (
+            <div className="space-y-2">
+              <Label>Options</Label>
+              {pollOptions.map((opt, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <Input
+                    value={opt}
+                    data-testid={`poll-option-input-${i}`}
+                    onChange={(e) => updateOption(i, e.target.value)}
+                    placeholder={`Option ${i + 1}`}
+                    maxLength={80}
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                  {pollOptions.length > 2 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeOption(i)}
+                      className="text-slate-400 hover:text-red-400 flex-shrink-0"
+                      data-testid={`remove-poll-option-${i}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {pollOptions.length < 6 && (
+                <button
+                  type="button"
+                  onClick={addOption}
+                  data-testid="add-poll-option"
+                  className="text-sm font-medium text-cyan-400 hover:text-cyan-300"
+                >
+                  + Ajouter une option
+                </button>
+              )}
+            </div>
+          )}
+
+          {mode === "story" && (
+            <p className="text-sm text-slate-400">
+              Votre story sera visible 24h puis disparaîtra. Ajoutez une photo ou une vidéo ci-dessous.
+            </p>
+          )}
+
+          {/* Lien affilié (optionnel) */}
+          {mode !== "story" && (
+            <div>
+              <Label htmlFor="affiliate">Lien affilié (optionnel)</Label>
+              <Input
+                id="affiliate"
+                data-testid="affiliate-input"
+                type="url"
+                value={affiliateLink}
+                onChange={(e) => setAffiliateLink(e.target.value)}
+                placeholder="https://amzn.to/…"
+                className="bg-slate-800 border-slate-700 text-white"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Affiche un bouton « Shop » sur votre publication (liens http/https uniquement).
+              </p>
+            </div>
+          )}
 
           {mediaPreview && (
             <div className="relative">
@@ -208,11 +356,17 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
             </Button>
             <Button
               type="submit"
-              disabled={loading || !content.trim()}
+              disabled={loading || (mode === "story" ? !mediaPreview : !content.trim())}
               className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
               data-testid="submit-post-button"
             >
-              {loading ? "Publication..." : "Publier"}
+              {loading
+                ? "Publication..."
+                : mode === "story"
+                ? "Publier la story"
+                : mode === "poll"
+                ? "Publier le sondage"
+                : "Publier"}
             </Button>
           </div>
         </form>
