@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useGeo } from "@/context/GeoContext";
 
 // Identifiant éditeur AdSense (ex. "ca-pub-XXXXXXXXXXXX").
 // La valeur peut être surchargée via l'env ; à défaut on utilise l'ID du site
@@ -18,9 +19,11 @@ const adsAllowed = () =>
 
 export default function AdSense({ slot, format = "auto" }) {
   const initialized = useRef(false);
+  const { restricted } = useGeo();
 
   useEffect(() => {
-    if (!ADSENSE_CLIENT || !slot || !adsAllowed() || initialized.current) return;
+    // Aucune pub pour les visiteurs restreints (UE).
+    if (restricted || !ADSENSE_CLIENT || !slot || !adsAllowed() || initialized.current) return;
     initialized.current = true;
 
     // Charge le script AdSense une seule fois, uniquement après consentement.
@@ -35,18 +38,18 @@ export default function AdSense({ slot, format = "auto" }) {
 
     try {
       window.adsbygoogle = window.adsbygoogle || [];
+      // Hors-UE : pubs personnalisées (accès complet) sauf si NPA forcé par l'env.
       if (NON_PERSONALIZED) {
-        // Demande des pubs non personnalisées (pas de profilage)
         window.adsbygoogle.requestNonPersonalizedAds = 1;
       }
       window.adsbygoogle.push({});
     } catch {
       /* le script n'est pas encore prêt : AdSense réessaiera au chargement */
     }
-  }, [slot]);
+  }, [slot, restricted]);
 
-  // Rien n'est rendu tant qu'AdSense n'est pas configuré + consenti.
-  if (!ADSENSE_CLIENT || !slot || !adsAllowed()) return null;
+  // Rien n'est rendu si restreint (UE), non configuré, ou non consenti.
+  if (restricted || !ADSENSE_CLIENT || !slot || !adsAllowed()) return null;
 
   return (
     <ins

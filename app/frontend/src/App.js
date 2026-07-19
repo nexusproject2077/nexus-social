@@ -6,6 +6,7 @@ import { Toaster } from "./components/ui/sonner";
 import CookieConsent from "./components/CookieConsent";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
 import { initAccent } from "@/lib/accent";
+import { GeoProvider } from "@/context/GeoContext";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
 import ProfilePage from "./pages/ProfilePage";
@@ -85,6 +86,7 @@ function App() {
   }
 
   return (
+    <GeoProvider>
     <div className="App">
       <Toaster position="top-center" richColors />
       <CookieConsent />
@@ -153,6 +155,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </div>
+    </GeoProvider>
   );
 }
 

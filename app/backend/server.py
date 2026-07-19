@@ -817,6 +817,25 @@ async def detect_language(request: Request):
     return {"country": country, "language": lang, "supported": sorted(SUPPORTED_UI_LANGS)}
 
 
+@api_router.get("/geo/status")
+async def geo_status(request: Request):
+    """État géographique du visiteur pour adapter l'expérience.
+
+    restricted=True pour l'UE (pas de pubs / pas de tracking, bandeau RGPD
+    complet). Hors-UE : accès complet + bandeau cookies discret.
+    Best-effort : si la base GeoIP est absente, on considère non-restreint.
+    """
+    ip = client_ip(request)
+    country = None
+    if _geoip_reader is not None:
+        try:
+            country = _geoip_reader.country(ip).country.iso_code
+        except Exception:
+            country = None
+    restricted = bool(country and country in EU_COUNTRIES)
+    return {"country": country, "restricted": restricted, "eu": restricted}
+
+
 # ==================== AUTH ROUTES ====================
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
