@@ -5,7 +5,7 @@ import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, UserPlus, Share2, Repeat, AtSign, TrendingUp, Trash2 } from "lucide-react";
+import { Heart, MessageCircle, UserPlus, Share2, Repeat, AtSign, TrendingUp, Trash2, Radio } from "lucide-react";
 import { toast } from "sonner";
 
 export default function NotificationsPage({ user }) {
@@ -50,9 +50,13 @@ export default function NotificationsPage({ user }) {
       }
     }
 
-    if (notification.post_id) {
+    if (notification.type === 'live' && notification.post_id) {
+      navigate(`/live/${notification.post_id}`);
+    } else if (notification.type === 'mention' || notification.type === 'repost' || notification.type === 'like' || notification.type === 'comment' || notification.type === 'trending') {
+      if (notification.post_id) navigate(`/post/${notification.post_id}`);
+    } else if (notification.post_id) {
       navigate(`/post/${notification.post_id}`);
-    } else if (notification.type === 'follow') {
+    } else if (notification.type === 'follow' || notification.type === 'follow_accepted') {
       navigate(`/profile/${notification.from_user_id}`);
     }
   };
@@ -112,6 +116,8 @@ export default function NotificationsPage({ user }) {
         return <AtSign className="w-5 h-5 text-cyan-500" />;
       case 'trending':
         return <TrendingUp className="w-5 h-5 text-orange-500" />;
+      case 'live':
+        return <Radio className="w-5 h-5 text-red-500" />;
       default:
         return null;
     }
@@ -128,6 +134,7 @@ export default function NotificationsPage({ user }) {
       case 'trending': return "Votre publication est dans les tendances 🔥";
       case 'follow_request':  return "souhaite s'abonner à vous";
       case 'follow_accepted': return "a accepté votre demande d'abonnement";
+      case 'live':     return "est en direct 🔴 — rejoignez maintenant";
       default:         return "";
     }
   };

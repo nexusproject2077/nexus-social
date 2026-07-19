@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
 import { toast } from "sonner";
@@ -21,11 +22,17 @@ export default function LiveStream({ user, setUser }) {
   const wsRef     = useRef(null);
   const streamRef = useRef(null);
   const offeredRef = useRef(false);
+  const startedRef = useRef(false);
 
   const cleanup = useCallback(() => {
     try { wsRef.current?.close(); } catch { /* déjà fermé */ }
     try { pcRef.current?.close(); } catch { /* déjà fermé */ }
     streamRef.current?.getTracks().forEach((t) => t.stop());
+    // Fin du direct côté serveur (retire des stories des abonnés).
+    if (startedRef.current) {
+      startedRef.current = false;
+      axios.post(`${API}/live/stop`).catch(() => {});
+    }
     pcRef.current = null;
     wsRef.current = null;
     streamRef.current = null;
@@ -65,6 +72,13 @@ export default function LiveStream({ user, setUser }) {
       streamRef.current = stream;
       if (localRef.current) localRef.current.srcObject = stream;
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+
+      // Déclare le direct : apparaît dans les stories des abonnés + les notifie.
+      try {
+        await axios.post(`${API}/live/start`, { room_id: roomId });
+        startedRef.current = true;
+        toast.success("Vous êtes en direct — vos abonnés sont notifiés");
+      } catch { /* best-effort */ }
     }
 
     const token = localStorage.getItem("token");

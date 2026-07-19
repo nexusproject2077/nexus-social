@@ -2306,6 +2306,70 @@ async def reject_follow_request(requester_id: str, current_user: dict = Depends(
     await db.notifications.delete_many({"type": "follow_request", "from_user_id": requester_id, "user_id": current_user["id"]})
     return {"success": True}
 
+
+# ==================== DIRECTS (LIVE) ====================
+class LiveStart(BaseModel):
+    room_id: str
+
+
+async def _followed_ids(user_id: str) -> List[str]:
+    ids = []
+    async for f in db.follows.find({"follower_id": user_id}):
+        fid = f.get("followed_id") or f.get("following_id")
+        if fid:
+            ids.append(fid)
+    return ids
+
+
+@api_router.post("/live/start")
+async def start_live(payload: LiveStart, current_user: dict = Depends(get_current_user)):
+    """Démarre un direct : visible dans les stories des abonnés + les notifie."""
+    now = datetime.now(timezone.utc).isoformat()
+    await db.live_sessions.update_one(
+        {"host_id": current_user["id"]},
+        {"$set": {
+            "host_id": current_user["id"],
+            "host_username": current_user["username"],
+            "host_profile_pic": current_user.get("profile_pic"),
+            "room_id": payload.room_id,
+            "started_at": now,
+            "active": True,
+        }},
+        upsert=True,
+    )
+    # Notifie les abonnés (followers) du lancement du direct.
+    async for f in db.follows.find({"followed_id": current_user["id"]}):
+        await create_notification(f.get("follower_id"), "live", current_user, post_id=payload.room_id)
+    return {"success": True, "room_id": payload.room_id}
+
+
+@api_router.post("/live/stop")
+async def stop_live(current_user: dict = Depends(get_current_user)):
+    """Termine le direct de l'utilisateur."""
+    await db.live_sessions.update_one(
+        {"host_id": current_user["id"]}, {"$set": {"active": False}}
+    )
+    return {"success": True}
+
+
+@api_router.get("/live/active")
+async def active_lives(current_user: dict = Depends(get_current_user)):
+    """Directs en cours parmi les comptes suivis (abonnements) + soi-même."""
+    allowed = set(await _followed_ids(current_user["id"]))
+    allowed.add(current_user["id"])
+    out = []
+    async for s in db.live_sessions.find({"active": True}):
+        if s.get("host_id") in allowed:
+            out.append({
+                "host_id": s.get("host_id"),
+                "host_username": s.get("host_username"),
+                "host_profile_pic": s.get("host_profile_pic"),
+                "room_id": s.get("room_id"),
+                "started_at": s.get("started_at"),
+            })
+    return out
+
+
 # ==================== NOTIFICATIONS ROUTES ====================
 @api_router.get("/notifications", response_model=List[Notification])
 async def get_notifications(current_user: dict = Depends(get_current_user)):
