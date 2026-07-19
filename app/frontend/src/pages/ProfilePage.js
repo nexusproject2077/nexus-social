@@ -5,6 +5,7 @@ import { API } from "@/App";
 import Layout from "@/components/Layout";
 import PostCard from "@/components/PostCard";
 import EditProfileModal from "@/components/EditProfileModal";
+import FollowListModal from "@/components/FollowListModal";
 import { Lock, Clock, UserPlus, UserMinus, Edit } from "lucide-react";
 import { toast } from "sonner";
 
@@ -42,6 +43,7 @@ export default function ProfilePage({ user, setUser }) {
   const [activeTab, setActiveTab]     = useState("media");
   const [reposts, setReposts]         = useState([]);
   const [mentions, setMentions]       = useState([]);
+  const [followModal, setFollowModal] = useState(null); // { kind: "followers"|"following" }
 
   const isOwnProfile = user && userId && user.id === userId;
 
@@ -315,19 +317,29 @@ export default function ProfilePage({ user, setUser }) {
             {/* Stats — desktop */}
             <div className="hidden sm:flex gap-3 flex-shrink-0 mb-1">
               {[
-                { label: "Publications", value: fmt(stats.posts) },
-                { label: "Abonnés",      value: fmt(stats.followers) },
-                { label: "Abonnements",  value: fmt(stats.following) },
-              ].map((s) => (
-                <div key={s.label} className="text-center px-5 py-3 rounded-2xl" style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}>
-                  <span className="block text-[10px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
-                    {s.label}
-                  </span>
-                  <span className="text-xl font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-                    {s.value}
-                  </span>
-                </div>
-              ))}
+                { label: "Publications", value: fmt(stats.posts), kind: null },
+                { label: "Abonnés",      value: fmt(stats.followers), kind: "followers" },
+                { label: "Abonnements",  value: fmt(stats.following), kind: "following" },
+              ].map((s) => {
+                const clickable = s.kind && canViewContent;
+                return (
+                  <button
+                    key={s.label}
+                    type="button"
+                    disabled={!clickable}
+                    onClick={() => clickable && setFollowModal({ kind: s.kind })}
+                    className={`text-center px-5 py-3 rounded-2xl ${clickable ? "hover:brightness-125 transition-all cursor-pointer" : "cursor-default"}`}
+                    style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}
+                  >
+                    <span className="block text-[10px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
+                      {s.label}
+                    </span>
+                    <span className="text-xl font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+                      {s.value}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
           </div>
@@ -337,20 +349,29 @@ export default function ProfilePage({ user, setUser }) {
       {/* Stats — mobile */}
       <div className="sm:hidden flex gap-3 px-5 pt-4 overflow-x-auto pb-1">
         {[
-          { label: "Publications", value: fmt(stats.posts) },
-          { label: "Abonnés",      value: fmt(stats.followers) },
-          { label: "Abonnements",  value: fmt(stats.following) },
-        ].map((s) => (
-          <div key={s.label} className="flex-shrink-0 text-center px-4 py-2.5 rounded-xl"
-            style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}>
-            <span className="block text-[9px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
-              {s.label}
-            </span>
-            <span className="text-lg font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-              {s.value}
-            </span>
-          </div>
-        ))}
+          { label: "Publications", value: fmt(stats.posts), kind: null },
+          { label: "Abonnés",      value: fmt(stats.followers), kind: "followers" },
+          { label: "Abonnements",  value: fmt(stats.following), kind: "following" },
+        ].map((s) => {
+          const clickable = s.kind && canViewContent;
+          return (
+            <button
+              key={s.label}
+              type="button"
+              disabled={!clickable}
+              onClick={() => clickable && setFollowModal({ kind: s.kind })}
+              className={`flex-shrink-0 text-center px-4 py-2.5 rounded-xl ${clickable ? "active:brightness-125" : ""}`}
+              style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}
+            >
+              <span className="block text-[9px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
+                {s.label}
+              </span>
+              <span className="text-lg font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+                {s.value}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
@@ -541,6 +562,24 @@ export default function ProfilePage({ user, setUser }) {
       </div>
 
       <EditProfileModal open={showEditProfile} onClose={() => setShowEditProfile(false)} user={user} onUpdate={handleProfileUpdate} />
+
+      {followModal && (
+        <FollowListModal
+          userId={userId}
+          kind={followModal.kind}
+          title={followModal.kind === "followers" ? "Abonnés" : "Abonnements"}
+          currentUserId={user?.id}
+          manageFollowers={isOwnProfile && followModal.kind === "followers"}
+          onClose={() => setFollowModal(null)}
+          onCountChange={(d) =>
+            setStats((p) => ({
+              ...p,
+              [followModal.kind === "followers" ? "followers" : "following"]:
+                Math.max(0, p[followModal.kind === "followers" ? "followers" : "following"] + d),
+            }))
+          }
+        />
+      )}
 
       {/* Spinner keyframe */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

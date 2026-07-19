@@ -2393,6 +2393,80 @@ async def reject_follow_request(requester_id: str, current_user: dict = Depends(
     return {"success": True}
 
 
+async def _enrich_user_list(user_ids: List[str], viewer_id: str) -> List[dict]:
+    """Renvoie les infos publiques d'une liste d'utilisateurs, avec, pour
+    chacun, si le visiteur (viewer) le suit déjà — pour l'affichage des
+    boutons Suivre/Abonné dans les listes d'abonnés/abonnements."""
+    if not user_ids:
+        return []
+    users = await db.users.find(
+        {"id": {"$in": user_ids}},
+        {"_id": 0, "password": 0},
+    ).to_list(length=len(user_ids))
+    # Qui, parmi cette liste, le viewer suit-il déjà ?
+    followed = await db.follows.find(
+        {"follower_id": viewer_id, "followed_id": {"$in": user_ids}},
+    ).to_list(length=len(user_ids))
+    followed_set = {f.get("followed_id") for f in followed}
+    by_id = {u["id"]: u for u in users}
+    out = []
+    for uid in user_ids:  # préserve l'ordre (plus récents d'abord)
+        u = by_id.get(uid)
+        if not u:
+            continue
+        out.append({
+            "id": u["id"],
+            "username": u.get("username"),
+            "profile_pic": u.get("profile_pic"),
+            "is_verified": u.get("is_verified", False),
+            "bio": u.get("bio", ""),
+            "is_following": uid in followed_set,
+            "is_self": uid == viewer_id,
+        })
+    return out
+
+
+async def _can_view_follow_lists(target_id: str, viewer_id: str) -> bool:
+    """Compte public → tout le monde ; compte privé → soi-même ou abonné approuvé."""
+    if target_id == viewer_id:
+        return True
+    target = await db.users.find_one({"id": target_id}, {"is_private": 1})
+    if not target or not target.get("is_private"):
+        return True
+    return await check_is_following(viewer_id, target_id)
+
+
+@api_router.get("/users/{user_id}/followers")
+async def list_followers(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Liste des abonnés (ceux qui suivent user_id), plus récents d'abord."""
+    if not await _can_view_follow_lists(user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Compte privé")
+    rows = await db.follows.find({"followed_id": user_id}).sort("created_at", -1).to_list(length=2000)
+    ids = [r.get("follower_id") for r in rows if r.get("follower_id")]
+    return await _enrich_user_list(ids, current_user["id"])
+
+
+@api_router.get("/users/{user_id}/following")
+async def list_following(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Liste des abonnements (ceux que user_id suit), plus récents d'abord."""
+    if not await _can_view_follow_lists(user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Compte privé")
+    rows = await db.follows.find({"follower_id": user_id}).sort("created_at", -1).to_list(length=2000)
+    ids = [r.get("followed_id") or r.get("following_id") for r in rows]
+    ids = [i for i in ids if i]
+    return await _enrich_user_list(ids, current_user["id"])
+
+
+@api_router.delete("/users/me/followers/{follower_id}")
+async def remove_follower(follower_id: str, current_user: dict = Depends(get_current_user)):
+    """Retire un abonné : la personne ne nous suit plus (gestion de ses abonnés)."""
+    result = await db.follows.delete_one({"follower_id": follower_id, "followed_id": current_user["id"]})
+    if result.deleted_count:
+        await db.users.update_one({"id": current_user["id"]}, {"$inc": {"followers_count": -1}})
+        await db.users.update_one({"id": follower_id}, {"$inc": {"following_count": -1}})
+    return {"success": True}
+
+
 # ==================== DIRECTS (LIVE) ====================
 class LiveStart(BaseModel):
     room_id: str
