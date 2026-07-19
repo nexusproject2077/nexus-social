@@ -2191,50 +2191,115 @@ async def get_time_stats(current_user: dict = Depends(get_current_user)):
         "most_active_day": random.choice(["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"])
     }
 
+async def _do_follow(follower: dict, user_id: str):
+    """Crée l'abonnement effectif (comptes publics ou requête acceptée)."""
+    await db.follows.insert_one({
+        "id": str(uuid.uuid4()),
+        "follower_id": follower["id"],
+        "followed_id": user_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await db.users.update_one({"id": follower["id"]}, {"$inc": {"following_count": 1}})
+    await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": 1}})
+    await create_notification(user_id, "follow", follower)
+
+
 @api_router.post("/users/{user_id}/follow")
 async def follow_user(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Follow/unfollow un utilisateur"""
+    """Suivre / ne plus suivre. Pour un compte privé, crée une demande à valider."""
     if user_id == current_user["id"]:
         raise HTTPException(status_code=400, detail="Cannot follow yourself")
-    
+
     user_raw = await db.users.find_one({"id": user_id})
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     existing_follow_raw = await db.follows.find_one({"follower_id": current_user["id"], "followed_id": user_id})
-    
+
     if existing_follow_raw:
-        # Unfollow
+        # Se désabonner
         await db.follows.delete_one({"follower_id": current_user["id"], "followed_id": user_id})
         await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": -1}})
         await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": -1}})
-        return {"following": False}
-    else:
-        # Follow
-        follow_id = str(uuid.uuid4())
-        await db.follows.insert_one({
-            "id": follow_id,
-            "follower_id": current_user["id"],
-            "followed_id": user_id,
-            "created_at": datetime.now(timezone.utc).isoformat()
+        return {"following": False, "status": "not_following"}
+
+    # Compte privé : demande d'abonnement à valider par le destinataire.
+    if user_raw.get("is_private", False):
+        existing_req = await db.follow_requests.find_one({"requester_id": current_user["id"], "target_id": user_id})
+        if existing_req:
+            # Annuler la demande (bascule).
+            await db.follow_requests.delete_one({"id": existing_req["id"]})
+            await db.notifications.delete_many({
+                "type": "follow_request", "from_user_id": current_user["id"], "user_id": user_id,
+            })
+            return {"following": False, "status": "not_following"}
+        await db.follow_requests.insert_one({
+            "id": str(uuid.uuid4()),
+            "requester_id": current_user["id"],
+            "target_id": user_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
         })
-        await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": 1}})
-        await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": 1}})
-        
-        # Créer une notification
-        notif_id = str(uuid.uuid4())
-        await db.notifications.insert_one({
-            "id": notif_id,
-            "user_id": user_id,
-            "type": "follow",
-            "from_user_id": current_user["id"],
-            "from_username": current_user["username"],
-            "from_profile_pic": current_user.get("profile_pic"),
-            "read": False,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-        
-        return {"following": True}
+        await create_notification(user_id, "follow_request", current_user)
+        return {"following": False, "status": "pending"}
+
+    # Compte public : abonnement immédiat.
+    await _do_follow(current_user, user_id)
+    return {"following": True, "status": "following"}
+
+
+@api_router.get("/users/{user_id}/follow-status")
+async def get_follow_status(user_id: str, current_user: dict = Depends(get_current_user)):
+    """État de la relation d'abonnement avec un utilisateur."""
+    if user_id == current_user["id"]:
+        return {"status": "self"}
+    if await check_is_following(current_user["id"], user_id):
+        return {"status": "following"}
+    pending = await db.follow_requests.find_one({"requester_id": current_user["id"], "target_id": user_id})
+    return {"status": "pending" if pending else "not_following"}
+
+
+@api_router.get("/follow-requests")
+async def list_follow_requests(current_user: dict = Depends(get_current_user)):
+    """Demandes d'abonnement en attente reçues par l'utilisateur."""
+    reqs = await db.follow_requests.find({"target_id": current_user["id"]}).sort("created_at", -1).to_list(length=100)
+    out = []
+    for r in reqs:
+        u = await db.users.find_one({"id": r.get("requester_id")}, {"_id": 0, "password": 0})
+        if u:
+            out.append({
+                "id": r.get("id"),
+                "requester_id": r.get("requester_id"),
+                "username": u.get("username"),
+                "profile_pic": u.get("profile_pic"),
+                "created_at": r.get("created_at"),
+            })
+    return out
+
+
+@api_router.post("/follow-requests/{requester_id}/accept")
+async def accept_follow_request(requester_id: str, current_user: dict = Depends(get_current_user)):
+    """Accepte une demande d'abonnement."""
+    req = await db.follow_requests.find_one({"requester_id": requester_id, "target_id": current_user["id"]})
+    if not req:
+        raise HTTPException(status_code=404, detail="Demande introuvable")
+    requester = await db.users.find_one({"id": requester_id})
+    await db.follow_requests.delete_one({"id": req["id"]})
+    if requester and not await check_is_following(requester_id, current_user["id"]):
+        await _do_follow(requester, current_user["id"])
+    # Nettoie la notif de demande, prévient le demandeur.
+    await db.notifications.delete_many({"type": "follow_request", "from_user_id": requester_id, "user_id": current_user["id"]})
+    await create_notification(requester_id, "follow_accepted", current_user)
+    return {"success": True}
+
+
+@api_router.post("/follow-requests/{requester_id}/reject")
+async def reject_follow_request(requester_id: str, current_user: dict = Depends(get_current_user)):
+    """Refuse une demande d'abonnement."""
+    result = await db.follow_requests.delete_one({"requester_id": requester_id, "target_id": current_user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Demande introuvable")
+    await db.notifications.delete_many({"type": "follow_request", "from_user_id": requester_id, "user_id": current_user["id"]})
+    return {"success": True}
 
 # ==================== NOTIFICATIONS ROUTES ====================
 @api_router.get("/notifications", response_model=List[Notification])

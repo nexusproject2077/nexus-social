@@ -78,6 +78,23 @@ export default function NotificationsPage({ user }) {
     }
   };
 
+  const handleAcceptRequest = async (e, notif) => {
+    e.stopPropagation();
+    try {
+      await axios.post(`${API}/follow-requests/${notif.from_user_id}/accept`);
+      setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+      toast.success(`Vous avez accepté @${notif.from_username}`);
+    } catch { toast.error("Erreur"); }
+  };
+
+  const handleRejectRequest = async (e, notif) => {
+    e.stopPropagation();
+    try {
+      await axios.post(`${API}/follow-requests/${notif.from_user_id}/reject`);
+      setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
+    } catch { toast.error("Erreur"); }
+  };
+
   const getNotificationIcon = (type) => {
     switch (type) {
       case 'like':
@@ -85,6 +102,8 @@ export default function NotificationsPage({ user }) {
       case 'comment':
         return <MessageCircle className="w-5 h-5 text-blue-500" />;
       case 'follow':
+      case 'follow_request':
+      case 'follow_accepted':
         return <UserPlus className="w-5 h-5 text-green-500" />;
       case 'repost':
       case 'share':
@@ -107,7 +126,8 @@ export default function NotificationsPage({ user }) {
       case 'repost':   return "a reposté votre publication";
       case 'mention':  return "vous a mentionné dans une publication";
       case 'trending': return "Votre publication est dans les tendances 🔥";
-      case 'follow_request': return "souhaite s'abonner à vous";
+      case 'follow_request':  return "souhaite s'abonner à vous";
+      case 'follow_accepted': return "a accepté votre demande d'abonnement";
       default:         return "";
     }
   };
@@ -178,6 +198,22 @@ export default function NotificationsPage({ user }) {
                   <p className="text-xs text-slate-500 mt-1">
                     {new Date(notif.created_at).toLocaleString('fr-FR')}
                   </p>
+                  {notif.type === 'follow_request' && (
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={(e) => handleAcceptRequest(e, notif)}
+                        className="px-3 py-1 rounded-lg text-xs font-bold bg-cyan-500 text-slate-900 hover:opacity-90"
+                      >
+                        Accepter
+                      </button>
+                      <button
+                        onClick={(e) => handleRejectRequest(e, notif)}
+                        className="px-3 py-1 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700"
+                      >
+                        Refuser
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {!notif.read && (
                   <div className="flex-shrink-0 w-2 h-2 bg-cyan-500 rounded-full mt-2"></div>
