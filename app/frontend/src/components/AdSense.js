@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
 
-// Identifiant éditeur AdSense (ex. "ca-pub-XXXXXXXXXXXX"), fourni via l'env.
-// Vide par défaut => aucune publicité, aucun script chargé.
-const ADSENSE_CLIENT = process.env.REACT_APP_ADSENSE_CLIENT || "";
+// Identifiant éditeur AdSense (ex. "ca-pub-XXXXXXXXXXXX").
+// La valeur peut être surchargée via l'env ; à défaut on utilise l'ID du site
+// (déjà public via la balise google-adsense-account dans index.html).
+const ADSENSE_CLIENT =
+  process.env.REACT_APP_ADSENSE_CLIENT || "ca-pub-5825303311354202";
 
 // Pubs non personnalisées par défaut (moins risqué RGPD).
 // Mettre REACT_APP_ADSENSE_NPA="false" pour autoriser la personnalisation.
