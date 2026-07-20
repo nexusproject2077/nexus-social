@@ -114,6 +114,26 @@ function MsgImage({ src, onOpen }) {
   );
 }
 
+// Pictogrammes maison (style Nexus : trait fin, hérite de la couleur courante).
+function Ico({ name, size = 20 }) {
+  const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" };
+  switch (name) {
+    case "info":     return (<svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></svg>);
+    case "mute":     return (<svg {...p}><path d="M6 8a6 6 0 0 1 9.4-5" /><path d="M18 8v5l2 3H4l2-3V8" /><path d="M10 20a2 2 0 0 0 4 0" /><path d="M3 3l18 18" /></svg>);
+    case "unmute":   return (<svg {...p}><path d="M18 8A6 6 0 0 0 6 8v5l-2 3h16l-2-3z" /><path d="M10 20a2 2 0 0 0 4 0" /></svg>);
+    case "nickname": return (<svg {...p}><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10z" /><circle cx="7.5" cy="7.5" r="1.1" /></svg>);
+    case "privacy":  return (<svg {...p}><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z" /><path d="M9.4 12l1.8 1.8 3.4-3.7" /></svg>);
+    case "group":    return (<svg {...p}><circle cx="9" cy="8" r="3" /><path d="M3 20a6 6 0 0 1 12 0" /><path d="M16 5.2a3 3 0 0 1 0 5.6" /><path d="M18.5 20a5.5 5.5 0 0 0-3-5" /></svg>);
+    case "block":    return (<svg {...p}><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></svg>);
+    case "report":   return (<svg {...p}><path d="M5 21V4" /><path d="M5 5h11l-1.6 3.2L16 11.5H5" /></svg>);
+    case "trash":    return (<svg {...p}><path d="M4 7h16" /><path d="M9 7V5h6v2" /><path d="M6 7l1 13h10l1-13" /><path d="M10 11v6M14 11v6" /></svg>);
+    case "members":  return (<svg {...p}><circle cx="12" cy="8" r="3.2" /><path d="M5 20a7 7 0 0 1 14 0" /></svg>);
+    case "leave":    return (<svg {...p}><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" /><path d="M11 12H3" /><path d="M6 8l-3 4 3 4" /></svg>);
+    case "edit":     return (<svg {...p}><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z" /><path d="M13.5 6.5l3 3" /></svg>);
+    default:         return null;
+  }
+}
+
 export default function MessagesPage({ user }) {
   const params = useParams();
   const navigate = useNavigate();
@@ -158,6 +178,29 @@ export default function MessagesPage({ user }) {
   const [selectedMembers,  setSelectedMembers]  = useState([]);
   const [groupSearch,      setGroupSearch]      = useState("");
   const [groupSearchRes,   setGroupSearchRes]   = useState([]);
+
+  // « Nouveau message » (modal unique façon Insta : recherche + multi-sélection)
+  const [showNewMessageModal, setShowNewMessageModal] = useState(false);
+  const [nmSearch,   setNmSearch]   = useState("");
+  const [nmResults,  setNmResults]  = useState([]);
+  const [nmSelected, setNmSelected] = useState([]);
+
+  // Panneau « Détails » de la conversation (sidebar PC / bottom sheet mobile)
+  const [showDetails, setShowDetails] = useState(false);
+
+  // Mise en sourdine (local, par appareil)
+  const [mutedIds, setMutedIds] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexus_muted") || "[]"); } catch { return []; }
+  });
+  const isMuted = (id) => mutedIds.includes(id);
+  const toggleMute = (id) => {
+    setMutedIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      try { localStorage.setItem("nexus_muted", JSON.stringify(next)); } catch {}
+      toast.success(prev.includes(id) ? "Réactivé" : "Mis en sourdine");
+      return next;
+    });
+  };
 
   const messagesEndRef = useRef(null);
   const longPressTimer = useRef(null);
@@ -259,6 +302,20 @@ export default function MessagesPage({ user }) {
     const t = setTimeout(() => searchGroupUsers(groupSearch), 300);
     return () => clearTimeout(t);
   }, [groupSearch]);
+
+  useEffect(() => {
+    if (!nmSearch.trim()) { setNmResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await axios.get(`${API}/users/search?q=${encodeURIComponent(nmSearch)}`);
+        setNmResults((res.data || []).filter((u) => u.id !== user.id));
+      } catch {}
+    }, 300);
+    return () => clearTimeout(t);
+  }, [nmSearch]);
+
+  // Referme le panneau Détails quand on change de conversation.
+  useEffect(() => { setShowDetails(false); }, [selectedUserId, selectedGroupId]);
 
   // ── API calls ───────────────────────────────────────────────────────────────
   const fetchConversations = async () => {
@@ -462,6 +519,76 @@ export default function MessagesPage({ user }) {
     }
   };
 
+  // ── « Nouveau message » : recherche + multi-sélection ────────────────────────
+  const openNewMessageModal = () => {
+    setNmSearch(""); setNmResults([]); setNmSelected([]); setShowNewMessageModal(true);
+  };
+  const toggleNmSelect = (u) => {
+    setNmSelected((prev) => prev.find((x) => x.id === u.id)
+      ? prev.filter((x) => x.id !== u.id)
+      : [...prev, u]);
+  };
+  const startConversation = async () => {
+    if (nmSelected.length === 0) { toast.error("Sélectionnez au moins une personne"); return; }
+    // 1 personne → conversation privée. 2+ → groupe.
+    if (nmSelected.length === 1) {
+      setShowNewMessageModal(false);
+      navigate(`/messages/${nmSelected[0].id}`);
+      return;
+    }
+    try {
+      setLoading(true);
+      const autoName = nmSelected.map((m) => m.username).join(", ").slice(0, 40);
+      const res = await axios.post(`${API}/messages/groups`, {
+        name: autoName, member_ids: nmSelected.map((m) => m.id),
+      });
+      if (res.data?.group) {
+        setShowNewMessageModal(false);
+        await fetchGroups();
+        navigate(`/messages/group/${res.data.group.id}`);
+        toast.success("Groupe créé !");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erreur création groupe");
+    } finally { setLoading(false); }
+  };
+
+  // ── Actions « Détails » ──────────────────────────────────────────────────────
+  const handleClearConversation = async () => {
+    if (!selectedUserId) return;
+    if (!window.confirm("Supprimer cette discussion ? Elle disparaîtra de votre boîte.")) return;
+    try {
+      await axios.delete(`${API}/messages/conversations/${selectedUserId}`);
+      setConversations((prev) => prev.filter((c) => c.user_id !== selectedUserId));
+      setShowDetails(false);
+      navigate("/messages");
+      toast.success("Discussion supprimée");
+    } catch { toast.error("Erreur"); }
+  };
+  const handleBlockUser = async () => {
+    if (!selectedUserId) return;
+    if (!window.confirm(`Bloquer @${selectedUser?.username} ?`)) return;
+    try {
+      await axios.post(`${API}/privacy/block`, { user_id: selectedUserId });
+      setShowDetails(false);
+      navigate("/messages");
+      toast.success(`@${selectedUser?.username} bloqué`);
+    } catch { toast.error("Erreur"); }
+  };
+  const handleReport = async () => {
+    const target = selectedUserId || selectedGroupId;
+    if (!target) return;
+    try {
+      await axios.post(`${API}/reports`, {
+        reported_content_id: target,
+        content_type: isGroup ? "group" : "user",
+        reason: "Signalé depuis la messagerie",
+      });
+      setShowDetails(false);
+      toast.success("Signalement envoyé");
+    } catch { toast.error("Erreur"); }
+  };
+
   const getStatus = (msg) => {
     if (msg.sender_id !== user.id) return null;
     if (msg.status === "read") return <CheckCheck className="w-3 h-3" style={{ color: C.cyan }} />;
@@ -562,18 +689,12 @@ export default function MessagesPage({ user }) {
           style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>
           {user?.username ? `@${user.username}` : "Messages"}
         </h2>
-        <div className="flex gap-2">
-          <button onClick={() => setShowNewGroup(true)} title="Nouveau groupe"
-            className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:opacity-80"
-            style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa" }}>
-            <span className="material-symbols-outlined text-sm">group_add</span>
-          </button>
-          <button onClick={openNewMessage} title="Nouveau message"
-            className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:opacity-80"
-            style={{ background: `${C.cyan}18`, color: C.cyan }}>
-            <span className="material-symbols-outlined text-sm">add</span>
-          </button>
-        </div>
+        {/* Un seul bouton « Nouveau message » (façon Insta : DM ou groupe). */}
+        <button onClick={openNewMessageModal} title="Nouveau message"
+          className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
+          style={{ background: `${C.cyan}18`, color: C.cyan }}>
+          <span className="material-symbols-outlined text-lg">edit_square</span>
+        </button>
       </div>
 
       {/* Search */}
@@ -607,36 +728,36 @@ export default function MessagesPage({ user }) {
 
       {/* Notes éphémères (façon Instagram) — bande horizontale scrollable */}
       {!showNewMsg && (
-        <div className="px-4 pb-3 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-          <div className="flex gap-4">
+        <div className="px-4 pb-4 pt-1 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+          <div className="flex gap-5">
             {/* Ta note */}
-            <button onClick={openNoteComposer} className="flex flex-col items-center gap-1 flex-shrink-0" style={{ width: 66 }} title="Votre note">
-              <div className="relative flex items-end justify-center" style={{ paddingTop: 20 }}>
-                <div className="absolute top-0 px-2 py-0.5 rounded-full text-[9px] leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis"
-                  style={{ maxWidth: 64, background: C.container, color: myNote ? C.onSurface : C.outline, border: `1px solid ${C.cyan}22` }}>
+            <button onClick={openNoteComposer} className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ width: 84 }} title="Votre note">
+              <div className="relative flex items-end justify-center" style={{ paddingTop: 26 }}>
+                <div className="absolute top-0 px-3 py-1 rounded-2xl text-[11px] font-medium leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis shadow-lg"
+                  style={{ maxWidth: 82, background: C.container, color: myNote ? C.onSurface : C.outline, border: `1px solid ${C.cyan}22` }}>
                   {myNote ? myNote.content : "Note…"}
                 </div>
-                <UserAvatar username={user?.username} pic={user?.profile_pic} size={11} />
+                <UserAvatar username={user?.username} pic={user?.profile_pic} size={16} />
                 {!myNote && (
-                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[11px] font-black"
+                  <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center text-sm font-black"
                     style={{ background: C.cyan, color: C.onPrimary, border: `2px solid ${C.surface}` }}>+</div>
                 )}
               </div>
-              <span className="text-[10px] text-center truncate" style={{ width: 64, color: C.onSurface }}>Votre note</span>
+              <span className="text-[11px] font-semibold text-center truncate" style={{ width: 78, color: C.onSurface }}>Votre note</span>
             </button>
 
             {/* Notes des personnes suivies */}
             {otherNotes.map((n) => (
               <button key={n.id} onClick={() => navigate(`/messages/${n.user_id}`)}
-                className="flex flex-col items-center gap-1 flex-shrink-0" style={{ width: 66 }} title={n.content}>
-                <div className="relative flex items-end justify-center" style={{ paddingTop: 20 }}>
-                  <div className="absolute top-0 px-2 py-0.5 rounded-full text-[9px] leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis"
-                    style={{ maxWidth: 64, background: C.container, color: C.onSurface, border: `1px solid ${C.cyan}22` }}>
+                className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ width: 84 }} title={n.content}>
+                <div className="relative flex items-end justify-center" style={{ paddingTop: 26 }}>
+                  <div className="absolute top-0 px-3 py-1 rounded-2xl text-[11px] font-medium leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis shadow-lg"
+                    style={{ maxWidth: 82, background: C.container, color: C.onSurface, border: `1px solid ${C.cyan}22` }}>
                     {n.content}
                   </div>
-                  <UserAvatar username={n.username} pic={n.profile_pic} size={11} />
+                  <UserAvatar username={n.username} pic={n.profile_pic} size={16} />
                 </div>
-                <span className="text-[10px] text-center truncate" style={{ width: 64, color: C.outline }}>@{n.username}</span>
+                <span className="text-[11px] text-center truncate" style={{ width: 78, color: C.outline }}>@{n.username}</span>
               </button>
             ))}
           </div>
@@ -644,8 +765,9 @@ export default function MessagesPage({ user }) {
       )}
 
       {/* Scrollable list — groupes et messages privés fusionnés, triés du plus
-          récent au plus ancien (chaque nouveau message remonte en haut). */}
-      <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+          récent au plus ancien (chaque nouveau message remonte en haut).
+          pb-20 sur mobile pour ne pas passer sous le footer. */}
+      <div className="flex-1 overflow-y-auto pb-20 lg:pb-0" style={{ scrollbarWidth: "none" }}>
         {chatItems.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
@@ -686,12 +808,12 @@ export default function MessagesPage({ user }) {
                 </p>
               </div>
             </div>
-            {isGroup && (
-              <button onClick={handleLeaveGroup} title="Quitter le groupe" className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:bg-red-500/20 hover:text-red-400"
-                style={{ color: C.outline, border: "1px solid rgba(255,255,255,0.08)" }}>
-                Quitter
-              </button>
-            )}
+            {/* Bouton Détails (i) — ouvre la sidebar (PC) / bottom sheet (mobile) */}
+            <button onClick={() => setShowDetails((v) => !v)} title="Détails"
+              className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5"
+              style={{ color: showDetails ? C.cyan : C.outline }}>
+              <Ico name="info" size={22} />
+            </button>
           </div>
 
           {/* Messages */}
@@ -728,11 +850,18 @@ export default function MessagesPage({ user }) {
                   className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
                 >
                   <div className="relative max-w-[78%]">
-                    {/* Reply preview */}
+                    {/* Reply preview (message cité, façon Insta) */}
                     {repliedMsg && (
-                      <div className={`text-[10px] mb-1 px-2 py-1 rounded-lg border-l-2 ${isOwn ? "ml-auto" : ""}`}
-                        style={{ background: C.high, borderColor: C.cyan, color: C.outline, maxWidth: "100%" }}>
-                        ↩ {repliedMsg.content?.substring(0, 50)}…
+                      <div className={`mb-1 px-2.5 py-1.5 rounded-xl border-l-2 ${isOwn ? "ml-auto" : ""}`}
+                        style={{ background: C.high, borderColor: C.cyan, maxWidth: "100%" }}>
+                        <p className="text-[10px] font-bold" style={{ color: C.cyan }}>
+                          {repliedMsg.sender_id === user.id ? "Vous" : (repliedMsg.sender_username || "")}
+                        </p>
+                        <p className="text-[11px] truncate" style={{ color: C.onVariant, maxWidth: 220 }}>
+                          {isDataImage(repliedMsg.content) || repliedMsg.media_url
+                            ? "📷 Photo"
+                            : (repliedMsg.content || "").substring(0, 70)}
+                        </p>
                       </div>
                     )}
 
@@ -920,9 +1049,77 @@ export default function MessagesPage({ user }) {
     </div>
   );
 
+  // ── Details panel (contenu partagé sidebar PC / bottom sheet mobile) ──────────
+  const DetailsRow = ({ icon, label, danger, onClick, value }) => (
+    <button onClick={onClick}
+      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-white/5 text-left"
+      style={{ color: danger ? "#f87171" : C.onSurface }}>
+      <span style={{ color: danger ? "#f87171" : C.cyan }}><Ico name={icon} size={20} /></span>
+      <span className="text-sm font-medium flex-1">{label}</span>
+      {value && <span className="text-xs" style={{ color: C.outline }}>{value}</span>}
+    </button>
+  );
+
+  const DetailsContent = () => {
+    const muteId = isGroup ? selectedGroupId : selectedUserId;
+    return (
+      <div className="flex flex-col h-full">
+        <div className="px-5 py-4 flex items-center justify-between flex-shrink-0" style={{ borderBottom: `1px solid ${C.outline}18` }}>
+          <h3 className="font-black text-base" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Détails</h3>
+          <button onClick={() => setShowDetails(false)} style={{ color: C.outline }} className="hover:text-white transition-colors">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-2 py-3" style={{ scrollbarWidth: "none" }}>
+          {/* En-tête conversation */}
+          <div className="flex flex-col items-center gap-2 px-3 py-4">
+            <UserAvatar username={currentName} pic={currentPic} size={18} />
+            <p className="text-base font-bold" style={{ color: C.onSurface }}>{currentName}</p>
+            <p className="text-xs" style={{ color: C.outline }}>
+              {isGroup ? `${selectedGroup?.member_ids?.length || 0} membres` : "Conversation privée"}
+            </p>
+          </div>
+
+          {/* Membres (DM : toi + l'autre) */}
+          <p className="px-4 pt-3 pb-1 text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: C.outline }}>Membres</p>
+          {!isGroup && (
+            <>
+              <div className="flex items-center gap-3 px-4 py-2">
+                <UserAvatar username={selectedUser?.username} pic={selectedUser?.profile_pic} size={9} />
+                <span className="text-sm" style={{ color: C.onSurface }}>@{selectedUser?.username}</span>
+              </div>
+              <div className="flex items-center gap-3 px-4 py-2">
+                <UserAvatar username={user?.username} pic={user?.profile_pic} size={9} />
+                <span className="text-sm" style={{ color: C.onSurface }}>@{user?.username} <span style={{ color: C.outline }}>(vous)</span></span>
+              </div>
+            </>
+          )}
+
+          <p className="px-4 pt-4 pb-1 text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: C.outline }}>Options</p>
+          <DetailsRow icon={isMuted(muteId) ? "unmute" : "mute"} label={isMuted(muteId) ? "Réactiver" : "Mettre en sourdine"} onClick={() => toggleMute(muteId)} />
+          {!isGroup && <DetailsRow icon="nickname" label="Pseudos" onClick={() => toast("Bientôt disponible")} />}
+          <DetailsRow icon="privacy" label="Confidentialité" onClick={() => navigate("/settings")} />
+          <DetailsRow icon="group" label="Créer un groupe" onClick={() => { setShowDetails(false); openNewMessageModal(); }} />
+
+          <div className="my-2 mx-4" style={{ borderTop: `1px solid ${C.outline}18` }} />
+          {isGroup ? (
+            <DetailsRow icon="leave" label="Quitter le groupe" danger onClick={handleLeaveGroup} />
+          ) : (
+            <>
+              <DetailsRow icon="block" label="Bloquer" danger onClick={handleBlockUser} />
+              <DetailsRow icon="trash" label="Supprimer la discussion" danger onClick={handleClearConversation} />
+            </>
+          )}
+          <DetailsRow icon="report" label="Signaler" danger onClick={handleReport} />
+        </div>
+      </div>
+    );
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <Layout user={user} compact hideMobileChrome>
+    <Layout user={user} compact hideMobileChrome bottomNav={!hasSelection}>
       {/* Nebula background */}
       <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
         <div className="absolute rounded-full blur-3xl" style={{ width: "40%", height: "40%", top: "-10%", left: "-5%", background: "radial-gradient(circle, rgba(34,211,238,0.04), transparent)" }} />
@@ -936,6 +1133,13 @@ export default function MessagesPage({ user }) {
       <div className="relative z-10 flex h-[100dvh] lg:h-screen">
         {ConvPanel()}
         {ChatPanel()}
+        {/* Détails — sidebar droite sur PC uniquement */}
+        {showDetails && hasSelection && (
+          <div className="hidden lg:flex flex-col w-80 flex-shrink-0 border-l"
+            style={{ borderColor: "rgba(255,255,255,0.05)", background: `${C.surface}cc` }}>
+            {DetailsContent()}
+          </div>
+        )}
       </div>
 
       {/* ── Lightbox (image agrandie) ── */}
@@ -1017,6 +1221,98 @@ export default function MessagesPage({ user }) {
                 className="flex-1 py-2.5 rounded-xl font-black text-sm transition-all active:scale-95 disabled:opacity-40 hover:opacity-90"
                 style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
                 Partager
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Détails : bottom sheet sur mobile ── */}
+      {showDetails && hasSelection && (
+        <div className="lg:hidden fixed inset-0 z-[85] flex items-end" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+          onClick={() => setShowDetails(false)}>
+          <div className="w-full rounded-t-3xl overflow-hidden" style={{ background: C.surface, maxHeight: "82vh" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-center pt-2"><div className="w-10 h-1 rounded-full" style={{ background: C.outlineVar }} /></div>
+            {DetailsContent()}
+          </div>
+        </div>
+      )}
+
+      {/* ── Nouveau message (recherche + multi-sélection) ── */}
+      {showNewMessageModal && (
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+          onClick={() => setShowNewMessageModal(false)}>
+          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col"
+            style={{ background: C.low, border: `1px solid ${C.outlineVar}`, maxHeight: "80vh" }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: `1px solid ${C.outline}18` }}>
+              <button onClick={() => setShowNewMessageModal(false)} style={{ color: C.outline }} className="hover:text-white transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+              <h3 className="font-black text-base" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Nouveau message</h3>
+              <span className="w-6" />
+            </div>
+
+            {/* Recherche */}
+            <div className="px-4 py-3 flex-shrink-0">
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: C.outline }}>search</span>
+                <input autoFocus value={nmSearch} onChange={(e) => setNmSearch(e.target.value)}
+                  placeholder="Rechercher..."
+                  className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border-none outline-none placeholder:text-slate-600"
+                  style={{ background: C.high, color: C.onSurface }} />
+              </div>
+            </div>
+
+            {/* Sélectionnés */}
+            {nmSelected.length > 0 && (
+              <div className="px-4 pb-2 flex flex-wrap gap-2 flex-shrink-0">
+                {nmSelected.map((m) => (
+                  <div key={m.id} className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold"
+                    style={{ background: `${C.cyan}18`, color: C.cyan, border: `1px solid ${C.cyan}30` }}>
+                    @{m.username}
+                    <button onClick={() => toggleNmSelect(m)} className="hover:text-red-400 transition-colors">
+                      <span className="material-symbols-outlined text-xs">close</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Résultats */}
+            <div className="flex-1 overflow-y-auto px-2" style={{ scrollbarWidth: "none" }}>
+              {nmResults.length === 0 ? (
+                <p className="text-center py-8 text-xs" style={{ color: C.outline }}>
+                  {nmSearch.trim() ? "Aucun utilisateur" : "Recherchez des personnes à contacter"}
+                </p>
+              ) : nmResults.map((u) => {
+                const checked = Boolean(nmSelected.find((x) => x.id === u.id));
+                return (
+                  <button key={u.id} onClick={() => toggleNmSelect(u)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all hover:bg-white/5 text-left">
+                    <UserAvatar username={u.username} pic={u.profile_pic} size={10} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold truncate" style={{ color: C.onSurface }}>@{u.username}</p>
+                      {u.bio && <p className="text-xs truncate" style={{ color: C.outline }}>{u.bio}</p>}
+                    </div>
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={checked
+                        ? { background: C.cyan, color: C.onPrimary }
+                        : { border: `2px solid ${C.outlineVar}` }}>
+                      {checked && <span className="material-symbols-outlined text-sm">check</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Discuter */}
+            <div className="p-4 flex-shrink-0">
+              <button onClick={startConversation} disabled={nmSelected.length === 0 || loading}
+                className="w-full py-3 rounded-xl font-black text-sm transition-all active:scale-95 disabled:opacity-40 hover:opacity-90"
+                style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+                {loading ? "..." : nmSelected.length >= 2 ? `Créer le groupe (${nmSelected.length})` : "Discuter"}
               </button>
             </div>
           </div>

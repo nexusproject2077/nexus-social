@@ -5,7 +5,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 
-export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome }) {
+export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome, bottomNav }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
@@ -331,7 +331,9 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       </main>
 
       {/* ===== Mobile Bottom Nav ===== */}
-      {!hideMobileChrome && (
+      {/* bottomNav force l'affichage même quand le reste du chrome mobile est masqué
+          (ex. page Messages : footer visible sur la liste des conversations). */}
+      {(!hideMobileChrome || bottomNav) && (
       <nav
         className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4"
         style={{ backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)" }}

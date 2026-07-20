@@ -624,6 +624,7 @@ class Message(BaseModel):
     content: str = ""
     media_url: Optional[str] = None
     media_type: Optional[str] = None
+    reply_to_id: Optional[str] = None
     read: bool = False
     created_at: str
 
@@ -2608,10 +2609,19 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
         {"content": 1, "sender_id": 1, "recipient_id": 1, "created_at": 1, "media_type": 1},
     ).sort("created_at", -1).to_list(length=1000)
 
+    # Conversations « effacées » (côté utilisateur uniquement) : on masque les
+    # messages antérieurs à la date d'effacement (comportement type Instagram).
+    clears_raw = await db.conversation_clears.find({"user_id": current_user["id"]}).to_list(length=1000)
+    clears = {c["peer_id"]: c.get("cleared_at") for c in clears_raw}
+
     conversations_dict = {}
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
         other_user_id = msg["recipient_id"] if msg["sender_id"] == current_user["id"] else msg["sender_id"]
+
+        cleared_at = clears.get(other_user_id)
+        if cleared_at and (msg.get("created_at") or "") <= cleared_at:
+            continue  # message plus ancien que l'effacement → ignoré
 
         if other_user_id not in conversations_dict:
             other_user_raw = await db.users.find_one({"id": other_user_id})
@@ -2734,6 +2744,22 @@ async def delete_note(current_user: dict = Depends(get_current_user)):
     return {"success": True}
 
 
+@api_router.delete("/messages/conversations/{peer_id}")
+async def clear_conversation(peer_id: str, current_user: dict = Depends(get_current_user)):
+    """Efface une conversation côté utilisateur uniquement (type Instagram).
+
+    On enregistre la date d'effacement ; les messages plus anciens ne sont plus
+    affichés pour cet utilisateur. Un nouveau message rouvre la conversation.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    await db.conversation_clears.update_one(
+        {"user_id": current_user["id"], "peer_id": peer_id},
+        {"$set": {"cleared_at": now}},
+        upsert=True,
+    )
+    return {"success": True}
+
+
 async def _enrich_groups_with_activity(groups, current_user_id):
     """Ajoute à chaque groupe son dernier message (aperçu + date) pour permettre
     un tri unifié avec les messages privés côté client."""
@@ -2778,12 +2804,18 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
     # messages soft-deletés « pour moi » (ancienne version) sans les retirer chez
     # le destinataire → l'expéditeur ne pouvait plus les re-supprimer. En les
     # laissant visibles, il peut de nouveau les supprimer pour tout le monde.
-    messages_raw = await db.messages.find({
+    query = {
         "$or": [
             {"sender_id": current_user["id"], "recipient_id": user_id},
             {"sender_id": user_id, "recipient_id": current_user["id"]}
         ]
-    }).sort("created_at", -1).to_list(length=60)
+    }
+    # Conversation effacée côté utilisateur : ne montrer que les messages postérieurs.
+    clear = await db.conversation_clears.find_one({"user_id": current_user["id"], "peer_id": user_id})
+    if clear and clear.get("cleared_at"):
+        query["created_at"] = {"$gt": clear["cleared_at"]}
+
+    messages_raw = await db.messages.find(query).sort("created_at", -1).to_list(length=60)
     messages_raw.reverse()
 
     messages = []
@@ -2873,6 +2905,7 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "content": encrypt_message(message_data.content or ""),
         "media_url": message_data.media_url,
         "media_type": message_data.media_type,
+        "reply_to_id": message_data.reply_to_id,
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -2894,6 +2927,7 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
             "content": message_data.content or "",
             "media_url": message_data.media_url,
             "media_type": message_data.media_type,
+            "reply_to_id": message_data.reply_to_id,
             "created_at": message_to_insert["created_at"],
         },
     })
