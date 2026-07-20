@@ -2623,9 +2623,17 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     "read": False
                 })
 
-                # Aperçu : texte déchiffré, ou « 📷 Photo » si message média seul.
+                # Aperçu : texte déchiffré, ou « 📷 Photo » pour un média (ou une
+                # image collée en texte, pour ne pas afficher un pavé de base64).
                 text = decrypt_message(msg.get("content") or "")
-                preview = text if text else ("📷 Photo" if msg.get("media_type") else "")
+                if image_data_url_from_text(text):
+                    preview = "📷 Photo"
+                elif text:
+                    preview = text[:120]
+                elif msg.get("media_type"):
+                    preview = "📷 Photo"
+                else:
+                    preview = ""
                 conversations_dict[other_user_id] = Conversation(
                     user_id=other_user["id"],
                     username=other_user["username"],
@@ -2677,19 +2685,38 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
 # Longueur max d'un message texte (empêche le spam de gros blocs, ex. data URLs collées).
 MAX_MESSAGE_TEXT = 4000
 
+# Signatures base64 des formats image courants (blob collé sans préfixe data:).
+_B64_IMAGE_SIGS = {"/9j/": "jpeg", "iVBORw0KGgo": "png", "R0lGOD": "gif", "UklGR": "webp"}
+
+
+def image_data_url_from_text(text):
+    """Si `text` est une image (data URL complète OU base64 brut collé),
+    renvoie une data URL affichable ; sinon None."""
+    if not text:
+        return None
+    if text.startswith("data:image"):
+        return text
+    head = text[:16]
+    for prefix, mime in _B64_IMAGE_SIGS.items():
+        if head.startswith(prefix):
+            return f"data:image/{mime};base64,{text}"
+    return None
+
 
 def normalize_message_content(content, media_url):
     """Nettoie le contenu d'un message.
 
-    - Si le texte est en réalité une image collée (data:image/...), on la traite
-      comme un média : elle s'affichera comme une image, pas comme un pavé de texte
-      qui fait ramer la page.
+    - Si le texte est en réalité une image collée (data URL ou base64 brut), on la
+      traite comme un média : elle s'affiche comme une image, pas comme un pavé de
+      texte qui fait ramer la page.
     - Sinon, on borne la longueur du texte.
     Renvoie (content, media_url).
     """
     text = (content or "").strip()
-    if text.startswith("data:image") and not media_url:
-        return "", text
+    if not media_url:
+        as_image = image_data_url_from_text(text)
+        if as_image:
+            return "", as_image
     if len(text) > MAX_MESSAGE_TEXT:
         text = text[:MAX_MESSAGE_TEXT]
     return text, media_url

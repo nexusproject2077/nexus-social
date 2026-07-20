@@ -38,8 +38,28 @@ function UserAvatar({ username, pic, size = 10 }) {
 
 const QUICK_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
 
-// Détecte une image encodée en data URL (ex. collée dans le champ texte).
-const isDataImage = (s) => typeof s === "string" && s.startsWith("data:image");
+// Signatures base64 des formats image courants (début du blob encodé).
+const B64_IMAGE_SIGNATURES = [
+  { p: "/9j/", mime: "jpeg" },        // JPEG
+  { p: "iVBORw0KGgo", mime: "png" },  // PNG
+  { p: "R0lGOD", mime: "gif" },       // GIF
+  { p: "UklGR", mime: "webp" },       // WebP (RIFF)
+];
+
+// Renvoie une source d'image affichable si le contenu EST une image
+// (data URL complète, ou base64 brut collé sans préfixe), sinon null.
+const imageSrcFromContent = (s) => {
+  if (typeof s !== "string") return null;
+  if (s.startsWith("data:image")) return s;
+  const head = s.slice(0, 16);
+  for (const { p, mime } of B64_IMAGE_SIGNATURES) {
+    if (head.startsWith(p)) return `data:image/${mime};base64,${s}`;
+  }
+  return null;
+};
+
+// True si le contenu est en réalité une image (à ne pas afficher comme texte).
+const isDataImage = (s) => imageSrcFromContent(s) !== null;
 
 export default function MessagesPage({ user }) {
   const params = useParams();
@@ -564,7 +584,7 @@ export default function MessagesPage({ user }) {
                           {[
                             msg.media_url,
                             ...(Array.isArray(msg.media_urls) ? msg.media_urls : []),
-                            isDataImage(msg.content) ? msg.content : null,
+                            imageSrcFromContent(msg.content),
                           ].filter(Boolean).map((src, i) => (
                             <img
                               key={i}
