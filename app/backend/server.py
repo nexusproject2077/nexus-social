@@ -624,8 +624,10 @@ class Message(BaseModel):
     content: str = ""
     media_url: Optional[str] = None
     media_type: Optional[str] = None
+    reply_to_id: Optional[str] = None
     read: bool = False
     created_at: str
+    expires_at: Optional[str] = None  # message éphémère : date d'auto-suppression
 
 class Conversation(BaseModel):
     user_id: str
@@ -2605,13 +2607,28 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     # lourd) pour garder la liste des conversations légère et rapide.
     messages_raw = await db.messages.find(
         {"$or": [{"sender_id": current_user["id"]}, {"recipient_id": current_user["id"]}]},
-        {"content": 1, "sender_id": 1, "recipient_id": 1, "created_at": 1, "media_type": 1},
+        {"content": 1, "sender_id": 1, "recipient_id": 1, "created_at": 1, "media_type": 1, "expires_at": 1},
     ).sort("created_at", -1).to_list(length=1000)
 
+    # Conversations « effacées » (côté utilisateur uniquement) : on masque les
+    # messages antérieurs à la date d'effacement (comportement type Instagram).
+    clears_raw = await db.conversation_clears.find({"user_id": current_user["id"]}).to_list(length=1000)
+    clears = {c["peer_id"]: c.get("cleared_at") for c in clears_raw}
+
+    now_iso = datetime.now(timezone.utc).isoformat()
     conversations_dict = {}
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
         other_user_id = msg["recipient_id"] if msg["sender_id"] == current_user["id"] else msg["sender_id"]
+
+        # Message éphémère expiré → ne compte pas pour l'aperçu.
+        exp = msg.get("expires_at")
+        if exp and exp <= now_iso:
+            continue
+
+        cleared_at = clears.get(other_user_id)
+        if cleared_at and (msg.get("created_at") or "") <= cleared_at:
+            continue  # message plus ancien que l'effacement → ignoré
 
         if other_user_id not in conversations_dict:
             other_user_raw = await db.users.find_one({"id": other_user_id})
@@ -2630,6 +2647,8 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     preview = "📷 Photo"
                 elif text:
                     preview = text[:120]
+                elif msg.get("media_type") == "audio":
+                    preview = "🎤 Message vocal"
                 elif msg.get("media_type"):
                     preview = "📷 Photo"
                 else:
@@ -2645,6 +2664,186 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
 
     return list(conversations_dict.values())
 
+# ==================== NOTES (statuts éphémères façon Instagram) ====================
+
+MAX_NOTE_LEN = 80  # même limite de caractères qu'Instagram
+
+
+@api_router.get("/notes")
+async def get_notes(current_user: dict = Depends(get_current_user)):
+    """Notes actives (non expirées) de l'utilisateur et de ses abonnements
+    mutuels (comme Instagram : uniquement les personnes qui se suivent des
+    deux côtés)."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Personnes que JE suis (moi → eux)
+    following_raw = await db.follows.find({
+        "follower_id": current_user["id"],
+        "status": "following",
+    }).to_list(length=1000)
+    following_ids = set()
+    for f in following_raw:
+        fd = convert_mongo_doc_to_dict(f)
+        uid = fd.get("followed_id") or fd.get("following_id")
+        if uid:
+            following_ids.add(uid)
+
+    # Personnes qui ME suivent (eux → moi)
+    followers_raw = await db.follows.find({
+        "$or": [{"followed_id": current_user["id"]}, {"following_id": current_user["id"]}],
+        "status": "following",
+    }).to_list(length=1000)
+    follower_ids = {convert_mongo_doc_to_dict(f).get("follower_id") for f in followers_raw}
+    follower_ids.discard(None)
+
+    # Abonnements mutuels + soi-même
+    author_ids = (following_ids & follower_ids) | {current_user["id"]}
+
+    notes_raw = await db.notes.find({
+        "user_id": {"$in": list(author_ids)},
+        "expires_at": {"$gt": now_iso},
+    }).sort("created_at", -1).to_list(length=100)
+
+    notes = []
+    for n_raw in notes_raw:
+        n = convert_mongo_doc_to_dict(n_raw)
+        author_raw = await db.users.find_one({"id": n["user_id"]})
+        if not author_raw:
+            continue
+        author = convert_mongo_doc_to_dict(author_raw)
+        notes.append({
+            "id": n["id"],
+            "user_id": n["user_id"],
+            "username": author.get("username"),
+            "profile_pic": author.get("profile_pic"),
+            "content": n.get("content", ""),
+            "created_at": n.get("created_at"),
+            "is_self": n["user_id"] == current_user["id"],
+        })
+
+    # Sa propre note d'abord.
+    notes.sort(key=lambda x: (not x["is_self"],))
+    return {"success": True, "notes": notes}
+
+
+@api_router.post("/notes")
+async def create_note(payload: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Crée / remplace la note de l'utilisateur (une seule active, expire en 24 h)."""
+    content = (payload.get("content") or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Note vide")
+    content = content[:MAX_NOTE_LEN]
+
+    now = datetime.now(timezone.utc)
+    note = {
+        "id": str(uuid.uuid4()),
+        "user_id": current_user["id"],
+        "content": content,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(hours=24)).isoformat(),
+    }
+    # Une seule note active par utilisateur : on retire les précédentes.
+    await db.notes.delete_many({"user_id": current_user["id"]})
+    await db.notes.insert_one(note)
+    return {
+        "success": True,
+        "note": {
+            "id": note["id"],
+            "user_id": current_user["id"],
+            "username": current_user.get("username"),
+            "profile_pic": current_user.get("profile_pic"),
+            "content": content,
+            "created_at": note["created_at"],
+            "is_self": True,
+        },
+    }
+
+
+@api_router.delete("/notes")
+async def delete_note(current_user: dict = Depends(get_current_user)):
+    """Supprime la note de l'utilisateur."""
+    await db.notes.delete_many({"user_id": current_user["id"]})
+    return {"success": True}
+
+
+def _pair_key(a: str, b: str) -> str:
+    """Clé canonique d'une paire d'utilisateurs (indépendante de l'ordre)."""
+    return ":".join(sorted([a, b]))
+
+
+# Durées autorisées pour les messages éphémères (secondes). 0 = désactivé.
+EPHEMERAL_ALLOWED = {0, 300, 3600, 86400}
+
+
+async def _ephemeral_ttl(user_a: str, user_b: str) -> int:
+    """Durée d'éphémérité (s) configurée pour la conversation, 0 si désactivée."""
+    doc = await db.conversation_settings.find_one({"pair_key": _pair_key(user_a, user_b)})
+    return int(doc.get("ephemeral_ttl", 0)) if doc else 0
+
+
+@api_router.get("/messages/conversations/{peer_id}/ephemeral")
+async def get_ephemeral(peer_id: str, current_user: dict = Depends(get_current_user)):
+    """Réglage des messages éphémères pour cette conversation."""
+    ttl = await _ephemeral_ttl(current_user["id"], peer_id)
+    return {"ttl_seconds": ttl}
+
+
+@api_router.put("/messages/conversations/{peer_id}/ephemeral")
+async def set_ephemeral(peer_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Active/désactive les messages éphémères (s'applique aux deux côtés)."""
+    ttl = int(data.get("ttl_seconds", 0) or 0)
+    if ttl not in EPHEMERAL_ALLOWED:
+        raise HTTPException(status_code=400, detail="Durée non autorisée")
+    await db.conversation_settings.update_one(
+        {"pair_key": _pair_key(current_user["id"], peer_id)},
+        {"$set": {"ephemeral_ttl": ttl, "updated_by": current_user["id"],
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    # Prévient l'autre partie en temps réel.
+    await push_realtime(peer_id, {"type": "ephemeral_changed", "data": {"peer_id": current_user["id"], "ttl_seconds": ttl}})
+    return {"success": True, "ttl_seconds": ttl}
+
+
+@api_router.delete("/messages/conversations/{peer_id}")
+async def clear_conversation(peer_id: str, current_user: dict = Depends(get_current_user)):
+    """Efface une conversation côté utilisateur uniquement (type Instagram).
+
+    On enregistre la date d'effacement ; les messages plus anciens ne sont plus
+    affichés pour cet utilisateur. Un nouveau message rouvre la conversation.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    await db.conversation_clears.update_one(
+        {"user_id": current_user["id"], "peer_id": peer_id},
+        {"$set": {"cleared_at": now}},
+        upsert=True,
+    )
+    return {"success": True}
+
+
+async def _enrich_groups_with_activity(groups, current_user_id):
+    """Ajoute à chaque groupe son dernier message (aperçu + date) pour permettre
+    un tri unifié avec les messages privés côté client."""
+    for g in groups:
+        last_raw = await db.group_messages.find(
+            {"group_id": g["id"], "deleted_for": {"$ne": current_user_id}},
+            {"content": 1, "media_urls": 1, "created_at": 1, "sender_username": 1},
+        ).sort("created_at", -1).limit(1).to_list(length=1)
+        if last_raw:
+            last = convert_mongo_doc_to_dict(last_raw[0])
+            text = decrypt_message(last.get("content") or "")
+            if image_data_url_from_text(text) or (last.get("media_urls")):
+                preview = "📷 Photo"
+            else:
+                preview = (text or "")[:120]
+            g["last_message"] = preview
+            g["last_message_time"] = last.get("created_at")
+        else:
+            g["last_message"] = ""
+            g["last_message_time"] = g.get("created_at")
+    return groups
+
+
 @api_router.get("/messages/groups-list")
 async def list_groups_alias(current_user: dict = Depends(get_current_user)):
     """Alias pour lister les groupes (évite le conflit de route avec /{user_id})"""
@@ -2652,6 +2851,7 @@ async def list_groups_alias(current_user: dict = Depends(get_current_user)):
         "member_ids": current_user["id"]
     }).to_list(length=100)
     groups = [convert_mongo_doc_to_dict(g) for g in groups_raw]
+    groups = await _enrich_groups_with_activity(groups, current_user["id"])
     return {"success": True, "groups": groups}
 
 @api_router.get("/messages/{user_id}", response_model=List[Message])
@@ -2660,12 +2860,34 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
     # On récupère les 60 messages LES PLUS RÉCENTS (tri décroissant + limite),
     # puis on rétablit l'ordre chronologique. Évite de charger tout l'historique
     # (images base64 comprises) qui faisait ramer/planter la page.
-    messages_raw = await db.messages.find({
+    # NB : on ne filtre PAS sur `deleted_by`. La suppression se fait « pour tout
+    # le monde » (hard delete). Filtrer ici masquait à l'expéditeur d'anciens
+    # messages soft-deletés « pour moi » (ancienne version) sans les retirer chez
+    # le destinataire → l'expéditeur ne pouvait plus les re-supprimer. En les
+    # laissant visibles, il peut de nouveau les supprimer pour tout le monde.
+    query = {
         "$or": [
             {"sender_id": current_user["id"], "recipient_id": user_id},
             {"sender_id": user_id, "recipient_id": current_user["id"]}
         ]
-    }).sort("created_at", -1).to_list(length=60)
+    }
+    # Conversation effacée côté utilisateur : ne montrer que les messages postérieurs.
+    clear = await db.conversation_clears.find_one({"user_id": current_user["id"], "peer_id": user_id})
+    if clear and clear.get("cleared_at"):
+        query["created_at"] = {"$gt": clear["cleared_at"]}
+
+    # Messages éphémères expirés : on les retire (et on les supprime en base).
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.messages.delete_many({
+        "expires_at": {"$ne": None, "$lte": now_iso},
+        "$or": [
+            {"sender_id": current_user["id"], "recipient_id": user_id},
+            {"sender_id": user_id, "recipient_id": current_user["id"]},
+        ],
+    })
+    query["$and"] = [{"$or": [{"expires_at": None}, {"expires_at": {"$gt": now_iso}}]}]
+
+    messages_raw = await db.messages.find(query).sort("created_at", -1).to_list(length=60)
     messages_raw.reverse()
 
     messages = []
@@ -2745,6 +2967,12 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     recipient = convert_mongo_doc_to_dict(recipient_raw)
     message_id = str(uuid.uuid4())
 
+    now = datetime.now(timezone.utc)
+    # Messages éphémères : si la conversation a une durée configurée, on calcule
+    # la date d'expiration après laquelle le message s'auto-supprime.
+    ttl = await _ephemeral_ttl(current_user["id"], message_data.recipient_id)
+    expires_at = (now + timedelta(seconds=ttl)).isoformat() if ttl > 0 else None
+
     message_to_insert = {
         "id": message_id,
         "sender_id": current_user["id"],
@@ -2755,8 +2983,10 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "content": encrypt_message(message_data.content or ""),
         "media_url": message_data.media_url,
         "media_type": message_data.media_type,
+        "reply_to_id": message_data.reply_to_id,
+        "expires_at": expires_at,
         "read": False,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": now.isoformat()
     }
 
     await db.messages.insert_one(message_to_insert)
@@ -2776,6 +3006,8 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
             "content": message_data.content or "",
             "media_url": message_data.media_url,
             "media_type": message_data.media_type,
+            "reply_to_id": message_data.reply_to_id,
+            "expires_at": expires_at,
             "created_at": message_to_insert["created_at"],
         },
     })
@@ -2937,6 +3169,19 @@ async def delete_message(
         
         # Supprimer complètement
         await db.messages.delete_one({"id": message_id})
+
+        # Prévient l'autre partie en temps réel pour qu'elle retire le message.
+        other_id = (
+            message.get("recipient_id")
+            if message["sender_id"] == current_user["id"]
+            else message.get("sender_id")
+        )
+        if other_id:
+            await push_realtime(other_id, {
+                "type": "message_deleted",
+                "data": {"id": message_id, "sender_id": message["sender_id"]},
+            })
+
         return {"success": True, "message": "Message deleted for everyone"}
     
     else:  # delete_for == "me"
@@ -3302,6 +3547,101 @@ async def remove_group_member(
     await db.group_chats.update_one({"id": group_id}, {"$set": set_fields})
 
     return {"success": True, "message": "Member removed"}
+
+
+@api_router.get("/messages/groups/{group_id}/members")
+async def list_group_members(group_id: str, current_user: dict = Depends(get_current_user)):
+    """Liste détaillée des membres d'un groupe (avatar + rôle)."""
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    group = convert_mongo_doc_to_dict(group_raw)
+    if current_user["id"] not in group.get("member_ids", []):
+        raise HTTPException(status_code=403, detail="Not a member")
+
+    admin_ids = group.get("admin_ids", [])
+    creator_id = group.get("creator_id")
+    members = []
+    for uid in group.get("member_ids", []):
+        u_raw = await db.users.find_one({"id": uid})
+        if not u_raw:
+            continue
+        u = convert_mongo_doc_to_dict(u_raw)
+        members.append({
+            "id": uid,
+            "username": u.get("username"),
+            "profile_pic": u.get("profile_pic"),
+            "is_admin": uid in admin_ids,
+            "is_creator": uid == creator_id,
+        })
+    # Créateur puis admins puis le reste (alphabétique).
+    members.sort(key=lambda m: (not m["is_creator"], not m["is_admin"], (m["username"] or "").lower()))
+    return {
+        "success": True,
+        "members": members,
+        "is_admin": current_user["id"] in admin_ids,
+        "creator_id": creator_id,
+    }
+
+
+@api_router.post("/messages/groups/{group_id}/admins")
+async def promote_group_admin(group_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Promouvoir un membre en admin (admin uniquement)."""
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    group = convert_mongo_doc_to_dict(group_raw)
+    if current_user["id"] not in group.get("admin_ids", []):
+        raise HTTPException(status_code=403, detail="Admin only")
+    user_id = data.get("user_id")
+    if user_id not in group.get("member_ids", []):
+        raise HTTPException(status_code=400, detail="Not a member")
+    await db.group_chats.update_one(
+        {"id": group_id},
+        {"$addToSet": {"admin_ids": user_id}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"success": True}
+
+
+@api_router.delete("/messages/groups/{group_id}/admins/{user_id}")
+async def demote_group_admin(group_id: str, user_id: str, current_user: dict = Depends(get_current_user)):
+    """Retirer les droits d'admin (admin uniquement ; le créateur reste admin)."""
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    group = convert_mongo_doc_to_dict(group_raw)
+    if current_user["id"] not in group.get("admin_ids", []):
+        raise HTTPException(status_code=403, detail="Admin only")
+    if user_id == group.get("creator_id"):
+        raise HTTPException(status_code=400, detail="Impossible de rétrograder le créateur")
+    await db.group_chats.update_one(
+        {"id": group_id},
+        {"$pull": {"admin_ids": user_id}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"success": True}
+
+
+# ==================== APPELS AUDIO/VIDÉO (signaling WebRTC) ====================
+
+@api_router.post("/calls/signal")
+async def call_signal(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Relaie un message de signaling WebRTC (offer/answer/candidate/hangup/reject)
+    vers le destinataire via le canal temps réel. Le serveur ne fait que
+    transmettre : il ne stocke rien et ne voit pas les médias (P2P chiffré)."""
+    to_user_id = data.get("to_user_id")
+    signal = data.get("signal")
+    if not to_user_id or not isinstance(signal, dict):
+        raise HTTPException(status_code=400, detail="to_user_id et signal requis")
+    await push_realtime(to_user_id, {
+        "type": "call_signal",
+        "data": {
+            "from_id": current_user["id"],
+            "from_username": current_user.get("username"),
+            "from_profile_pic": current_user.get("profile_pic"),
+            "signal": signal,
+        },
+    })
+    return {"success": True}
 
 # ==================== SEARCH ROUTES ====================
 @api_router.get("/search")
