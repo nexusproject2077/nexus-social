@@ -1023,12 +1023,29 @@ export default function MessagesPage({ user }) {
                 </div>
               </button>
             </div>
-            {/* Bouton Détails (i) — ouvre la sidebar (PC) / bottom sheet (mobile) */}
-            <button onClick={() => setShowDetails((v) => !v)} title="Détails"
-              className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5"
-              style={{ color: showDetails ? C.cyan : C.outline }}>
-              <Ico name="info" size={22} />
-            </button>
+            <div className="flex items-center gap-1">
+              {/* Appels audio / vidéo (conversations privées uniquement) */}
+              {!isGroup && (
+                <>
+                  <button title="Appel audio"
+                    onClick={() => window.dispatchEvent(new CustomEvent("nexus:startcall", { detail: { userId: selectedUserId, username: currentName, profilePic: currentPic, video: false } }))}
+                    className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5" style={{ color: C.outline }}>
+                    <span className="material-symbols-outlined text-xl">call</span>
+                  </button>
+                  <button title="Appel vidéo"
+                    onClick={() => window.dispatchEvent(new CustomEvent("nexus:startcall", { detail: { userId: selectedUserId, username: currentName, profilePic: currentPic, video: true } }))}
+                    className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5" style={{ color: C.outline }}>
+                    <span className="material-symbols-outlined text-xl">videocam</span>
+                  </button>
+                </>
+              )}
+              {/* Bouton Détails (i) — ouvre la sidebar (PC) / bottom sheet (mobile) */}
+              <button onClick={() => setShowDetails((v) => !v)} title="Détails"
+                className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5"
+                style={{ color: showDetails ? C.cyan : C.outline }}>
+                <Ico name="info" size={22} />
+              </button>
+            </div>
           </div>
 
           {/* Bandeau messages éphémères */}

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
+import CallManager from "@/components/CallManager";
 
 export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome, bottomNav }) {
   const navigate = useNavigate();
@@ -376,6 +377,9 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         })}
       </nav>
       )}
+
+      {/* Gestionnaire d'appels audio/vidéo (global, écoute les appels entrants) */}
+      {user?.id && <CallManager user={user} />}
     </div>
   );
 }

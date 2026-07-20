@@ -3620,6 +3620,29 @@ async def demote_group_admin(group_id: str, user_id: str, current_user: dict = D
     )
     return {"success": True}
 
+
+# ==================== APPELS AUDIO/VIDÉO (signaling WebRTC) ====================
+
+@api_router.post("/calls/signal")
+async def call_signal(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Relaie un message de signaling WebRTC (offer/answer/candidate/hangup/reject)
+    vers le destinataire via le canal temps réel. Le serveur ne fait que
+    transmettre : il ne stocke rien et ne voit pas les médias (P2P chiffré)."""
+    to_user_id = data.get("to_user_id")
+    signal = data.get("signal")
+    if not to_user_id or not isinstance(signal, dict):
+        raise HTTPException(status_code=400, detail="to_user_id et signal requis")
+    await push_realtime(to_user_id, {
+        "type": "call_signal",
+        "data": {
+            "from_id": current_user["id"],
+            "from_username": current_user.get("username"),
+            "from_profile_pic": current_user.get("profile_pic"),
+            "signal": signal,
+        },
+    })
+    return {"success": True}
+
 # ==================== SEARCH ROUTES ====================
 @api_router.get("/search")
 async def search(q: str, current_user: dict = Depends(get_current_user)):
