@@ -2674,6 +2674,27 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
     
     return messages
 
+# Longueur max d'un message texte (empêche le spam de gros blocs, ex. data URLs collées).
+MAX_MESSAGE_TEXT = 4000
+
+
+def normalize_message_content(content, media_url):
+    """Nettoie le contenu d'un message.
+
+    - Si le texte est en réalité une image collée (data:image/...), on la traite
+      comme un média : elle s'affichera comme une image, pas comme un pavé de texte
+      qui fait ramer la page.
+    - Sinon, on borne la longueur du texte.
+    Renvoie (content, media_url).
+    """
+    text = (content or "").strip()
+    if text.startswith("data:image") and not media_url:
+        return "", text
+    if len(text) > MAX_MESSAGE_TEXT:
+        text = text[:MAX_MESSAGE_TEXT]
+    return text, media_url
+
+
 @api_router.post("/messages", response_model=Message)
 async def send_message(message_data: MessageCreate, current_user: dict = Depends(get_current_user)):
     """Envoie un message"""
@@ -2684,7 +2705,12 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     recipient_raw = await db.users.find_one({"id": message_data.recipient_id})
     if not recipient_raw:
         raise HTTPException(status_code=404, detail="Recipient not found")
-    
+
+    # Normalise (data URL collée → image, borne la longueur).
+    message_data.content, message_data.media_url = normalize_message_content(
+        message_data.content, message_data.media_url
+    )
+
     # Un message doit avoir du texte OU un média.
     if not (message_data.content or "").strip() and not message_data.media_url:
         raise HTTPException(status_code=400, detail="Message vide")
@@ -3031,12 +3057,16 @@ async def send_group_message(
         if not rate_limit(f"msg:{current_user['id']}", max_attempts=30, window_seconds=60):
             raise HTTPException(status_code=429, detail="Trop de messages envoyés. Ralentissez un peu.")
 
-        # Validation du contenu
-        if not message_data.get("content"):
-            raise HTTPException(status_code=400, detail="Le contenu du message est requis")
+        # Normalise le contenu (data URL collée → image, borne la longueur).
+        raw_content = message_data.get("content") if isinstance(message_data.get("content"), str) else ""
+        media_urls = message_data.get("media_urls", []) or []
+        text, moved = normalize_message_content(raw_content, None)
+        if moved:  # une image collée en texte devient un média
+            media_urls = [moved] + list(media_urls)
 
-        if not isinstance(message_data.get("content"), str) or len(message_data["content"].strip()) == 0:
-            raise HTTPException(status_code=400, detail="Le contenu du message doit être une chaîne non vide")
+        # Un message doit avoir du texte OU un média.
+        if not text.strip() and not media_urls:
+            raise HTTPException(status_code=400, detail="Le contenu du message est requis")
 
         # Vérifier membership
         group_raw = await db.group_chats.find_one({"id": group_id})
@@ -3058,8 +3088,8 @@ async def send_group_message(
             "sender_id": current_user["id"],
             "sender_username": current_user["username"],
             "sender_profile_pic": current_user.get("profile_pic"),
-            "content": encrypt_message(message_data["content"].strip()),
-            "media_urls": message_data.get("media_urls", []),
+            "content": encrypt_message(text),
+            "media_urls": media_urls,
             "reply_to_id": message_data.get("reply_to_id"),
             "reactions": [],
             "read_by": [current_user["id"]],
@@ -3073,7 +3103,7 @@ async def send_group_message(
             raise HTTPException(status_code=500, detail="Erreur lors de l'envoi du message")
 
         response_message = convert_mongo_doc_to_dict(message)
-        response_message["content"] = message_data["content"].strip()  # clair pour l'expéditeur
+        response_message["content"] = text  # clair pour l'expéditeur
         return {
             "success": True,
             "message": response_message

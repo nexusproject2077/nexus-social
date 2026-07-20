@@ -38,6 +38,9 @@ function UserAvatar({ username, pic, size = 10 }) {
 
 const QUICK_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
 
+// Détecte une image encodée en data URL (ex. collée dans le champ texte).
+const isDataImage = (s) => typeof s === "string" && s.startsWith("data:image");
+
 export default function MessagesPage({ user }) {
   const params = useParams();
   const navigate = useNavigate();
@@ -56,6 +59,7 @@ export default function MessagesPage({ user }) {
   const [hoveredMessage,  setHoveredMessage]   = useState(null);
   const [showEmojiPicker, setShowEmojiPicker]  = useState(null);
   const [loading,         setLoading]          = useState(false);
+  const [lightbox,        setLightbox]         = useState(null); // src de l'image agrandie
 
   // Search / new message
   const [searchQuery,      setSearchQuery]      = useState("");
@@ -556,16 +560,24 @@ export default function MessagesPage({ user }) {
                           {!isOwn && isGroup && (
                             <p className="text-[10px] font-bold mb-0.5" style={{ color: C.cyan }}>{msg.sender_username}</p>
                           )}
-                          {msg.media_url && (
+                          {/* Images : média du message, médias de groupe, ou image collée en texte */}
+                          {[
+                            msg.media_url,
+                            ...(Array.isArray(msg.media_urls) ? msg.media_urls : []),
+                            isDataImage(msg.content) ? msg.content : null,
+                          ].filter(Boolean).map((src, i) => (
                             <img
-                              src={msg.media_url}
+                              key={i}
+                              src={src}
                               alt="image"
-                              className="rounded-xl max-w-full mb-1 cursor-pointer"
+                              className="rounded-xl max-w-full mb-1 cursor-zoom-in block"
                               style={{ maxHeight: 280 }}
-                              onClick={() => window.open(msg.media_url, "_blank")}
+                              onClick={() => setLightbox(src)}
                             />
-                          )}
-                          {msg.content}
+                          ))}
+                          {!isDataImage(msg.content) && (msg.content || "").length > 2000
+                            ? (msg.content || "").slice(0, 2000) + "…"
+                            : (isDataImage(msg.content) ? null : msg.content)}
                         </div>
 
                         {/* Reactions */}
@@ -733,6 +745,30 @@ export default function MessagesPage({ user }) {
         {ConvPanel()}
         {ChatPanel()}
       </div>
+
+      {/* ── Lightbox (image agrandie) ── */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.9)" }}
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}
+            aria-label="Fermer"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+          <img
+            src={lightbox}
+            alt="image"
+            className="max-w-full max-h-full rounded-xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
 
       {/* ── New Group Modal ── */}
       {showNewGroup && (
