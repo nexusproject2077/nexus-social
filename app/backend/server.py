@@ -627,6 +627,7 @@ class Message(BaseModel):
     reply_to_id: Optional[str] = None
     read: bool = False
     created_at: str
+    expires_at: Optional[str] = None  # message éphémère : date d'auto-suppression
 
 class Conversation(BaseModel):
     user_id: str
@@ -2606,7 +2607,7 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     # lourd) pour garder la liste des conversations légère et rapide.
     messages_raw = await db.messages.find(
         {"$or": [{"sender_id": current_user["id"]}, {"recipient_id": current_user["id"]}]},
-        {"content": 1, "sender_id": 1, "recipient_id": 1, "created_at": 1, "media_type": 1},
+        {"content": 1, "sender_id": 1, "recipient_id": 1, "created_at": 1, "media_type": 1, "expires_at": 1},
     ).sort("created_at", -1).to_list(length=1000)
 
     # Conversations « effacées » (côté utilisateur uniquement) : on masque les
@@ -2614,10 +2615,16 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     clears_raw = await db.conversation_clears.find({"user_id": current_user["id"]}).to_list(length=1000)
     clears = {c["peer_id"]: c.get("cleared_at") for c in clears_raw}
 
+    now_iso = datetime.now(timezone.utc).isoformat()
     conversations_dict = {}
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
         other_user_id = msg["recipient_id"] if msg["sender_id"] == current_user["id"] else msg["sender_id"]
+
+        # Message éphémère expiré → ne compte pas pour l'aperçu.
+        exp = msg.get("expires_at")
+        if exp and exp <= now_iso:
+            continue
 
         cleared_at = clears.get(other_user_id)
         if cleared_at and (msg.get("created_at") or "") <= cleared_at:
@@ -2757,6 +2764,45 @@ async def delete_note(current_user: dict = Depends(get_current_user)):
     return {"success": True}
 
 
+def _pair_key(a: str, b: str) -> str:
+    """Clé canonique d'une paire d'utilisateurs (indépendante de l'ordre)."""
+    return ":".join(sorted([a, b]))
+
+
+# Durées autorisées pour les messages éphémères (secondes). 0 = désactivé.
+EPHEMERAL_ALLOWED = {0, 300, 3600, 86400}
+
+
+async def _ephemeral_ttl(user_a: str, user_b: str) -> int:
+    """Durée d'éphémérité (s) configurée pour la conversation, 0 si désactivée."""
+    doc = await db.conversation_settings.find_one({"pair_key": _pair_key(user_a, user_b)})
+    return int(doc.get("ephemeral_ttl", 0)) if doc else 0
+
+
+@api_router.get("/messages/conversations/{peer_id}/ephemeral")
+async def get_ephemeral(peer_id: str, current_user: dict = Depends(get_current_user)):
+    """Réglage des messages éphémères pour cette conversation."""
+    ttl = await _ephemeral_ttl(current_user["id"], peer_id)
+    return {"ttl_seconds": ttl}
+
+
+@api_router.put("/messages/conversations/{peer_id}/ephemeral")
+async def set_ephemeral(peer_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Active/désactive les messages éphémères (s'applique aux deux côtés)."""
+    ttl = int(data.get("ttl_seconds", 0) or 0)
+    if ttl not in EPHEMERAL_ALLOWED:
+        raise HTTPException(status_code=400, detail="Durée non autorisée")
+    await db.conversation_settings.update_one(
+        {"pair_key": _pair_key(current_user["id"], peer_id)},
+        {"$set": {"ephemeral_ttl": ttl, "updated_by": current_user["id"],
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    # Prévient l'autre partie en temps réel.
+    await push_realtime(peer_id, {"type": "ephemeral_changed", "data": {"peer_id": current_user["id"], "ttl_seconds": ttl}})
+    return {"success": True, "ttl_seconds": ttl}
+
+
 @api_router.delete("/messages/conversations/{peer_id}")
 async def clear_conversation(peer_id: str, current_user: dict = Depends(get_current_user)):
     """Efface une conversation côté utilisateur uniquement (type Instagram).
@@ -2827,6 +2873,17 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
     clear = await db.conversation_clears.find_one({"user_id": current_user["id"], "peer_id": user_id})
     if clear and clear.get("cleared_at"):
         query["created_at"] = {"$gt": clear["cleared_at"]}
+
+    # Messages éphémères expirés : on les retire (et on les supprime en base).
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.messages.delete_many({
+        "expires_at": {"$ne": None, "$lte": now_iso},
+        "$or": [
+            {"sender_id": current_user["id"], "recipient_id": user_id},
+            {"sender_id": user_id, "recipient_id": current_user["id"]},
+        ],
+    })
+    query["$and"] = [{"$or": [{"expires_at": None}, {"expires_at": {"$gt": now_iso}}]}]
 
     messages_raw = await db.messages.find(query).sort("created_at", -1).to_list(length=60)
     messages_raw.reverse()
@@ -2908,6 +2965,12 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     recipient = convert_mongo_doc_to_dict(recipient_raw)
     message_id = str(uuid.uuid4())
 
+    now = datetime.now(timezone.utc)
+    # Messages éphémères : si la conversation a une durée configurée, on calcule
+    # la date d'expiration après laquelle le message s'auto-supprime.
+    ttl = await _ephemeral_ttl(current_user["id"], message_data.recipient_id)
+    expires_at = (now + timedelta(seconds=ttl)).isoformat() if ttl > 0 else None
+
     message_to_insert = {
         "id": message_id,
         "sender_id": current_user["id"],
@@ -2919,8 +2982,9 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "media_url": message_data.media_url,
         "media_type": message_data.media_type,
         "reply_to_id": message_data.reply_to_id,
+        "expires_at": expires_at,
         "read": False,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": now.isoformat()
     }
 
     await db.messages.insert_one(message_to_insert)
@@ -2941,6 +3005,7 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
             "media_url": message_data.media_url,
             "media_type": message_data.media_type,
             "reply_to_id": message_data.reply_to_id,
+            "expires_at": expires_at,
             "created_at": message_to_insert["created_at"],
         },
     })

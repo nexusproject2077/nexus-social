@@ -38,6 +38,15 @@ function UserAvatar({ username, pic, size = 10 }) {
 
 const QUICK_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
 
+// Durées des messages éphémères (doivent correspondre au backend).
+const EPHEMERAL_OPTIONS = [
+  { ttl: 0,     label: "Désactivé" },
+  { ttl: 300,   label: "5 minutes" },
+  { ttl: 3600,  label: "1 heure" },
+  { ttl: 86400, label: "24 heures" },
+];
+const ephemeralLabel = (ttl) => (EPHEMERAL_OPTIONS.find((o) => o.ttl === Number(ttl)) || EPHEMERAL_OPTIONS[0]).label;
+
 // Signatures base64 des formats image courants (début du blob encodé).
 const B64_IMAGE_SIGNATURES = [
   { p: "/9j/", mime: "jpeg" },        // JPEG
@@ -194,6 +203,10 @@ export default function MessagesPage({ user }) {
   const [showDetails, setShowDetails] = useState(false);
   const [detailsMore, setDetailsMore] = useState(false); // options avancées (⋯)
 
+  // Messages éphémères (par conversation)
+  const [ephemeralTtl, setEphemeralTtl] = useState(0);
+  const [showEphemeralChooser, setShowEphemeralChooser] = useState(false);
+
   // Mise en sourdine (local, par appareil)
   const [mutedIds, setMutedIds] = useState(() => {
     try { return JSON.parse(localStorage.getItem("nexus_muted") || "[]"); } catch { return []; }
@@ -268,6 +281,12 @@ export default function MessagesPage({ user }) {
         fetchConversations();
         return;
       }
+      // L'autre partie a changé le réglage des messages éphémères.
+      if (data.type === "ephemeral_changed") {
+        const ev = data.data || {};
+        if (selectedUserId && ev.peer_id === selectedUserId) setEphemeralTtl(ev.ttl_seconds || 0);
+        return;
+      }
       if (data.type !== "new_message") return;
       const m = data.data || {};
       // Message de la conversation ouverte -> on l'ajoute en direct
@@ -284,6 +303,8 @@ export default function MessagesPage({ user }) {
                 content: m.content,
                 media_url: m.media_url,
                 media_type: m.media_type,
+                reply_to_id: m.reply_to_id,
+                expires_at: m.expires_at,
                 created_at: m.created_at,
               }]
         );
@@ -321,7 +342,10 @@ export default function MessagesPage({ user }) {
   }, [nmSearch]);
 
   // Referme le panneau Détails quand on change de conversation.
-  useEffect(() => { setShowDetails(false); setDetailsMore(false); }, [selectedUserId, selectedGroupId]);
+  useEffect(() => {
+    setShowDetails(false); setDetailsMore(false);
+    setShowEphemeralChooser(false); setEphemeralTtl(0);
+  }, [selectedUserId, selectedGroupId]);
 
   // ── API calls ───────────────────────────────────────────────────────────────
   const fetchConversations = async () => {
@@ -388,9 +412,36 @@ export default function MessagesPage({ user }) {
       setMessages(msgsRes.data || []);
       setSelectedUser(userRes.data);
       setSelectedGroup(null);
+      // Réglage des messages éphémères de cette conversation.
+      try {
+        const eph = await axios.get(`${API}/messages/conversations/${uid}/ephemeral`);
+        setEphemeralTtl(eph.data?.ttl_seconds || 0);
+      } catch { setEphemeralTtl(0); }
     } catch { toast.error("Erreur lors du chargement des messages"); }
     finally { setLoading(false); }
   };
+
+  const setEphemeral = async (ttl) => {
+    if (!selectedUserId) return;
+    try {
+      await axios.put(`${API}/messages/conversations/${selectedUserId}/ephemeral`, { ttl_seconds: ttl });
+      setEphemeralTtl(ttl);
+      setShowEphemeralChooser(false);
+      toast.success(ttl ? `Messages éphémères : ${ephemeralLabel(ttl)}` : "Messages éphémères désactivés");
+    } catch { toast.error("Erreur"); }
+  };
+
+  // Purge locale des messages éphémères expirés (toutes les 10 s).
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = new Date().toISOString();
+      setMessages((prev) => {
+        const kept = prev.filter((m) => !m.expires_at || m.expires_at > now);
+        return kept.length === prev.length ? prev : kept;
+      });
+    }, 10000);
+    return () => clearInterval(t);
+  }, []);
 
   const fetchGroupMessages = async (gid) => {
     try {
@@ -822,6 +873,15 @@ export default function MessagesPage({ user }) {
             </button>
           </div>
 
+          {/* Bandeau messages éphémères */}
+          {!isGroup && ephemeralTtl > 0 && (
+            <div className="flex items-center justify-center gap-2 px-4 py-1.5 flex-shrink-0"
+              style={{ background: `${C.cyan}12`, color: C.cyan }}>
+              <Ico name="timer" size={14} />
+              <span className="text-[11px] font-bold">Messages éphémères · {ephemeralLabel(ephemeralTtl)}</span>
+            </div>
+          )}
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2" style={{ scrollbarWidth: "none" }}>
             {loading ? (
@@ -957,6 +1017,9 @@ export default function MessagesPage({ user }) {
 
                     {/* Status + time */}
                     <div className={`flex items-center gap-1 mt-0.5 ${isOwn ? "justify-end" : "justify-start ml-9"}`}>
+                      {msg.expires_at && (
+                        <span title="Message éphémère" style={{ color: C.cyan }}><Ico name="timer" size={11} /></span>
+                      )}
                       <span className="text-[9px]" style={{ color: C.outline }}>
                         {msg.created_at ? new Date(msg.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : ""}
                       </span>
@@ -1118,7 +1181,12 @@ export default function MessagesPage({ user }) {
             <DetailsRow icon="palette" label="Personnaliser" sub="Thème et police"
               onClick={() => { setShowDetails(false); navigate("/settings"); }} />
             <DetailsRow icon="nickname" label="Pseudos" onClick={() => toast("Bientôt disponible")} />
-            <DetailsRow icon="timer" label="Messages éphémères" sub="Désactivé" onClick={() => toast("Bientôt disponible")} />
+            <DetailsRow icon="timer" label="Messages éphémères"
+              sub={isGroup ? "Indisponible en groupe" : ephemeralLabel(ephemeralTtl)}
+              onClick={() => {
+                if (isGroup) { toast("Indisponible en groupe"); return; }
+                setShowDetails(false); setShowEphemeralChooser(true);
+              }} />
             <DetailsRow icon="privacy" label="Confidentialité et sécurité"
               onClick={() => { setShowDetails(false); navigate("/settings"); }} />
             <DetailsRow icon="group" label="Créer une discussion de groupe"
@@ -1261,6 +1329,37 @@ export default function MessagesPage({ user }) {
           <div className="w-full rounded-t-3xl overflow-hidden" style={{ background: C.surface, maxHeight: "88vh", height: "88vh" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-center pt-2"><div className="w-10 h-1 rounded-full" style={{ background: C.outlineVar }} /></div>
             {DetailsContent({ mobile: true })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Choix de la durée des messages éphémères ── */}
+      {showEphemeralChooser && (
+        <div className="fixed inset-0 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+          onClick={() => setShowEphemeralChooser(false)}>
+          <div className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5"
+            style={{ background: C.low, border: `1px solid ${C.outlineVar}` }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-1 px-1">
+              <span style={{ color: C.cyan }}><Ico name="timer" size={22} /></span>
+              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Messages éphémères</h3>
+            </div>
+            <p className="text-xs px-1 mb-4" style={{ color: C.outline }}>
+              Les nouveaux messages disparaissent automatiquement après la durée choisie, des deux côtés.
+            </p>
+            {EPHEMERAL_OPTIONS.map((o) => {
+              const active = Number(ephemeralTtl) === o.ttl;
+              return (
+                <button key={o.ttl} onClick={() => setEphemeral(o.ttl)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all hover:bg-white/5 text-left"
+                  style={{ color: C.onSurface }}>
+                  <span className="text-sm font-medium">{o.label}</span>
+                  {active && <span className="w-5 h-5 rounded-full flex items-center justify-center"
+                    style={{ background: C.cyan, color: C.onPrimary }}><span className="material-symbols-outlined text-sm">check</span></span>}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
