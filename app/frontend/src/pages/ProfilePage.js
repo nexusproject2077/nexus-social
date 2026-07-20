@@ -5,6 +5,7 @@ import { API } from "@/App";
 import Layout from "@/components/Layout";
 import PostCard from "@/components/PostCard";
 import EditProfileModal from "@/components/EditProfileModal";
+import FollowListModal from "@/components/FollowListModal";
 import { Lock, Clock, UserPlus, UserMinus, Edit } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,7 +18,7 @@ const C = {
   surfaceHighest:   "#2d3449",
   surfaceBright:    "#31394d",
   primary:          "#8aebff",
-  primaryContainer: "#22d3ee",
+  primaryContainer: "var(--nexus-accent)",
   onPrimary:        "#00363e",
   outline:          "#859397",
   outlineVariant:   "#3c494c",
@@ -40,6 +41,9 @@ export default function ProfilePage({ user, setUser }) {
   const [followStatus, setFollowStatus] = useState("not_following");
   const [stats, setStats]             = useState({ followers: 0, following: 0, posts: 0 });
   const [activeTab, setActiveTab]     = useState("media");
+  const [reposts, setReposts]         = useState([]);
+  const [mentions, setMentions]       = useState([]);
+  const [followModal, setFollowModal] = useState(null); // { kind: "followers"|"following" }
 
   const isOwnProfile = user && userId && user.id === userId;
 
@@ -92,6 +96,17 @@ export default function ProfilePage({ user, setUser }) {
         toast.error("Erreur lors du chargement des publications");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Change d'onglet et charge reposts / mentions à la demande.
+  const switchTab = (id) => {
+    setActiveTab(id);
+    if (id === "reposts" && userId) {
+      axios.get(`${API}/users/${userId}/reposts`).then((r) => setReposts(r.data || [])).catch(() => {});
+    }
+    if (id === "mentions" && userId) {
+      axios.get(`${API}/users/${userId}/mentions`).then((r) => setMentions(r.data || [])).catch(() => {});
     }
   };
 
@@ -184,7 +199,7 @@ export default function ProfilePage({ user, setUser }) {
         onClick={handleFollow}
         disabled={followLoading}
         className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
-        style={{ background: "linear-gradient(135deg, #22d3ee, #3b82f6)", color: C.onPrimary, boxShadow: "0 4px 14px rgba(34,211,238,0.25)" }}
+        style={{ background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)", color: C.onPrimary, boxShadow: "0 4px 14px rgba(34,211,238,0.25)" }}
       >
         {followLoading ? spinner(C.onPrimary) : <UserPlus size={14} />}
         {profile?.is_private ? "Demander à suivre" : "Suivre"}
@@ -206,8 +221,10 @@ export default function ProfilePage({ user, setUser }) {
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
   const tabs = [
-    { id: "posts",  label: "Publications", icon: "article"  },
-    { id: "media",  label: "Médias",       icon: "grid_on"  },
+    { id: "posts",    label: "Publications", icon: "article"         },
+    { id: "media",    label: "Médias",       icon: "grid_on"         },
+    { id: "reposts",  label: "Reposts",      icon: "repeat"          },
+    { id: "mentions", label: "Mentions",     icon: "alternate_email" },
   ];
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -300,19 +317,29 @@ export default function ProfilePage({ user, setUser }) {
             {/* Stats — desktop */}
             <div className="hidden sm:flex gap-3 flex-shrink-0 mb-1">
               {[
-                { label: "Publications", value: fmt(stats.posts) },
-                { label: "Abonnés",      value: fmt(stats.followers) },
-                { label: "Abonnements",  value: fmt(stats.following) },
-              ].map((s) => (
-                <div key={s.label} className="text-center px-5 py-3 rounded-2xl" style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}>
-                  <span className="block text-[10px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
-                    {s.label}
-                  </span>
-                  <span className="text-xl font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-                    {s.value}
-                  </span>
-                </div>
-              ))}
+                { label: "Publications", value: fmt(stats.posts), kind: null },
+                { label: "Abonnés",      value: fmt(stats.followers), kind: "followers" },
+                { label: "Abonnements",  value: fmt(stats.following), kind: "following" },
+              ].map((s) => {
+                const clickable = s.kind && canViewContent;
+                return (
+                  <button
+                    key={s.label}
+                    type="button"
+                    disabled={!clickable}
+                    onClick={() => clickable && setFollowModal({ kind: s.kind })}
+                    className={`text-center px-5 py-3 rounded-2xl ${clickable ? "hover:brightness-125 transition-all cursor-pointer" : "cursor-default"}`}
+                    style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}
+                  >
+                    <span className="block text-[10px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
+                      {s.label}
+                    </span>
+                    <span className="text-xl font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+                      {s.value}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
           </div>
@@ -322,20 +349,29 @@ export default function ProfilePage({ user, setUser }) {
       {/* Stats — mobile */}
       <div className="sm:hidden flex gap-3 px-5 pt-4 overflow-x-auto pb-1">
         {[
-          { label: "Publications", value: fmt(stats.posts) },
-          { label: "Abonnés",      value: fmt(stats.followers) },
-          { label: "Abonnements",  value: fmt(stats.following) },
-        ].map((s) => (
-          <div key={s.label} className="flex-shrink-0 text-center px-4 py-2.5 rounded-xl"
-            style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}>
-            <span className="block text-[9px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
-              {s.label}
-            </span>
-            <span className="text-lg font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-              {s.value}
-            </span>
-          </div>
-        ))}
+          { label: "Publications", value: fmt(stats.posts), kind: null },
+          { label: "Abonnés",      value: fmt(stats.followers), kind: "followers" },
+          { label: "Abonnements",  value: fmt(stats.following), kind: "following" },
+        ].map((s) => {
+          const clickable = s.kind && canViewContent;
+          return (
+            <button
+              key={s.label}
+              type="button"
+              disabled={!clickable}
+              onClick={() => clickable && setFollowModal({ kind: s.kind })}
+              className={`flex-shrink-0 text-center px-4 py-2.5 rounded-xl ${clickable ? "active:brightness-125" : ""}`}
+              style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}
+            >
+              <span className="block text-[9px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
+                {s.label}
+              </span>
+              <span className="text-lg font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+                {s.value}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
@@ -349,7 +385,7 @@ export default function ProfilePage({ user, setUser }) {
             return (
               <button
                 key={id}
-                onClick={() => setActiveTab(id)}
+                onClick={() => switchTab(id)}
                 className="flex-1 py-4 flex items-center justify-center gap-2 relative transition-all"
               >
                 <span
@@ -379,17 +415,38 @@ export default function ProfilePage({ user, setUser }) {
       {/* ── Content ───────────────────────────────────────────────────────── */}
       <div className="max-w-5xl mx-auto px-4 py-8 pb-28 md:pb-8">
 
-        {/* Private lock */}
+        {/* Private lock — cadenas SVG 100% personnalisé */}
         {!canViewContent ? (
-          <div className="text-center py-16 rounded-2xl" style={{ background: `${C.surfaceContainer}80`, border: `1px solid ${C.outlineVariant}18` }}>
-            <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5" style={{ background: `${C.primaryContainer}12` }}>
-              <Lock size={40} color={C.outline} />
-            </div>
+          <div className="text-center py-16 px-6 rounded-2xl" style={{ background: `${C.surfaceContainer}80`, border: `1px solid ${C.outlineVariant}18` }}>
+            <svg
+              width="96" height="96" viewBox="0 0 96 96" fill="none"
+              className="mx-auto mb-6" role="img" aria-label="Profil privé"
+            >
+              <defs>
+                <linearGradient id="nexusLockGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor={C.primaryContainer || "#22d3ee"} />
+                  <stop offset="100%" stopColor="#3b82f6" />
+                </linearGradient>
+              </defs>
+              {/* halo */}
+              <circle cx="48" cy="48" r="46" fill={`${C.primaryContainer || "#22d3ee"}14`} />
+              {/* anse du cadenas */}
+              <path
+                d="M32 44 V34 a16 16 0 0 1 32 0 V44"
+                stroke="url(#nexusLockGrad)" strokeWidth="6"
+                strokeLinecap="round" fill="none"
+              />
+              {/* corps du cadenas */}
+              <rect x="26" y="43" width="44" height="34" rx="8" fill="url(#nexusLockGrad)" />
+              {/* trou de serrure */}
+              <circle cx="48" cy="57" r="5" fill={C.surface || "#0b1326"} />
+              <rect x="46" y="59" width="4" height="10" rx="2" fill={C.surface || "#0b1326"} />
+            </svg>
             <h3 className="text-2xl font-black text-white mb-2" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-              Compte privé
+              Ce profil est privé
             </h3>
             <p className="text-sm" style={{ color: C.outline }}>
-              Abonnez-vous pour voir les publications de ce compte
+              Suivez ce profil pour voir ces contenus
             </p>
           </div>
 
@@ -467,11 +524,62 @@ export default function ProfilePage({ user, setUser }) {
                 </div>
               )
             )}
+
+            {/* ── Reposts ───────────────────────────────────────────────── */}
+            {activeTab === "reposts" && (
+              reposts.length === 0 ? (
+                <div className="text-center py-16" style={{ color: C.outline }}>
+                  <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">repeat</span>
+                  <p className="text-sm">Aucune republication</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reposts.map((post) => (
+                    <PostCard key={post.id} post={post} currentUser={user} onUpdate={handlePostUpdate}
+                      onDelete={(id) => { setReposts((r) => r.filter((p) => p.id !== id)); handlePostDelete(id); }} />
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* ── Mentions ──────────────────────────────────────────────── */}
+            {activeTab === "mentions" && (
+              mentions.length === 0 ? (
+                <div className="text-center py-16" style={{ color: C.outline }}>
+                  <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">alternate_email</span>
+                  <p className="text-sm">Aucune mention</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {mentions.map((post) => (
+                    <PostCard key={post.id} post={post} currentUser={user} onUpdate={handlePostUpdate} onDelete={handlePostDelete} />
+                  ))}
+                </div>
+              )
+            )}
           </>
         )}
       </div>
 
       <EditProfileModal open={showEditProfile} onClose={() => setShowEditProfile(false)} user={user} onUpdate={handleProfileUpdate} />
+
+      {followModal && (
+        <FollowListModal
+          userId={userId}
+          kind={followModal.kind}
+          title={followModal.kind === "followers" ? "Abonnés" : "Abonnements"}
+          currentUserId={user?.id}
+          manageFollowers={isOwnProfile && followModal.kind === "followers"}
+          onClose={() => setFollowModal(null)}
+          onCountChange={(d) =>
+            setStats((p) => ({
+              ...p,
+              [followModal.kind === "followers" ? "followers" : "following"]:
+                Math.max(0, p[followModal.kind === "followers" ? "followers" : "following"] + d),
+            }))
+          }
+        />
+      )}
 
       {/* Spinner keyframe */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

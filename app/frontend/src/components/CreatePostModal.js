@@ -298,8 +298,9 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                 variant="ghost"
                 size="icon"
                 onClick={handleRemoveMedia}
-                className="absolute top-2 right-2 bg-slate-900/80 hover:bg-slate-800"
+                className="absolute top-2 left-2 bg-slate-900/80 hover:bg-slate-800"
                 data-testid="remove-media-button"
+                title="Retirer le média"
               >
                 <X className="w-4 h-4" />
               </Button>

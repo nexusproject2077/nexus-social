@@ -5,6 +5,8 @@ import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
 import CookieConsent from "./components/CookieConsent";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
+import { initAccent, applyAccent } from "@/lib/accent";
+import { GeoProvider } from "@/context/GeoContext";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
 import ProfilePage from "./pages/ProfilePage";
@@ -13,7 +15,6 @@ import NotificationsPage from "./pages/NotificationsPage";
 import SearchPage from "./pages/SearchPage";
 import PostDetailPage from "./pages/PostDetailPage";
 import SettingsPage from "./pages/SettingsPage";
-import BrowserPage from "./pages/BrowserPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import PrivacyCenter from './pages/PrivacyCenter';
 import ClipsPage from './pages/ClipsPage';
@@ -64,6 +65,12 @@ function App() {
     try {
       const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
+      // La personnalisation enregistrée côté serveur prime : elle suit
+      // l'utilisateur sur tous ses appareils/navigateurs. Sinon, on garde
+      // la valeur locale (ou le défaut) déjà appliquée par initAccent().
+      if (response.data?.accent_color) {
+        applyAccent(response.data.accent_color);
+      }
     } catch (error) {
       localStorage.removeItem("token");
     } finally {
@@ -72,6 +79,7 @@ function App() {
   };
 
   useEffect(() => {
+    initAccent(); // Applique la couleur d'accentuation choisie
     checkAuth();
   }, []);
 
@@ -84,6 +92,7 @@ function App() {
   }
 
   return (
+    <GeoProvider>
     <div className="App">
       <Toaster position="top-center" richColors />
       <CookieConsent />
@@ -116,10 +125,6 @@ function App() {
           <Route
             path="/notifications"
             element={user ? <NotificationsPage user={user} /> : <Navigate to="/auth" />}
-          />
-          <Route
-            path="/browser"
-            element={user ? <BrowserPage user={user} /> : <Navigate to="/auth" />}
           />
           <Route
             path="/search"
@@ -156,6 +161,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </div>
+    </GeoProvider>
   );
 }
 

@@ -2,16 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Couleur d'accentuation globale (surchargée par les paramètres). */
+:root {
+    --nexus-accent: #22d3ee;
+}
+
 .material-symbols-outlined {
     font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
 }
 
 .bg-kinetic-gradient {
-    background: linear-gradient(90deg, #22D3EE 0%, #3B82F6 100%);
+    background: linear-gradient(90deg, var(--nexus-accent) 0%, #3B82F6 100%);
 }
 
 .text-kinetic-gradient {
-    background: linear-gradient(90deg, #22D3EE 0%, #3B82F6 100%);
+    background: linear-gradient(90deg, var(--nexus-accent) 0%, #3B82F6 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;

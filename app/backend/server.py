@@ -24,6 +24,7 @@ from bson import ObjectId
 import json
 from collections import defaultdict, deque
 import time
+import asyncio
 from enum import Enum
 import hashlib
 import random
@@ -255,11 +256,10 @@ else:
     print("ℹ️ Stripe désactivé (STRIPE_SECRET_KEY/STRIPE_PRICE_ID absents) — abonnements désactivés")
 
 # ==================== ADMINISTRATION ====================
-# Le tableau de bord Analytics expose des données globales de la plateforme et
-# des actions sensibles (bloquer un compte, notifier tous les utilisateurs,
-# exporter les données). Il est donc réservé aux administrateurs.
-# Définissez ADMIN_EMAILS (emails séparés par des virgules) en variable
-# d'environnement. Tant qu'aucun admin n'est défini, l'accès est refusé.
+# ADMIN_EMAILS (emails séparés par des virgules) identifie les comptes
+# administrateurs, exposés via is_admin sur /auth/me. Optionnel : réservé à
+# d'éventuelles fonctions d'administration. Le tableau de bord Analytics, lui,
+# est personnel (chaque utilisateur voit ses propres statistiques).
 ADMIN_EMAILS = {
     e.strip().lower()
     for e in os.environ.get("ADMIN_EMAILS", "").split(",")
@@ -267,8 +267,6 @@ ADMIN_EMAILS = {
 }
 if ADMIN_EMAILS:
     print(f"✅ Administrateurs configurés ({len(ADMIN_EMAILS)})")
-else:
-    print("ℹ️ Aucun ADMIN_EMAILS défini — le tableau de bord Analytics est verrouillé")
 
 # ==================== WEBSOCKET TEMPS RÉEL ====================
 # Endpoint authentifié : le client se connecte à /ws/{user_id}?token=<JWT>.
@@ -306,6 +304,33 @@ async def push_realtime(user_id: str, payload: dict):
         return
     try:
         await ws_manager.send_personal_message(payload, user_id)
+    except Exception:
+        pass
+
+
+async def create_notification(user_id, notif_type, from_user, post_id=None,
+                              comment_content=None):
+    """Crée une notification (et la pousse en temps réel). Best-effort.
+
+    N'auto-notifie jamais : si l'émetteur est le destinataire, on ignore.
+    """
+    if not user_id or user_id == from_user.get("id"):
+        return
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "type": notif_type,
+        "from_user_id": from_user.get("id"),
+        "from_username": from_user.get("username", ""),
+        "from_profile_pic": from_user.get("profile_pic"),
+        "post_id": post_id,
+        "comment_content": comment_content,
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        await db.notifications.insert_one(dict(doc))
+        await push_realtime(user_id, {"type": "notification", "data": doc})
     except Exception:
         pass
 
@@ -495,6 +520,8 @@ class User(BaseModel):
     is_verified: bool = False
     is_premium: bool = False
     is_admin: bool = False
+    accent_color: Optional[str] = None
+    theme: Optional[str] = None
     created_at: str
 
 class UserProfile(BaseModel):
@@ -550,6 +577,15 @@ class Post(BaseModel):
     affiliate_clicks: int = 0
     poll: Optional[Poll] = None
     poll_user_vote: Optional[str] = None  # id de l'option votée par l'utilisateur courant
+    # Republication : si repost_of est défini, ce post est un repartage.
+    # author_* = la personne qui a reposté ; original_author_* = l'auteur d'origine.
+    repost_of: Optional[str] = None
+    original_author_id: Optional[str] = None
+    original_author_username: Optional[str] = None
+    original_author_profile_pic: Optional[str] = None
+    original_author_is_verified: bool = False
+    is_reposted: bool = False  # l'utilisateur courant a-t-il reposté ce post ?
+    mentioned_user_ids: Optional[List[str]] = None
     created_at: str
 
 class CommentCreate(BaseModel):
@@ -562,12 +598,20 @@ class Comment(BaseModel):
     author_id: str
     author_username: str
     author_profile_pic: Optional[str] = None
+    author_is_verified: bool = False
     content: str
+    likes_count: int = 0
+    replies_count: int = 0
+    is_liked: bool = False
+    parent_comment_id: Optional[str] = None
     created_at: str
 
 class MessageCreate(BaseModel):
     recipient_id: str
-    content: str
+    content: str = ""
+    media_url: Optional[str] = None   # image compressée (data URL) éventuelle
+    media_type: Optional[str] = None  # "image" pour l'instant
+    reply_to_id: Optional[str] = None
 
 class Message(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -577,7 +621,9 @@ class Message(BaseModel):
     sender_profile_pic: Optional[str] = None
     recipient_id: str
     recipient_username: str
-    content: str
+    content: str = ""
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
     read: bool = False
     created_at: str
 
@@ -704,18 +750,34 @@ def client_ip(request: Request) -> str:
 
 # ==================== GEO / LANGUE ====================
 # Détection de la langue à partir du pays (adresse IP) pour adapter
-# automatiquement l'interface. Langues gérées côté frontend :
-# en, fr, tr, ru, uk. Les autres pays retombent sur l'anglais.
-SUPPORTED_UI_LANGS = {"en", "fr", "tr", "ru", "uk"}
+# automatiquement l'interface. Les pays non listés retombent sur l'anglais.
+SUPPORTED_UI_LANGS = {
+    "en", "fr", "es", "de", "it", "pt", "nl", "pl",
+    "tr", "ru", "uk", "ar", "hi", "zh", "ja", "ko",
+}
 
 # Pays -> langue de l'interface (code ISO 3166-1 alpha-2 -> code i18n)
 COUNTRY_TO_LANG = {
     # Français
-    "FR": "fr", "BE": "fr", "CH": "fr", "LU": "fr", "MC": "fr",
-    "CI": "fr", "SN": "fr", "CM": "fr", "ML": "fr", "BF": "fr",
-    "NE": "fr", "CD": "fr", "CG": "fr", "GA": "fr", "TG": "fr",
-    "BJ": "fr", "MG": "fr", "GN": "fr", "TD": "fr", "DZ": "fr",
-    "MA": "fr", "TN": "fr", "HT": "fr", "GP": "fr", "MQ": "fr",
+    "FR": "fr", "BE": "fr", "LU": "fr", "MC": "fr", "CI": "fr",
+    "SN": "fr", "CM": "fr", "ML": "fr", "BF": "fr", "NE": "fr",
+    "CD": "fr", "CG": "fr", "GA": "fr", "TG": "fr", "BJ": "fr",
+    "MG": "fr", "GN": "fr", "TD": "fr", "HT": "fr", "GP": "fr", "MQ": "fr",
+    # Espagnol
+    "ES": "es", "MX": "es", "AR": "es", "CO": "es", "CL": "es",
+    "PE": "es", "VE": "es", "EC": "es", "GT": "es", "CU": "es",
+    "BO": "es", "DO": "es", "HN": "es", "PY": "es", "SV": "es",
+    "NI": "es", "CR": "es", "PA": "es", "UY": "es",
+    # Allemand
+    "DE": "de", "AT": "de", "CH": "de", "LI": "de",
+    # Italien
+    "IT": "it", "SM": "it", "VA": "it",
+    # Portugais
+    "PT": "pt", "BR": "pt", "AO": "pt", "MZ": "pt", "CV": "pt",
+    # Néerlandais
+    "NL": "nl", "SR": "nl",
+    # Polonais
+    "PL": "pl",
     # Turc
     "TR": "tr", "CY": "tr",
     # Russe
@@ -723,6 +785,18 @@ COUNTRY_TO_LANG = {
     "AM": "ru", "AZ": "ru", "MD": "ru", "UZ": "ru", "TM": "ru",
     # Ukrainien
     "UA": "uk",
+    # Arabe
+    "SA": "ar", "AE": "ar", "EG": "ar", "DZ": "ar", "MA": "ar",
+    "TN": "ar", "IQ": "ar", "JO": "ar", "KW": "ar", "QA": "ar",
+    "OM": "ar", "BH": "ar", "LB": "ar", "LY": "ar", "YE": "ar", "SD": "ar",
+    # Hindi
+    "IN": "hi",
+    # Chinois
+    "CN": "zh", "TW": "zh", "HK": "zh", "SG": "zh", "MO": "zh",
+    # Japonais
+    "JP": "ja",
+    # Coréen
+    "KR": "ko",
 }
 
 
@@ -749,6 +823,25 @@ async def detect_language(request: Request):
             country = None
     lang = lang_for_country(country)
     return {"country": country, "language": lang, "supported": sorted(SUPPORTED_UI_LANGS)}
+
+
+@api_router.get("/geo/status")
+async def geo_status(request: Request):
+    """État géographique du visiteur pour adapter l'expérience.
+
+    restricted=True pour l'UE (pas de pubs / pas de tracking, bandeau RGPD
+    complet). Hors-UE : accès complet + bandeau cookies discret.
+    Best-effort : si la base GeoIP est absente, on considère non-restreint.
+    """
+    ip = client_ip(request)
+    country = None
+    if _geoip_reader is not None:
+        try:
+            country = _geoip_reader.country(ip).country.iso_code
+        except Exception:
+            country = None
+    restricted = bool(country and country in EU_COUNTRIES)
+    return {"country": country, "restricted": restricted, "eu": restricted}
 
 
 # ==================== AUTH ROUTES ====================
@@ -843,6 +936,28 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     """Récupère le profil de l'utilisateur actuel"""
     current_user["is_admin"] = is_admin_user(current_user)
     return User(**current_user)
+
+
+@api_router.put("/users/me/appearance")
+async def update_appearance(
+    appearance: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Enregistre la personnalisation (couleur d'accent, thème) côté serveur
+    pour qu'elle suive l'utilisateur sur tous ses appareils/navigateurs."""
+    update_data = {}
+    accent = appearance.get("accent_color")
+    theme = appearance.get("theme")
+    if isinstance(accent, str) and accent.strip():
+        update_data["accent_color"] = accent.strip()[:32]
+    if isinstance(theme, str) and theme.strip():
+        update_data["theme"] = theme.strip()[:32]
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Aucune donnée valide")
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
+    return {"success": True, **update_data}
+
 
 # ==================== BILLING (abonnements Stripe) ====================
 @api_router.get("/billing/status")
@@ -1379,12 +1494,32 @@ async def end_user_session(
         raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
 # ==================== POSTS ROUTES ====================
+async def resolve_mentions(content: str, exclude_id: str = None):
+    """Extrait les @mentions du contenu et renvoie la liste des user_ids
+    correspondant à des comptes existants (hors exclude_id)."""
+    if not content:
+        return []
+    usernames = {u.lower() for u in re.findall(r'@(\w+)', content)}
+    if not usernames:
+        return []
+    ids = []
+    async for u in db.users.find(
+        {"username": {"$in": list(usernames)}}, {"id": 1, "username": 1}
+    ):
+        # match insensible à la casse
+        if u.get("username", "").lower() in usernames and u.get("id") != exclude_id:
+            ids.append(u["id"])
+    return ids
+
+
 @api_router.post("/posts", response_model=Post)
 async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
     """Créer un nouveau post"""
     post_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    
+
+    mentioned_ids = await resolve_mentions(post_data.content, exclude_id=current_user["id"])
+
     post_to_insert = {
         "id": post_id,
         "author_id": current_user["id"],
@@ -1400,10 +1535,15 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
         "poll": build_poll(post_data.poll_options),
         "affiliate_link": safe_http_url(post_data.affiliate_link),
         "affiliate_clicks": 0,
+        "mentioned_user_ids": mentioned_ids,
         "created_at": now.isoformat()
     }
 
     await db.posts.insert_one(post_to_insert)
+
+    # Notifier les personnes mentionnées.
+    for uid in mentioned_ids:
+        await create_notification(uid, "mention", current_user, post_id=post_id)
 
     post = convert_mongo_doc_to_dict(post_to_insert)
     post["is_liked"] = False
@@ -1552,13 +1692,48 @@ async def repost(post_id: str, current_user: dict = Depends(get_current_user)):
         "repost_of": post_id,
         "original_author_username": original["author_username"],
         "original_author_id": original["author_id"],
+        "original_author_profile_pic": original.get("author_profile_pic"),
+        "original_author_is_verified": original.get("author_is_verified", False),
         "created_at": now.isoformat()
     }
     await db.posts.insert_one(repost_doc)
     await db.posts.update_one({"id": post_id}, {"$inc": {"shares_count": 1}})
+
+    # Notifier l'auteur d'origine (sauf soi-même, déjà exclu plus haut).
+    await create_notification(
+        user_id=original["author_id"],
+        notif_type="repost",
+        from_user=current_user,
+        post_id=post_id,
+    )
+
     result = convert_mongo_doc_to_dict(repost_doc)
     result["is_liked"] = False
+    result["is_reposted"] = True
     return Post(**result)
+
+
+@api_router.delete("/posts/{post_id}/repost")
+async def unrepost(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Annule la republication d'un post par l'utilisateur courant."""
+    existing = await db.posts.find_one({"repost_of": post_id, "author_id": current_user["id"]})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Vous n'avez pas reposté cette publication")
+
+    await db.posts.delete_one({"id": existing["id"]})
+    # Décrémente le compteur de partages de l'original (jamais en dessous de 0).
+    await db.posts.update_one(
+        {"id": post_id, "shares_count": {"$gt": 0}},
+        {"$inc": {"shares_count": -1}},
+    )
+    # Retire la notification de republication associée.
+    await db.notifications.delete_many({
+        "type": "repost", "post_id": post_id, "from_user_id": current_user["id"],
+    })
+
+    updated = await db.posts.find_one({"id": post_id})
+    shares = (updated or {}).get("shares_count", 0) if updated else 0
+    return {"reposted": False, "shares_count": shares}
 
 @api_router.delete("/posts/{post_id}")
 async def delete_post(post_id: str, current_user: dict = Depends(get_current_user)):
@@ -1624,12 +1799,21 @@ async def like_post(post_id: str, current_user: dict = Depends(get_current_user)
 async def get_post_comments(post_id: str, current_user: dict = Depends(get_current_user)):
     """Récupère les commentaires d'un post"""
     comments_raw = await db.comments.find({"post_id": post_id}).sort("created_at", -1).to_list(length=100)
-    
+
+    comment_ids = [c.get("id") for c in comments_raw]
+    liked_ids = set()
+    if comment_ids:
+        likes = await db.comment_likes.find(
+            {"comment_id": {"$in": comment_ids}, "user_id": current_user["id"]}
+        ).to_list(length=len(comment_ids))
+        liked_ids = {l.get("comment_id") for l in likes}
+
     comments = []
     for comment_raw in comments_raw:
         comment = convert_mongo_doc_to_dict(comment_raw)
+        comment["is_liked"] = comment.get("id") in liked_ids
         comments.append(Comment(**comment))
-    
+
     return comments
 
 @api_router.post("/posts/{post_id}/comments", response_model=Comment)
@@ -1686,8 +1870,10 @@ async def delete_comment(post_id: str, comment_id: str, current_user: dict = Dep
         raise HTTPException(status_code=403, detail="Not authorized")
     
     await db.comments.delete_one({"id": comment_id})
+    await db.comment_replies.delete_many({"parent_comment_id": comment_id})
+    await db.comment_likes.delete_many({"comment_id": comment_id})
     await db.posts.update_one({"id": post_id}, {"$inc": {"comments_count": -1}})
-    
+
     return {"message": "Comment deleted successfully"}
 
 @api_router.post("/comments/{comment_id}/like")
@@ -1714,6 +1900,12 @@ async def like_comment(comment_id: str, current_user: dict = Depends(get_current
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         await db.comments.update_one({"id": comment_id}, {"$inc": {"likes_count": 1}})
+        # Notifier l'auteur du commentaire (jamais soi-même).
+        comment = convert_mongo_doc_to_dict(comment_raw)
+        await create_notification(
+            comment.get("author_id"), "comment_like", current_user,
+            post_id=comment.get("post_id"), comment_content=comment.get("content"),
+        )
         return {"liked": True}
 
 @api_router.get("/comments/{comment_id}/replies")
@@ -1750,9 +1942,29 @@ async def create_comment_reply(comment_id: str, reply_data: CommentCreate, curre
     
     await db.comment_replies.insert_one(reply_to_insert)
     await db.comments.update_one({"id": comment_id}, {"$inc": {"replies_count": 1}})
-    
+
+    # Notifier l'auteur du commentaire parent (jamais soi-même).
+    parent = convert_mongo_doc_to_dict(comment_raw)
+    await create_notification(
+        parent.get("author_id"), "comment_reply", current_user,
+        post_id=parent.get("post_id"), comment_content=reply_data.content,
+    )
+
     reply = convert_mongo_doc_to_dict(reply_to_insert)
     return Comment(**reply)
+
+@api_router.delete("/comments/{comment_id}/replies/{reply_id}")
+async def delete_comment_reply(comment_id: str, reply_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprime une réponse (uniquement par son auteur)."""
+    reply_raw = await db.comment_replies.find_one({"id": reply_id, "parent_comment_id": comment_id})
+    if not reply_raw:
+        raise HTTPException(status_code=404, detail="Reply not found")
+    reply = convert_mongo_doc_to_dict(reply_raw)
+    if reply["author_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    await db.comment_replies.delete_one({"id": reply_id})
+    await db.comments.update_one({"id": comment_id}, {"$inc": {"replies_count": -1}})
+    return {"message": "Reply deleted successfully"}
 
 # ==================== USERS ROUTES ====================
 @api_router.get("/users/search")
@@ -1832,9 +2044,11 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
                     detail="Ce compte est privé. Vous devez être abonné pour voir ses publications."
                 )
     
-    # Récupérer les posts
-    posts_raw = await db.posts.find({"author_id": user_id}).sort("created_at", -1).to_list(length=50)
-    
+    # Publications originales uniquement (les reposts ont leur propre section).
+    posts_raw = await db.posts.find(
+        {"author_id": user_id, "repost_of": None}
+    ).sort("created_at", -1).to_list(length=50)
+
     posts = []
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
@@ -1842,7 +2056,62 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
         post["is_liked"] = bool(like_raw)
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
-    
+
+    return posts
+
+
+async def _visible_profile_or_403(user_id: str, current_user: dict):
+    """Vérifie l'accès à un profil (comptes privés) et renvoie l'utilisateur cible."""
+    if current_user["id"] == user_id:
+        return None
+    target_user = await db.users.find_one({"id": user_id})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user.get("is_private", False):
+        if not await check_is_following(current_user["id"], user_id):
+            raise HTTPException(status_code=403, detail="Ce compte est privé. Vous devez être abonné pour voir ses publications.")
+    return target_user
+
+
+@api_router.get("/users/{user_id}/reposts", response_model=List[Post])
+async def get_user_reposts(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Publications repartagées (reposts) par l'utilisateur."""
+    await _visible_profile_or_403(user_id, current_user)
+
+    reposts_raw = await db.posts.find(
+        {"author_id": user_id, "repost_of": {"$ne": None}}
+    ).sort("created_at", -1).to_list(length=50)
+
+    posts = []
+    for post_raw in reposts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        # Like/état calculés sur la publication d'origine.
+        original_id = post.get("repost_of")
+        like_raw = await db.likes.find_one({"post_id": original_id, "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        post["is_reposted"] = (user_id == current_user["id"])
+        posts.append(Post(**post))
+
+    return posts
+
+
+@api_router.get("/users/{user_id}/mentions", response_model=List[Post])
+async def get_user_mentions(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Publications où l'utilisateur a été mentionné (@)."""
+    await _visible_profile_or_403(user_id, current_user)
+
+    posts_raw = await db.posts.find(
+        {"mentioned_user_ids": user_id, "repost_of": None}
+    ).sort("created_at", -1).to_list(length=50)
+
+    posts = []
+    for post_raw in posts_raw:
+        post = convert_mongo_doc_to_dict(post_raw)
+        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+        post["is_liked"] = bool(like_raw)
+        enrich_post_poll(post, current_user["id"])
+        posts.append(Post(**post))
+
     return posts
 
 # ==================== USER SETTINGS ROUTES ====================
@@ -2013,50 +2282,266 @@ async def get_time_stats(current_user: dict = Depends(get_current_user)):
         "most_active_day": random.choice(["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"])
     }
 
+async def _do_follow(follower: dict, user_id: str):
+    """Crée l'abonnement effectif (comptes publics ou requête acceptée)."""
+    await db.follows.insert_one({
+        "id": str(uuid.uuid4()),
+        "follower_id": follower["id"],
+        "followed_id": user_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await db.users.update_one({"id": follower["id"]}, {"$inc": {"following_count": 1}})
+    await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": 1}})
+    await create_notification(user_id, "follow", follower)
+
+
 @api_router.post("/users/{user_id}/follow")
 async def follow_user(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Follow/unfollow un utilisateur"""
+    """Suivre / ne plus suivre. Pour un compte privé, crée une demande à valider."""
     if user_id == current_user["id"]:
         raise HTTPException(status_code=400, detail="Cannot follow yourself")
-    
+
     user_raw = await db.users.find_one({"id": user_id})
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     existing_follow_raw = await db.follows.find_one({"follower_id": current_user["id"], "followed_id": user_id})
-    
+
     if existing_follow_raw:
-        # Unfollow
+        # Se désabonner
         await db.follows.delete_one({"follower_id": current_user["id"], "followed_id": user_id})
         await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": -1}})
         await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": -1}})
-        return {"following": False}
-    else:
-        # Follow
-        follow_id = str(uuid.uuid4())
-        await db.follows.insert_one({
-            "id": follow_id,
-            "follower_id": current_user["id"],
-            "followed_id": user_id,
-            "created_at": datetime.now(timezone.utc).isoformat()
+        return {"following": False, "status": "not_following"}
+
+    # Compte privé : demande d'abonnement à valider par le destinataire.
+    if user_raw.get("is_private", False):
+        existing_req = await db.follow_requests.find_one({"requester_id": current_user["id"], "target_id": user_id})
+        if existing_req:
+            # Annuler la demande (bascule).
+            await db.follow_requests.delete_one({"id": existing_req["id"]})
+            await db.notifications.delete_many({
+                "type": "follow_request", "from_user_id": current_user["id"], "user_id": user_id,
+            })
+            return {"following": False, "status": "not_following"}
+        await db.follow_requests.insert_one({
+            "id": str(uuid.uuid4()),
+            "requester_id": current_user["id"],
+            "target_id": user_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
         })
-        await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": 1}})
-        await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": 1}})
-        
-        # Créer une notification
-        notif_id = str(uuid.uuid4())
-        await db.notifications.insert_one({
-            "id": notif_id,
-            "user_id": user_id,
-            "type": "follow",
-            "from_user_id": current_user["id"],
-            "from_username": current_user["username"],
-            "from_profile_pic": current_user.get("profile_pic"),
-            "read": False,
-            "created_at": datetime.now(timezone.utc).isoformat()
+        await create_notification(user_id, "follow_request", current_user)
+        return {"following": False, "status": "pending"}
+
+    # Compte public : abonnement immédiat.
+    await _do_follow(current_user, user_id)
+    return {"following": True, "status": "following"}
+
+
+@api_router.delete("/users/{user_id}/follow")
+async def unfollow_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Se désabonner explicitement (et annuler une éventuelle demande en attente)."""
+    result = await db.follows.delete_one({"follower_id": current_user["id"], "followed_id": user_id})
+    if result.deleted_count:
+        await db.users.update_one({"id": current_user["id"]}, {"$inc": {"following_count": -1}})
+        await db.users.update_one({"id": user_id}, {"$inc": {"followers_count": -1}})
+    # Annule aussi une demande d'abonnement en attente, le cas échéant.
+    await db.follow_requests.delete_many({"requester_id": current_user["id"], "target_id": user_id})
+    await db.notifications.delete_many({"type": "follow_request", "from_user_id": current_user["id"], "user_id": user_id})
+    return {"following": False, "status": "not_following"}
+
+
+@api_router.get("/users/{user_id}/follow-status")
+async def get_follow_status(user_id: str, current_user: dict = Depends(get_current_user)):
+    """État de la relation d'abonnement avec un utilisateur."""
+    if user_id == current_user["id"]:
+        return {"status": "self"}
+    if await check_is_following(current_user["id"], user_id):
+        return {"status": "following"}
+    pending = await db.follow_requests.find_one({"requester_id": current_user["id"], "target_id": user_id})
+    return {"status": "pending" if pending else "not_following"}
+
+
+@api_router.get("/follow-requests")
+async def list_follow_requests(current_user: dict = Depends(get_current_user)):
+    """Demandes d'abonnement en attente reçues par l'utilisateur."""
+    reqs = await db.follow_requests.find({"target_id": current_user["id"]}).sort("created_at", -1).to_list(length=100)
+    out = []
+    for r in reqs:
+        u = await db.users.find_one({"id": r.get("requester_id")}, {"_id": 0, "password": 0})
+        if u:
+            out.append({
+                "id": r.get("id"),
+                "requester_id": r.get("requester_id"),
+                "username": u.get("username"),
+                "profile_pic": u.get("profile_pic"),
+                "created_at": r.get("created_at"),
+            })
+    return out
+
+
+@api_router.post("/follow-requests/{requester_id}/accept")
+async def accept_follow_request(requester_id: str, current_user: dict = Depends(get_current_user)):
+    """Accepte une demande d'abonnement."""
+    req = await db.follow_requests.find_one({"requester_id": requester_id, "target_id": current_user["id"]})
+    if not req:
+        raise HTTPException(status_code=404, detail="Demande introuvable")
+    requester = await db.users.find_one({"id": requester_id})
+    await db.follow_requests.delete_one({"id": req["id"]})
+    if requester and not await check_is_following(requester_id, current_user["id"]):
+        await _do_follow(requester, current_user["id"])
+    # Nettoie la notif de demande, prévient le demandeur.
+    await db.notifications.delete_many({"type": "follow_request", "from_user_id": requester_id, "user_id": current_user["id"]})
+    await create_notification(requester_id, "follow_accepted", current_user)
+    return {"success": True}
+
+
+@api_router.post("/follow-requests/{requester_id}/reject")
+async def reject_follow_request(requester_id: str, current_user: dict = Depends(get_current_user)):
+    """Refuse une demande d'abonnement."""
+    result = await db.follow_requests.delete_one({"requester_id": requester_id, "target_id": current_user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Demande introuvable")
+    await db.notifications.delete_many({"type": "follow_request", "from_user_id": requester_id, "user_id": current_user["id"]})
+    return {"success": True}
+
+
+async def _enrich_user_list(user_ids: List[str], viewer_id: str) -> List[dict]:
+    """Renvoie les infos publiques d'une liste d'utilisateurs, avec, pour
+    chacun, si le visiteur (viewer) le suit déjà — pour l'affichage des
+    boutons Suivre/Abonné dans les listes d'abonnés/abonnements."""
+    if not user_ids:
+        return []
+    users = await db.users.find(
+        {"id": {"$in": user_ids}},
+        {"_id": 0, "password": 0},
+    ).to_list(length=len(user_ids))
+    # Qui, parmi cette liste, le viewer suit-il déjà ?
+    followed = await db.follows.find(
+        {"follower_id": viewer_id, "followed_id": {"$in": user_ids}},
+    ).to_list(length=len(user_ids))
+    followed_set = {f.get("followed_id") for f in followed}
+    by_id = {u["id"]: u for u in users}
+    out = []
+    for uid in user_ids:  # préserve l'ordre (plus récents d'abord)
+        u = by_id.get(uid)
+        if not u:
+            continue
+        out.append({
+            "id": u["id"],
+            "username": u.get("username"),
+            "profile_pic": u.get("profile_pic"),
+            "is_verified": u.get("is_verified", False),
+            "bio": u.get("bio", ""),
+            "is_following": uid in followed_set,
+            "is_self": uid == viewer_id,
         })
-        
-        return {"following": True}
+    return out
+
+
+async def _can_view_follow_lists(target_id: str, viewer_id: str) -> bool:
+    """Compte public → tout le monde ; compte privé → soi-même ou abonné approuvé."""
+    if target_id == viewer_id:
+        return True
+    target = await db.users.find_one({"id": target_id}, {"is_private": 1})
+    if not target or not target.get("is_private"):
+        return True
+    return await check_is_following(viewer_id, target_id)
+
+
+@api_router.get("/users/{user_id}/followers")
+async def list_followers(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Liste des abonnés (ceux qui suivent user_id), plus récents d'abord."""
+    if not await _can_view_follow_lists(user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Compte privé")
+    rows = await db.follows.find({"followed_id": user_id}).sort("created_at", -1).to_list(length=2000)
+    ids = [r.get("follower_id") for r in rows if r.get("follower_id")]
+    return await _enrich_user_list(ids, current_user["id"])
+
+
+@api_router.get("/users/{user_id}/following")
+async def list_following(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Liste des abonnements (ceux que user_id suit), plus récents d'abord."""
+    if not await _can_view_follow_lists(user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Compte privé")
+    rows = await db.follows.find({"follower_id": user_id}).sort("created_at", -1).to_list(length=2000)
+    ids = [r.get("followed_id") or r.get("following_id") for r in rows]
+    ids = [i for i in ids if i]
+    return await _enrich_user_list(ids, current_user["id"])
+
+
+@api_router.delete("/users/me/followers/{follower_id}")
+async def remove_follower(follower_id: str, current_user: dict = Depends(get_current_user)):
+    """Retire un abonné : la personne ne nous suit plus (gestion de ses abonnés)."""
+    result = await db.follows.delete_one({"follower_id": follower_id, "followed_id": current_user["id"]})
+    if result.deleted_count:
+        await db.users.update_one({"id": current_user["id"]}, {"$inc": {"followers_count": -1}})
+        await db.users.update_one({"id": follower_id}, {"$inc": {"following_count": -1}})
+    return {"success": True}
+
+
+# ==================== DIRECTS (LIVE) ====================
+class LiveStart(BaseModel):
+    room_id: str
+
+
+async def _followed_ids(user_id: str) -> List[str]:
+    ids = []
+    async for f in db.follows.find({"follower_id": user_id}):
+        fid = f.get("followed_id") or f.get("following_id")
+        if fid:
+            ids.append(fid)
+    return ids
+
+
+@api_router.post("/live/start")
+async def start_live(payload: LiveStart, current_user: dict = Depends(get_current_user)):
+    """Démarre un direct : visible dans les stories des abonnés + les notifie."""
+    now = datetime.now(timezone.utc).isoformat()
+    await db.live_sessions.update_one(
+        {"host_id": current_user["id"]},
+        {"$set": {
+            "host_id": current_user["id"],
+            "host_username": current_user["username"],
+            "host_profile_pic": current_user.get("profile_pic"),
+            "room_id": payload.room_id,
+            "started_at": now,
+            "active": True,
+        }},
+        upsert=True,
+    )
+    # Notifie les abonnés (followers) du lancement du direct.
+    async for f in db.follows.find({"followed_id": current_user["id"]}):
+        await create_notification(f.get("follower_id"), "live", current_user, post_id=payload.room_id)
+    return {"success": True, "room_id": payload.room_id}
+
+
+@api_router.post("/live/stop")
+async def stop_live(current_user: dict = Depends(get_current_user)):
+    """Termine le direct de l'utilisateur."""
+    await db.live_sessions.update_one(
+        {"host_id": current_user["id"]}, {"$set": {"active": False}}
+    )
+    return {"success": True}
+
+
+@api_router.get("/live/active")
+async def active_lives(current_user: dict = Depends(get_current_user)):
+    """Directs en cours parmi les comptes suivis (abonnements) + soi-même."""
+    allowed = set(await _followed_ids(current_user["id"]))
+    allowed.add(current_user["id"])
+    out = []
+    async for s in db.live_sessions.find({"active": True}):
+        if s.get("host_id") in allowed:
+            out.append({
+                "host_id": s.get("host_id"),
+                "host_username": s.get("host_username"),
+                "host_profile_pic": s.get("host_profile_pic"),
+                "room_id": s.get("room_id"),
+                "started_at": s.get("started_at"),
+            })
+    return out
+
 
 # ==================== NOTIFICATIONS ROUTES ====================
 @api_router.get("/notifications", response_model=List[Notification])
@@ -2085,22 +2570,49 @@ async def mark_notification_read(notification_id: str, current_user: dict = Depe
     await db.notifications.update_one({"id": notification_id}, {"$set": {"read": True}})
     return {"message": "Notification marked as read"}
 
+
+@api_router.put("/notifications/read-all")
+async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
+    """Marque toutes les notifications de l'utilisateur comme lues."""
+    await db.notifications.update_many(
+        {"user_id": current_user["id"], "read": False}, {"$set": {"read": True}}
+    )
+    return {"success": True}
+
+
+@api_router.delete("/notifications/{notification_id}")
+async def delete_notification(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprime une notification de l'utilisateur."""
+    result = await db.notifications.delete_one(
+        {"id": notification_id, "user_id": current_user["id"]}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"success": True}
+
+
+@api_router.delete("/notifications")
+async def clear_notifications(current_user: dict = Depends(get_current_user)):
+    """Supprime toutes les notifications de l'utilisateur."""
+    await db.notifications.delete_many({"user_id": current_user["id"]})
+    return {"success": True}
+
 # ==================== MESSAGES ROUTES ====================
 @api_router.get("/messages/conversations", response_model=List[Conversation])
 async def get_conversations(current_user: dict = Depends(get_current_user)):
     """Récupère les conversations de l'utilisateur"""
-    messages_raw = await db.messages.find({
-        "$or": [
-            {"sender_id": current_user["id"]},
-            {"recipient_id": current_user["id"]}
-        ]
-    }).sort("created_at", -1).to_list(length=1000)
-    
+    # Projection : on N'INCLUT PAS media_url (data URL base64 potentiellement
+    # lourd) pour garder la liste des conversations légère et rapide.
+    messages_raw = await db.messages.find(
+        {"$or": [{"sender_id": current_user["id"]}, {"recipient_id": current_user["id"]}]},
+        {"content": 1, "sender_id": 1, "recipient_id": 1, "created_at": 1, "media_type": 1},
+    ).sort("created_at", -1).to_list(length=1000)
+
     conversations_dict = {}
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
         other_user_id = msg["recipient_id"] if msg["sender_id"] == current_user["id"] else msg["sender_id"]
-        
+
         if other_user_id not in conversations_dict:
             other_user_raw = await db.users.find_one({"id": other_user_id})
             if other_user_raw:
@@ -2110,16 +2622,27 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     "recipient_id": current_user["id"],
                     "read": False
                 })
-                
+
+                # Aperçu : texte déchiffré, ou « 📷 Photo » pour un média (ou une
+                # image collée en texte, pour ne pas afficher un pavé de base64).
+                text = decrypt_message(msg.get("content") or "")
+                if image_data_url_from_text(text):
+                    preview = "📷 Photo"
+                elif text:
+                    preview = text[:120]
+                elif msg.get("media_type"):
+                    preview = "📷 Photo"
+                else:
+                    preview = ""
                 conversations_dict[other_user_id] = Conversation(
                     user_id=other_user["id"],
                     username=other_user["username"],
                     profile_pic=other_user.get("profile_pic"),
-                    last_message=decrypt_message(msg["content"]),
+                    last_message=preview,
                     last_message_time=msg["created_at"],
                     unread_count=unread_count
                 )
-    
+
     return list(conversations_dict.values())
 
 @api_router.get("/messages/groups-list")
@@ -2134,13 +2657,17 @@ async def list_groups_alias(current_user: dict = Depends(get_current_user)):
 @api_router.get("/messages/{user_id}", response_model=List[Message])
 async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_current_user)):
     """Récupère les messages avec un utilisateur spécifique"""
+    # On récupère les 60 messages LES PLUS RÉCENTS (tri décroissant + limite),
+    # puis on rétablit l'ordre chronologique. Évite de charger tout l'historique
+    # (images base64 comprises) qui faisait ramer/planter la page.
     messages_raw = await db.messages.find({
         "$or": [
             {"sender_id": current_user["id"], "recipient_id": user_id},
             {"sender_id": user_id, "recipient_id": current_user["id"]}
         ]
-    }).sort("created_at", 1).to_list(length=100)
-    
+    }).sort("created_at", -1).to_list(length=60)
+    messages_raw.reverse()
+
     messages = []
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
@@ -2155,6 +2682,46 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
     
     return messages
 
+# Longueur max d'un message texte (empêche le spam de gros blocs, ex. data URLs collées).
+MAX_MESSAGE_TEXT = 4000
+
+# Signatures base64 des formats image courants (blob collé sans préfixe data:).
+_B64_IMAGE_SIGS = {"/9j/": "jpeg", "iVBORw0KGgo": "png", "R0lGOD": "gif", "UklGR": "webp"}
+
+
+def image_data_url_from_text(text):
+    """Si `text` est une image (data URL complète OU base64 brut collé),
+    renvoie une data URL affichable ; sinon None."""
+    if not text:
+        return None
+    if text.startswith("data:image"):
+        return text
+    head = text[:16]
+    for prefix, mime in _B64_IMAGE_SIGS.items():
+        if head.startswith(prefix):
+            return f"data:image/{mime};base64,{text}"
+    return None
+
+
+def normalize_message_content(content, media_url):
+    """Nettoie le contenu d'un message.
+
+    - Si le texte est en réalité une image collée (data URL ou base64 brut), on la
+      traite comme un média : elle s'affiche comme une image, pas comme un pavé de
+      texte qui fait ramer la page.
+    - Sinon, on borne la longueur du texte.
+    Renvoie (content, media_url).
+    """
+    text = (content or "").strip()
+    if not media_url:
+        as_image = image_data_url_from_text(text)
+        if as_image:
+            return "", as_image
+    if len(text) > MAX_MESSAGE_TEXT:
+        text = text[:MAX_MESSAGE_TEXT]
+    return text, media_url
+
+
 @api_router.post("/messages", response_model=Message)
 async def send_message(message_data: MessageCreate, current_user: dict = Depends(get_current_user)):
     """Envoie un message"""
@@ -2165,10 +2732,19 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     recipient_raw = await db.users.find_one({"id": message_data.recipient_id})
     if not recipient_raw:
         raise HTTPException(status_code=404, detail="Recipient not found")
-    
+
+    # Normalise (data URL collée → image, borne la longueur).
+    message_data.content, message_data.media_url = normalize_message_content(
+        message_data.content, message_data.media_url
+    )
+
+    # Un message doit avoir du texte OU un média.
+    if not (message_data.content or "").strip() and not message_data.media_url:
+        raise HTTPException(status_code=400, detail="Message vide")
+
     recipient = convert_mongo_doc_to_dict(recipient_raw)
     message_id = str(uuid.uuid4())
-    
+
     message_to_insert = {
         "id": message_id,
         "sender_id": current_user["id"],
@@ -2176,7 +2752,9 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         "sender_profile_pic": current_user.get("profile_pic"),
         "recipient_id": message_data.recipient_id,
         "recipient_username": recipient["username"],
-        "content": encrypt_message(message_data.content),
+        "content": encrypt_message(message_data.content or ""),
+        "media_url": message_data.media_url,
+        "media_type": message_data.media_type,
         "read": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -2184,7 +2762,7 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     await db.messages.insert_one(message_to_insert)
 
     message = convert_mongo_doc_to_dict(message_to_insert)
-    message["content"] = message_data.content  # renvoyer en clair à l'expéditeur
+    message["content"] = message_data.content or ""  # renvoyer en clair à l'expéditeur
 
     # Push temps réel au destinataire (best-effort, contenu en clair)
     await push_realtime(message_data.recipient_id, {
@@ -2195,7 +2773,9 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
             "sender_username": current_user["username"],
             "sender_profile_pic": current_user.get("profile_pic"),
             "recipient_id": message_data.recipient_id,
-            "content": message_data.content,
+            "content": message_data.content or "",
+            "media_url": message_data.media_url,
+            "media_type": message_data.media_type,
             "created_at": message_to_insert["created_at"],
         },
     })
@@ -2443,32 +3023,12 @@ async def create_group(
 
 @api_router.get("/messages/groups")
 async def list_groups(current_user: dict = Depends(get_current_user)):
-    """Lister les groupes de l'utilisateur"""
-    print(f"🔍 Recherche groupes pour user: {current_user['id']} (type: {type(current_user['id'])})")
-
-    # Essayer de trouver TOUS les groupes d'abord
-    all_groups = await db.group_chats.find({}).to_list(length=100)
-    print(f"📊 Total de groupes dans la DB: {len(all_groups)}")
-
-    if all_groups:
-        for g in all_groups:
-            print(f"  - Groupe '{g.get('name')}' avec member_ids: {g.get('member_ids')} (types: {[type(mid) for mid in g.get('member_ids', [])]})")
-
-    # Recherche avec l'utilisateur actuel
+    """Lister les groupes de l'utilisateur (uniquement ceux dont il est membre)."""
     groups_raw = await db.group_chats.find({
         "member_ids": current_user["id"]
     }).to_list(length=100)
-
-    print(f"📊 Groupes trouvés pour cet utilisateur: {len(groups_raw)}")
-
     groups = [convert_mongo_doc_to_dict(g) for g in groups_raw]
-
-    print(f"📦 Groupes à retourner: {[g['name'] for g in groups]}")
-
-    return {
-        "success": True,
-        "groups": groups
-    }
+    return {"success": True, "groups": groups}
 
 @api_router.get("/messages/groups/{group_id}")
 async def get_group(
@@ -2504,12 +3064,16 @@ async def send_group_message(
         if not rate_limit(f"msg:{current_user['id']}", max_attempts=30, window_seconds=60):
             raise HTTPException(status_code=429, detail="Trop de messages envoyés. Ralentissez un peu.")
 
-        # Validation du contenu
-        if not message_data.get("content"):
-            raise HTTPException(status_code=400, detail="Le contenu du message est requis")
+        # Normalise le contenu (data URL collée → image, borne la longueur).
+        raw_content = message_data.get("content") if isinstance(message_data.get("content"), str) else ""
+        media_urls = message_data.get("media_urls", []) or []
+        text, moved = normalize_message_content(raw_content, None)
+        if moved:  # une image collée en texte devient un média
+            media_urls = [moved] + list(media_urls)
 
-        if not isinstance(message_data.get("content"), str) or len(message_data["content"].strip()) == 0:
-            raise HTTPException(status_code=400, detail="Le contenu du message doit être une chaîne non vide")
+        # Un message doit avoir du texte OU un média.
+        if not text.strip() and not media_urls:
+            raise HTTPException(status_code=400, detail="Le contenu du message est requis")
 
         # Vérifier membership
         group_raw = await db.group_chats.find_one({"id": group_id})
@@ -2531,8 +3095,8 @@ async def send_group_message(
             "sender_id": current_user["id"],
             "sender_username": current_user["username"],
             "sender_profile_pic": current_user.get("profile_pic"),
-            "content": encrypt_message(message_data["content"].strip()),
-            "media_urls": message_data.get("media_urls", []),
+            "content": encrypt_message(text),
+            "media_urls": media_urls,
             "reply_to_id": message_data.get("reply_to_id"),
             "reactions": [],
             "read_by": [current_user["id"]],
@@ -2546,7 +3110,7 @@ async def send_group_message(
             raise HTTPException(status_code=500, detail="Erreur lors de l'envoi du message")
 
         response_message = convert_mongo_doc_to_dict(message)
-        response_message["content"] = message_data["content"].strip()  # clair pour l'expéditeur
+        response_message["content"] = text  # clair pour l'expéditeur
         return {
             "success": True,
             "message": response_message
@@ -2695,23 +3259,48 @@ async def remove_group_member(
         raise HTTPException(status_code=404, detail="Group not found")
     
     group = convert_mongo_doc_to_dict(group_raw)
-    
-    # Vérifier si admin ou si c'est l'utilisateur lui-même
-    if current_user["id"] not in group["admin_ids"] and current_user["id"] != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    # Ne pas retirer le créateur
-    if user_id == group["creator_id"]:
-        raise HTTPException(status_code=400, detail="Cannot remove creator")
-    
-    await db.group_chats.update_one(
-        {"id": group_id},
-        {
-            "$pull": {"member_ids": user_id, "admin_ids": user_id},
-            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
-        }
-    )
-    
+
+    is_self_leave = current_user["id"] == user_id
+
+    # Un membre peut toujours se retirer lui-même (quitter le groupe).
+    # Pour retirer QUELQU'UN D'AUTRE, il faut être admin.
+    if not is_self_leave and current_user["id"] not in group.get("admin_ids", []):
+        raise HTTPException(status_code=403, detail="Seuls les admins peuvent retirer un membre")
+
+    # On ne peut retirer le créateur QUE s'il se retire lui-même (il quitte).
+    if user_id == group.get("creator_id") and not is_self_leave:
+        raise HTTPException(status_code=400, detail="Impossible de retirer le créateur du groupe")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Listes finales après le départ (calcul en Python pour éviter tout conflit
+    # d'opérateurs sur le même champ dans un update MongoDB).
+    remaining = [m for m in group.get("member_ids", []) if m != user_id]
+    new_admins = [a for a in group.get("admin_ids", []) if a != user_id]
+
+    # Si plus personne ne reste, on supprime le groupe et ses messages.
+    if not remaining:
+        await db.group_chats.delete_one({"id": group_id})
+        await db.group_messages.delete_many({"group_id": group_id})
+        return {"success": True, "message": "Group deleted (last member left)"}
+
+    set_fields = {
+        "member_ids": remaining,
+        "admin_ids": new_admins,
+        "updated_at": now_iso,
+    }
+
+    # Si le créateur quitte, on transfère la propriété à un autre membre
+    # (de préférence un admin existant) pour ne pas laisser le groupe orphelin.
+    if user_id == group.get("creator_id"):
+        new_owner = new_admins[0] if new_admins else remaining[0]
+        set_fields["creator_id"] = new_owner
+        if new_owner not in new_admins:
+            new_admins.append(new_owner)
+            set_fields["admin_ids"] = new_admins
+
+    await db.group_chats.update_one({"id": group_id}, {"$set": set_fields})
+
     return {"success": True, "message": "Member removed"}
 
 # ==================== SEARCH ROUTES ====================
@@ -3622,26 +4211,11 @@ async def create_report(report_data: dict = Body(...), current_user: dict = Depe
     return {"success": True, "report_id": report_id}
 
 # ==================== NOTIFICATIONS ====================
+# NB : le helper create_notification() est défini plus haut (près de
+# push_realtime) et pousse aussi la notification en temps réel. On ne le
+# redéfinit pas ici pour ne pas masquer cette version.
 
-async def create_notification(user_id: str, type: str, content: str, metadata: dict = None):
-    notification_id = str(uuid.uuid4())
-    await db.notifications.insert_one({
-        "id": notification_id,
-        "user_id": user_id,
-        "type": type,
-        "content": content,
-        "metadata": metadata or {},
-        "read": False,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    return notification_id
-
-@api_router.get("/notifications")
-async def get_notifications(limit: int = 20, current_user: dict = Depends(get_current_user)):
-    notifications = await db.notifications.find(
-        {"user_id": current_user["id"]}
-    ).sort("created_at", -1).limit(limit).to_list(length=limit)
-    return {"success": True, "notifications": [convert_mongo_doc_to_dict(n) for n in notifications]}
+# NB : GET /notifications est défini plus haut (response_model=List[Notification]).
 
 # ==================== BROWSER (NAVIGATEUR) ====================
 
@@ -3838,8 +4412,8 @@ async def get_posts_by_hashtag(tag: str, current_user: dict = Depends(get_curren
     return posts
 
 
-# ==================== ANALYTICS & MODÉRATION (ADMIN) ====================
-# Toutes ces routes sont réservées aux administrateurs (require_admin).
+# ==================== ANALYTICS PERSONNEL (créateur) ====================
+# Chaque utilisateur voit UNIQUEMENT les statistiques de SON PROPRE compte.
 # Les dates (created_at) sont stockées en chaînes ISO 8601 : la comparaison
 # lexicographique est donc valide pour filtrer par période.
 
@@ -3856,41 +4430,66 @@ def _days_ago_iso(days: int) -> str:
     return (_utc_now() - timedelta(days=days)).isoformat()
 
 
-@api_router.get("/analytics/stats/global")
-async def analytics_global_stats(admin: dict = Depends(require_admin)):
-    """Statistiques globales de la plateforme (temps réel)."""
+async def _my_post_ids(user_id: str) -> List[str]:
+    """Identifiants des publications de l'utilisateur."""
+    ids = []
+    async for p in db.posts.find({"author_id": user_id}, {"id": 1}):
+        pid = p.get("id")
+        if pid:
+            ids.append(pid)
+    return ids
+
+
+@api_router.get("/analytics/me/stats")
+async def analytics_my_stats(current_user: dict = Depends(get_current_user)):
+    """Statistiques du compte de l'utilisateur connecté (temps réel)."""
+    uid = current_user["id"]
     start_today = _start_of_day_iso()
 
-    total_users = await db.users.count_documents({})
-    new_users_today = await db.users.count_documents({"created_at": {"$gte": start_today}})
-    total_posts = await db.posts.count_documents({})
-    posts_today = await db.posts.count_documents({"created_at": {"$gte": start_today}})
-    total_comments = await db.comments.count_documents({})
-    total_likes = await db.likes.count_documents({})
+    my_posts = await db.posts.find({"author_id": uid}).to_list(length=100000)
+    total_posts = len(my_posts)
+    total_likes = sum((p.get("likes_count") or 0) for p in my_posts)
+    total_comments = sum((p.get("comments_count") or 0) for p in my_posts)
+    total_views = sum((p.get("views") or 0) for p in my_posts)
+    posts_today = sum(1 for p in my_posts if (p.get("created_at") or "") >= start_today)
 
-    # Taux d'engagement : interactions moyennes par publication.
+    followers_count = await db.follows.count_documents({"followed_id": uid})
+    following_count = await db.follows.count_documents({"follower_id": uid})
+    new_followers_today = await db.follows.count_documents(
+        {"followed_id": uid, "created_at": {"$gte": start_today}}
+    )
+
     interactions = total_likes + total_comments
     engagement_rate = round(interactions / total_posts, 1) if total_posts else 0.0
 
     return {
-        "total_users": total_users,
-        "new_users_today": new_users_today,
         "total_posts": total_posts,
         "posts_today": posts_today,
-        "total_comments": total_comments,
         "total_likes": total_likes,
+        "total_comments": total_comments,
+        "total_views": total_views,
+        "followers_count": followers_count,
+        "following_count": following_count,
+        "new_followers_today": new_followers_today,
         "engagement_rate": engagement_rate,
     }
 
 
-@api_router.get("/analytics/trends")
-async def analytics_trends(days: int = Query(30, ge=1, le=365), admin: dict = Depends(require_admin)):
-    """Croissance quotidienne (users, posts, commentaires, likes) sur N jours."""
+@api_router.get("/analytics/me/trends")
+async def analytics_my_trends(
+    days: int = Query(30, ge=1, le=365),
+    current_user: dict = Depends(get_current_user),
+):
+    """Croissance quotidienne du compte : posts publiés, likes et commentaires
+    reçus, nouveaux abonnés — sur N jours."""
+    uid = current_user["id"]
     since = _days_ago_iso(days)
+    my_ids = await _my_post_ids(uid)
 
-    async def daily_counts(collection):
+    async def daily_counts(collection, match):
+        match = {**match, "created_at": {"$gte": since}}
         pipeline = [
-            {"$match": {"created_at": {"$gte": since}}},
+            {"$match": match},
             {"$group": {"_id": {"$substrBytes": ["$created_at", 0, 10]}, "n": {"$sum": 1}}},
         ]
         out = {}
@@ -3898,68 +4497,36 @@ async def analytics_trends(days: int = Query(30, ge=1, le=365), admin: dict = De
             out[row["_id"]] = row["n"]
         return out
 
-    users_by_day = await daily_counts(db.users)
-    posts_by_day = await daily_counts(db.posts)
-    comments_by_day = await daily_counts(db.comments)
-    likes_by_day = await daily_counts(db.likes)
+    posts_by_day = await daily_counts(db.posts, {"author_id": uid})
+    followers_by_day = await daily_counts(db.follows, {"followed_id": uid})
+    if my_ids:
+        likes_by_day = await daily_counts(db.likes, {"post_id": {"$in": my_ids}})
+        comments_by_day = await daily_counts(db.comments, {"post_id": {"$in": my_ids}})
+    else:
+        likes_by_day, comments_by_day = {}, {}
 
-    # Construit une série continue (zéros compris) sur la fenêtre demandée.
     today = _utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
     series = []
     for i in range(days - 1, -1, -1):
         d = (today - timedelta(days=i)).strftime("%Y-%m-%d")
         series.append({
             "date": d[5:],  # MM-DD, plus lisible sur le graphe
-            "users": users_by_day.get(d, 0),
             "posts": posts_by_day.get(d, 0),
-            "comments": comments_by_day.get(d, 0),
             "likes": likes_by_day.get(d, 0),
+            "comments": comments_by_day.get(d, 0),
+            "followers": followers_by_day.get(d, 0),
         })
     return series
 
 
-@api_router.get("/analytics/top/users")
-async def analytics_top_users(limit: int = Query(10, ge=1, le=50), admin: dict = Depends(require_admin)):
-    """Meilleurs utilisateurs par score d'engagement."""
-    pipeline = [
-        {"$group": {
-            "_id": "$author_id",
-            "posts_count": {"$sum": 1},
-            "likes": {"$sum": {"$ifNull": ["$likes_count", 0]}},
-            "comments": {"$sum": {"$ifNull": ["$comments_count", 0]}},
-        }},
-        {"$lookup": {"from": "users", "localField": "_id", "foreignField": "id", "as": "u"}},
-        {"$unwind": "$u"},
-        {"$project": {
-            "_id": 0,
-            "user_id": "$_id",
-            "username": "$u.username",
-            "followers_count": {"$ifNull": ["$u.followers_count", 0]},
-            "posts_count": 1,
-            "engagement_score": {
-                "$add": [
-                    {"$multiply": ["$posts_count", 2]},
-                    {"$ifNull": ["$u.followers_count", 0]},
-                    {"$multiply": ["$likes", 0.5]},
-                    "$comments",
-                ]
-            },
-        }},
-        {"$sort": {"engagement_score": -1}},
-        {"$limit": limit},
-    ]
-    return await db.posts.aggregate(pipeline).to_list(length=limit)
-
-
-@api_router.get("/analytics/top/posts")
-async def analytics_top_posts(
+@api_router.get("/analytics/me/top-posts")
+async def analytics_my_top_posts(
     limit: int = Query(10, ge=1, le=50),
-    days: int = Query(7, ge=1, le=365),
-    admin: dict = Depends(require_admin),
+    current_user: dict = Depends(get_current_user),
 ):
-    """Publications les plus engageantes sur N jours."""
-    since = _days_ago_iso(days)
-    raw = await db.posts.find({"created_at": {"$gte": since}}).to_list(length=2000)
+    """Publications les plus engageantes de l'utilisateur."""
+    uid = current_user["id"]
+    raw = await db.posts.find({"author_id": uid}).to_list(length=5000)
 
     scored = []
     for p in raw:
@@ -3969,24 +4536,32 @@ async def analytics_top_posts(
         score = likes * 2 + comments * 3 + views * 0.1
         scored.append({
             "post_id": p.get("id"),
-            "author": p.get("author_username", ""),
             "content": (p.get("content") or "")[:200],
             "likes_count": likes,
             "comments_count": comments,
+            "views": views,
+            "created_at": p.get("created_at"),
             "engagement_score": score,
         })
     scored.sort(key=lambda x: x["engagement_score"], reverse=True)
     return scored[:limit]
 
 
-@api_router.get("/analytics/activity/hourly")
-async def analytics_hourly(days: int = Query(7, ge=1, le=90), admin: dict = Depends(require_admin)):
-    """Activité agrégée par heure de la journée (0-23) sur N jours."""
+@api_router.get("/analytics/me/activity/hourly")
+async def analytics_my_hourly(
+    days: int = Query(30, ge=1, le=90),
+    current_user: dict = Depends(get_current_user),
+):
+    """Quand l'audience interagit avec mon contenu : likes et commentaires reçus
+    par heure de la journée (0-23), plus mes publications par heure."""
+    uid = current_user["id"]
     since = _days_ago_iso(days)
+    my_ids = await _my_post_ids(uid)
 
-    async def by_hour(collection):
+    async def by_hour(collection, match):
+        match = {**match, "created_at": {"$gte": since}}
         pipeline = [
-            {"$match": {"created_at": {"$gte": since}}},
+            {"$match": match},
             {"$group": {"_id": {"$substrBytes": ["$created_at", 11, 2]}, "n": {"$sum": 1}}},
         ]
         out = {}
@@ -3997,9 +4572,12 @@ async def analytics_hourly(days: int = Query(7, ge=1, le=90), admin: dict = Depe
                 continue
         return out
 
-    posts_h = await by_hour(db.posts)
-    comments_h = await by_hour(db.comments)
-    likes_h = await by_hour(db.likes)
+    posts_h = await by_hour(db.posts, {"author_id": uid})
+    if my_ids:
+        likes_h = await by_hour(db.likes, {"post_id": {"$in": my_ids}})
+        comments_h = await by_hour(db.comments, {"post_id": {"$in": my_ids}})
+    else:
+        likes_h, comments_h = {}, {}
 
     result = []
     for h in range(24):
@@ -4007,114 +4585,6 @@ async def analytics_hourly(days: int = Query(7, ge=1, le=90), admin: dict = Depe
         result.append({"hour": h, "type": "comments", "activity_count": comments_h.get(h, 0)})
         result.append({"hour": h, "type": "likes", "activity_count": likes_h.get(h, 0)})
     return result
-
-
-async def _compute_suspicious():
-    """Détection heuristique de comptes suspects (spam / bot)."""
-    flagged = []
-    # Beaucoup d'abonnements, aucun abonné → typique des bots de spam.
-    async for u in db.users.find({
-        "following_count": {"$gte": 50},
-        "followers_count": {"$lte": 1},
-    }).limit(100):
-        flagged.append({
-            "user_id": u.get("id"),
-            "username": u.get("username", ""),
-            "reason": "Beaucoup d'abonnements pour aucun abonné (comportement de bot)",
-            "score": min(100, int(u.get("following_count", 0))),
-        })
-    return flagged
-
-
-@api_router.get("/analytics/suspicious/accounts")
-async def analytics_suspicious(status: str = Query("pending"), admin: dict = Depends(require_admin)):
-    """Comptes suspects en attente de modération."""
-    flagged = await _compute_suspicious()
-
-    # Exclut les comptes déjà traités (bloqués ou marqués sûrs).
-    decided = {}
-    async for m in db.moderation.find({}):
-        decided[m.get("user_id")] = m.get("status")
-
-    now_iso = _utc_now().isoformat()
-    pending = []
-    for f in flagged:
-        if decided.get(f["user_id"]) in ("blocked", "cleared"):
-            continue
-        f["status"] = "pending"
-        f["detected_at"] = now_iso
-        pending.append(f)
-    return pending
-
-
-@api_router.post("/analytics/suspicious/block/{user_id}")
-async def analytics_block_account(user_id: str, admin: dict = Depends(require_admin)):
-    """Bloque un compte suspect."""
-    await db.users.update_one({"id": user_id}, {"$set": {"is_blocked": True}})
-    await db.moderation.update_one(
-        {"user_id": user_id},
-        {"$set": {"user_id": user_id, "status": "blocked", "at": _utc_now().isoformat()}},
-        upsert=True,
-    )
-    return {"success": True}
-
-
-@api_router.post("/analytics/suspicious/clear/{user_id}")
-async def analytics_clear_account(user_id: str, admin: dict = Depends(require_admin)):
-    """Marque un compte comme sûr (retiré de la liste des suspects)."""
-    await db.moderation.update_one(
-        {"user_id": user_id},
-        {"$set": {"user_id": user_id, "status": "cleared", "at": _utc_now().isoformat()}},
-        upsert=True,
-    )
-    return {"success": True}
-
-
-@api_router.post("/analytics/automation/run")
-async def analytics_run_automation(admin: dict = Depends(require_admin)):
-    """Tâche de maintenance : recense les comptes suspects du moment."""
-    flagged = await _compute_suspicious()
-    return {"success": True, "suspicious_found": len(flagged)}
-
-
-class AdminNotification(BaseModel):
-    title: str
-    message: str
-    type: str = "info"
-
-
-@api_router.post("/analytics/notifications/send")
-async def analytics_send_notification(payload: AdminNotification, admin: dict = Depends(require_admin)):
-    """Envoie une notification à tous les utilisateurs (annonce plateforme)."""
-    now_iso = _utc_now().isoformat()
-    docs = []
-    async for u in db.users.find({}, {"id": 1}):
-        docs.append({
-            "id": str(uuid.uuid4()),
-            "user_id": u.get("id"),
-            "type": f"admin_{payload.type}",
-            "title": payload.title,
-            "message": payload.message,
-            "read": False,
-            "created_at": now_iso,
-        })
-    if docs:
-        await db.notifications.insert_many(docs)
-    return {"success": True, "sent": len(docs)}
-
-
-@api_router.get("/analytics/export/{data_type}")
-async def analytics_export(data_type: str, admin: dict = Depends(require_admin)):
-    """Exporte les données (users ou posts) au format JSON, sans champs sensibles."""
-    if data_type == "users":
-        rows = await db.users.find(
-            {}, {"_id": 0, "password": 0, "hashed_password": 0}
-        ).to_list(length=100000)
-        return rows
-    if data_type == "posts":
-        rows = await db.posts.find({}, {"_id": 0}).to_list(length=100000)
-        return rows
-    raise HTTPException(status_code=400, detail="Type d'export invalide (users ou posts)")
 
 
 @api_router.get("/clips", response_model=List[Post])
@@ -4273,6 +4743,64 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ==================== TÂCHE DE FOND : NOTIF « POST EN TENDANCE » ====================
+# Notifie l'auteur quand sa publication entre dans le top des posts les plus
+# engageants des dernières 24h. Boucle intégrée au process (Render 1 worker),
+# pas de cron externe. Anti-doublon via db.trending_notified (24h).
+TRENDING_NOTIFY_INTERVAL = int(os.environ.get("TRENDING_NOTIFY_INTERVAL", "1800"))  # 30 min
+TRENDING_TOP_N = int(os.environ.get("TRENDING_TOP_N", "10"))
+
+
+async def _notify_trending_once():
+    since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    raw = await db.posts.find(
+        {"created_at": {"$gte": since}, "repost_of": None}
+    ).to_list(length=3000)
+
+    scored = []
+    for p in raw:
+        likes = p.get("likes_count", 0) or 0
+        comments = p.get("comments_count", 0) or 0
+        views = p.get("views", 0) or 0
+        score = likes * 2 + comments * 3 + views * 0.1
+        if score <= 0:
+            continue
+        scored.append((score, p))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:TRENDING_TOP_N]
+
+    for _, p in top:
+        post_id = p.get("id")
+        author_id = p.get("author_id")
+        if not post_id or not author_id:
+            continue
+        # Déjà notifié dans les dernières 24h ?
+        already = await db.trending_notified.find_one({"post_id": post_id, "notified_at": {"$gte": since}})
+        if already:
+            continue
+        await db.trending_notified.update_one(
+            {"post_id": post_id},
+            {"$set": {"post_id": post_id, "notified_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        await create_notification(
+            author_id, "trending",
+            {"id": "system", "username": "Nexus", "profile_pic": None},
+            post_id=post_id,
+        )
+
+
+async def trending_notifier_loop():
+    # Petit délai initial pour laisser l'app démarrer.
+    await asyncio.sleep(60)
+    while True:
+        try:
+            await _notify_trending_once()
+        except Exception as e:
+            logger.error(f"trending notifier: {e}")
+        await asyncio.sleep(TRENDING_NOTIFY_INTERVAL)
+
+
 # Event handlers
 @app.on_event("startup")
 async def startup_db_client():
@@ -4283,6 +4811,12 @@ async def startup_db_client():
     except Exception as e:
         logger.error(f"❌ MongoDB connection failed: {e}")
         raise
+    # Lance la boucle de notifications « tendance » en tâche de fond.
+    try:
+        asyncio.create_task(trending_notifier_loop())
+        logger.info("✅ Trending notifier lancé")
+    except Exception as e:
+        logger.error(f"Impossible de lancer le trending notifier: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

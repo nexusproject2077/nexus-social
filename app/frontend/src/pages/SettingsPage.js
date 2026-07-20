@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { API } from '../App';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import AlgorithmTransparencyModal from '../components/AlgorithmTransparencyModal';
+import { ACCENTS, applyAccent, getAccent } from '../lib/accent';
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
@@ -14,7 +17,7 @@ const C = {
   container: "#171f33",
   high:      "#222a3d",
   bright:    "#31394d",
-  cyan:      "#22d3ee",
+  cyan:      (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
   onPrimary: "#00363e",
   outline:   "#859397",
   outlineVar:"#3c494c",
@@ -108,7 +111,7 @@ function CardHeader({ title, icon }) {
 // ── InputField ─────────────────────────────────────────────────────────────────
 function InputField({ label, value, onChange, disabled, type = "text", placeholder }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: C.outline }}>{label}</label>
       <input
         type={type}
@@ -116,8 +119,8 @@ function InputField({ label, value, onChange, disabled, type = "text", placehold
         onChange={onChange}
         disabled={disabled}
         placeholder={placeholder}
-        className="w-full px-4 py-2.5 rounded-xl text-sm border-none outline-none transition-all focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-600 disabled:opacity-50"
-        style={{ background: C.high, color: C.onSurface }}
+        className="w-full min-w-0 box-border px-4 py-2.5 rounded-xl text-sm border-none outline-none transition-all focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-600 disabled:opacity-50"
+        style={{ background: C.high, color: C.onSurface, appearance: "none", WebkitAppearance: "none" }}
       />
     </div>
   );
@@ -126,12 +129,15 @@ function InputField({ label, value, onChange, disabled, type = "text", placehold
 // ── MAIN PAGE ──────────────────────────────────────────────────────────────────
 export default function SettingsPage({ user, setUser }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [activeSection, setActiveSection]   = useState("account");
   const [settings, setSettings]             = useState(null);
   const [loading, setLoading]               = useState(true);
   const [saving, setSaving]                 = useState(false);
   const [editMode, setEditMode]             = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showAlgoModal, setShowAlgoModal] = useState(false);
+  const [accent, setAccent] = useState(getAccent());
 
   const [profileData, setProfileData] = useState({
     first_name: "", last_name: "", bio: "",
@@ -232,17 +238,17 @@ export default function SettingsPage({ user, setUser }) {
   };
 
   const navSections = [
-    { id: "account",  icon: "manage_accounts",  label: "Compte" },
-    { id: "creator",  icon: "paid",              label: "Créateur" },
-    { id: "privacy",  icon: "gavel",             label: "Confidentialité" },
-    { id: "security", icon: "shield",            label: "Sécurité" },
-    { id: "content",  icon: "tune",              label: "Contenu" },
-    { id: "display",  icon: "palette",           label: "Affichage" },
+    { id: "account",  icon: "manage_accounts",  label: t("settings.account") },
+    { id: "creator",  icon: "paid",              label: t("settings.creator") },
+    { id: "privacy",  icon: "gavel",             label: t("settings.privacy") },
+    { id: "security", icon: "shield",            label: t("settings.security") },
+    { id: "content",  icon: "tune",              label: t("settings.content") },
+    { id: "display",  icon: "palette",           label: t("settings.display") },
   ];
 
   if (loading) {
     return (
-      <Layout user={user} setUser={setUser}>
+      <Layout user={user} setUser={setUser} compact>
         <div className="flex items-center justify-center h-screen">
           <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
         </div>
@@ -255,7 +261,7 @@ export default function SettingsPage({ user, setUser }) {
   const renderAccount = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Votre compte</h2>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.your_account")}</h2>
         <p className="text-sm" style={{ color: C.outline }}>Gérez vos informations personnelles et vos préférences</p>
       </div>
 
@@ -429,7 +435,7 @@ export default function SettingsPage({ user, setUser }) {
   const renderPrivacy = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Confidentialité</h2>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.privacy_title")}</h2>
         <p className="text-sm" style={{ color: C.outline }}>Contrôlez qui peut voir votre contenu et vos informations</p>
       </div>
 
@@ -541,7 +547,7 @@ export default function SettingsPage({ user, setUser }) {
         <CardHeader title="Transparence algorithmique (DSA)" icon="analytics" />
         <div className="p-5">
           <p className="text-sm mb-4" style={{ color: C.outline }}>Conformément au Digital Services Act, vous avez le droit de comprendre pourquoi vous voyez certains contenus.</p>
-          <button onClick={() => toast.info("Inspection de l'algorithme à venir")} className="px-5 py-2 rounded-xl font-bold text-sm transition-all hover:opacity-80"
+          <button onClick={() => setShowAlgoModal(true)} className="px-5 py-2 rounded-xl font-bold text-sm transition-all hover:opacity-80"
             style={{ background: `${C.cyan}15`, color: C.cyan, border: `1px solid ${C.cyan}30` }}>
             Inspecter l'algorithme
           </button>
@@ -558,7 +564,7 @@ export default function SettingsPage({ user, setUser }) {
   const renderDisplay = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Affichage</h2>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.display_title")}</h2>
         <p className="text-sm" style={{ color: C.outline }}>Personnalisez l'apparence de Nexus</p>
       </div>
       <Card>
@@ -569,13 +575,31 @@ export default function SettingsPage({ user, setUser }) {
         <CardHeader title="Couleur d'accentuation" icon="palette" />
         <div className="p-5">
           <p className="text-sm mb-4" style={{ color: C.outline }}>Choisissez la couleur principale de l'interface</p>
-          <div className="flex gap-3">
-            {[C.cyan, "#3b82f6", "#8b5cf6", "#ec4899", "#f97316"].map((color, i) => (
-              <button key={i} onClick={() => toast.info("Personnalisation à venir")}
-                className="w-10 h-10 rounded-full border-2 transition-all hover:scale-110"
-                style={{ background: color, borderColor: i === 0 ? "#fff" : "transparent" }} />
-            ))}
+          <div className="flex flex-wrap gap-3">
+            {ACCENTS.map((a) => {
+              const selected = accent.toLowerCase() === a.value.toLowerCase();
+              return (
+                <button
+                  key={a.value}
+                  title={a.name}
+                  aria-label={a.name}
+                  onClick={() => {
+                    applyAccent(a.value);
+                    setAccent(a.value);
+                    toast.success(`Couleur « ${a.name} » appliquée`);
+                    // On enregistre côté serveur pour que le choix suive
+                    // l'utilisateur sur ses autres appareils/navigateurs.
+                    axios.put(`${API}/users/me/appearance`, { accent_color: a.value }).catch(() => {});
+                  }}
+                  className="w-10 h-10 rounded-full border-2 transition-all hover:scale-110"
+                  style={{ background: a.value, borderColor: selected ? "#fff" : "transparent" }}
+                />
+              );
+            })}
           </div>
+          <p className="text-xs mt-3" style={{ color: C.outlineVar }}>
+            La navigation, le logo et les boutons se recolorent aussitôt. Votre choix est enregistré et vous suit sur tous vos appareils et navigateurs.
+          </p>
         </div>
       </Card>
       <Card>
@@ -601,7 +625,7 @@ export default function SettingsPage({ user, setUser }) {
   };
 
   return (
-    <Layout user={user} setUser={setUser}>
+    <Layout user={user} setUser={setUser} compact>
       <div className="flex min-h-screen" style={{ backgroundColor: C.surface }}>
 
         {/* ── Settings sidebar ──────────────────────────────────────────────── */}
@@ -663,6 +687,7 @@ export default function SettingsPage({ user, setUser }) {
       </div>
 
       {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
+      {showAlgoModal && <AlgorithmTransparencyModal onClose={() => setShowAlgoModal(false)} />}
     </Layout>
   );
 }

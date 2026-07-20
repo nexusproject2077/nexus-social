@@ -1,10 +1,19 @@
 // src/components/StoriesFeed.tsx
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import StoryViewer from "./StoryViewer";
 import AddStoryModal from "./AddStoryModal";
 import { API } from "../App";
 import { toast } from "sonner";
+
+interface LiveSession {
+  host_id: string;
+  host_username: string;
+  host_profile_pic?: string;
+  room_id: string;
+  started_at?: string;
+}
 
 interface StoryGroup {
   user_id: string;
@@ -21,9 +30,20 @@ interface StoryGroup {
 }
 
 export default function StoriesFeed() {
+  const navigate = useNavigate();
   const [stories, setStories] = useState<StoryGroup[]>([]);
+  const [lives, setLives] = useState<LiveSession[]>([]);
   const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null);
   const [showAddStory, setShowAddStory] = useState(false);
+
+  const fetchLives = async () => {
+    try {
+      const res = await axios.get(`${API}/live/active`);
+      setLives(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      setLives([]);
+    }
+  };
 
   const fetchStories = async () => {
     try {
@@ -50,6 +70,9 @@ export default function StoriesFeed() {
 
   useEffect(() => {
     fetchStories();
+    fetchLives();
+    const t = setInterval(fetchLives, 30000); // rafraîchit les directs
+    return () => clearInterval(t);
   }, []);
 
   const handleStoryAdded = () => {
@@ -78,7 +101,7 @@ export default function StoriesFeed() {
           <div
             className="p-0.5 rounded-full"
             style={{
-              background: "linear-gradient(135deg, #22d3ee, #3b82f6)",
+              background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)",
             }}
           >
             <div
@@ -90,7 +113,7 @@ export default function StoriesFeed() {
             >
               <span
                 className="material-symbols-outlined text-2xl transition-transform group-hover:scale-110"
-                style={{ color: "#22d3ee" }}
+                style={{ color: "var(--nexus-accent)" }}
               >
                 add
               </span>
@@ -103,6 +126,51 @@ export default function StoriesFeed() {
             Votre story
           </span>
         </button>
+
+        {/* Passer en direct (accessible aussi sur mobile) */}
+        <button
+          onClick={() => navigate("/live")}
+          className="flex flex-col items-center gap-2 flex-shrink-0 group"
+        >
+          <div className="p-0.5 rounded-full" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)" }}>
+            <div
+              className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden flex items-center justify-center"
+              style={{ backgroundColor: "#171f33", borderColor: "#0b1326" }}
+            >
+              <span className="material-symbols-outlined text-2xl transition-transform group-hover:scale-110" style={{ color: "#ef4444" }}>
+                sensors
+              </span>
+            </div>
+          </div>
+          <span className="text-[9px] lg:text-[10px] font-medium" style={{ color: "#859397" }}>Direct</span>
+        </button>
+
+        {/* Directs en cours (abonnements) */}
+        {lives.map((live) => (
+          <button
+            key={live.room_id}
+            onClick={() => navigate(`/live/${live.room_id}`)}
+            className="flex flex-col items-center gap-2 flex-shrink-0 group relative"
+          >
+            <div className="p-0.5 lg:p-1 rounded-full" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)" }}>
+              <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden" style={{ borderColor: "#0b1326", backgroundColor: "#222a3d" }}>
+                {live.host_profile_pic ? (
+                  <img src={live.host_profile_pic} alt={live.host_username} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center font-bold text-sm" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)", color: "#fff" }}>
+                    {live.host_username?.[0]?.toUpperCase() || "?"}
+                  </div>
+                )}
+              </div>
+            </div>
+            <span className="absolute top-8 lg:top-10 left-1/2 -translate-x-1/2 px-1.5 rounded text-[8px] font-black tracking-wide" style={{ background: "#ef4444", color: "#fff" }}>
+              LIVE
+            </span>
+            <span className="text-[9px] lg:text-[10px] max-w-[64px] truncate" style={{ color: "#dae2fd" }}>
+              {live.host_username}
+            </span>
+          </button>
+        ))}
 
         {/* Other Users' Stories */}
         {Array.isArray(stories) &&
@@ -118,7 +186,7 @@ export default function StoriesFeed() {
                   className="p-0.5 lg:p-1 rounded-full transition-all duration-300"
                   style={{
                     background: hasUnviewed
-                      ? "linear-gradient(135deg, #22d3ee, #3b82f6)"
+                      ? "linear-gradient(135deg, var(--nexus-accent), #3b82f6)"
                       : "#222a3d",
                     opacity: hasUnviewed ? 1 : 0.7,
                   }}
@@ -140,7 +208,7 @@ export default function StoriesFeed() {
                       <div
                         className="w-full h-full flex items-center justify-center font-bold text-sm"
                         style={{
-                          background: "linear-gradient(135deg, #22d3ee, #3b82f6)",
+                          background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)",
                           color: "#00363e",
                         }}
                       >
@@ -153,7 +221,7 @@ export default function StoriesFeed() {
                   <div
                     className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 animate-pulse hidden"
                     style={{
-                      backgroundColor: "#22d3ee",
+                      backgroundColor: "var(--nexus-accent)",
                       borderColor: "#0b1326",
                     }}
                   />

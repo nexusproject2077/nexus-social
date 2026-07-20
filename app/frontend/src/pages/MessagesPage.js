@@ -5,6 +5,7 @@ import { API } from "@/App";
 import Layout from "@/components/Layout";
 import { toast } from "sonner";
 import { Check, CheckCheck } from "lucide-react";
+import { compressImage, dataUrlBytes } from "@/lib/compressImage";
 
 const C = {
   bg:         "#020617",
@@ -13,7 +14,7 @@ const C = {
   container:  "#171f33",
   high:       "#222a3d",
   bright:     "#31394d",
-  cyan:       "#22d3ee",
+  cyan:       (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
   onPrimary:  "#00363e",
   outline:    "#859397",
   outlineVar: "#3c494c",
@@ -37,6 +38,29 @@ function UserAvatar({ username, pic, size = 10 }) {
 
 const QUICK_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
 
+// Signatures base64 des formats image courants (début du blob encodé).
+const B64_IMAGE_SIGNATURES = [
+  { p: "/9j/", mime: "jpeg" },        // JPEG
+  { p: "iVBORw0KGgo", mime: "png" },  // PNG
+  { p: "R0lGOD", mime: "gif" },       // GIF
+  { p: "UklGR", mime: "webp" },       // WebP (RIFF)
+];
+
+// Renvoie une source d'image affichable si le contenu EST une image
+// (data URL complète, ou base64 brut collé sans préfixe), sinon null.
+const imageSrcFromContent = (s) => {
+  if (typeof s !== "string") return null;
+  if (s.startsWith("data:image")) return s;
+  const head = s.slice(0, 16);
+  for (const { p, mime } of B64_IMAGE_SIGNATURES) {
+    if (head.startsWith(p)) return `data:image/${mime};base64,${s}`;
+  }
+  return null;
+};
+
+// True si le contenu est en réalité une image (à ne pas afficher comme texte).
+const isDataImage = (s) => imageSrcFromContent(s) !== null;
+
 export default function MessagesPage({ user }) {
   const params = useParams();
   const navigate = useNavigate();
@@ -55,11 +79,19 @@ export default function MessagesPage({ user }) {
   const [hoveredMessage,  setHoveredMessage]   = useState(null);
   const [showEmojiPicker, setShowEmojiPicker]  = useState(null);
   const [loading,         setLoading]          = useState(false);
+  const [lightbox,        setLightbox]         = useState(null); // src de l'image agrandie
 
   // Search / new message
   const [searchQuery,      setSearchQuery]      = useState("");
   const [searchResults,    setSearchResults]    = useState([]);
   const [showNewMsg,       setShowNewMsg]       = useState(false);
+  const newMsgSearchRef = useRef(null);
+
+  // Ouvre la recherche « nouveau message » et met le focus sur le champ.
+  const openNewMessage = () => {
+    setShowNewMsg(true);
+    setTimeout(() => newMsgSearchRef.current?.focus(), 50);
+  };
 
   // New group modal
   const [showNewGroup,     setShowNewGroup]     = useState(false);
@@ -70,6 +102,29 @@ export default function MessagesPage({ user }) {
 
   const messagesEndRef = useRef(null);
   const longPressTimer = useRef(null);
+
+  // Image en attente d'envoi (data URL compressée) + sélecteur de fichier.
+  const [pendingImage, setPendingImage] = useState(null);
+  const [compressing, setCompressing] = useState(false);
+  const imageInputRef = useRef(null);
+
+  const handlePickImage = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permet de re-sélectionner le même fichier
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast.error("Sélectionnez une image"); return; }
+    try {
+      setCompressing(true);
+      const dataUrl = await compressImage(file);
+      setPendingImage(dataUrl);
+      const kb = Math.max(1, Math.round(dataUrlBytes(dataUrl) / 1024));
+      toast.success(`Image prête (~${kb} Ko)`);
+    } catch {
+      toast.error("Impossible de traiter cette image");
+    } finally {
+      setCompressing(false);
+    }
+  };
 
   const hasSelection = Boolean(selectedUserId || selectedGroupId);
   const currentName  = selectedUser?.username || selectedGroup?.name || "";
@@ -110,6 +165,8 @@ export default function MessagesPage({ user }) {
                 sender_profile_pic: m.sender_profile_pic,
                 recipient_id: m.recipient_id,
                 content: m.content,
+                media_url: m.media_url,
+                media_type: m.media_type,
                 created_at: m.created_at,
               }]
         );
@@ -201,20 +258,26 @@ export default function MessagesPage({ user }) {
 
   const handleSendMessage = async (e) => {
     e?.preventDefault();
-    if (!messageContent.trim()) return;
+    const text = messageContent.trim();
+    if (!text && !pendingImage) return;
     try {
       if (isGroup && selectedGroupId) {
+        if (pendingImage) { toast.error("Les images ne sont pas encore disponibles dans les groupes"); return; }
         const res = await axios.post(`${API}/messages/groups/${selectedGroupId}/messages`, {
-          content: messageContent.trim(), reply_to_id: replyingTo?.id
+          content: text, reply_to_id: replyingTo?.id
         });
         if (res.data?.message) setMessages(p => [...p, res.data.message]);
       } else if (selectedUserId) {
         const res = await axios.post(`${API}/messages`, {
-          recipient_id: selectedUserId, content: messageContent.trim(), reply_to_id: replyingTo?.id
+          recipient_id: selectedUserId,
+          content: text,
+          media_url: pendingImage || null,
+          media_type: pendingImage ? "image" : null,
+          reply_to_id: replyingTo?.id,
         });
         if (res.data) setMessages(p => [...p, res.data]);
       }
-      setMessageContent(""); setReplyingTo(null);
+      setMessageContent(""); setReplyingTo(null); setPendingImage(null);
       fetchConversations();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors de l'envoi");
@@ -274,11 +337,15 @@ export default function MessagesPage({ user }) {
 
   const handleLeaveGroup = async () => {
     if (!selectedGroupId) return;
+    if (!window.confirm("Quitter ce groupe ?")) return;
+    const gid = selectedGroupId;
     try {
-      await axios.delete(`${API}/messages/groups/${selectedGroupId}/members/${user.id}`);
+      await axios.delete(`${API}/messages/groups/${gid}/members/${user.id}`);
+      // Retire immédiatement le groupe de la liste (plus d'attente / de cache).
+      setGroups((prev) => prev.filter((g) => g.id !== gid));
       toast.success("Vous avez quitté le groupe");
       navigate("/messages");
-      await fetchGroups();
+      fetchGroups();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur");
     }
@@ -357,14 +424,20 @@ export default function MessagesPage({ user }) {
     >
       {/* Header */}
       <div className="px-5 pt-5 pb-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-        <h2 className="font-black text-xl tracking-tight" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Comms</h2>
+        <div className="flex items-center gap-2">
+          {/* Retour à l'accueil (mobile : le footer est masqué sur Messages) */}
+          <button onClick={() => navigate("/")} className="lg:hidden -ml-1" title="Retour" style={{ color: C.outline }}>
+            <span className="material-symbols-outlined">arrow_back</span>
+          </button>
+          <h2 className="font-black text-xl tracking-tight" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Comms</h2>
+        </div>
         <div className="flex gap-2">
           <button onClick={() => setShowNewGroup(true)} title="Nouveau groupe"
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:opacity-80"
             style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa" }}>
             <span className="material-symbols-outlined text-sm">group_add</span>
           </button>
-          <button onClick={() => setShowNewMsg(true)} title="Nouveau message"
+          <button onClick={openNewMessage} title="Nouveau message"
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:opacity-80"
             style={{ background: `${C.cyan}18`, color: C.cyan }}>
             <span className="material-symbols-outlined text-sm">add</span>
@@ -377,9 +450,10 @@ export default function MessagesPage({ user }) {
         <div className="relative">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: C.outline }}>search</span>
           <input
+            ref={newMsgSearchRef}
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); if (!e.target.value.trim()) setShowNewMsg(false); else setShowNewMsg(true); }}
-            placeholder="Rechercher..."
+            placeholder="Rechercher ou démarrer une conversation..."
             className="w-full text-sm pl-9 pr-4 py-2 rounded-xl border-none outline-none placeholder:text-slate-600"
             style={{ background: C.high, color: C.onSurface }}
           />
@@ -416,7 +490,7 @@ export default function MessagesPage({ user }) {
             <div className="px-4 py-8 text-center">
               <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
               <p className="text-xs" style={{ color: C.outline }}>Aucune conversation</p>
-              <button onClick={() => setShowNewMsg(true)} className="mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ background: `${C.cyan}18`, color: C.cyan }}>
+              <button onClick={openNewMessage} className="mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ background: `${C.cyan}18`, color: C.cyan }}>
                 Commencer
               </button>
             </div>
@@ -506,7 +580,24 @@ export default function MessagesPage({ user }) {
                           {!isOwn && isGroup && (
                             <p className="text-[10px] font-bold mb-0.5" style={{ color: C.cyan }}>{msg.sender_username}</p>
                           )}
-                          {msg.content}
+                          {/* Images : média du message, médias de groupe, ou image collée en texte */}
+                          {[
+                            msg.media_url,
+                            ...(Array.isArray(msg.media_urls) ? msg.media_urls : []),
+                            imageSrcFromContent(msg.content),
+                          ].filter(Boolean).map((src, i) => (
+                            <img
+                              key={i}
+                              src={src}
+                              alt="image"
+                              className="rounded-xl max-w-full mb-1 cursor-zoom-in block"
+                              style={{ maxHeight: 280 }}
+                              onClick={() => setLightbox(src)}
+                            />
+                          ))}
+                          {!isDataImage(msg.content) && (msg.content || "").length > 2000
+                            ? (msg.content || "").slice(0, 2000) + "…"
+                            : (isDataImage(msg.content) ? null : msg.content)}
                         </div>
 
                         {/* Reactions */}
@@ -587,7 +678,41 @@ export default function MessagesPage({ user }) {
 
           {/* Input */}
           <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(11,19,38,0.7)" }}>
+            {/* Aperçu de l'image en attente */}
+            {pendingImage && (
+              <div className="mb-2 relative inline-block">
+                <img src={pendingImage} alt="aperçu" className="h-20 rounded-xl object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setPendingImage(null)}
+                  className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs"
+                  style={{ background: "#ef4444", color: "#fff" }}
+                  title="Retirer"
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+            )}
             <form onSubmit={handleSendMessage} className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={glass}>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePickImage}
+              />
+              {!isGroup && (
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={compressing}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-50"
+                  style={{ background: C.high, color: C.cyan }}
+                  title="Envoyer une image"
+                >
+                  <span className="material-symbols-outlined text-sm">{compressing ? "hourglass_top" : "image"}</span>
+                </button>
+              )}
               <input
                 value={messageContent}
                 onChange={(e) => setMessageContent(e.target.value)}
@@ -596,9 +721,9 @@ export default function MessagesPage({ user }) {
                 style={{ color: C.onSurface }}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) handleSendMessage(e); }}
               />
-              <button type="submit" disabled={!messageContent.trim()}
+              <button type="submit" disabled={!messageContent.trim() && !pendingImage}
                 className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-40"
-                style={{ background: messageContent.trim() ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: messageContent.trim() ? C.onPrimary : C.outline }}>
+                style={{ background: (messageContent.trim() || pendingImage) ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: (messageContent.trim() || pendingImage) ? C.onPrimary : C.outline }}>
                 <span className="material-symbols-outlined text-sm">send</span>
               </button>
             </form>
@@ -614,7 +739,7 @@ export default function MessagesPage({ user }) {
             <h3 className="font-black text-lg mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Centre de communication</h3>
             <p className="text-sm" style={{ color: C.outline }}>Sélectionnez une conversation pour commencer</p>
           </div>
-          <button onClick={() => setShowNewMsg(true)} className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
+          <button onClick={openNewMessage} className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
             Nouvelle conversation
           </button>
@@ -625,7 +750,7 @@ export default function MessagesPage({ user }) {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <Layout user={user} compact>
+    <Layout user={user} compact hideMobileChrome>
       {/* Nebula background */}
       <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
         <div className="absolute rounded-full blur-3xl" style={{ width: "40%", height: "40%", top: "-10%", left: "-5%", background: "radial-gradient(circle, rgba(34,211,238,0.04), transparent)" }} />
@@ -636,10 +761,34 @@ export default function MessagesPage({ user }) {
           On appelle les panneaux comme fonctions {ConvPanel()} et non <ConvPanel />
           pour éviter que React ne les remonte à chaque frappe (sinon le champ
           de saisie perd le focus et le clavier se ferme). */}
-      <div className="relative z-10 flex h-[calc(100dvh-136px)] lg:h-screen">
+      <div className="relative z-10 flex h-[100dvh] lg:h-screen">
         {ConvPanel()}
         {ChatPanel()}
       </div>
+
+      {/* ── Lightbox (image agrandie) ── */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.9)" }}
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}
+            aria-label="Fermer"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+          <img
+            src={lightbox}
+            alt="image"
+            className="max-w-full max-h-full rounded-xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
 
       {/* ── New Group Modal ── */}
       {showNewGroup && (
