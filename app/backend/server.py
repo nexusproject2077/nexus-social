@@ -3546,6 +3546,78 @@ async def remove_group_member(
 
     return {"success": True, "message": "Member removed"}
 
+
+@api_router.get("/messages/groups/{group_id}/members")
+async def list_group_members(group_id: str, current_user: dict = Depends(get_current_user)):
+    """Liste détaillée des membres d'un groupe (avatar + rôle)."""
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    group = convert_mongo_doc_to_dict(group_raw)
+    if current_user["id"] not in group.get("member_ids", []):
+        raise HTTPException(status_code=403, detail="Not a member")
+
+    admin_ids = group.get("admin_ids", [])
+    creator_id = group.get("creator_id")
+    members = []
+    for uid in group.get("member_ids", []):
+        u_raw = await db.users.find_one({"id": uid})
+        if not u_raw:
+            continue
+        u = convert_mongo_doc_to_dict(u_raw)
+        members.append({
+            "id": uid,
+            "username": u.get("username"),
+            "profile_pic": u.get("profile_pic"),
+            "is_admin": uid in admin_ids,
+            "is_creator": uid == creator_id,
+        })
+    # Créateur puis admins puis le reste (alphabétique).
+    members.sort(key=lambda m: (not m["is_creator"], not m["is_admin"], (m["username"] or "").lower()))
+    return {
+        "success": True,
+        "members": members,
+        "is_admin": current_user["id"] in admin_ids,
+        "creator_id": creator_id,
+    }
+
+
+@api_router.post("/messages/groups/{group_id}/admins")
+async def promote_group_admin(group_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Promouvoir un membre en admin (admin uniquement)."""
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    group = convert_mongo_doc_to_dict(group_raw)
+    if current_user["id"] not in group.get("admin_ids", []):
+        raise HTTPException(status_code=403, detail="Admin only")
+    user_id = data.get("user_id")
+    if user_id not in group.get("member_ids", []):
+        raise HTTPException(status_code=400, detail="Not a member")
+    await db.group_chats.update_one(
+        {"id": group_id},
+        {"$addToSet": {"admin_ids": user_id}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"success": True}
+
+
+@api_router.delete("/messages/groups/{group_id}/admins/{user_id}")
+async def demote_group_admin(group_id: str, user_id: str, current_user: dict = Depends(get_current_user)):
+    """Retirer les droits d'admin (admin uniquement ; le créateur reste admin)."""
+    group_raw = await db.group_chats.find_one({"id": group_id})
+    if not group_raw:
+        raise HTTPException(status_code=404, detail="Group not found")
+    group = convert_mongo_doc_to_dict(group_raw)
+    if current_user["id"] not in group.get("admin_ids", []):
+        raise HTTPException(status_code=403, detail="Admin only")
+    if user_id == group.get("creator_id"):
+        raise HTTPException(status_code=400, detail="Impossible de rétrograder le créateur")
+    await db.group_chats.update_one(
+        {"id": group_id},
+        {"$pull": {"admin_ids": user_id}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"success": True}
+
 # ==================== SEARCH ROUTES ====================
 @api_router.get("/search")
 async def search(q: str, current_user: dict = Depends(get_current_user)):

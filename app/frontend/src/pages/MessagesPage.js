@@ -207,6 +207,16 @@ export default function MessagesPage({ user }) {
   const [ephemeralTtl, setEphemeralTtl] = useState(0);
   const [showEphemeralChooser, setShowEphemeralChooser] = useState(false);
 
+  // Administration de groupe
+  const [groupMembers,   setGroupMembers]   = useState([]);
+  const [groupIsAdmin,   setGroupIsAdmin]   = useState(false);
+  const [groupCreatorId, setGroupCreatorId] = useState(null);
+  const [editingName,    setEditingName]    = useState(false);
+  const [groupNameDraft, setGroupNameDraft] = useState("");
+  const [showAddMember,  setShowAddMember]  = useState(false);
+  const [addMemberSearch,  setAddMemberSearch]  = useState("");
+  const [addMemberResults, setAddMemberResults] = useState([]);
+
   // Mise en sourdine (local, par appareil)
   const [mutedIds, setMutedIds] = useState(() => {
     try { return JSON.parse(localStorage.getItem("nexus_muted") || "[]"); } catch { return []; }
@@ -345,7 +355,26 @@ export default function MessagesPage({ user }) {
   useEffect(() => {
     setShowDetails(false); setDetailsMore(false);
     setShowEphemeralChooser(false); setEphemeralTtl(0);
+    setEditingName(false); setShowAddMember(false); setAddMemberSearch("");
   }, [selectedUserId, selectedGroupId]);
+
+  // Charge la liste des membres quand on ouvre les détails d'un groupe.
+  useEffect(() => {
+    if (showDetails && selectedGroupId) fetchGroupMembers(selectedGroupId);
+  }, [showDetails, selectedGroupId]);
+
+  // Recherche de membres à ajouter (exclut les membres déjà présents).
+  useEffect(() => {
+    if (!addMemberSearch.trim()) { setAddMemberResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await axios.get(`${API}/users/search?q=${encodeURIComponent(addMemberSearch)}`);
+        const existing = new Set(groupMembers.map((m) => m.id));
+        setAddMemberResults((res.data || []).filter((u) => !existing.has(u.id)));
+      } catch {}
+    }, 300);
+    return () => clearTimeout(t);
+  }, [addMemberSearch, groupMembers]);
 
   // ── API calls ───────────────────────────────────────────────────────────────
   const fetchConversations = async () => {
@@ -558,6 +587,56 @@ export default function MessagesPage({ user }) {
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur création groupe");
     } finally { setLoading(false); }
+  };
+
+  // ── Administration de groupe ─────────────────────────────────────────────────
+  const fetchGroupMembers = async (gid) => {
+    try {
+      const res = await axios.get(`${API}/messages/groups/${gid}/members`);
+      setGroupMembers(res.data.members || []);
+      setGroupIsAdmin(!!res.data.is_admin);
+      setGroupCreatorId(res.data.creator_id || null);
+    } catch { setGroupMembers([]); setGroupIsAdmin(false); }
+  };
+
+  const renameGroup = async () => {
+    const name = groupNameDraft.trim();
+    if (!name) return;
+    try {
+      const res = await axios.put(`${API}/messages/groups/${selectedGroupId}`, { name });
+      if (res.data?.group) setSelectedGroup(res.data.group);
+      setEditingName(false);
+      fetchGroups();
+      toast.success("Groupe renommé");
+    } catch (err) { toast.error(err.response?.data?.detail || "Erreur"); }
+  };
+
+  const addGroupMember = async (u) => {
+    try {
+      await axios.post(`${API}/messages/groups/${selectedGroupId}/members`, { user_id: u.id });
+      setAddMemberSearch(""); setAddMemberResults([]); setShowAddMember(false);
+      fetchGroupMembers(selectedGroupId);
+      fetchGroupMessages(selectedGroupId);
+      toast.success(`@${u.username} ajouté`);
+    } catch (err) { toast.error(err.response?.data?.detail || "Erreur"); }
+  };
+
+  const removeGroupMember = async (m) => {
+    if (!window.confirm(`Retirer @${m.username} du groupe ?`)) return;
+    try {
+      await axios.delete(`${API}/messages/groups/${selectedGroupId}/members/${m.id}`);
+      fetchGroupMembers(selectedGroupId);
+      toast.success(`@${m.username} retiré`);
+    } catch (err) { toast.error(err.response?.data?.detail || "Erreur"); }
+  };
+
+  const toggleGroupAdmin = async (m) => {
+    try {
+      if (m.is_admin) await axios.delete(`${API}/messages/groups/${selectedGroupId}/admins/${m.id}`);
+      else await axios.post(`${API}/messages/groups/${selectedGroupId}/admins`, { user_id: m.id });
+      fetchGroupMembers(selectedGroupId);
+      toast.success(m.is_admin ? "Admin retiré" : "Promu admin");
+    } catch (err) { toast.error(err.response?.data?.detail || "Erreur"); }
   };
 
   const handleLeaveGroup = async () => {
@@ -1176,23 +1255,101 @@ export default function MessagesPage({ user }) {
             <QuickAction icon="options" label="Options" onClick={() => setDetailsMore((v) => !v)} />
           </div>
 
-          {/* Liste (façon Insta) */}
-          <div style={{ borderTop: `1px solid ${C.outline}14` }}>
-            <DetailsRow icon="palette" label="Personnaliser" sub="Thème et police"
-              onClick={() => { setShowDetails(false); navigate("/settings"); }} />
-            <DetailsRow icon="nickname" label="Pseudos" onClick={() => toast("Bientôt disponible")} />
-            <DetailsRow icon="timer" label="Messages éphémères"
-              sub={isGroup ? "Indisponible en groupe" : ephemeralLabel(ephemeralTtl)}
-              onClick={() => {
-                if (isGroup) { toast("Indisponible en groupe"); return; }
-                setShowDetails(false); setShowEphemeralChooser(true);
-              }} />
-            <DetailsRow icon="privacy" label="Confidentialité et sécurité"
-              onClick={() => { setShowDetails(false); navigate("/settings"); }} />
-            <DetailsRow icon="group" label="Créer une discussion de groupe"
-              onClick={() => { setShowDetails(false); openNewMessageModal(); }} />
-            <DetailsRow icon="report" label="Quelque chose ne fonctionne pas" onClick={handleReport} />
-          </div>
+          {isGroup ? (
+            /* ── Gestion de groupe ── */
+            <>
+              <div style={{ borderTop: `1px solid ${C.outline}14` }}>
+                {groupIsAdmin && (
+                  editingName ? (
+                    <div className="flex items-center gap-2 px-5 py-3">
+                      <input value={groupNameDraft} autoFocus onChange={(e) => setGroupNameDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") renameGroup(); }}
+                        className="flex-1 px-3 py-2 rounded-xl text-sm border-none outline-none"
+                        style={{ background: C.high, color: C.onSurface }} />
+                      <button onClick={renameGroup} className="px-3 py-2 rounded-xl text-xs font-bold" style={{ background: C.cyan, color: C.onPrimary }}>OK</button>
+                    </div>
+                  ) : (
+                    <DetailsRow icon="edit" label="Renommer le groupe"
+                      onClick={() => { setGroupNameDraft(selectedGroup?.name || ""); setEditingName(true); }} />
+                  )
+                )}
+                <DetailsRow icon="report" label="Quelque chose ne fonctionne pas" onClick={handleReport} />
+              </div>
+
+              {/* Membres */}
+              <div className="mt-2" style={{ borderTop: `1px solid ${C.outline}14` }}>
+                <div className="flex items-center justify-between px-5 pt-3 pb-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: C.outline }}>
+                    {groupMembers.length || selectedGroup?.member_ids?.length || 0} membres
+                  </p>
+                  {groupIsAdmin && (
+                    <button onClick={() => setShowAddMember((v) => !v)} className="text-xs font-bold flex items-center gap-1" style={{ color: C.cyan }}>
+                      <span className="material-symbols-outlined text-sm">person_add</span> Ajouter
+                    </button>
+                  )}
+                </div>
+
+                {showAddMember && groupIsAdmin && (
+                  <div className="px-4 pb-2">
+                    <input value={addMemberSearch} autoFocus onChange={(e) => setAddMemberSearch(e.target.value)}
+                      placeholder="Rechercher une personne..."
+                      className="w-full px-3 py-2 rounded-xl text-sm border-none outline-none placeholder:text-slate-600"
+                      style={{ background: C.high, color: C.onSurface }} />
+                    {addMemberResults.map((u) => (
+                      <button key={u.id} onClick={() => addGroupMember(u)}
+                        className="w-full flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-white/5 text-left">
+                        <UserAvatar username={u.username} pic={u.profile_pic} size={8} />
+                        <span className="text-sm" style={{ color: C.onSurface }}>@{u.username}</span>
+                        <span className="material-symbols-outlined text-sm ml-auto" style={{ color: C.cyan }}>add</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {groupMembers.map((m) => (
+                  <div key={m.id} className="flex items-center gap-3 px-5 py-2.5">
+                    <UserAvatar username={m.username} pic={m.profile_pic} size={9} />
+                    <button onClick={() => { setShowDetails(false); navigate(`/profile/${m.id}`); }} className="flex-1 min-w-0 text-left">
+                      <p className="text-sm font-bold truncate" style={{ color: C.onSurface }}>
+                        @{m.username}{m.id === user.id ? " (vous)" : ""}
+                      </p>
+                      {(m.is_creator || m.is_admin) && (
+                        <p className="text-[10px] font-bold" style={{ color: C.cyan }}>{m.is_creator ? "Créateur" : "Admin"}</p>
+                      )}
+                    </button>
+                    {groupIsAdmin && m.id !== user.id && !m.is_creator && (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => toggleGroupAdmin(m)} title={m.is_admin ? "Retirer les droits admin" : "Promouvoir admin"}
+                          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/5"
+                          style={{ color: m.is_admin ? C.cyan : C.outline }}>
+                          <span className="material-symbols-outlined text-sm">shield_person</span>
+                        </button>
+                        <button onClick={() => removeGroupMember(m)} title="Retirer du groupe"
+                          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-red-500/10"
+                          style={{ color: "#f87171" }}>
+                          <span className="material-symbols-outlined text-sm">person_remove</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            /* ── Liste DM (façon Insta) ── */
+            <div style={{ borderTop: `1px solid ${C.outline}14` }}>
+              <DetailsRow icon="palette" label="Personnaliser" sub="Thème et police"
+                onClick={() => { setShowDetails(false); navigate("/settings"); }} />
+              <DetailsRow icon="nickname" label="Pseudos" onClick={() => toast("Bientôt disponible")} />
+              <DetailsRow icon="timer" label="Messages éphémères" sub={ephemeralLabel(ephemeralTtl)}
+                onClick={() => { setShowDetails(false); setShowEphemeralChooser(true); }} />
+              <DetailsRow icon="privacy" label="Confidentialité et sécurité"
+                onClick={() => { setShowDetails(false); navigate("/settings"); }} />
+              <DetailsRow icon="group" label="Créer une discussion de groupe"
+                onClick={() => { setShowDetails(false); openNewMessageModal(); }} />
+              <DetailsRow icon="report" label="Quelque chose ne fonctionne pas" onClick={handleReport} />
+            </div>
+          )}
 
           {/* Options avancées (révélées par ⋯) */}
           {detailsMore && (
