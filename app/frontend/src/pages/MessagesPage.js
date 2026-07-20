@@ -134,6 +134,12 @@ export default function MessagesPage({ user }) {
   const [loading,         setLoading]          = useState(false);
   const [lightbox,        setLightbox]         = useState(null); // src de l'image agrandie
 
+  // Notes éphémères (façon Instagram) affichées en haut de la liste des DMs.
+  const [notes,           setNotes]            = useState([]);
+  const [showNoteComposer, setShowNoteComposer] = useState(false);
+  const [noteText,        setNoteText]         = useState("");
+  const NOTE_MAX = 80;
+
   // Search / new message
   const [searchQuery,      setSearchQuery]      = useState("");
   const [searchResults,    setSearchResults]    = useState([]);
@@ -187,6 +193,7 @@ export default function MessagesPage({ user }) {
   useEffect(() => {
     fetchConversations();
     fetchGroups();
+    fetchNotes();
   }, []);
 
   useEffect(() => {
@@ -267,6 +274,45 @@ export default function MessagesPage({ user }) {
       const res = await axios.get(`${API}/messages/groups-list`);
       setGroups(res.data.groups || []);
     } catch { setGroups([]); }
+  };
+
+  const fetchNotes = async () => {
+    try {
+      const res = await axios.get(`${API}/notes`);
+      setNotes(res.data.notes || []);
+    } catch { setNotes([]); }
+  };
+
+  const myNote = notes.find((n) => n.is_self) || null;
+  const otherNotes = notes.filter((n) => !n.is_self);
+
+  const openNoteComposer = () => {
+    setNoteText(myNote?.content || "");
+    setShowNoteComposer(true);
+  };
+
+  const saveNote = async () => {
+    const text = noteText.trim();
+    if (!text) return;
+    try {
+      await axios.post(`${API}/notes`, { content: text.slice(0, NOTE_MAX) });
+      setShowNoteComposer(false);
+      setNoteText("");
+      fetchNotes();
+      toast.success("Note publiée");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erreur");
+    }
+  };
+
+  const deleteMyNote = async () => {
+    try {
+      await axios.delete(`${API}/notes`);
+      setShowNoteComposer(false);
+      setNoteText("");
+      fetchNotes();
+      toast.success("Note supprimée");
+    } catch { toast.error("Erreur"); }
   };
 
   const fetchMessages = async (uid) => {
@@ -559,6 +605,44 @@ export default function MessagesPage({ user }) {
         </div>
       )}
 
+      {/* Notes éphémères (façon Instagram) — bande horizontale scrollable */}
+      {!showNewMsg && (
+        <div className="px-4 pb-3 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+          <div className="flex gap-4">
+            {/* Ta note */}
+            <button onClick={openNoteComposer} className="flex flex-col items-center gap-1 flex-shrink-0" style={{ width: 66 }} title="Votre note">
+              <div className="relative flex items-end justify-center" style={{ paddingTop: 20 }}>
+                <div className="absolute top-0 px-2 py-0.5 rounded-full text-[9px] leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis"
+                  style={{ maxWidth: 64, background: C.container, color: myNote ? C.onSurface : C.outline, border: `1px solid ${C.cyan}22` }}>
+                  {myNote ? myNote.content : "Note…"}
+                </div>
+                <UserAvatar username={user?.username} pic={user?.profile_pic} size={11} />
+                {!myNote && (
+                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[11px] font-black"
+                    style={{ background: C.cyan, color: C.onPrimary, border: `2px solid ${C.surface}` }}>+</div>
+                )}
+              </div>
+              <span className="text-[10px] text-center truncate" style={{ width: 64, color: C.onSurface }}>Votre note</span>
+            </button>
+
+            {/* Notes des personnes suivies */}
+            {otherNotes.map((n) => (
+              <button key={n.id} onClick={() => navigate(`/messages/${n.user_id}`)}
+                className="flex flex-col items-center gap-1 flex-shrink-0" style={{ width: 66 }} title={n.content}>
+                <div className="relative flex items-end justify-center" style={{ paddingTop: 20 }}>
+                  <div className="absolute top-0 px-2 py-0.5 rounded-full text-[9px] leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis"
+                    style={{ maxWidth: 64, background: C.container, color: C.onSurface, border: `1px solid ${C.cyan}22` }}>
+                    {n.content}
+                  </div>
+                  <UserAvatar username={n.username} pic={n.profile_pic} size={11} />
+                </div>
+                <span className="text-[10px] text-center truncate" style={{ width: 64, color: C.outline }}>@{n.username}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Scrollable list — groupes et messages privés fusionnés, triés du plus
           récent au plus ancien (chaque nouveau message remonte en haut). */}
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
@@ -753,7 +837,7 @@ export default function MessagesPage({ user }) {
 
           {/* Reply indicator */}
           {replyingTo && (
-            <div className="px-4 py-2 flex items-center justify-between" style={{ background: C.container, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+            <div className="px-4 py-2 flex items-center justify-between" style={{ background: "rgba(2,6,23,0.5)" }}>
               <div className="flex items-center gap-2 text-xs" style={{ color: C.outline }}>
                 <span className="material-symbols-outlined text-sm" style={{ color: C.cyan }}>reply</span>
                 <span>Réponse à <strong style={{ color: C.onSurface }}>{replyingTo.content?.substring(0, 40)}…</strong></span>
@@ -764,8 +848,8 @@ export default function MessagesPage({ user }) {
             </div>
           )}
 
-          {/* Input */}
-          <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(11,19,38,0.7)" }}>
+          {/* Input — pas de trait de séparation, même fond que la zone messages */}
+          <div className="px-4 py-3 flex-shrink-0" style={{ background: "rgba(2,6,23,0.5)" }}>
             {/* Aperçu de l'image en attente */}
             {pendingImage && (
               <div className="mb-2 relative inline-block">
@@ -875,6 +959,67 @@ export default function MessagesPage({ user }) {
             className="max-w-full max-h-full rounded-xl object-contain"
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {/* ── Note Composer (statut éphémère façon Insta) ── */}
+      {showNoteComposer && (
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+          onClick={() => setShowNoteComposer(false)}>
+          <div className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-6"
+            style={{ background: C.low, border: `1px solid ${C.outlineVar}` }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Votre note</h3>
+              <button onClick={() => setShowNoteComposer(false)} style={{ color: C.outline }} className="hover:text-white transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            {/* Aperçu bulle */}
+            <div className="flex justify-center mb-5">
+              <div className="relative flex items-end justify-center" style={{ paddingTop: 22 }}>
+                <div className="absolute top-0 px-3 py-1 rounded-full text-[11px] text-center max-w-[160px] truncate"
+                  style={{ background: C.container, color: C.onSurface, border: `1px solid ${C.cyan}22` }}>
+                  {noteText.trim() || "Partagez une pensée…"}
+                </div>
+                <UserAvatar username={user?.username} pic={user?.profile_pic} size={14} />
+              </div>
+            </div>
+
+            <div className="relative">
+              <input
+                autoFocus
+                value={noteText}
+                maxLength={NOTE_MAX}
+                onChange={(e) => setNoteText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") saveNote(); }}
+                placeholder="Partagez une note…"
+                className="w-full px-4 py-3 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
+                style={{ background: C.high, color: C.onSurface }}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: C.outline }}>
+                {noteText.length}/{NOTE_MAX}
+              </span>
+            </div>
+            <p className="text-[10px] mt-2" style={{ color: C.outline }}>Votre note disparaît après 24 h.</p>
+
+            <div className="flex gap-2 mt-5">
+              {myNote && (
+                <button onClick={deleteMyNote}
+                  className="px-4 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95"
+                  style={{ background: "transparent", color: "#f87171", border: "1px solid #f8717155" }}>
+                  Supprimer
+                </button>
+              )}
+              <button onClick={saveNote} disabled={!noteText.trim()}
+                className="flex-1 py-2.5 rounded-xl font-black text-sm transition-all active:scale-95 disabled:opacity-40 hover:opacity-90"
+                style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+                Partager
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
