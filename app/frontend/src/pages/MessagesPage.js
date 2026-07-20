@@ -123,6 +123,24 @@ function MsgImage({ src, onOpen }) {
   );
 }
 
+// True si le message est un vocal (media_type audio, ou data URL audio).
+const audioSrcFrom = (msg) => {
+  if (!msg) return null;
+  if (msg.media_type === "audio" && msg.media_url) return msg.media_url;
+  if (typeof msg.media_url === "string" && msg.media_url.startsWith("data:audio")) return msg.media_url;
+  return null;
+};
+
+// Lecteur de message vocal (contrôles natifs, compact).
+function VoiceMessage({ src, own }) {
+  return (
+    <div className="flex items-center gap-2 mb-1" style={{ minWidth: 180 }}>
+      <span className="material-symbols-outlined text-base" style={{ color: own ? "#93c5fd" : "#22d3ee" }}>graphic_eq</span>
+      <audio src={src} controls preload="metadata" style={{ height: 34, maxWidth: 220 }} />
+    </div>
+  );
+}
+
 // Pictogrammes maison (style Nexus : trait fin, hérite de la couleur courante).
 function Ico({ name, size = 20 }) {
   const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" };
@@ -239,6 +257,14 @@ export default function MessagesPage({ user }) {
   const [compressing, setCompressing] = useState(false);
   const imageInputRef = useRef(null);
 
+  // Message vocal : enregistrement micro (MediaRecorder) → data URL.
+  const [recording, setRecording]     = useState(false);
+  const [pendingAudio, setPendingAudio] = useState(null);
+  const [recordSecs, setRecordSecs]   = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef   = useRef([]);
+  const MAX_RECORD_SECS = 120;
+
   const handlePickImage = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // permet de re-sélectionner le même fichier
@@ -256,6 +282,59 @@ export default function MessagesPage({ user }) {
       setCompressing(false);
     }
   };
+
+  // ── Enregistrement vocal ─────────────────────────────────────────────────────
+  const startRecording = async () => {
+    if (recording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data && e.data.size) audioChunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: mr.mimeType || "audio/webm" });
+        if (blob.size > 4_000_000) { toast.error("Message vocal trop long"); return; }
+        if (blob.size < 400) return; // trop court / vide
+        const reader = new FileReader();
+        reader.onloadend = () => setPendingAudio(reader.result);
+        reader.readAsDataURL(blob);
+      };
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setPendingImage(null);
+      setRecordSecs(0);
+      setRecording(true);
+    } catch { toast.error("Micro indisponible — autorisez l'accès au micro"); }
+  };
+
+  const stopRecording = () => {
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== "inactive") mr.stop();
+    setRecording(false);
+  };
+
+  const cancelRecording = () => {
+    audioChunksRef.current = [];
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== "inactive") { mr.onstop = null; mr.stop(); mr.stream?.getTracks?.().forEach((t) => t.stop()); }
+    setRecording(false);
+    setPendingAudio(null);
+  };
+
+  // Chrono d'enregistrement + coupure automatique à MAX_RECORD_SECS.
+  useEffect(() => {
+    if (!recording) return;
+    const t = setInterval(() => {
+      setRecordSecs((s) => {
+        if (s + 1 >= MAX_RECORD_SECS) { stopRecording(); return MAX_RECORD_SECS; }
+        return s + 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [recording]);
+
+  const fmtSecs = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   const hasSelection = Boolean(selectedUserId || selectedGroupId);
   const currentName  = selectedUser?.username || selectedGroup?.name || "";
@@ -509,10 +588,10 @@ export default function MessagesPage({ user }) {
   const handleSendMessage = async (e) => {
     e?.preventDefault();
     const text = messageContent.trim();
-    if (!text && !pendingImage) return;
+    if (!text && !pendingImage && !pendingAudio) return;
     try {
       if (isGroup && selectedGroupId) {
-        if (pendingImage) { toast.error("Les images ne sont pas encore disponibles dans les groupes"); return; }
+        if (pendingImage || pendingAudio) { toast.error("Médias non disponibles dans les groupes"); return; }
         const res = await axios.post(`${API}/messages/groups/${selectedGroupId}/messages`, {
           content: text, reply_to_id: replyingTo?.id
         });
@@ -521,13 +600,13 @@ export default function MessagesPage({ user }) {
         const res = await axios.post(`${API}/messages`, {
           recipient_id: selectedUserId,
           content: text,
-          media_url: pendingImage || null,
-          media_type: pendingImage ? "image" : null,
+          media_url: pendingAudio || pendingImage || null,
+          media_type: pendingAudio ? "audio" : (pendingImage ? "image" : null),
           reply_to_id: replyingTo?.id,
         });
         if (res.data) setMessages(p => [...p, res.data]);
       }
-      setMessageContent(""); setReplyingTo(null); setPendingImage(null);
+      setMessageContent(""); setReplyingTo(null); setPendingImage(null); setPendingAudio(null);
       fetchConversations();
       if (isGroup) fetchGroups();  // remonte le groupe en haut de la liste
     } catch (err) {
@@ -1032,9 +1111,12 @@ export default function MessagesPage({ user }) {
                           {!isOwn && isGroup && (
                             <p className="text-[10px] font-bold mb-0.5" style={{ color: C.cyan }}>{msg.sender_username}</p>
                           )}
-                          {/* Images : média du message, médias de groupe, ou image collée en texte */}
+                          {/* Message vocal */}
+                          {audioSrcFrom(msg) && <VoiceMessage src={audioSrcFrom(msg)} own={isOwn} />}
+                          {/* Images : média du message, médias de groupe, ou image collée en texte
+                              (on exclut le media_url si c'est en fait un audio). */}
                           {[
-                            msg.media_url,
+                            audioSrcFrom(msg) ? null : msg.media_url,
                             ...(Array.isArray(msg.media_urls) ? msg.media_urls : []),
                             imageSrcFromContent(msg.content),
                           ].filter(Boolean).map((src, i) => (
@@ -1142,40 +1224,81 @@ export default function MessagesPage({ user }) {
                 </button>
               </div>
             )}
-            <form onSubmit={handleSendMessage} className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={glass}>
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handlePickImage}
-              />
-              {!isGroup && (
-                <button
-                  type="button"
-                  onClick={() => imageInputRef.current?.click()}
-                  disabled={compressing}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-50"
-                  style={{ background: C.high, color: C.cyan }}
-                  title="Envoyer une image"
-                >
-                  <span className="material-symbols-outlined text-sm">{compressing ? "hourglass_top" : "image"}</span>
+            {/* Aperçu du message vocal en attente */}
+            {pendingAudio && (
+              <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: C.container }}>
+                <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>graphic_eq</span>
+                <audio src={pendingAudio} controls style={{ height: 32, flex: 1 }} />
+                <button type="button" onClick={() => setPendingAudio(null)} title="Retirer" style={{ color: "#f87171" }}>
+                  <span className="material-symbols-outlined text-sm">delete</span>
                 </button>
-              )}
-              <input
-                value={messageContent}
-                onChange={(e) => setMessageContent(e.target.value)}
-                placeholder="Envoyer un message..."
-                className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600"
-                style={{ color: C.onSurface }}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) handleSendMessage(e); }}
-              />
-              <button type="submit" disabled={!messageContent.trim() && !pendingImage}
-                className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-40"
-                style={{ background: (messageContent.trim() || pendingImage) ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: (messageContent.trim() || pendingImage) ? C.onPrimary : C.outline }}>
-                <span className="material-symbols-outlined text-sm">send</span>
-              </button>
-            </form>
+              </div>
+            )}
+
+            {recording ? (
+              /* Barre d'enregistrement vocal */
+              <div className="flex items-center gap-3 px-3 py-2 rounded-2xl" style={glass}>
+                <button type="button" onClick={cancelRecording} title="Annuler"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: C.high, color: "#f87171" }}>
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+                <div className="flex-1 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: "#ef4444" }} />
+                  <span className="text-sm font-bold" style={{ color: C.onSurface }}>{fmtSecs(recordSecs)}</span>
+                  <span className="text-xs" style={{ color: C.outline }}>Enregistrement…</span>
+                </div>
+                <button type="button" onClick={stopRecording} title="Terminer"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+                  <span className="material-symbols-outlined text-sm">stop</span>
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSendMessage} className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={glass}>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePickImage}
+                />
+                {!isGroup && (
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={compressing}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-50"
+                    style={{ background: C.high, color: C.cyan }}
+                    title="Envoyer une image"
+                  >
+                    <span className="material-symbols-outlined text-sm">{compressing ? "hourglass_top" : "image"}</span>
+                  </button>
+                )}
+                {!isGroup && !pendingAudio && (
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90"
+                    style={{ background: C.high, color: C.cyan }}
+                    title="Message vocal"
+                  >
+                    <span className="material-symbols-outlined text-sm">mic</span>
+                  </button>
+                )}
+                <input
+                  value={messageContent}
+                  onChange={(e) => setMessageContent(e.target.value)}
+                  placeholder="Envoyer un message..."
+                  className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600"
+                  style={{ color: C.onSurface }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) handleSendMessage(e); }}
+                />
+                <button type="submit" disabled={!messageContent.trim() && !pendingImage && !pendingAudio}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-40"
+                  style={{ background: (messageContent.trim() || pendingImage || pendingAudio) ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: (messageContent.trim() || pendingImage || pendingAudio) ? C.onPrimary : C.outline }}>
+                  <span className="material-symbols-outlined text-sm">send</span>
+                </button>
+              </form>
+            )}
           </div>
         </>
       ) : (

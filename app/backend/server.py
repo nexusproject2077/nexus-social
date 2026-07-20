@@ -2647,6 +2647,8 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     preview = "📷 Photo"
                 elif text:
                     preview = text[:120]
+                elif msg.get("media_type") == "audio":
+                    preview = "🎤 Message vocal"
                 elif msg.get("media_type"):
                     preview = "📷 Photo"
                 else:
