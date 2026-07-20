@@ -130,6 +130,11 @@ function Ico({ name, size = 20 }) {
     case "members":  return (<svg {...p}><circle cx="12" cy="8" r="3.2" /><path d="M5 20a7 7 0 0 1 14 0" /></svg>);
     case "leave":    return (<svg {...p}><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" /><path d="M11 12H3" /><path d="M6 8l-3 4 3 4" /></svg>);
     case "edit":     return (<svg {...p}><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z" /><path d="M13.5 6.5l3 3" /></svg>);
+    case "profile":  return (<svg {...p}><circle cx="12" cy="8.5" r="3.4" /><path d="M5.5 20a6.5 6.5 0 0 1 13 0" /></svg>);
+    case "search":   return (<svg {...p}><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></svg>);
+    case "options":  return (<svg {...p}><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="19" cy="12" r="1.4" /></svg>);
+    case "palette":  return (<svg {...p}><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-1 2-2 0-1.6 1.2-2 2.5-2H18a3 3 0 0 0 3-3c0-5-4-9-9-9z" /><circle cx="7.5" cy="11" r="1" /><circle cx="10" cy="7.5" r="1" /><circle cx="14.5" cy="7.5" r="1" /></svg>);
+    case "timer":    return (<svg {...p}><circle cx="12" cy="13" r="8" strokeDasharray="3 2.4" /><path d="M12 13V9" /><path d="M9 3h6" /></svg>);
     default:         return null;
   }
 }
@@ -187,6 +192,7 @@ export default function MessagesPage({ user }) {
 
   // Panneau « Détails » de la conversation (sidebar PC / bottom sheet mobile)
   const [showDetails, setShowDetails] = useState(false);
+  const [detailsMore, setDetailsMore] = useState(false); // options avancées (⋯)
 
   // Mise en sourdine (local, par appareil)
   const [mutedIds, setMutedIds] = useState(() => {
@@ -315,7 +321,7 @@ export default function MessagesPage({ user }) {
   }, [nmSearch]);
 
   // Referme le panneau Détails quand on change de conversation.
-  useEffect(() => { setShowDetails(false); }, [selectedUserId, selectedGroupId]);
+  useEffect(() => { setShowDetails(false); setDetailsMore(false); }, [selectedUserId, selectedGroupId]);
 
   // ── API calls ───────────────────────────────────────────────────────────────
   const fetchConversations = async () => {
@@ -798,15 +804,16 @@ export default function MessagesPage({ user }) {
               <button onClick={() => navigate("/messages")} className="sm:hidden mr-1" style={{ color: C.outline }}>
                 <span className="material-symbols-outlined">arrow_back</span>
               </button>
-              <div className="relative">
+              {/* Avatar + nom cliquables → ouvre le panneau Détails (façon Insta) */}
+              <button onClick={() => setShowDetails(true)} className="flex items-center gap-3 text-left">
                 <UserAvatar username={currentName} pic={currentPic} size={9} />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{currentName}</h3>
-                <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: C.cyan }}>
-                  {isGroup ? `${selectedGroup?.member_ids?.length || 0} membres` : "Chiffré P2P"}
-                </p>
-              </div>
+                <div>
+                  <h3 className="font-bold text-sm" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{currentName}</h3>
+                  <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: C.cyan }}>
+                    {isGroup ? `${selectedGroup?.member_ids?.length || 0} membres` : "Chiffré P2P"}
+                  </p>
+                </div>
+              </button>
             </div>
             {/* Bouton Détails (i) — ouvre la sidebar (PC) / bottom sheet (mobile) */}
             <button onClick={() => setShowDetails((v) => !v)} title="Détails"
@@ -1050,68 +1057,89 @@ export default function MessagesPage({ user }) {
   );
 
   // ── Details panel (contenu partagé sidebar PC / bottom sheet mobile) ──────────
-  const DetailsRow = ({ icon, label, danger, onClick, value }) => (
+  const DetailsRow = ({ icon, label, sub, danger, onClick }) => (
     <button onClick={onClick}
-      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-white/5 text-left"
+      className="w-full flex items-center gap-4 px-5 py-3.5 transition-all hover:bg-white/5 text-left"
       style={{ color: danger ? "#f87171" : C.onSurface }}>
-      <span style={{ color: danger ? "#f87171" : C.cyan }}><Ico name={icon} size={20} /></span>
-      <span className="text-sm font-medium flex-1">{label}</span>
-      {value && <span className="text-xs" style={{ color: C.outline }}>{value}</span>}
+      <span className="flex-shrink-0"><Ico name={icon} size={24} /></span>
+      <span className="flex-1 min-w-0">
+        <span className="text-[15px] block truncate">{label}</span>
+        {sub && <span className="text-xs block truncate" style={{ color: C.outline }}>{sub}</span>}
+      </span>
+      {!danger && <span className="material-symbols-outlined text-lg flex-shrink-0" style={{ color: C.outline }}>chevron_right</span>}
     </button>
   );
 
-  const DetailsContent = () => {
+  const QuickAction = ({ icon, label, onClick }) => (
+    <button onClick={onClick} className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
+      <span className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: C.container, color: C.onSurface }}>
+        <Ico name={icon} size={22} />
+      </span>
+      <span className="text-[11px] text-center truncate w-full" style={{ color: C.onSurface }}>{label}</span>
+    </button>
+  );
+
+  const DetailsContent = ({ mobile } = {}) => {
     const muteId = isGroup ? selectedGroupId : selectedUserId;
     return (
       <div className="flex flex-col h-full">
-        <div className="px-5 py-4 flex items-center justify-between flex-shrink-0" style={{ borderBottom: `1px solid ${C.outline}18` }}>
-          <h3 className="font-black text-base" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Détails</h3>
-          <button onClick={() => setShowDetails(false)} style={{ color: C.outline }} className="hover:text-white transition-colors">
-            <span className="material-symbols-outlined">close</span>
+        {/* Barre du haut (fermeture) */}
+        <div className="px-2 py-2 flex items-center flex-shrink-0">
+          <button onClick={() => setShowDetails(false)}
+            className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/5"
+            style={{ color: C.onSurface }}>
+            <span className="material-symbols-outlined">{mobile ? "arrow_back" : "close"}</span>
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 py-3" style={{ scrollbarWidth: "none" }}>
-          {/* En-tête conversation */}
-          <div className="flex flex-col items-center gap-2 px-3 py-4">
-            <UserAvatar username={currentName} pic={currentPic} size={18} />
-            <p className="text-base font-bold" style={{ color: C.onSurface }}>{currentName}</p>
-            <p className="text-xs" style={{ color: C.outline }}>
-              {isGroup ? `${selectedGroup?.member_ids?.length || 0} membres` : "Conversation privée"}
+        <div className="flex-1 overflow-y-auto pb-6" style={{ scrollbarWidth: "none" }}>
+          {/* En-tête : grand avatar + nom + username */}
+          <div className="flex flex-col items-center gap-1.5 px-4 pb-5">
+            <UserAvatar username={currentName} pic={currentPic} size={22} />
+            <p className="text-xl font-black mt-1" style={{ color: C.onSurface, fontFamily: "Space Grotesk, sans-serif" }}>{currentName}</p>
+            <p className="text-sm" style={{ color: C.outline }}>
+              {isGroup ? `${selectedGroup?.member_ids?.length || 0} membres` : (selectedUser?.username ? `@${selectedUser.username}` : "")}
             </p>
           </div>
 
-          {/* Membres (DM : toi + l'autre) */}
-          <p className="px-4 pt-3 pb-1 text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: C.outline }}>Membres</p>
-          {!isGroup && (
-            <>
-              <div className="flex items-center gap-3 px-4 py-2">
-                <UserAvatar username={selectedUser?.username} pic={selectedUser?.profile_pic} size={9} />
-                <span className="text-sm" style={{ color: C.onSurface }}>@{selectedUser?.username}</span>
-              </div>
-              <div className="flex items-center gap-3 px-4 py-2">
-                <UserAvatar username={user?.username} pic={user?.profile_pic} size={9} />
-                <span className="text-sm" style={{ color: C.onSurface }}>@{user?.username} <span style={{ color: C.outline }}>(vous)</span></span>
-              </div>
-            </>
-          )}
+          {/* Actions rapides */}
+          <div className="flex items-start gap-1 px-4 pb-5">
+            {!isGroup && (
+              <QuickAction icon="profile" label="Profil"
+                onClick={() => { setShowDetails(false); navigate(`/profile/${selectedUserId}`); }} />
+            )}
+            <QuickAction icon="search" label="Rechercher" onClick={() => toast("Bientôt disponible")} />
+            <QuickAction icon={isMuted(muteId) ? "unmute" : "mute"} label={isMuted(muteId) ? "Réactiver" : "Mettre en sourdine"}
+              onClick={() => toggleMute(muteId)} />
+            <QuickAction icon="options" label="Options" onClick={() => setDetailsMore((v) => !v)} />
+          </div>
 
-          <p className="px-4 pt-4 pb-1 text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: C.outline }}>Options</p>
-          <DetailsRow icon={isMuted(muteId) ? "unmute" : "mute"} label={isMuted(muteId) ? "Réactiver" : "Mettre en sourdine"} onClick={() => toggleMute(muteId)} />
-          {!isGroup && <DetailsRow icon="nickname" label="Pseudos" onClick={() => toast("Bientôt disponible")} />}
-          <DetailsRow icon="privacy" label="Confidentialité" onClick={() => navigate("/settings")} />
-          <DetailsRow icon="group" label="Créer un groupe" onClick={() => { setShowDetails(false); openNewMessageModal(); }} />
+          {/* Liste (façon Insta) */}
+          <div style={{ borderTop: `1px solid ${C.outline}14` }}>
+            <DetailsRow icon="palette" label="Personnaliser" sub="Thème et police"
+              onClick={() => { setShowDetails(false); navigate("/settings"); }} />
+            <DetailsRow icon="nickname" label="Pseudos" onClick={() => toast("Bientôt disponible")} />
+            <DetailsRow icon="timer" label="Messages éphémères" sub="Désactivé" onClick={() => toast("Bientôt disponible")} />
+            <DetailsRow icon="privacy" label="Confidentialité et sécurité"
+              onClick={() => { setShowDetails(false); navigate("/settings"); }} />
+            <DetailsRow icon="group" label="Créer une discussion de groupe"
+              onClick={() => { setShowDetails(false); openNewMessageModal(); }} />
+            <DetailsRow icon="report" label="Quelque chose ne fonctionne pas" onClick={handleReport} />
+          </div>
 
-          <div className="my-2 mx-4" style={{ borderTop: `1px solid ${C.outline}18` }} />
-          {isGroup ? (
-            <DetailsRow icon="leave" label="Quitter le groupe" danger onClick={handleLeaveGroup} />
-          ) : (
-            <>
-              <DetailsRow icon="block" label="Bloquer" danger onClick={handleBlockUser} />
-              <DetailsRow icon="trash" label="Supprimer la discussion" danger onClick={handleClearConversation} />
-            </>
+          {/* Options avancées (révélées par ⋯) */}
+          {detailsMore && (
+            <div className="mt-2" style={{ borderTop: `1px solid ${C.outline}14` }}>
+              {isGroup ? (
+                <DetailsRow icon="leave" label="Quitter le groupe" danger onClick={handleLeaveGroup} />
+              ) : (
+                <>
+                  <DetailsRow icon="block" label="Bloquer" danger onClick={handleBlockUser} />
+                  <DetailsRow icon="trash" label="Supprimer la discussion" danger onClick={handleClearConversation} />
+                </>
+              )}
+            </div>
           )}
-          <DetailsRow icon="report" label="Signaler" danger onClick={handleReport} />
         </div>
       </div>
     );
@@ -1231,9 +1259,9 @@ export default function MessagesPage({ user }) {
       {showDetails && hasSelection && (
         <div className="lg:hidden fixed inset-0 z-[85] flex items-end" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
           onClick={() => setShowDetails(false)}>
-          <div className="w-full rounded-t-3xl overflow-hidden" style={{ background: C.surface, maxHeight: "82vh" }} onClick={(e) => e.stopPropagation()}>
+          <div className="w-full rounded-t-3xl overflow-hidden" style={{ background: C.surface, maxHeight: "88vh", height: "88vh" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-center pt-2"><div className="w-10 h-1 rounded-full" style={{ background: C.outlineVar }} /></div>
-            {DetailsContent()}
+            {DetailsContent({ mobile: true })}
           </div>
         </div>
       )}
