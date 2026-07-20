@@ -2662,20 +2662,33 @@ MAX_NOTE_LEN = 80  # même limite de caractères qu'Instagram
 
 @api_router.get("/notes")
 async def get_notes(current_user: dict = Depends(get_current_user)):
-    """Notes actives (non expirées) de l'utilisateur et des personnes qu'il suit."""
+    """Notes actives (non expirées) de l'utilisateur et de ses abonnements
+    mutuels (comme Instagram : uniquement les personnes qui se suivent des
+    deux côtés)."""
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    # IDs des personnes suivies (+ soi-même)
-    follows_raw = await db.follows.find({
+    # Personnes que JE suis (moi → eux)
+    following_raw = await db.follows.find({
         "follower_id": current_user["id"],
         "status": "following",
-    }).to_list(length=500)
-    author_ids = {current_user["id"]}
-    for f in follows_raw:
+    }).to_list(length=1000)
+    following_ids = set()
+    for f in following_raw:
         fd = convert_mongo_doc_to_dict(f)
         uid = fd.get("followed_id") or fd.get("following_id")
         if uid:
-            author_ids.add(uid)
+            following_ids.add(uid)
+
+    # Personnes qui ME suivent (eux → moi)
+    followers_raw = await db.follows.find({
+        "$or": [{"followed_id": current_user["id"]}, {"following_id": current_user["id"]}],
+        "status": "following",
+    }).to_list(length=1000)
+    follower_ids = {convert_mongo_doc_to_dict(f).get("follower_id") for f in followers_raw}
+    follower_ids.discard(None)
+
+    # Abonnements mutuels + soi-même
+    author_ids = (following_ids & follower_ids) | {current_user["id"]}
 
     notes_raw = await db.notes.find({
         "user_id": {"$in": list(author_ids)},

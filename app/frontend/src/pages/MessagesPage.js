@@ -684,16 +684,13 @@ export default function MessagesPage({ user }) {
       className={`flex flex-col border-r h-full w-full sm:w-[300px] sm:min-w-[280px] sm:max-w-[320px] ${hasSelection ? "hidden sm:flex" : "flex"}`}
       style={{ borderColor: "rgba(255,255,255,0.05)", background: `${C.surface}cc` }}
     >
-      {/* Header — pas de trait de séparation, même fond que la liste */}
+      {/* Header — pas de trait de séparation, même fond que la liste.
+          Plus de bouton retour : le footer mobile gère la navigation. */}
       <div className="px-5 pt-5 pb-3 flex items-center gap-2">
-        {/* Retour à l'accueil (mobile : le footer est masqué sur Messages) */}
-        <button onClick={() => navigate("/")} className="lg:hidden -ml-1" title="Retour" style={{ color: C.outline }}>
-          <span className="material-symbols-outlined">arrow_back</span>
-        </button>
         {/* Nom d'utilisateur : centré sur mobile, aligné à gauche sur PC */}
         <h2 className="font-black text-xl tracking-tight flex-1 text-center sm:text-left truncate"
           style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>
-          {user?.username ? `@${user.username}` : "Messages"}
+          {user?.username || "Messages"}
         </h2>
         {/* Un seul bouton « Nouveau message » (façon Insta : DM ou groupe). */}
         <button onClick={openNewMessageModal} title="Nouveau message"
@@ -732,38 +729,40 @@ export default function MessagesPage({ user }) {
         </div>
       )}
 
-      {/* Notes éphémères (façon Instagram) — bande horizontale scrollable */}
+      {/* Notes éphémères (façon Instagram) — bande horizontale scrollable.
+          La bulle peut s'étendre jusqu'à 3 lignes ; seuls les abonnements
+          mutuels apparaissent (filtrés côté serveur). */}
       {!showNewMsg && (
         <div className="px-4 pb-4 pt-1 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-          <div className="flex gap-5">
+          <div className="flex gap-5 items-end">
             {/* Ta note */}
-            <button onClick={openNoteComposer} className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ width: 84 }} title="Votre note">
-              <div className="relative flex items-end justify-center" style={{ paddingTop: 26 }}>
-                <div className="absolute top-0 px-3 py-1 rounded-2xl text-[11px] font-medium leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis shadow-lg"
-                  style={{ maxWidth: 82, background: C.container, color: myNote ? C.onSurface : C.outline, border: `1px solid ${C.cyan}22` }}>
-                  {myNote ? myNote.content : "Note…"}
-                </div>
+            <button onClick={openNoteComposer} className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ width: 88 }} title="Votre note">
+              <div className="px-3 py-1.5 rounded-2xl text-[11px] font-medium leading-snug text-center shadow-lg"
+                style={{ maxWidth: 86, background: C.container, color: myNote ? C.onSurface : C.outline, border: `1px solid ${C.cyan}22`,
+                  display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                {myNote ? myNote.content : "Note…"}
+              </div>
+              <div className="relative -mt-1">
                 <UserAvatar username={user?.username} pic={user?.profile_pic} size={16} />
                 {!myNote && (
                   <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center text-sm font-black"
                     style={{ background: C.cyan, color: C.onPrimary, border: `2px solid ${C.surface}` }}>+</div>
                 )}
               </div>
-              <span className="text-[11px] font-semibold text-center truncate" style={{ width: 78, color: C.onSurface }}>Votre note</span>
+              <span className="text-[11px] font-semibold text-center truncate" style={{ width: 82, color: C.onSurface }}>Votre note</span>
             </button>
 
-            {/* Notes des personnes suivies */}
+            {/* Notes des abonnements mutuels */}
             {otherNotes.map((n) => (
               <button key={n.id} onClick={() => navigate(`/messages/${n.user_id}`)}
-                className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ width: 84 }} title={n.content}>
-                <div className="relative flex items-end justify-center" style={{ paddingTop: 26 }}>
-                  <div className="absolute top-0 px-3 py-1 rounded-2xl text-[11px] font-medium leading-tight text-center whitespace-nowrap overflow-hidden text-ellipsis shadow-lg"
-                    style={{ maxWidth: 82, background: C.container, color: C.onSurface, border: `1px solid ${C.cyan}22` }}>
-                    {n.content}
-                  </div>
-                  <UserAvatar username={n.username} pic={n.profile_pic} size={16} />
+                className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ width: 88 }} title={n.content}>
+                <div className="px-3 py-1.5 rounded-2xl text-[11px] font-medium leading-snug text-center shadow-lg"
+                  style={{ maxWidth: 86, background: C.container, color: C.onSurface, border: `1px solid ${C.cyan}22`,
+                    display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                  {n.content}
                 </div>
-                <span className="text-[11px] text-center truncate" style={{ width: 78, color: C.outline }}>@{n.username}</span>
+                <div className="-mt-1"><UserAvatar username={n.username} pic={n.profile_pic} size={16} /></div>
+                <span className="text-[11px] text-center truncate" style={{ width: 82, color: C.outline }}>@{n.username}</span>
               </button>
             ))}
           </div>
