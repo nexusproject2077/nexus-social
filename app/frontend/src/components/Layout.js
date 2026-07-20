@@ -49,46 +49,73 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       .catch(() => setTrending([]));
   }, [user.id, compact]);
 
-  // Connexion WebSocket temps réel (notifications + messages en direct)
+  // Connexion WebSocket temps réel (notifications + messages en direct + appels).
+  // Reconnexion automatique avec backoff : sans elle, la moindre coupure (mise en
+  // veille du service Render, blip réseau, redémarrage backend) tuait le temps réel
+  // jusqu'au rechargement de la page — d'où les « WebSocket connection failed ».
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token || !user?.id) return;
 
     // Dérive l'URL WS de l'API : https://host/api -> wss://host
     const wsBase = API.replace(/^http/, "ws").replace(/\/api\/?$/, "");
-    let ws;
-    let heartbeat;
-    try {
-      ws = new WebSocket(`${wsBase}/ws/${user.id}?token=${token}`);
-    } catch {
-      return;
-    }
+    let ws = null;
+    let heartbeat = null;
+    let reconnectTimer = null;
+    let attempts = 0;
+    let stopped = false; // vrai quand l'effet est démonté
 
-    ws.onopen = () => {
-      heartbeat = setInterval(() => {
-        try { ws.send("ping"); } catch { /* socket fermé */ }
-      }, 25000);
+    const scheduleReconnect = () => {
+      if (stopped || reconnectTimer) return;
+      attempts += 1;
+      const delay = Math.min(30000, 1000 * 2 ** Math.min(attempts, 5)); // 2s → 30s
+      reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, delay);
     };
 
-    ws.onmessage = (event) => {
-      let data;
-      try { data = JSON.parse(event.data); } catch { return; }
-      if (!data || !data.type) return;
-      // Les pages peuvent réagir (ex. chat live) via cet événement
-      window.dispatchEvent(new CustomEvent("nexus:realtime", { detail: data }));
-      const label =
-        data.data?.message ||
-        (data.type === "new_message"
-          ? `Nouveau message de @${data.data?.sender_username || ""}`
-          : null);
-      if (label) toast(label);
+    const connect = () => {
+      if (stopped) return;
+      try {
+        ws = new WebSocket(`${wsBase}/ws/${user.id}?token=${token}`);
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+
+      ws.onopen = () => {
+        attempts = 0; // reconnexion réussie → on réinitialise le backoff
+        heartbeat = setInterval(() => {
+          try { ws.send("ping"); } catch { /* socket fermé */ }
+        }, 25000);
+      };
+
+      ws.onmessage = (event) => {
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
+        if (!data || !data.type) return;
+        // Les pages peuvent réagir (ex. chat live, appels) via cet événement
+        window.dispatchEvent(new CustomEvent("nexus:realtime", { detail: data }));
+        const label =
+          data.data?.message ||
+          (data.type === "new_message"
+            ? `Nouveau message de @${data.data?.sender_username || ""}`
+            : null);
+        if (label) toast(label);
+      };
+
+      ws.onclose = () => {
+        clearInterval(heartbeat);
+        scheduleReconnect();
+      };
+      ws.onerror = () => { try { ws.close(); } catch { /* déclenchera onclose */ } };
     };
 
-    ws.onclose = () => clearInterval(heartbeat);
+    connect();
 
     return () => {
+      stopped = true;
       clearInterval(heartbeat);
-      try { ws.close(); } catch { /* déjà fermé */ }
+      clearTimeout(reconnectTimer);
+      try { if (ws) { ws.onclose = null; ws.close(); } } catch { /* déjà fermé */ }
     };
   }, [user?.id]);
 
