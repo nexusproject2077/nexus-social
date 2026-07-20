@@ -2996,32 +2996,12 @@ async def create_group(
 
 @api_router.get("/messages/groups")
 async def list_groups(current_user: dict = Depends(get_current_user)):
-    """Lister les groupes de l'utilisateur"""
-    print(f"🔍 Recherche groupes pour user: {current_user['id']} (type: {type(current_user['id'])})")
-
-    # Essayer de trouver TOUS les groupes d'abord
-    all_groups = await db.group_chats.find({}).to_list(length=100)
-    print(f"📊 Total de groupes dans la DB: {len(all_groups)}")
-
-    if all_groups:
-        for g in all_groups:
-            print(f"  - Groupe '{g.get('name')}' avec member_ids: {g.get('member_ids')} (types: {[type(mid) for mid in g.get('member_ids', [])]})")
-
-    # Recherche avec l'utilisateur actuel
+    """Lister les groupes de l'utilisateur (uniquement ceux dont il est membre)."""
     groups_raw = await db.group_chats.find({
         "member_ids": current_user["id"]
     }).to_list(length=100)
-
-    print(f"📊 Groupes trouvés pour cet utilisateur: {len(groups_raw)}")
-
     groups = [convert_mongo_doc_to_dict(g) for g in groups_raw]
-
-    print(f"📦 Groupes à retourner: {[g['name'] for g in groups]}")
-
-    return {
-        "success": True,
-        "groups": groups
-    }
+    return {"success": True, "groups": groups}
 
 @api_router.get("/messages/groups/{group_id}")
 async def get_group(
