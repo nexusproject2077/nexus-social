@@ -2645,6 +2645,29 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
 
     return list(conversations_dict.values())
 
+async def _enrich_groups_with_activity(groups, current_user_id):
+    """Ajoute à chaque groupe son dernier message (aperçu + date) pour permettre
+    un tri unifié avec les messages privés côté client."""
+    for g in groups:
+        last_raw = await db.group_messages.find(
+            {"group_id": g["id"], "deleted_for": {"$ne": current_user_id}},
+            {"content": 1, "media_urls": 1, "created_at": 1, "sender_username": 1},
+        ).sort("created_at", -1).limit(1).to_list(length=1)
+        if last_raw:
+            last = convert_mongo_doc_to_dict(last_raw[0])
+            text = decrypt_message(last.get("content") or "")
+            if image_data_url_from_text(text) or (last.get("media_urls")):
+                preview = "📷 Photo"
+            else:
+                preview = (text or "")[:120]
+            g["last_message"] = preview
+            g["last_message_time"] = last.get("created_at")
+        else:
+            g["last_message"] = ""
+            g["last_message_time"] = g.get("created_at")
+    return groups
+
+
 @api_router.get("/messages/groups-list")
 async def list_groups_alias(current_user: dict = Depends(get_current_user)):
     """Alias pour lister les groupes (évite le conflit de route avec /{user_id})"""
@@ -2652,6 +2675,7 @@ async def list_groups_alias(current_user: dict = Depends(get_current_user)):
         "member_ids": current_user["id"]
     }).to_list(length=100)
     groups = [convert_mongo_doc_to_dict(g) for g in groups_raw]
+    groups = await _enrich_groups_with_activity(groups, current_user["id"])
     return {"success": True, "groups": groups}
 
 @api_router.get("/messages/{user_id}", response_model=List[Message])
@@ -2661,6 +2685,7 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
     # puis on rétablit l'ordre chronologique. Évite de charger tout l'historique
     # (images base64 comprises) qui faisait ramer/planter la page.
     messages_raw = await db.messages.find({
+        "deleted_by": {"$ne": current_user["id"]},  # cache les messages supprimés « pour moi »
         "$or": [
             {"sender_id": current_user["id"], "recipient_id": user_id},
             {"sender_id": user_id, "recipient_id": current_user["id"]}
@@ -2937,6 +2962,19 @@ async def delete_message(
         
         # Supprimer complètement
         await db.messages.delete_one({"id": message_id})
+
+        # Prévient l'autre partie en temps réel pour qu'elle retire le message.
+        other_id = (
+            message.get("recipient_id")
+            if message["sender_id"] == current_user["id"]
+            else message.get("sender_id")
+        )
+        if other_id:
+            await push_realtime(other_id, {
+                "type": "message_deleted",
+                "data": {"id": message_id, "sender_id": message["sender_id"]},
+            })
+
         return {"success": True, "message": "Message deleted for everyone"}
     
     else:  # delete_for == "me"

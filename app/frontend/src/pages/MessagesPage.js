@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
@@ -46,20 +46,73 @@ const B64_IMAGE_SIGNATURES = [
   { p: "UklGR", mime: "webp" },       // WebP (RIFF)
 ];
 
+// Nettoie une data URL : retire espaces / retours à la ligne dans la partie
+// base64. Ces caractères invisibles (souvent issus d'un copier-coller) rendent
+// l'URL invalide → l'image ne s'affiche pas (net::ERR_INVALID_URL).
+const cleanImageSrc = (src) => {
+  if (typeof src !== "string" || !src) return src;
+  if (!src.startsWith("data:")) return src;
+  const comma = src.indexOf(",");
+  if (comma === -1) return src;
+  return src.slice(0, comma + 1) + src.slice(comma + 1).replace(/\s/g, "");
+};
+
 // Renvoie une source d'image affichable si le contenu EST une image
 // (data URL complète, ou base64 brut collé sans préfixe), sinon null.
 const imageSrcFromContent = (s) => {
   if (typeof s !== "string") return null;
-  if (s.startsWith("data:image")) return s;
+  if (s.startsWith("data:image")) return cleanImageSrc(s);
   const head = s.slice(0, 16);
   for (const { p, mime } of B64_IMAGE_SIGNATURES) {
-    if (head.startsWith(p)) return `data:image/${mime};base64,${s}`;
+    if (head.startsWith(p)) return `data:image/${mime};base64,${s.replace(/\s/g, "")}`;
   }
   return null;
 };
 
 // True si le contenu est en réalité une image (à ne pas afficher comme texte).
 const isDataImage = (s) => imageSrcFromContent(s) !== null;
+
+// Étiquette de date pour un séparateur (Aujourd'hui / Hier / date longue).
+const isSameDay = (a, b) => {
+  const da = new Date(a), db = new Date(b);
+  return da.getFullYear() === db.getFullYear()
+    && da.getMonth() === db.getMonth()
+    && da.getDate() === db.getDate();
+};
+const formatDayLabel = (d) => {
+  if (!d) return "";
+  const date = new Date(d);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (isSameDay(date, today)) return "Aujourd'hui";
+  if (isSameDay(date, yesterday)) return "Hier";
+  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+};
+
+// Image de message avec repli propre si la source est corrompue/illisible.
+function MsgImage({ src, onOpen }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="rounded-xl mb-1 flex items-center gap-2 px-3 py-2 text-xs"
+        style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>
+        <span className="material-symbols-outlined text-sm">broken_image</span>
+        Image indisponible
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt="image"
+      className="rounded-xl max-w-full mb-1 cursor-zoom-in block"
+      style={{ maxHeight: 280 }}
+      onClick={() => onOpen(src)}
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 export default function MessagesPage({ user }) {
   const params = useParams();
@@ -151,7 +204,15 @@ export default function MessagesPage({ user }) {
   useEffect(() => {
     const onRealtime = (e) => {
       const data = e.detail;
-      if (!data || data.type !== "new_message") return;
+      if (!data) return;
+      // Suppression « pour tout le monde » émise par l'autre partie.
+      if (data.type === "message_deleted") {
+        const del = data.data || {};
+        setMessages((prev) => prev.filter((x) => x.id !== del.id));
+        fetchConversations();
+        return;
+      }
+      if (data.type !== "new_message") return;
       const m = data.data || {};
       // Message de la conversation ouverte -> on l'ajoute en direct
       if (selectedUserId && m.sender_id === selectedUserId) {
@@ -279,6 +340,7 @@ export default function MessagesPage({ user }) {
       }
       setMessageContent(""); setReplyingTo(null); setPendingImage(null);
       fetchConversations();
+      if (isGroup) fetchGroups();  // remonte le groupe en haut de la liste
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors de l'envoi");
     }
@@ -304,9 +366,12 @@ export default function MessagesPage({ user }) {
 
   const handleDeleteMessage = async (messageId) => {
     try {
-      await axios.delete(`${API}/messages/${messageId}`, { data: { delete_for: "me" } });
+      // Le bouton n'apparaît que sur ses propres messages → suppression pour
+      // tout le monde (l'autre personne ne les voit plus non plus).
+      await axios.delete(`${API}/messages/${messageId}`, { data: { delete_for: "everyone" } });
       setMessages(p => p.filter(m => m.id !== messageId));
-      toast.success("Message supprimé");
+      fetchConversations();
+      toast.success("Message supprimé pour tout le monde");
     } catch { toast.error("Erreur suppression"); }
   };
 
@@ -360,6 +425,22 @@ export default function MessagesPage({ user }) {
 
   const getReplied = (id) => messages.find(m => m.id === id);
 
+  // Liste unifiée : messages privés + groupes, triés du plus récent au plus
+  // ancien. Chaque nouveau message remonte sa conversation tout en haut.
+  const chatItems = useMemo(() => {
+    const dms = (conversations || []).map((c) => ({
+      key: `dm-${c.user_id}`, kind: "dm", data: c,
+      time: c.last_message_time || 0,
+    }));
+    const grps = (groups || []).map((g) => ({
+      key: `grp-${g.id}`, kind: "group", data: g,
+      time: g.last_message_time || g.created_at || 0,
+    }));
+    return [...dms, ...grps].sort(
+      (a, b) => new Date(b.time || 0) - new Date(a.time || 0)
+    );
+  }, [conversations, groups]);
+
   // ── Render helpers ──────────────────────────────────────────────────────────
   const ConvItem = ({ conv }) => {
     const active = selectedUserId === conv.user_id;
@@ -410,7 +491,9 @@ export default function MessagesPage({ user }) {
         )}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold truncate" style={{ color: active ? "#a78bfa" : C.onSurface }}>{group.name}</p>
-          <p className="text-[10px]" style={{ color: C.outline }}>{group.member_ids?.length || 0} membres</p>
+          <p className="text-xs truncate" style={{ color: C.outline }}>
+            {group.last_message || `${group.member_ids?.length || 0} membres`}
+          </p>
         </div>
       </button>
     );
@@ -422,15 +505,17 @@ export default function MessagesPage({ user }) {
       className={`flex flex-col border-r h-full w-full sm:w-[300px] sm:min-w-[280px] sm:max-w-[320px] ${hasSelection ? "hidden sm:flex" : "flex"}`}
       style={{ borderColor: "rgba(255,255,255,0.05)", background: `${C.surface}cc` }}
     >
-      {/* Header */}
-      <div className="px-5 pt-5 pb-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-        <div className="flex items-center gap-2">
-          {/* Retour à l'accueil (mobile : le footer est masqué sur Messages) */}
-          <button onClick={() => navigate("/")} className="lg:hidden -ml-1" title="Retour" style={{ color: C.outline }}>
-            <span className="material-symbols-outlined">arrow_back</span>
-          </button>
-          <h2 className="font-black text-xl tracking-tight" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Comms</h2>
-        </div>
+      {/* Header — pas de trait de séparation, même fond que la liste */}
+      <div className="px-5 pt-5 pb-3 flex items-center gap-2">
+        {/* Retour à l'accueil (mobile : le footer est masqué sur Messages) */}
+        <button onClick={() => navigate("/")} className="lg:hidden -ml-1" title="Retour" style={{ color: C.outline }}>
+          <span className="material-symbols-outlined">arrow_back</span>
+        </button>
+        {/* Nom d'utilisateur : centré sur mobile, aligné à gauche sur PC */}
+        <h2 className="font-black text-xl tracking-tight flex-1 text-center sm:text-left truncate"
+          style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>
+          {user?.username ? `@${user.username}` : "Messages"}
+        </h2>
         <div className="flex gap-2">
           <button onClick={() => setShowNewGroup(true)} title="Nouveau groupe"
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:opacity-80"
@@ -474,28 +559,24 @@ export default function MessagesPage({ user }) {
         </div>
       )}
 
-      {/* Scrollable list */}
+      {/* Scrollable list — groupes et messages privés fusionnés, triés du plus
+          récent au plus ancien (chaque nouveau message remonte en haut). */}
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-        {/* Groups */}
-        {groups.length > 0 && (
-          <div>
-            <p className="px-4 pt-3 pb-1 text-[9px] font-black uppercase tracking-[0.2em]" style={{ color: C.outline }}>Groupes</p>
-            {groups.map(g => <GroupItem key={g.id} group={g} />)}
+        {chatItems.length === 0 ? (
+          <div className="px-4 py-8 text-center">
+            <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
+            <p className="text-xs" style={{ color: C.outline }}>Aucune conversation</p>
+            <button onClick={openNewMessage} className="mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ background: `${C.cyan}18`, color: C.cyan }}>
+              Commencer
+            </button>
           </div>
+        ) : (
+          chatItems.map((item) =>
+            item.kind === "group"
+              ? <GroupItem key={item.key} group={item.data} />
+              : <ConvItem key={item.key} conv={item.data} />
+          )
         )}
-        {/* DMs */}
-        <div>
-          <p className="px-4 pt-3 pb-1 text-[9px] font-black uppercase tracking-[0.2em]" style={{ color: C.outline }}>Messages privés</p>
-          {conversations.length === 0 ? (
-            <div className="px-4 py-8 text-center">
-              <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
-              <p className="text-xs" style={{ color: C.outline }}>Aucune conversation</p>
-              <button onClick={openNewMessage} className="mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ background: `${C.cyan}18`, color: C.cyan }}>
-                Commencer
-              </button>
-            </div>
-          ) : conversations.map(c => <ConvItem key={c.user_id} conv={c} />)}
-        </div>
       </div>
     </div>
   );
@@ -540,11 +621,24 @@ export default function MessagesPage({ user }) {
                 <span className="material-symbols-outlined text-4xl" style={{ color: C.outline, opacity: 0.3 }}>forum</span>
                 <p className="text-sm" style={{ color: C.outline }}>Envoyez le premier message !</p>
               </div>
-            ) : messages.map((msg) => {
+            ) : messages.map((msg, idx) => {
               const isOwn = msg.sender_id === user.id;
               const repliedMsg = msg.reply_to_id ? getReplied(msg.reply_to_id) : null;
+              // Séparateur de date : affiché une seule fois, au changement de jour.
+              const prev = messages[idx - 1];
+              const showDaySeparator =
+                msg.created_at && (!prev || !isSameDay(prev.created_at, msg.created_at));
               return (
-                <div key={msg.id}
+                <Fragment key={msg.id}>
+                {showDaySeparator && (
+                  <div className="flex justify-center py-2 select-none">
+                    <span className="text-[10px] font-bold px-3 py-1 rounded-full"
+                      style={{ background: C.container, color: C.outline }}>
+                      {formatDayLabel(msg.created_at)}
+                    </span>
+                  </div>
+                )}
+                <div
                   onMouseEnter={() => setHoveredMessage(msg.id)}
                   onMouseLeave={() => setHoveredMessage(null)}
                   className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
@@ -586,14 +680,7 @@ export default function MessagesPage({ user }) {
                             ...(Array.isArray(msg.media_urls) ? msg.media_urls : []),
                             imageSrcFromContent(msg.content),
                           ].filter(Boolean).map((src, i) => (
-                            <img
-                              key={i}
-                              src={src}
-                              alt="image"
-                              className="rounded-xl max-w-full mb-1 cursor-zoom-in block"
-                              style={{ maxHeight: 280 }}
-                              onClick={() => setLightbox(src)}
-                            />
+                            <MsgImage key={i} src={cleanImageSrc(src)} onOpen={setLightbox} />
                           ))}
                           {!isDataImage(msg.content) && (msg.content || "").length > 2000
                             ? (msg.content || "").slice(0, 2000) + "…"
@@ -658,6 +745,7 @@ export default function MessagesPage({ user }) {
                     </div>
                   </div>
                 </div>
+                </Fragment>
               );
             })}
             <div ref={messagesEndRef} />
