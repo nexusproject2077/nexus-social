@@ -356,7 +356,15 @@ export default function MessagesPage({ user }) {
     }
   }, [selectedUserId, selectedGroupId]);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  // Toujours afficher les DERNIERS messages (bas de la conversation). Défilement
+  // instantané au chargement / changement de conversation ; on double le scroll
+  // (rAF + court délai) pour rattraper la hauteur une fois les images rendues.
+  useEffect(() => {
+    const toBottom = () => messagesEndRef.current?.scrollIntoView({ block: "end" });
+    requestAnimationFrame(toBottom);
+    const t = setTimeout(toBottom, 120);
+    return () => clearTimeout(t);
+  }, [messages, selectedUserId, selectedGroupId]);
 
   // Messages entrants en temps réel (émis par la couche WebSocket dans Layout)
   useEffect(() => {
@@ -568,7 +576,11 @@ export default function MessagesPage({ user }) {
   };
 
   const markAsRead = async (uid) => {
-    try { await axios.put(`${API}/messages/mark-as-read/${uid}`); fetchConversations(); } catch {}
+    try {
+      await axios.put(`${API}/messages/mark-as-read/${uid}`);
+      fetchConversations();
+      window.dispatchEvent(new Event("nexus:badges")); // rafraîchit la pastille Messages
+    } catch {}
   };
 
   const searchUsers = async (q) => {
@@ -832,27 +844,32 @@ export default function MessagesPage({ user }) {
   // ── Render helpers ──────────────────────────────────────────────────────────
   const ConvItem = ({ conv }) => {
     const active = selectedUserId === conv.user_id;
+    const unread = conv.unread_count > 0;
     return (
       <button
         key={conv.user_id}
         onClick={() => navigate(`/messages/${conv.user_id}`)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all"
         style={{
-          background: active ? `linear-gradient(to right, ${C.cyan}10, transparent)` : "transparent",
-          borderLeft: active ? `2px solid ${C.cyan}` : "2px solid transparent",
+          // Nouvelle conversation non lue → surlignage bleu ; sinon état actif/normal.
+          background: active
+            ? `linear-gradient(to right, ${C.cyan}10, transparent)`
+            : unread ? "rgba(59,130,246,0.10)" : "transparent",
+          borderLeft: active ? `2px solid ${C.cyan}` : unread ? "2px solid #3b82f6" : "2px solid transparent",
         }}
       >
         <div className="relative">
           <UserAvatar username={conv.username} pic={conv.profile_pic} size={10} />
+          {unread && <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full" style={{ background: "#3b82f6", border: `2px solid ${C.surface}` }} />}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold truncate" style={{ color: active ? C.cyan : C.onSurface }}>{conv.username}</p>
-            {conv.unread_count > 0 && (
-              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full" style={{ background: C.cyan, color: C.onPrimary }}>{conv.unread_count}</span>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm truncate" style={{ color: active ? C.cyan : C.onSurface, fontWeight: unread ? 800 : 700 }}>{conv.username}</p>
+            {unread && (
+              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: "#3b82f6", color: "#fff" }}>{conv.unread_count}</span>
             )}
           </div>
-          <p className="text-xs truncate" style={{ color: C.outline }}>{conv.last_message}</p>
+          <p className="text-xs truncate" style={{ color: unread ? C.onVariant : C.outline, fontWeight: unread ? 600 : 400 }}>{conv.last_message}</p>
         </div>
       </button>
     );

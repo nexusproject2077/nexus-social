@@ -2558,6 +2558,14 @@ async def get_notifications(current_user: dict = Depends(get_current_user)):
     
     return notifications
 
+@api_router.get("/badges")
+async def get_badges(current_user: dict = Depends(get_current_user)):
+    """Compteurs non lus pour les pastilles (messages privés + notifications)."""
+    messages = await db.messages.count_documents({"recipient_id": current_user["id"], "read": False})
+    notifications = await db.notifications.count_documents({"user_id": current_user["id"], "read": False})
+    return {"messages": messages, "notifications": notifications}
+
+
 @api_router.put("/notifications/{notification_id}/read")
 async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
     """Marque une notification comme lue"""
