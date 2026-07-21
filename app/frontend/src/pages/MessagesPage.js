@@ -781,6 +781,19 @@ export default function MessagesPage({ user }) {
   };
   const cancelConvLongPress = () => clearTimeout(longPressTimer.current);
 
+  // ── Appui long sur un MESSAGE → menu d'actions (réagir/répondre/copier/supprimer)
+  // Remplace le survol PC sur mobile, façon Instagram, adapté à Nexus.
+  const [msgMenu, setMsgMenu] = useState(null); // objet message | null
+  const startMsgLongPress = (msg) => {
+    clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch {} }
+      try { window.getSelection()?.removeAllRanges(); } catch {}
+      setMsgMenu(msg);
+    }, 400);
+  };
+  const cancelMsgLongPress = () => clearTimeout(longPressTimer.current);
+
   const searchUsers = async (q) => {
     try {
       const res = await axios.get(`${API}/users/search?q=${encodeURIComponent(q)}`);
@@ -1158,8 +1171,8 @@ export default function MessagesPage({ user }) {
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); if (!e.target.value.trim()) setShowNewMsg(false); else setShowNewMsg(true); }}
             placeholder="Rechercher ou démarrer une conversation..."
-            className="w-full text-sm pl-9 pr-4 py-2 rounded-xl border-none outline-none placeholder:text-slate-600"
-            style={{ background: C.high, color: C.onSurface }}
+            className="w-full text-sm pl-9 pr-4 py-2 rounded-xl border-none outline-none placeholder:text-slate-600 select-text"
+            style={{ background: C.high, color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
           />
         </div>
       </div>
@@ -1358,6 +1371,10 @@ export default function MessagesPage({ user }) {
                 <div
                   onMouseEnter={() => setHoveredMessage(msg.id)}
                   onMouseLeave={() => setHoveredMessage(null)}
+                  onTouchStart={() => startMsgLongPress(msg)}
+                  onTouchEnd={cancelMsgLongPress}
+                  onTouchMove={cancelMsgLongPress}
+                  onContextMenu={(e) => { e.preventDefault(); setMsgMenu(msg); }}
                   className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
                 >
                   <div className="relative max-w-[78%]">
@@ -1585,8 +1602,8 @@ export default function MessagesPage({ user }) {
                   value={messageContent}
                   onChange={(e) => setMessageContent(e.target.value)}
                   placeholder="Envoyer un message..."
-                  className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600"
-                  style={{ color: C.onSurface }}
+                  className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600 select-text"
+                  style={{ color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) handleSendMessage(e); }}
                 />
                 <button type="submit" disabled={!messageContent.trim() && !pendingImage && !pendingAudio}
@@ -1811,10 +1828,11 @@ export default function MessagesPage({ user }) {
           au footer (h-16). Sinon bottom-0 (conv ouverte = pas de footer ; PC =
           jamais de footer). */}
       <div
-        className="fixed left-0 right-0 lg:left-64 z-10 flex overflow-hidden"
+        className="fixed left-0 right-0 lg:left-64 z-10 flex overflow-hidden select-none sm:select-text"
         style={{
           top: "var(--nexus-vtop, 0px)",
           height: "var(--nexus-vh, 100dvh)",
+          WebkitTouchCallout: "none",
         }}
       >
         {ConvPanel()}
@@ -1865,6 +1883,58 @@ export default function MessagesPage({ user }) {
               </button>
             </div>
             <button onClick={() => setConvMenu(null)}
+              className="w-full py-4 text-[15px] font-bold border-t" style={{ borderColor: C.outlineVar, color: C.outline }}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Menu appui long MESSAGE (mobile) : réagir / répondre / copier / supprimer ── */}
+      {msgMenu && (
+        <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center select-none"
+          style={{ background: "rgba(0,0,0,0.55)", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}
+          onClick={() => setMsgMenu(null)}>
+          <div
+            className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl overflow-hidden"
+            style={{ background: C.surface, border: `1px solid ${C.outlineVar}`, paddingBottom: "env(safe-area-inset-bottom)" }}
+            onClick={(e) => e.stopPropagation()}>
+            {/* Rangée d'emojis rapides (réactions) */}
+            <div className="pt-3 pb-2 flex flex-col items-center gap-3">
+              <div className="w-10 h-1 rounded-full" style={{ background: C.outlineVar }} />
+              <div className="flex gap-2 px-4">
+                {QUICK_EMOJIS.map((e) => (
+                  <button key={e}
+                    onClick={() => { handleReaction(msgMenu.id, e); setMsgMenu(null); }}
+                    className="w-11 h-11 rounded-full flex items-center justify-center text-2xl transition-transform active:scale-90 hover:scale-110"
+                    style={{ background: C.container }}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="py-1 border-t" style={{ borderColor: C.outlineVar }}>
+              <button onClick={() => { setReplyingTo(msgMenu); setMsgMenu(null); }}
+                className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
+                <span className="material-symbols-outlined" style={{ color: C.cyan }}>reply</span>
+                <span className="text-[15px]">Répondre</span>
+              </button>
+              {!isDataImage(msgMenu.content) && (msgMenu.content || "").trim() && (
+                <button onClick={() => { handleCopy(msgMenu.content); setMsgMenu(null); }}
+                  className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
+                  <span className="material-symbols-outlined" style={{ color: C.cyan }}>content_copy</span>
+                  <span className="text-[15px]">Copier</span>
+                </button>
+              )}
+              {msgMenu.sender_id === user.id && (
+                <button onClick={() => { handleDeleteMessage(msgMenu.id); setMsgMenu(null); }}
+                  className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-red-500/10 text-left" style={{ color: "#f87171" }}>
+                  <span className="material-symbols-outlined">delete</span>
+                  <span className="text-[15px]">Supprimer</span>
+                </button>
+              )}
+            </div>
+            <button onClick={() => setMsgMenu(null)}
               className="w-full py-4 text-[15px] font-bold border-t" style={{ borderColor: C.outlineVar, color: C.outline }}>
               Annuler
             </button>
