@@ -378,6 +378,41 @@ export default function MessagesPage({ user }) {
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [messages, selectedUserId, selectedGroupId]);
 
+  // ── Hauteur réelle du viewport VISIBLE (fix iOS Safari) ──────────────────────
+  // position: fixed s'aligne sur le *layout viewport* : il s'étend derrière la
+  // barre d'URL dynamique et ignore le clavier. Résultat : la barre d'envoi
+  // « flottait » avec du vide en dessous. On pilote donc la hauteur ET le décalage
+  // haut du conteneur de chat avec l'API VisualViewport, qui reflète EXACTEMENT
+  // la zone visible (barre d'URL + clavier compris). L'input reste ainsi collé
+  // pile en bas de l'écran visible, comme sur Instagram.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const root = document.documentElement;
+    const apply = () => {
+      const h = vv ? vv.height : window.innerHeight;
+      const top = vv ? vv.offsetTop : 0;
+      root.style.setProperty("--nexus-vh", `${Math.round(h)}px`);
+      root.style.setProperty("--nexus-vtop", `${Math.round(top)}px`);
+      // La géométrie a changé (clavier, barre d'URL) → on recolle en bas.
+      scrollToBottom(true);
+    };
+    apply();
+    if (vv) {
+      vv.addEventListener("resize", apply);
+      vv.addEventListener("scroll", apply);
+    }
+    window.addEventListener("resize", apply);
+    window.addEventListener("orientationchange", apply);
+    return () => {
+      if (vv) {
+        vv.removeEventListener("resize", apply);
+        vv.removeEventListener("scroll", apply);
+      }
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("orientationchange", apply);
+    };
+  }, []);
+
   // Messages entrants en temps réel (émis par la couche WebSocket dans Layout)
   useEffect(() => {
     const onRealtime = (e) => {
@@ -1573,7 +1608,13 @@ export default function MessagesPage({ user }) {
           bottom-16 sur mobile quand aucune conv n'est ouverte : laisse la place
           au footer (h-16). Sinon bottom-0 (conv ouverte = pas de footer ; PC =
           jamais de footer). */}
-      <div className={`fixed top-0 left-0 right-0 lg:left-64 z-10 flex ${!hasSelection ? "bottom-16 lg:bottom-0" : "bottom-0"}`}>
+      <div
+        className="fixed left-0 right-0 lg:left-64 z-10 flex overflow-hidden"
+        style={{
+          top: "var(--nexus-vtop, 0px)",
+          height: "var(--nexus-vh, 100dvh)",
+        }}
+      >
         {ConvPanel()}
         {ChatPanel()}
         {/* Détails — sidebar droite sur PC uniquement */}
