@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
@@ -33,6 +33,7 @@ const glass = {
 
 export default function ProfilePage({ user, setUser }) {
   const { userId } = useParams();
+  const navigate = useNavigate();
   const [profile, setProfile]         = useState(null);
   const [posts, setPosts]             = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -229,7 +230,21 @@ export default function ProfilePage({ user, setUser }) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <Layout user={user} setUser={setUser}>
+    <Layout user={user} setUser={setUser} hideMobileHeader>
+
+      {/* Bouton Paramètres — en haut à droite, sur mon propre profil (mobile).
+          Sans fond : uniquement le pictogramme, façon Instagram. */}
+      {isOwnProfile && (
+        <button
+          onClick={() => navigate("/settings")}
+          data-testid="profile-settings-button"
+          className="lg:hidden fixed top-3 right-4 z-[55] w-10 h-10 flex items-center justify-center"
+          style={{ color: "#dae2fd", textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
+          title="Paramètres"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 26 }}>settings</span>
+        </button>
+      )}
 
       {/* ── Cinematic Hero ───────────────────────────────────────────────── */}
       <div className="relative w-full overflow-hidden" style={{ height: 290 }}>

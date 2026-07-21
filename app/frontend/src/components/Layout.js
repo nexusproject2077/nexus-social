@@ -6,12 +6,14 @@ import { API } from "@/App";
 import { toast } from "sonner";
 import CallManager from "@/components/CallManager";
 
-export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome, bottomNav }) {
+export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome, hideMobileHeader, bottomNav }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
   const [suggestedUsers, setSuggestedUsers] = useState([]);
   const [trending, setTrending] = useState([]);
+  // Sidebar PC : repliée par défaut (pictogrammes seuls), se déploie au survol.
+  const [sbExpanded, setSbExpanded] = useState(false);
 
   // Détection automatique de la langue via le pays (adresse IP).
   // On n'écrase jamais un choix explicite de l'utilisateur.
@@ -200,34 +202,41 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
     <div style={{ backgroundColor: "#0b1326", color: "#dae2fd" }}
       className={`${hideMobileChrome ? "h-[100dvh] overflow-hidden lg:h-auto lg:overflow-visible lg:min-h-screen" : "min-h-screen"} font-body`}>
 
-      {/* ===== Desktop Left Sidebar ===== */}
+      {/* ===== Desktop Left Sidebar (repliée → pictos seuls ; survol → pictos+noms) ===== */}
       <aside
-        className="fixed left-0 top-0 h-screen w-64 z-40 hidden lg:flex flex-col py-8 px-4 gap-4 select-none"
+        onMouseEnter={() => setSbExpanded(true)}
+        onMouseLeave={() => setSbExpanded(false)}
+        className={`fixed left-0 top-0 h-screen z-40 hidden lg:flex flex-col py-8 gap-4 select-none overflow-hidden transition-[width] duration-200 ease-out ${sbExpanded ? "w-64 px-4 shadow-2xl" : "w-20 px-2"}`}
         style={{ backgroundColor: "#0b1326", borderRight: "1px solid rgba(255,255,255,0.04)" }}
       >
-        {/* Logo */}
+        {/* Logo : « NEXUS » déployé, « N » replié */}
         <div
-          className="font-headline text-2xl font-black tracking-tighter mb-4 px-4 bg-clip-text"
+          className={`font-headline font-black tracking-tighter mb-4 bg-clip-text whitespace-nowrap ${sbExpanded ? "text-2xl px-4" : "text-2xl text-center"}`}
           style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
         >
-          NEXUS
+          {sbExpanded ? "NEXUS" : "N"}
         </div>
 
-        {/* Search */}
-        <div className="px-2 mb-2">
-          <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#859397", fontSize: "18px" }}>
-              search
-            </span>
-            <input
-              className="w-full border-none rounded-xl py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-500"
-              style={{ backgroundColor: "#131b2e", color: "#dae2fd" }}
-              placeholder={`${t("search")}...`}
-              type="text"
-              onKeyDown={(e) => { if (e.key === "Enter" && e.target.value) navigate(`/search?q=${e.target.value}`); }}
-            />
+        {/* Recherche : champ déployé, bouton picto replié */}
+        {sbExpanded ? (
+          <div className="px-2 mb-2">
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#859397", fontSize: "18px" }}>search</span>
+              <input
+                className="w-full border-none rounded-xl py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-500"
+                style={{ backgroundColor: "#131b2e", color: "#dae2fd" }}
+                placeholder={`${t("search")}...`}
+                type="text"
+                onKeyDown={(e) => { if (e.key === "Enter" && e.target.value) navigate(`/search?q=${e.target.value}`); }}
+              />
+            </div>
           </div>
-        </div>
+        ) : (
+          <button onClick={() => navigate("/search")} title={t("search")}
+            className="mb-2 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#131b2e", color: "#859397" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>search</span>
+          </button>
+        )}
 
         {/* Navigation */}
         <nav className="flex flex-col gap-0.5">
@@ -238,7 +247,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
                 key={item.path}
                 data-testid={item.testId}
                 onClick={() => navigate(item.path)}
-                className="flex items-center gap-4 py-3 px-4 rounded-xl transition-all duration-200 text-left"
+                title={item.label}
+                className={`relative flex items-center py-3 rounded-xl transition-all duration-200 text-left ${sbExpanded ? "gap-4 px-4" : "justify-center px-0"}`}
                 style={{
                   color: active ? "var(--nexus-accent)" : "#859397",
                   fontWeight: active ? "700" : "400",
@@ -246,33 +256,38 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
                   borderLeft: active ? "2px solid var(--nexus-accent)" : "2px solid transparent",
                 }}
               >
-                <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1, 'wght' 400" : "'FILL' 0, 'wght' 300" }}>
+                <span className="material-symbols-outlined flex-shrink-0" style={{ fontVariationSettings: active ? "'FILL' 1, 'wght' 400" : "'FILL' 0, 'wght' 300" }}>
                   {item.icon}
                 </span>
-                <span>{item.label}</span>
-                {badgeFor(item.path) > 0 && <span className="ml-auto"><CountBadge count={badgeFor(item.path)} /></span>}
+                {sbExpanded && <span className="whitespace-nowrap">{item.label}</span>}
+                {badgeFor(item.path) > 0 && (
+                  sbExpanded
+                    ? <span className="ml-auto"><CountBadge count={badgeFor(item.path)} /></span>
+                    : <span className="absolute top-1.5 right-2.5"><CountBadge count={badgeFor(item.path)} /></span>
+                )}
               </button>
             );
           })}
         </nav>
 
-        {/* Create Post */}
-        <div className="px-2 mt-2">
+        {/* Créer une publication */}
+        <div className={`mt-2 ${sbExpanded ? "px-2" : ""}`}>
           <button
             data-testid="create-post-button"
             onClick={handleCreatePost}
-            className="w-full py-3.5 font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm"
+            title={t("create_post")}
+            className={`font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm flex items-center justify-center ${sbExpanded ? "w-full py-3.5" : "w-11 h-11 mx-auto"}`}
             style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 8px 20px rgba(34,211,238,0.2)" }}
           >
-            {t("create_post")}
+            {sbExpanded ? t("create_post") : <span className="material-symbols-outlined">add</span>}
           </button>
         </div>
 
-        {/* User info */}
-        <div className="mt-auto px-2">
-          <div className="flex items-center gap-3">
+        {/* Profil / déconnexion */}
+        <div className={`mt-auto ${sbExpanded ? "px-2" : ""}`}>
+          <div className={`flex items-center ${sbExpanded ? "gap-3" : "justify-center"}`}>
             {user.profile_pic ? (
-              <img src={user.profile_pic} alt="Profile" className="w-10 h-10 rounded-full object-cover cursor-pointer" onClick={() => navigate(`/profile/${user.id}`)} />
+              <img src={user.profile_pic} alt="Profile" className="w-10 h-10 rounded-full object-cover cursor-pointer flex-shrink-0" onClick={() => navigate(`/profile/${user.id}`)} />
             ) : (
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm cursor-pointer flex-shrink-0"
@@ -282,12 +297,14 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
                 {user.username[0].toUpperCase()}
               </div>
             )}
-            <div className="flex flex-col flex-1 min-w-0">
-              <span className="text-xs font-semibold truncate" style={{ color: "#dae2fd" }}>@{user.username}</span>
-              <button data-testid="desktop-logout-button" onClick={handleLogout} className="text-[10px] text-left transition-colors hover:text-red-400" style={{ color: "#859397" }}>
-                {t("logout")}
-              </button>
-            </div>
+            {sbExpanded && (
+              <div className="flex flex-col flex-1 min-w-0">
+                <span className="text-xs font-semibold truncate" style={{ color: "#dae2fd" }}>@{user.username}</span>
+                <button data-testid="desktop-logout-button" onClick={handleLogout} className="text-[10px] text-left transition-colors hover:text-red-400" style={{ color: "#859397" }}>
+                  {t("logout")}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </aside>
@@ -365,7 +382,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       )}
 
       {/* ===== Mobile Header ===== */}
-      {!hideMobileChrome && (
+      {!hideMobileChrome && !hideMobileHeader && (
       <header
         className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4 select-none"
         style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
@@ -388,6 +405,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             />
           </div>
         </div>
+        {/* Notifications prend la place de l'ancien bouton Paramètres (retiré ;
+            les Paramètres sont désormais en haut à droite de la page Profil). */}
         <div className="flex items-center gap-3">
           <button className="relative" style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
             <span className="material-symbols-outlined">notifications</span>
@@ -395,15 +414,14 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
               <span className="absolute -top-1.5 -right-1.5"><CountBadge count={badges.notifications} /></span>
             )}
           </button>
-          <button style={{ color: "#859397" }} onClick={() => navigate("/settings")} data-testid="nav-settings-mobile" title={t("settings.title")}>
-            <span className="material-symbols-outlined">settings</span>
-          </button>
         </div>
       </header>
       )}
 
       {/* ===== Main Content ===== */}
-      <main className={`ml-0 lg:ml-64 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : "pt-14 pb-20"} lg:pt-0 lg:pb-0`}>
+      {/* lg:ml-20 = largeur de la sidebar repliée (pas de chevauchement ; la
+          sidebar déployée passe au-dessus au survol). */}
+      <main className={`ml-0 lg:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : "pt-14 pb-20")} lg:pt-0 lg:pb-0`}>
         {children}
       </main>
 
@@ -411,42 +429,17 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* bottomNav force l'affichage même quand le reste du chrome mobile est masqué
           (ex. page Messages : footer visible sur la liste des conversations). */}
       {(!hideMobileChrome || bottomNav) && (
+      <>
       <nav
         className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4 select-none"
         style={{ backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
       >
-        {/* Home */}
+        {/* Le bouton « + » n'est plus au centre : il flotte en bas à droite (FAB). */}
         {[
-          { icon: "home",        path: "/",        label: t("home"),      testId: "nav-home" },
-          { icon: "play_circle", path: "/clips",   label: "Nexus Clips",  testId: "nav-clips" },
-        ].map((item) => {
-          const active = isActive(item.path);
-          return (
-            <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "var(--nexus-accent)" : "#859397" }}>
-              <span className="relative material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>
-                {item.icon}
-                {badgeFor(item.path) > 0 && (
-                  <span className="absolute -top-2 -right-2.5"><CountBadge count={badgeFor(item.path)} /></span>
-                )}
-              </span>
-              <span className={`text-[9px] ${active ? "font-bold" : ""}`}>{item.label}</span>
-            </button>
-          );
-        })}
-
-        {/* FAB Create Post */}
-        <button
-          onClick={handleCreatePost}
-          className="w-11 h-11 rounded-full flex items-center justify-center -mt-8 transition-transform active:scale-95"
-          style={{ background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 4px 16px rgba(34,211,238,0.4)" }}
-        >
-          <span className="material-symbols-outlined">add</span>
-        </button>
-
-        {/* Messages + Profile */}
-        {[
-          { icon: "mail",           path: "/messages",           label: t("messages"), testId: "nav-messages" },
-          { icon: "account_circle", path: `/profile/${user.id}`, label: t("profile"),  testId: "nav-profile" },
+          { icon: "home",           path: "/",                   label: t("home"),      testId: "nav-home" },
+          { icon: "play_circle",    path: "/clips",              label: "Nexus Clips",  testId: "nav-clips" },
+          { icon: "mail",           path: "/messages",           label: t("messages"),  testId: "nav-messages" },
+          { icon: "account_circle", path: `/profile/${user.id}`, label: t("profile"),   testId: "nav-profile" },
         ].map((item) => {
           const active = isActive(item.path);
           return (
@@ -462,6 +455,18 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           );
         })}
       </nav>
+
+      {/* FAB « + » flottant en bas à droite (au-dessus de la barre de nav). */}
+      <button
+        data-testid="fab-create-post"
+        onClick={handleCreatePost}
+        className="lg:hidden fixed right-4 z-[55] w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95"
+        style={{ bottom: "calc(4.5rem + env(safe-area-inset-bottom))", background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 6px 20px rgba(34,211,238,0.45)" }}
+        aria-label={t("create_post")}
+      >
+        <span className="material-symbols-outlined text-3xl">add</span>
+      </button>
+      </>
       )}
 
       {/* Gestionnaire d'appels audio/vidéo (global, écoute les appels entrants) */}

@@ -3,15 +3,14 @@
 const CACHE_NAME = 'nexus-social-v1';
 const RUNTIME_CACHE = 'nexus-runtime-v1';
 
-// Fichiers à mettre en cache au premier chargement
+// Fichiers à mettre en cache au premier chargement.
+// NB : on ne précache PAS les bundles JS/CSS — leurs noms sont hashés par CRA
+// (main.<hash>.js), donc des chemins fixes renverraient un 404 et feraient
+// échouer tout addAll() (→ SW non installé). Ils sont mis en cache à la volée.
 const PRECACHE_URLS = [
   '/',
   '/index.html',
-  '/static/css/main.css',
-  '/static/js/main.js',
   '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
 ];
 
 // Installation du Service Worker

@@ -71,8 +71,25 @@ export default function StoriesFeed() {
   useEffect(() => {
     fetchStories();
     fetchLives();
-    const t = setInterval(fetchLives, 30000); // rafraîchit les directs
-    return () => clearInterval(t);
+    const t = setInterval(fetchLives, 30000);   // rafraîchit les directs
+    const ts = setInterval(fetchStories, 45000); // rafraîchit les stories
+
+    // Auto-refetch « façon React Query » : au retour sur l'onglet et via WebSocket.
+    const onFocus = () => { fetchStories(); fetchLives(); };
+    const onVisible = () => { if (document.visibilityState === "visible") onFocus(); };
+    const onRealtime = (e: any) => {
+      const type = e?.detail?.type;
+      if (type === "new_story" || type === "story" || type === "live_started" || type === "new_live") { fetchStories(); fetchLives(); }
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("nexus:realtime", onRealtime as EventListener);
+    return () => {
+      clearInterval(t); clearInterval(ts);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("nexus:realtime", onRealtime as EventListener);
+    };
   }, []);
 
   const handleStoryAdded = () => {
