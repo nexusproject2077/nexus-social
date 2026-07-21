@@ -197,7 +197,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
   ];
 
   return (
-    <div style={{ backgroundColor: "#0b1326", color: "#dae2fd" }} className="min-h-screen font-body">
+    <div style={{ backgroundColor: "#0b1326", color: "#dae2fd" }}
+      className={`${hideMobileChrome ? "h-[100dvh] overflow-hidden lg:h-auto lg:overflow-visible lg:min-h-screen" : "min-h-screen"} font-body`}>
 
       {/* ===== Desktop Left Sidebar ===== */}
       <aside
