@@ -100,7 +100,7 @@ const formatDayLabel = (d) => {
 };
 
 // Image de message avec repli propre si la source est corrompue/illisible.
-function MsgImage({ src, onOpen }) {
+function MsgImage({ src, onOpen, onLoaded }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
@@ -118,6 +118,7 @@ function MsgImage({ src, onOpen }) {
       className="rounded-xl max-w-full mb-1 cursor-zoom-in block"
       style={{ maxHeight: 280 }}
       onClick={() => onOpen(src)}
+      onLoad={() => onLoaded?.()}
       onError={() => setFailed(true)}
     />
   );
@@ -250,6 +251,16 @@ export default function MessagesPage({ user }) {
   };
 
   const messagesEndRef = useRef(null);
+  const messagesScrollRef = useRef(null);
+
+  // Colle la conversation en bas (dernier message). `force` = toujours ; sinon
+  // seulement si on est déjà proche du bas (ne pas remonter l'utilisateur qui lit).
+  const scrollToBottom = (force = false) => {
+    const c = messagesScrollRef.current;
+    if (!c) return;
+    const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 220;
+    if (force || nearBottom) c.scrollTop = c.scrollHeight;
+  };
   const longPressTimer = useRef(null);
 
   // Image en attente d'envoi (data URL compressée) + sélecteur de fichier.
@@ -356,14 +367,13 @@ export default function MessagesPage({ user }) {
     }
   }, [selectedUserId, selectedGroupId]);
 
-  // Toujours afficher les DERNIERS messages (bas de la conversation). Défilement
-  // instantané au chargement / changement de conversation ; on double le scroll
-  // (rAF + court délai) pour rattraper la hauteur une fois les images rendues.
+  // Toujours afficher les DERNIERS messages (bas de la conversation). Plusieurs
+  // passages (rAF + délais) rattrapent la hauteur une fois les images rendues.
   useEffect(() => {
-    const toBottom = () => messagesEndRef.current?.scrollIntoView({ block: "end" });
-    requestAnimationFrame(toBottom);
-    const t = setTimeout(toBottom, 120);
-    return () => clearTimeout(t);
+    requestAnimationFrame(() => scrollToBottom(true));
+    const t1 = setTimeout(() => scrollToBottom(true), 150);
+    const t2 = setTimeout(() => scrollToBottom(true), 450);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [messages, selectedUserId, selectedGroupId]);
 
   // Messages entrants en temps réel (émis par la couche WebSocket dans Layout)
@@ -1075,7 +1085,7 @@ export default function MessagesPage({ user }) {
           )}
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2" style={{ scrollbarWidth: "none" }}>
+          <div ref={messagesScrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-2" style={{ scrollbarWidth: "none" }}>
             {loading ? (
               <div className="flex justify-center items-center h-full">
                 <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
@@ -1154,7 +1164,7 @@ export default function MessagesPage({ user }) {
                             ...(Array.isArray(msg.media_urls) ? msg.media_urls : []),
                             imageSrcFromContent(msg.content),
                           ].filter(Boolean).map((src, i) => (
-                            <MsgImage key={i} src={cleanImageSrc(src)} onOpen={setLightbox} />
+                            <MsgImage key={i} src={cleanImageSrc(src)} onOpen={setLightbox} onLoaded={() => scrollToBottom()} />
                           ))}
                           {!isDataImage(msg.content) && (msg.content || "").length > 2000
                             ? (msg.content || "").slice(0, 2000) + "…"

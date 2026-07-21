@@ -245,11 +245,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
                   borderLeft: active ? "2px solid var(--nexus-accent)" : "2px solid transparent",
                 }}
               >
-                <span className="relative material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1, 'wght' 400" : "'FILL' 0, 'wght' 300" }}>
+                <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1, 'wght' 400" : "'FILL' 0, 'wght' 300" }}>
                   {item.icon}
-                  {badgeFor(item.path) > 0 && (
-                    <span className="absolute -top-1.5 -right-2"><CountBadge count={badgeFor(item.path)} /></span>
-                  )}
                 </span>
                 <span>{item.label}</span>
                 {badgeFor(item.path) > 0 && <span className="ml-auto"><CountBadge count={badgeFor(item.path)} /></span>}
@@ -405,7 +402,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       )}
 
       {/* ===== Main Content ===== */}
-      <main className={`ml-0 lg:ml-64 ${compact ? "" : "lg:mr-80"} min-h-screen ${hideMobileChrome ? "pt-0 pb-0" : "pt-14 pb-20"} lg:pt-0 lg:pb-0`}>
+      <main className={`ml-0 lg:ml-64 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : "pt-14 pb-20"} lg:pt-0 lg:pb-0`}>
         {children}
       </main>
 

@@ -253,11 +253,12 @@ export default function CallManager({ user }) {
         <audio ref={remoteAudioRef} autoPlay />
       )}
 
-      {/* Vignette locale (effet miroir, comme les autres apps d'appel) */}
+      {/* Vignette locale (effet miroir forcé — className + inline + webkit — pour
+          un rendu identique sur mobile ET desktop) */}
       {withVideo && (phase === "connected" || phase === "outgoing") && (
         <video ref={localVideoRef} autoPlay playsInline muted
-          className="absolute rounded-2xl object-cover shadow-2xl"
-          style={{ width: 108, height: 148, right: 16, top: 16, background: "#000", border: `1px solid ${C.cyan}44`, transform: "scaleX(-1)" }} />
+          className="absolute rounded-2xl object-cover shadow-2xl -scale-x-100"
+          style={{ width: 108, height: 148, right: 16, top: 16, background: "#000", border: `1px solid ${C.cyan}44`, transform: "scaleX(-1)", WebkitTransform: "scaleX(-1)" }} />
       )}
 
       {/* En-tête : avatar + nom + état (masqué en plein écran vidéo connecté) */}
