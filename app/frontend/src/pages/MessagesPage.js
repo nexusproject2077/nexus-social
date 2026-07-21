@@ -270,6 +270,43 @@ export default function MessagesPage({ user }) {
   };
   const longPressTimer = useRef(null);
 
+  // ── Pull-to-refresh (tirer vers le bas pour recharger, comme sur mobile) ──────
+  const [pullDist, setPullDist] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const pullStartY = useRef(null);
+  const PULL_THRESHOLD = 64;
+
+  // Recharge la conversation courante (même effet que le bouton de recharge).
+  const refreshCurrent = async () => {
+    setRefreshing(true);
+    try {
+      if (selectedUserId) { await fetchMessages(selectedUserId); await markAsRead(selectedUserId); }
+      else if (selectedGroupId) { await fetchGroupMessages(selectedGroupId); }
+      await fetchConversations();
+    } finally {
+      setTimeout(() => setRefreshing(false), 300);
+    }
+  };
+
+  const onPullStart = (e) => {
+    const c = messagesScrollRef.current;
+    // On ne démarre le geste que si la liste est déjà tout en haut.
+    pullStartY.current = c && c.scrollTop <= 0 ? e.touches[0].clientY : null;
+  };
+  const onPullMove = (e) => {
+    if (pullStartY.current == null || refreshing) return;
+    const c = messagesScrollRef.current;
+    if (!c || c.scrollTop > 0) { pullStartY.current = null; setPullDist(0); return; }
+    const d = e.touches[0].clientY - pullStartY.current;
+    // Résistance : on divise pour un ressenti « élastique ».
+    if (d > 0) setPullDist(Math.min(90, d * 0.5));
+  };
+  const onPullEnd = () => {
+    if (pullDist >= PULL_THRESHOLD) refreshCurrent();
+    pullStartY.current = null;
+    setPullDist(0);
+  };
+
   // Image en attente d'envoi (data URL compressée) + sélecteur de fichier.
   const [pendingImage, setPendingImage] = useState(null);
   const [compressing, setCompressing] = useState(false);
@@ -637,6 +674,76 @@ export default function MessagesPage({ user }) {
     } catch {}
   };
 
+  // ── Menu appui long (mobile) : épingler / sourdine / non lu / supprimer ───────
+  // convMenu = { kind: "dm"|"group", id, name, pinned, muted } | null
+  const [convMenu, setConvMenu] = useState(null);
+
+  // Met à jour une préférence de conversation (DM ou groupe) côté serveur puis
+  // rafraîchit la liste. `patch` = { pinned?, muted?, marked_unread? }.
+  const setConvPref = async (targetId, patch) => {
+    try {
+      await axios.post(`${API}/messages/prefs/${targetId}`, patch);
+      fetchConversations();
+      fetchGroups();
+      window.dispatchEvent(new Event("nexus:badges"));
+    } catch { toast.error("Action impossible"); }
+  };
+
+  const handleMarkUnread = async () => {
+    if (!convMenu) return;
+    await setConvPref(convMenu.id, { marked_unread: true });
+    toast.success("Marqué comme non lu");
+    setConvMenu(null);
+  };
+
+  const handleTogglePin = async () => {
+    if (!convMenu) return;
+    await setConvPref(convMenu.id, { pinned: !convMenu.pinned });
+    toast.success(convMenu.pinned ? "Désépinglé" : "Épinglé");
+    setConvMenu(null);
+  };
+
+  const handleToggleMutePref = async () => {
+    if (!convMenu) return;
+    await setConvPref(convMenu.id, { muted: !convMenu.muted });
+    toast.success(convMenu.muted ? "Notifications réactivées" : "Mis en sourdine");
+    setConvMenu(null);
+  };
+
+  const handleDeleteFromMenu = async () => {
+    if (!convMenu) return;
+    const m = convMenu;
+    setConvMenu(null);
+    if (m.kind === "group") {
+      if (!window.confirm(`Quitter le groupe « ${m.name} » ?`)) return;
+      try {
+        await axios.delete(`${API}/messages/groups/${m.id}/members/${user.id}`);
+        setGroups((prev) => prev.filter((g) => g.id !== m.id));
+        if (selectedGroupId === m.id) navigate("/messages");
+        fetchGroups();
+        toast.success("Groupe quitté");
+      } catch { toast.error("Impossible de quitter le groupe"); }
+    } else {
+      if (!window.confirm("Supprimer cette conversation ?")) return;
+      try {
+        await axios.delete(`${API}/messages/conversations/${m.id}`);
+        if (selectedUserId === m.id) navigate("/messages");
+        fetchConversations();
+        toast.success("Conversation supprimée");
+      } catch { toast.error("Suppression impossible"); }
+    }
+  };
+
+  // Démarre le minuteur d'appui long ; ouvre le menu au bout de 450 ms.
+  const startConvLongPress = (payload) => {
+    clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch {} }
+      setConvMenu(payload);
+    }, 450);
+  };
+  const cancelConvLongPress = () => clearTimeout(longPressTimer.current);
+
   const searchUsers = async (q) => {
     try {
       const res = await axios.get(`${API}/users/search?q=${encodeURIComponent(q)}`);
@@ -890,19 +997,28 @@ export default function MessagesPage({ user }) {
       key: `grp-${g.id}`, kind: "group", data: g,
       time: g.last_message_time || g.created_at || 0,
     }));
-    return [...dms, ...grps].sort(
-      (a, b) => new Date(b.time || 0) - new Date(a.time || 0)
-    );
+    // Épinglés d'abord, puis du plus récent au plus ancien (façon Instagram).
+    return [...dms, ...grps].sort((a, b) => {
+      const pa = a.data.pinned ? 1 : 0;
+      const pb = b.data.pinned ? 1 : 0;
+      if (pa !== pb) return pb - pa;
+      return new Date(b.time || 0) - new Date(a.time || 0);
+    });
   }, [conversations, groups]);
 
   // ── Render helpers ──────────────────────────────────────────────────────────
   const ConvItem = ({ conv }) => {
     const active = selectedUserId === conv.user_id;
-    const unread = conv.unread_count > 0;
+    const unread = conv.unread_count > 0 || conv.marked_unread;
+    const lp = { kind: "dm", id: conv.user_id, name: conv.username, pinned: !!conv.pinned, muted: !!conv.muted };
     return (
       <button
         key={conv.user_id}
         onClick={() => navigate(`/messages/${conv.user_id}`)}
+        onContextMenu={(e) => { e.preventDefault(); setConvMenu(lp); }}
+        onTouchStart={() => startConvLongPress(lp)}
+        onTouchEnd={cancelConvLongPress}
+        onTouchMove={cancelConvLongPress}
         className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all"
         style={{
           // Nouvelle conversation non lue → surlignage bleu ; sinon état actif/normal.
@@ -918,8 +1034,12 @@ export default function MessagesPage({ user }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm truncate" style={{ color: active ? C.cyan : C.onSurface, fontWeight: unread ? 800 : 700 }}>{conv.username}</p>
-            {unread && (
+            <p className="text-sm truncate flex items-center gap-1" style={{ color: active ? C.cyan : C.onSurface, fontWeight: unread ? 800 : 700 }}>
+              <span className="truncate">{conv.username}</span>
+              {conv.pinned && <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 13, color: C.outline }}>keep</span>}
+              {conv.muted && <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 13, color: C.outline }}>notifications_off</span>}
+            </p>
+            {conv.unread_count > 0 && (
               <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: "#3b82f6", color: "#fff" }}>{conv.unread_count}</span>
             )}
           </div>
@@ -931,13 +1051,19 @@ export default function MessagesPage({ user }) {
 
   const GroupItem = ({ group }) => {
     const active = selectedGroupId === group.id;
+    const unread = !!group.marked_unread;
+    const lp = { kind: "group", id: group.id, name: group.name, pinned: !!group.pinned, muted: !!group.muted };
     return (
       <button
         onClick={() => navigate(`/messages/group/${group.id}`)}
+        onContextMenu={(e) => { e.preventDefault(); setConvMenu(lp); }}
+        onTouchStart={() => startConvLongPress(lp)}
+        onTouchEnd={cancelConvLongPress}
+        onTouchMove={cancelConvLongPress}
         className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all"
         style={{
-          background: active ? `linear-gradient(to right, rgba(139,92,246,0.1), transparent)` : "transparent",
-          borderLeft: active ? "2px solid #8b5cf6" : "2px solid transparent",
+          background: active ? `linear-gradient(to right, rgba(139,92,246,0.1), transparent)` : unread ? "rgba(59,130,246,0.10)" : "transparent",
+          borderLeft: active ? "2px solid #8b5cf6" : unread ? "2px solid #3b82f6" : "2px solid transparent",
         }}
       >
         {group.avatar_url ? (
@@ -949,7 +1075,11 @@ export default function MessagesPage({ user }) {
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold truncate" style={{ color: active ? "#a78bfa" : C.onSurface }}>{group.name}</p>
+          <p className="text-sm font-bold truncate flex items-center gap-1" style={{ color: active ? "#a78bfa" : C.onSurface }}>
+            <span className="truncate">{group.name}</span>
+            {group.pinned && <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 13, color: C.outline }}>keep</span>}
+            {group.muted && <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 13, color: C.outline }}>notifications_off</span>}
+          </p>
           <p className="text-xs truncate" style={{ color: C.outline }}>
             {group.last_message || `${group.member_ids?.length || 0} membres`}
           </p>
@@ -1110,9 +1240,11 @@ export default function MessagesPage({ user }) {
                   </button>
                 </>
               )}
-              {/* Bouton Détails (i) — ouvre la sidebar (PC) / bottom sheet (mobile) */}
+              {/* Bouton Détails (i) — PC uniquement. Sur mobile, on ouvre les
+                  détails en tapant l'avatar/nom (l'appui long sur la liste gère
+                  le reste : épingler, sourdine, non lu, supprimer). */}
               <button onClick={() => setShowDetails((v) => !v)} title="Détails"
-                className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5"
+                className="hidden sm:flex w-9 h-9 rounded-full items-center justify-center transition-all hover:bg-white/5"
                 style={{ color: showDetails ? C.cyan : C.outline }}>
                 <Ico name="info" size={22} />
               </button>
@@ -1129,7 +1261,19 @@ export default function MessagesPage({ user }) {
           )}
 
           {/* Messages */}
-          <div ref={messagesScrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 flex flex-col" style={{ scrollbarWidth: "none", overscrollBehavior: "contain" }}>
+          <div ref={messagesScrollRef}
+            onTouchStart={onPullStart} onTouchMove={onPullMove} onTouchEnd={onPullEnd}
+            className="flex-1 min-h-0 overflow-y-auto px-4 py-4 flex flex-col" style={{ scrollbarWidth: "none", overscrollBehavior: "contain" }}>
+            {/* Indicateur « tirer pour rafraîchir » (mobile) */}
+            {(pullDist > 0 || refreshing) && (
+              <div className="flex justify-center items-center overflow-hidden flex-shrink-0"
+                style={{ height: refreshing ? 36 : pullDist, transition: pullStartY.current ? "none" : "height 0.2s" }}>
+                <div className="w-6 h-6 rounded-full border-2"
+                  style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan,
+                    animation: refreshing ? "spin 0.7s linear infinite" : "none",
+                    transform: refreshing ? "none" : `rotate(${pullDist * 4}deg)`, opacity: Math.min(1, pullDist / PULL_THRESHOLD) }} />
+              </div>
+            )}
             {loading ? (
               <div className="flex justify-center items-center h-full">
                 <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
@@ -1632,6 +1776,50 @@ export default function MessagesPage({ user }) {
           </div>
         )}
       </div>
+
+      {/* ── Menu appui long conversation (mobile) : façon Instagram ── */}
+      {convMenu && (
+        <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.55)" }}
+          onClick={() => setConvMenu(null)}>
+          <div
+            className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl overflow-hidden"
+            style={{ background: C.surface, border: `1px solid ${C.outlineVar}`, paddingBottom: "env(safe-area-inset-bottom)" }}
+            onClick={(e) => e.stopPropagation()}>
+            {/* Poignée + nom */}
+            <div className="pt-3 pb-2 flex flex-col items-center gap-2">
+              <div className="w-10 h-1 rounded-full" style={{ background: C.outlineVar }} />
+              <p className="text-sm font-bold truncate max-w-[80%]" style={{ color: C.onSurface }}>{convMenu.name}</p>
+            </div>
+            <div className="py-1">
+              <button onClick={handleMarkUnread}
+                className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
+                <span className="material-symbols-outlined" style={{ color: C.cyan }}>mark_chat_unread</span>
+                <span className="text-[15px]">Marquer comme non lu</span>
+              </button>
+              <button onClick={handleTogglePin}
+                className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
+                <span className="material-symbols-outlined" style={{ color: C.cyan }}>keep</span>
+                <span className="text-[15px]">{convMenu.pinned ? "Désépingler" : "Épingler"}</span>
+              </button>
+              <button onClick={handleToggleMutePref}
+                className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
+                <span className="material-symbols-outlined" style={{ color: C.cyan }}>{convMenu.muted ? "notifications_active" : "notifications_off"}</span>
+                <span className="text-[15px]">{convMenu.muted ? "Réactiver les notifications" : "Mettre en sourdine"}</span>
+              </button>
+              <button onClick={handleDeleteFromMenu}
+                className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-red-500/10 text-left" style={{ color: "#f87171" }}>
+                <span className="material-symbols-outlined">{convMenu.kind === "group" ? "logout" : "delete"}</span>
+                <span className="text-[15px]">{convMenu.kind === "group" ? "Quitter le groupe" : "Supprimer"}</span>
+              </button>
+            </div>
+            <button onClick={() => setConvMenu(null)}
+              className="w-full py-4 text-[15px] font-bold border-t" style={{ borderColor: C.outlineVar, color: C.outline }}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Lightbox (image agrandie) ── */}
       {lightbox && (

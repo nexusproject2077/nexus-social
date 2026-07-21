@@ -636,6 +636,10 @@ class Conversation(BaseModel):
     last_message: str
     last_message_time: str
     unread_count: int = 0
+    # Préférences personnelles (épingler / sourdine / marqué non lu) — façon Instagram.
+    pinned: bool = False
+    muted: bool = False
+    marked_unread: bool = False
 
 class Notification(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -2623,6 +2627,8 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     clears_raw = await db.conversation_clears.find({"user_id": current_user["id"]}).to_list(length=1000)
     clears = {c["peer_id"]: c.get("cleared_at") for c in clears_raw}
 
+    prefs = await _conversation_prefs_map(current_user["id"])
+
     now_iso = datetime.now(timezone.utc).isoformat()
     conversations_dict = {}
     for msg_raw in messages_raw:
@@ -2661,13 +2667,17 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     preview = "📷 Photo"
                 else:
                     preview = ""
+                p = prefs.get(other_user_id, {})
                 conversations_dict[other_user_id] = Conversation(
                     user_id=other_user["id"],
                     username=other_user["username"],
                     profile_pic=other_user.get("profile_pic"),
                     last_message=preview,
                     last_message_time=msg["created_at"],
-                    unread_count=unread_count
+                    unread_count=unread_count,
+                    pinned=p.get("pinned", False),
+                    muted=p.get("muted", False),
+                    marked_unread=p.get("marked_unread", False),
                 )
 
     return list(conversations_dict.values())
@@ -2779,6 +2789,20 @@ def _pair_key(a: str, b: str) -> str:
     return ":".join(sorted([a, b]))
 
 
+async def _conversation_prefs_map(user_id: str) -> dict:
+    """Préférences personnelles (épingler/sourdine/non lu) de l'utilisateur,
+    indexées par target_id (id d'un contact OU d'un groupe)."""
+    rows = await db.conversation_prefs.find({"user_id": user_id}).to_list(length=2000)
+    out = {}
+    for r in rows:
+        out[r.get("target_id")] = {
+            "pinned": bool(r.get("pinned", False)),
+            "muted": bool(r.get("muted", False)),
+            "marked_unread": bool(r.get("marked_unread", False)),
+        }
+    return out
+
+
 # Durées autorisées pour les messages éphémères (secondes). 0 = désactivé.
 EPHEMERAL_ALLOWED = {0, 300, 3600, 86400}
 
@@ -2829,6 +2853,30 @@ async def clear_conversation(peer_id: str, current_user: dict = Depends(get_curr
     return {"success": True}
 
 
+@api_router.post("/messages/prefs/{target_id}")
+async def set_conversation_prefs(target_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Met à jour les préférences personnelles d'une conversation (DM ou groupe) :
+    épingler, sourdine, marquer comme non lu (façon Instagram). Seuls les champs
+    fournis sont modifiés."""
+    allowed = ("pinned", "muted", "marked_unread")
+    update = {k: bool(data[k]) for k in allowed if k in data}
+    if not update:
+        raise HTTPException(status_code=400, detail="Aucune préférence fournie")
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.conversation_prefs.update_one(
+        {"user_id": current_user["id"], "target_id": target_id},
+        {"$set": update},
+        upsert=True,
+    )
+    doc = await db.conversation_prefs.find_one({"user_id": current_user["id"], "target_id": target_id})
+    return {
+        "success": True,
+        "pinned": bool(doc.get("pinned", False)),
+        "muted": bool(doc.get("muted", False)),
+        "marked_unread": bool(doc.get("marked_unread", False)),
+    }
+
+
 async def _enrich_groups_with_activity(groups, current_user_id):
     """Ajoute à chaque groupe son dernier message (aperçu + date) pour permettre
     un tri unifié avec les messages privés côté client."""
@@ -2860,6 +2908,12 @@ async def list_groups_alias(current_user: dict = Depends(get_current_user)):
     }).to_list(length=100)
     groups = [convert_mongo_doc_to_dict(g) for g in groups_raw]
     groups = await _enrich_groups_with_activity(groups, current_user["id"])
+    prefs = await _conversation_prefs_map(current_user["id"])
+    for g in groups:
+        p = prefs.get(g["id"], {})
+        g["pinned"] = p.get("pinned", False)
+        g["muted"] = p.get("muted", False)
+        g["marked_unread"] = p.get("marked_unread", False)
     return {"success": True, "groups": groups}
 
 @api_router.get("/messages/{user_id}", response_model=List[Message])
@@ -3085,7 +3139,13 @@ async def mark_conversation_as_read(
             }
         }
     )
-    
+
+    # Ouvrir/lire une conversation annule le « marqué comme non lu » manuel.
+    await db.conversation_prefs.update_one(
+        {"user_id": current_user["id"], "target_id": user_id},
+        {"$set": {"marked_unread": False}},
+    )
+
     return {
         "success": True,
         "marked_count": result.modified_count
