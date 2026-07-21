@@ -25,6 +25,36 @@ const ICE_SERVERS = (() => {
 // la qualité.
 const AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
+// Message clair selon la raison de l'échec d'accès au micro/caméra.
+const mediaErrorMessage = (err) => {
+  switch (err?.name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "Accès micro/caméra refusé — autorisez-le (icône 🔒 dans la barre d'adresse) puis réessayez";
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "Aucun micro/caméra détecté sur cet appareil";
+    case "NotReadableError":
+      return "Micro/caméra déjà utilisé par une autre application";
+    default:
+      return "Impossible d'accéder au micro/caméra";
+  }
+};
+
+// getUserMedia avec repli : si la caméra échoue pour un appel vidéo, on retente
+// en audio seul (mieux vaut un appel audio qu'aucun appel).
+const getMedia = async (video) => {
+  try {
+    return { stream: await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video }), video };
+  } catch (err) {
+    if (video && (err?.name === "NotFoundError" || err?.name === "NotReadableError" || err?.name === "OverconstrainedError")) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: false });
+      return { stream, video: false };
+    }
+    throw err;
+  }
+};
+
 const fmtDuration = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 const C = {
@@ -110,19 +140,19 @@ export default function CallManager({ user }) {
     if (!userId) return;
     if (phase !== "idle") { toast.error("Un appel est déjà en cours"); return; }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: !!video });
+      const { stream, video: gotVideo } = await getMedia(!!video);
       localStreamRef.current = stream;
       callIdRef.current = `${user.id}-${Date.now()}`;
       setPeer({ id: userId, username, profile_pic: profilePic });
-      setWithVideo(!!video);
+      setWithVideo(gotVideo);
       setPhase("outgoing");
       const pc = createPC(userId);
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      sendSignal(userId, { kind: "offer", call_id: callIdRef.current, sdp: pc.localDescription, video: !!video });
-    } catch {
-      toast.error("Caméra/micro indisponible — autorisez l'accès");
+      sendSignal(userId, { kind: "offer", call_id: callIdRef.current, sdp: pc.localDescription, video: gotVideo });
+    } catch (err) {
+      toast.error(mediaErrorMessage(err));
       cleanup();
     }
   }, [phase, user.id, createPC, sendSignal, cleanup]);
@@ -132,7 +162,7 @@ export default function CallManager({ user }) {
     const offer = pendingOfferRef.current;
     if (!offer || !peer) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: withVideo });
+      const { stream } = await getMedia(withVideo);
       localStreamRef.current = stream;
       const pc = createPC(peer.id);
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
@@ -143,8 +173,8 @@ export default function CallManager({ user }) {
       await pc.setLocalDescription(answer);
       sendSignal(peer.id, { kind: "answer", call_id: callIdRef.current, sdp: pc.localDescription });
       setPhase("connected");
-    } catch {
-      toast.error("Caméra/micro indisponible");
+    } catch (err) {
+      toast.error(mediaErrorMessage(err));
       sendSignal(peer.id, { kind: "hangup", call_id: callIdRef.current });
       cleanup();
     }
