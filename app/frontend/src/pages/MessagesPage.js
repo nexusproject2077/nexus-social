@@ -307,6 +307,40 @@ export default function MessagesPage({ user }) {
     setPullDist(0);
   };
 
+  // ── Pull-to-refresh de la LISTE des conversations (page d'accueil messages) ───
+  const convScrollRef = useRef(null);
+  const [convPull, setConvPull] = useState(0);
+  const [convRefreshing, setConvRefreshing] = useState(false);
+  const convPullStartY = useRef(null);
+
+  // Recharge la page d'accueil des messages (même effet que le bouton recharger).
+  const refreshHome = async () => {
+    setConvRefreshing(true);
+    try {
+      await Promise.all([fetchConversations(), fetchGroups(), fetchNotes()]);
+      window.dispatchEvent(new Event("nexus:badges"));
+    } finally {
+      setTimeout(() => setConvRefreshing(false), 300);
+    }
+  };
+
+  const onConvPullStart = (e) => {
+    const c = convScrollRef.current;
+    convPullStartY.current = c && c.scrollTop <= 0 ? e.touches[0].clientY : null;
+  };
+  const onConvPullMove = (e) => {
+    if (convPullStartY.current == null || convRefreshing) return;
+    const c = convScrollRef.current;
+    if (!c || c.scrollTop > 0) { convPullStartY.current = null; setConvPull(0); return; }
+    const d = e.touches[0].clientY - convPullStartY.current;
+    if (d > 0) setConvPull(Math.min(90, d * 0.5));
+  };
+  const onConvPullEnd = () => {
+    if (convPull >= PULL_THRESHOLD) refreshHome();
+    convPullStartY.current = null;
+    setConvPull(0);
+  };
+
   // Image en attente d'envoi (data URL compressée) + sélecteur de fichier.
   const [pendingImage, setPendingImage] = useState(null);
   const [compressing, setCompressing] = useState(false);
@@ -1091,8 +1125,8 @@ export default function MessagesPage({ user }) {
   // ── Conversation list panel ──────────────────────────────────────────────────
   const ConvPanel = () => (
     <div
-      className={`flex flex-col border-r h-full w-full sm:w-[300px] sm:min-w-[280px] sm:max-w-[320px] ${hasSelection ? "hidden sm:flex" : "flex"}`}
-      style={{ borderColor: "rgba(255,255,255,0.05)", background: `${C.surface}cc` }}
+      className={`flex flex-col border-r h-full w-full sm:w-[300px] sm:min-w-[280px] sm:max-w-[320px] select-none sm:select-text ${hasSelection ? "hidden sm:flex" : "flex"}`}
+      style={{ borderColor: "rgba(255,255,255,0.05)", background: `${C.surface}cc`, WebkitTouchCallout: "none" }}
     >
       {/* Header — pas de trait de séparation, même fond que la liste.
           Plus de bouton retour : le footer mobile gère la navigation. */}
@@ -1182,7 +1216,19 @@ export default function MessagesPage({ user }) {
       {/* Scrollable list — groupes et messages privés fusionnés, triés du plus
           récent au plus ancien (chaque nouveau message remonte en haut).
           pb-20 sur mobile pour ne pas passer sous le footer. */}
-      <div className="flex-1 min-h-0 overflow-y-auto pb-20 lg:pb-0" style={{ scrollbarWidth: "none", overscrollBehavior: "contain" }}>
+      <div ref={convScrollRef}
+        onTouchStart={onConvPullStart} onTouchMove={onConvPullMove} onTouchEnd={onConvPullEnd}
+        className="flex-1 min-h-0 overflow-y-auto pb-20 lg:pb-0" style={{ scrollbarWidth: "none", overscrollBehavior: "contain" }}>
+        {/* Indicateur « tirer pour rafraîchir » (mobile) */}
+        {(convPull > 0 || convRefreshing) && (
+          <div className="flex justify-center items-center overflow-hidden"
+            style={{ height: convRefreshing ? 36 : convPull, transition: convPullStartY.current ? "none" : "height 0.2s" }}>
+            <div className="w-6 h-6 rounded-full border-2"
+              style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan,
+                animation: convRefreshing ? "spin 0.7s linear infinite" : "none",
+                transform: convRefreshing ? "none" : `rotate(${convPull * 4}deg)`, opacity: Math.min(1, convPull / PULL_THRESHOLD) }} />
+          </div>
+        )}
         {chatItems.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
