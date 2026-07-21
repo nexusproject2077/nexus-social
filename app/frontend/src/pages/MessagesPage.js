@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, Fragment } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
@@ -367,12 +367,14 @@ export default function MessagesPage({ user }) {
     }
   }, [selectedUserId, selectedGroupId]);
 
-  // Toujours afficher les DERNIERS messages (bas de la conversation). Plusieurs
-  // passages (rAF + délais) rattrapent la hauteur une fois les images rendues.
-  useEffect(() => {
+  // Toujours afficher les DERNIERS messages (bas de la conversation). useLayoutEffect
+  // positionne AVANT le paint (pas de flash sur les premiers messages) ; les passages
+  // différés rattrapent la hauteur une fois les images rendues.
+  useLayoutEffect(() => {
+    scrollToBottom(true);
     requestAnimationFrame(() => scrollToBottom(true));
     const t1 = setTimeout(() => scrollToBottom(true), 150);
-    const t2 = setTimeout(() => scrollToBottom(true), 450);
+    const t2 = setTimeout(() => scrollToBottom(true), 500);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [messages, selectedUserId, selectedGroupId]);
 
@@ -1008,7 +1010,7 @@ export default function MessagesPage({ user }) {
       {/* Scrollable list — groupes et messages privés fusionnés, triés du plus
           récent au plus ancien (chaque nouveau message remonte en haut).
           pb-20 sur mobile pour ne pas passer sous le footer. */}
-      <div className="flex-1 overflow-y-auto pb-20 lg:pb-0" style={{ scrollbarWidth: "none" }}>
+      <div className="flex-1 min-h-0 overflow-y-auto pb-20 lg:pb-0" style={{ scrollbarWidth: "none", overscrollBehavior: "contain" }}>
         {chatItems.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
@@ -1030,7 +1032,7 @@ export default function MessagesPage({ user }) {
 
   // ── Chat panel ───────────────────────────────────────────────────────────────
   const ChatPanel = () => (
-    <div className={`flex-1 flex flex-col overflow-hidden ${hasSelection ? "flex" : "hidden sm:flex"}`} style={{ background: "rgba(2,6,23,0.5)" }}>
+    <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${hasSelection ? "flex" : "hidden sm:flex"}`} style={{ background: "rgba(2,6,23,0.5)" }}>
       {hasSelection && currentName ? (
         <>
           {/* Chat header */}
@@ -1085,7 +1087,7 @@ export default function MessagesPage({ user }) {
           )}
 
           {/* Messages */}
-          <div ref={messagesScrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-2" style={{ scrollbarWidth: "none" }}>
+          <div ref={messagesScrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2" style={{ scrollbarWidth: "none", overscrollBehavior: "contain" }}>
             {loading ? (
               <div className="flex justify-center items-center h-full">
                 <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
