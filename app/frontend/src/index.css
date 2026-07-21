@@ -28,6 +28,22 @@ html {
     text-size-adjust: 100%;
 }
 
+/*
+ * Bloque le « rubber-band » iOS : ce rebond en fin de scroll (quand on pose le
+ * doigt et qu'on glisse vers le haut/bas au-delà du contenu) faisait apparaître
+ * une bande noire et donnait l'impression que « ça change de couleur ».
+ *  - overscroll-behavior: none  → coupe le rebond aux bords, tout en gardant le
+ *    scroll normal (ex. fil d'accueil).
+ *  - background navy (#0b1326)  → même si un résidu de rebond subsiste, il reste
+ *    invisible au lieu de révéler du noir derrière l'app.
+ * (Règle hors @layer → prioritaire sur le bg-background de Tailwind.)
+ */
+html,
+body {
+    overscroll-behavior: none;
+    background-color: #0b1326;
+}
+
 body {
     margin: 0;
     font-family:
