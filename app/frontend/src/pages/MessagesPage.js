@@ -1565,7 +1565,15 @@ export default function MessagesPage({ user }) {
           On appelle les panneaux comme fonctions {ConvPanel()} et non <ConvPanel />
           pour éviter que React ne les remonte à chaque frappe (sinon le champ
           de saisie perd le focus et le clavier se ferme). */}
-      <div className="relative z-10 flex h-[100dvh] lg:h-screen">
+      {/* Overlay plein écran en position: fixed — indépendant de la hauteur des
+          ancêtres et des unités dvh/vh, qui sont peu fiables sur iOS Safari
+          (barre d'URL dynamique). top/bottom/left/right ancrent le conteneur au
+          viewport, donc la colonne de chat remplit toujours l'écran et la barre
+          de saisie reste collée en bas — plus de vide noir.
+          bottom-16 sur mobile quand aucune conv n'est ouverte : laisse la place
+          au footer (h-16). Sinon bottom-0 (conv ouverte = pas de footer ; PC =
+          jamais de footer). */}
+      <div className={`fixed top-0 left-0 right-0 lg:left-64 z-10 flex ${!hasSelection ? "bottom-16 lg:bottom-0" : "bottom-0"}`}>
         {ConvPanel()}
         {ChatPanel()}
         {/* Détails — sidebar droite sur PC uniquement */}
