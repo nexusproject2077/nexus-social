@@ -1259,8 +1259,9 @@ export default function MessagesPage({ user }) {
             </div>
           )}
 
-          {/* Input — pas de trait de séparation, même fond que la zone messages */}
-          <div className="px-4 py-3 flex-shrink-0" style={{ background: "rgba(2,6,23,0.5)" }}>
+          {/* Input — collé en bas, avec la safe-area iOS pour combler l'espace
+              sous la barre (home indicator) et éviter qu'elle « remonte ». */}
+          <div className="px-4 pt-3 flex-shrink-0" style={{ background: "rgba(2,6,23,0.5)", paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}>
             {/* Aperçu de l'image en attente */}
             {pendingImage && (
               <div className="mb-2 relative inline-block">
@@ -1288,20 +1289,27 @@ export default function MessagesPage({ user }) {
             )}
 
             {recording ? (
-              /* Barre d'enregistrement vocal */
-              <div className="flex items-center gap-3 px-3 py-2 rounded-2xl" style={glass}>
-                <button type="button" onClick={cancelRecording} title="Annuler"
-                  className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: C.high, color: "#f87171" }}>
-                  <span className="material-symbols-outlined text-sm">close</span>
+              /* Barre d'enregistrement vocal (façon Insta : corbeille · mic rouge ·
+                 chrono · onde animée · valider) */
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-2xl" style={glass}>
+                <button type="button" onClick={cancelRecording} title="Supprimer"
+                  className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
+                  style={{ color: "#f87171" }}>
+                  <span className="material-symbols-outlined text-lg">delete</span>
                 </button>
-                <div className="flex-1 flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: "#ef4444" }} />
-                  <span className="text-sm font-bold" style={{ color: C.onSurface }}>{fmtSecs(recordSecs)}</span>
-                  <span className="text-xs" style={{ color: C.outline }}>Enregistrement…</span>
+                <span className="material-symbols-outlined text-lg animate-pulse flex-shrink-0" style={{ color: "#ef4444" }}>mic</span>
+                <span className="text-sm font-bold tabular-nums flex-shrink-0" style={{ color: C.onSurface, minWidth: 42 }}>{fmtSecs(recordSecs)}</span>
+                <div className="flex-1 flex items-center gap-[3px] h-6 overflow-hidden">
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <span key={i} className="rounded-full animate-pulse"
+                      style={{ width: 3, flexShrink: 0, background: C.cyan, opacity: 0.85,
+                        height: `${25 + Math.abs(Math.sin(i * 1.7)) * 70}%`, animationDelay: `${(i % 6) * 110}ms` }} />
+                  ))}
                 </div>
                 <button type="button" onClick={stopRecording} title="Terminer"
-                  className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
-                  <span className="material-symbols-outlined text-sm">stop</span>
+                  className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
+                  style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+                  <span className="material-symbols-outlined text-lg">check</span>
                 </button>
               </div>
             ) : (
