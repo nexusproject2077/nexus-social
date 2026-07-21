@@ -20,6 +20,13 @@ const ICE_SERVERS = (() => {
   return list;
 })();
 
+// Contraintes micro : l'annulation d'écho évite la résonance (le son distant
+// capté par le micro et renvoyé). noiseSuppression/autoGainControl améliorent
+// la qualité.
+const AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+
+const fmtDuration = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
 const C = {
   bg: "#020617", surface: "#0b1326", high: "#222a3d",
   cyan: (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
@@ -48,6 +55,7 @@ export default function CallManager({ user }) {
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [remoteReady, setRemoteReady] = useState(false);
+  const [callSeconds, setCallSeconds] = useState(0); // durée depuis la connexion
 
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -57,6 +65,7 @@ export default function CallManager({ user }) {
   const pendingCandidatesRef = useRef([]);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null); // sortie audio quand il n'y a pas de vidéo
 
   const sendSignal = useCallback((toId, signal) => {
     if (!toId) return;
@@ -84,6 +93,7 @@ export default function CallManager({ user }) {
       remoteStreamRef.current = e.streams[0];
       setRemoteReady(true);
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0];
+      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = e.streams[0];
     };
     pc.onconnectionstatechange = () => {
       if (["failed", "closed"].includes(pc.connectionState)) {
@@ -100,7 +110,7 @@ export default function CallManager({ user }) {
     if (!userId) return;
     if (phase !== "idle") { toast.error("Un appel est déjà en cours"); return; }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: !!video });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: !!video });
       localStreamRef.current = stream;
       callIdRef.current = `${user.id}-${Date.now()}`;
       setPeer({ id: userId, username, profile_pic: profilePic });
@@ -122,7 +132,7 @@ export default function CallManager({ user }) {
     const offer = pendingOfferRef.current;
     if (!offer || !peer) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: withVideo });
       localStreamRef.current = stream;
       const pc = createPC(peer.id);
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
@@ -196,11 +206,21 @@ export default function CallManager({ user }) {
     return () => window.removeEventListener("nexus:startcall", onStart);
   }, [startCall]);
 
-  // Rattache les flux aux éléments vidéo au (re)montage.
+  // Rattache les flux aux éléments média au (re)montage. L'élément <audio>
+  // distant garantit qu'on ENTEND l'autre même en appel audio (sans vidéo).
   useEffect(() => {
     if (localVideoRef.current && localStreamRef.current) localVideoRef.current.srcObject = localStreamRef.current;
     if (remoteVideoRef.current && remoteStreamRef.current) remoteVideoRef.current.srcObject = remoteStreamRef.current;
+    if (remoteAudioRef.current && remoteStreamRef.current) remoteAudioRef.current.srcObject = remoteStreamRef.current;
   }, [phase, remoteReady, cameraOff]);
+
+  // Chronomètre d'appel : démarre à la connexion, se remet à zéro / s'arrête
+  // automatiquement dès que l'appel se termine (phase ≠ "connected").
+  useEffect(() => {
+    if (phase !== "connected") { setCallSeconds(0); return; }
+    const t = setInterval(() => setCallSeconds((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [phase]);
 
   const toggleMute = () => {
     const s = localStreamRef.current; if (!s) return;
@@ -227,11 +247,17 @@ export default function CallManager({ user }) {
           className="absolute inset-0 w-full h-full object-cover" style={{ background: "#000" }} />
       )}
 
-      {/* Vignette locale */}
+      {/* Sortie audio distante (appel audio, ou avant l'affichage vidéo) —
+          indispensable pour entendre l'autre quand il n'y a pas de vidéo. */}
+      {phase === "connected" && !showVideo && (
+        <audio ref={remoteAudioRef} autoPlay />
+      )}
+
+      {/* Vignette locale (rendu naturel, non miroir) */}
       {withVideo && (phase === "connected" || phase === "outgoing") && (
         <video ref={localVideoRef} autoPlay playsInline muted
           className="absolute rounded-2xl object-cover shadow-2xl"
-          style={{ width: 108, height: 148, right: 16, top: 16, background: "#000", border: `1px solid ${C.cyan}44`, transform: "scaleX(-1)" }} />
+          style={{ width: 108, height: 148, right: 16, top: 16, background: "#000", border: `1px solid ${C.cyan}44` }} />
       )}
 
       {/* En-tête : avatar + nom + état (masqué en plein écran vidéo connecté) */}
@@ -247,18 +273,19 @@ export default function CallManager({ user }) {
                 ? (withVideo ? "Appel vidéo entrant…" : "Appel entrant…")
                 : phase === "outgoing"
                   ? "Appel en cours…"
-                  : "Connecté"}
+                  : fmtDuration(callSeconds)}
             </p>
           </div>
         </div>
       )}
 
-      {/* Bandeau nom en overlay quand vidéo plein écran */}
+      {/* Bandeau nom + durée en overlay quand vidéo plein écran */}
       {showVideo && (
         <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full flex items-center gap-2"
           style={{ background: "rgba(0,0,0,0.4)" }}>
           <Avatar username={peer?.username} pic={peer?.profile_pic} size={26} />
           <span className="text-sm font-bold text-white">@{peer?.username}</span>
+          <span className="text-xs font-mono" style={{ color: C.cyan }}>{fmtDuration(callSeconds)}</span>
         </div>
       )}
 
