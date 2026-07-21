@@ -202,7 +202,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
 
       {/* ===== Desktop Left Sidebar ===== */}
       <aside
-        className="fixed left-0 top-0 h-screen w-64 z-40 hidden lg:flex flex-col py-8 px-4 gap-4"
+        className="fixed left-0 top-0 h-screen w-64 z-40 hidden lg:flex flex-col py-8 px-4 gap-4 select-none"
         style={{ backgroundColor: "#0b1326", borderRight: "1px solid rgba(255,255,255,0.04)" }}
       >
         {/* Logo */}
@@ -367,7 +367,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* ===== Mobile Header ===== */}
       {!hideMobileChrome && (
       <header
-        className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4"
+        className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4 select-none"
         style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
       >
         <div
@@ -412,7 +412,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           (ex. page Messages : footer visible sur la liste des conversations). */}
       {(!hideMobileChrome || bottomNav) && (
       <nav
-        className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4"
+        className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4 select-none"
         style={{ backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
       >
         {/* Home */}

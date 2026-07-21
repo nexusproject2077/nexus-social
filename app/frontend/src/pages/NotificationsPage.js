@@ -123,6 +123,8 @@ export default function NotificationsPage({ user }) {
         return <AtSign className="w-5 h-5 text-cyan-500" />;
       case 'trending':
         return <TrendingUp className="w-5 h-5 text-orange-500" />;
+      case 'reaction':
+        return <span className="text-xl leading-none">{'❤️'}</span>;
       case 'live':
         return <Radio className="w-5 h-5 text-red-500" />;
       default:
@@ -141,6 +143,7 @@ export default function NotificationsPage({ user }) {
       case 'repost':   return "a reposté votre publication";
       case 'mention':  return "vous a mentionné dans une publication";
       case 'trending': return "Votre publication est dans les tendances 🔥";
+      case 'reaction': return `a réagi ${notif.comment_content || ''} à votre message`;
       case 'follow_request':  return "souhaite s'abonner à vous";
       case 'follow_accepted': return "a accepté votre demande d'abonnement";
       case 'live':     return "est en direct 🔴 — rejoignez maintenant";

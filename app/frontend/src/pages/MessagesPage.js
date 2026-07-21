@@ -503,6 +503,12 @@ export default function MessagesPage({ user }) {
         fetchConversations();
         return;
       }
+      // Réaction (ajout/retrait) émise par l'autre partie → maj en direct.
+      if (data.type === "reaction_update") {
+        const ev = data.data || {};
+        setMessages((prev) => prev.map((x) => x.id === ev.message_id ? { ...x, reactions: ev.reactions } : x));
+        return;
+      }
       // L'autre partie a changé le réglage des messages éphémères.
       if (data.type === "ephemeral_changed") {
         const ev = data.data || {};
@@ -794,6 +800,40 @@ export default function MessagesPage({ user }) {
   };
   const cancelMsgLongPress = () => clearTimeout(longPressTimer.current);
 
+  // ── Swipe → répondre (façon Instagram) ───────────────────────────────────────
+  // Glisser un message vers la droite (reçu) / gauche (envoyé) déclenche la réponse.
+  const [swipe, setSwipe] = useState({ id: null, dx: 0 });
+  const swipeStart = useRef(null);
+  const SWIPE_REPLY = 55;
+  const onMsgTouchStart = (msg, e) => {
+    startMsgLongPress(msg);
+    const t = e.touches[0];
+    swipeStart.current = { x: t.clientX, y: t.clientY, own: msg.sender_id === user.id };
+  };
+  const onMsgTouchMove = (msg, e) => {
+    const s = swipeStart.current;
+    if (!s) return;
+    const t = e.touches[0];
+    const dx = t.clientX - s.x, dy = t.clientY - s.y;
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) cancelMsgLongPress();
+    // Sens autorisé : reçu → droite ; envoyé → gauche. Uniquement geste horizontal.
+    const dir = s.own ? -1 : 1;
+    if (dx * dir > 0 && Math.abs(dx) > Math.abs(dy)) {
+      setSwipe({ id: msg.id, dx: Math.max(-80, Math.min(80, dx)) });
+    }
+  };
+  const onMsgTouchEnd = (msg) => {
+    cancelMsgLongPress();
+    const s = swipeStart.current;
+    swipeStart.current = null;
+    const reached = Math.abs(swipe.dx) > SWIPE_REPLY && swipe.id === msg.id;
+    setSwipe({ id: null, dx: 0 });
+    if (s && reached) {
+      if (navigator.vibrate) { try { navigator.vibrate(12); } catch {} }
+      setReplyingTo(msg);
+    }
+  };
+
   const searchUsers = async (q) => {
     try {
       const res = await axios.get(`${API}/users/search?q=${encodeURIComponent(q)}`);
@@ -847,23 +887,65 @@ export default function MessagesPage({ user }) {
     return Object.entries(counts);
   };
 
+  // Emoji de réaction posé par l'utilisateur courant sur un message (ou null).
+  const myReaction = (reactions) =>
+    (Array.isArray(reactions) ? reactions : []).find((r) => r.user_id === user.id)?.emoji || null;
+
   const handleReaction = async (messageId, emoji) => {
     try {
+      // Le backend bascule : re-cliquer le même emoji le retire.
       const res = await axios.post(`${API}/messages/${messageId}/react`, { emoji });
       setMessages(p => p.map(m => m.id === messageId ? { ...m, reactions: res.data.reactions } : m));
       setShowEmojiPicker(null);
     } catch { toast.error("Erreur réaction"); }
   };
 
-  const handleDeleteMessage = async (messageId) => {
+  // messageId : id ; everyone : true = pour tous (hard delete), false = pour moi.
+  const handleDeleteMessage = async (messageId, everyone = true) => {
     try {
-      // Le bouton n'apparaît que sur ses propres messages → suppression pour
-      // tout le monde (l'autre personne ne les voit plus non plus).
-      await axios.delete(`${API}/messages/${messageId}`, { data: { delete_for: "everyone" } });
+      await axios.delete(`${API}/messages/${messageId}`, { data: { delete_for: everyone ? "everyone" : "me" } });
       setMessages(p => p.filter(m => m.id !== messageId));
       fetchConversations();
-      toast.success("Message supprimé pour tout le monde");
+      toast.success(everyone ? "Message supprimé pour tout le monde" : "Message supprimé pour vous");
     } catch { toast.error("Erreur suppression"); }
+  };
+
+  // ── Traduction d'un message (langue = paramètres de l'app) ───────────────────
+  const [translations, setTranslations] = useState({}); // { [msgId]: texte traduit }
+  const translateMessage = async (msg) => {
+    if (translations[msg.id]) { // déjà traduit → bascule (masque la traduction)
+      setTranslations((t) => { const n = { ...t }; delete n[msg.id]; return n; });
+      return;
+    }
+    const target = (localStorage.getItem("i18nextLng") || navigator.language || "fr").split("-")[0];
+    try {
+      const res = await axios.post(`${API}/messages/translate`, { text: msg.content, target });
+      if (res.data?.translated) setTranslations((t) => ({ ...t, [msg.id]: res.data.translated }));
+      else toast.error("Traduction indisponible");
+    } catch { toast.error("Traduction indisponible"); }
+  };
+
+  // ── Transfert d'un message vers une autre conversation ───────────────────────
+  const [forwardMsg, setForwardMsg] = useState(null); // message à transférer | null
+  const forwardTo = async (target) => {
+    // target = { kind: "dm", id } | { kind: "group", id }
+    const m = forwardMsg;
+    setForwardMsg(null);
+    if (!m) return;
+    try {
+      if (target.kind === "group") {
+        await axios.post(`${API}/messages/groups/${target.id}/messages`, { content: m.content || "" });
+      } else {
+        await axios.post(`${API}/messages`, {
+          recipient_id: target.id,
+          content: m.content || "",
+          media_url: audioSrcFrom(m) ? m.media_url : (m.media_url || null),
+          media_type: m.media_type || null,
+        });
+      }
+      toast.success("Message transféré");
+      fetchConversations();
+    } catch { toast.error("Transfert impossible"); }
   };
 
   const handleCopy = (content) => {
@@ -1371,12 +1453,21 @@ export default function MessagesPage({ user }) {
                 <div
                   onMouseEnter={() => setHoveredMessage(msg.id)}
                   onMouseLeave={() => setHoveredMessage(null)}
-                  onTouchStart={() => startMsgLongPress(msg)}
-                  onTouchEnd={cancelMsgLongPress}
-                  onTouchMove={cancelMsgLongPress}
+                  onTouchStart={(e) => onMsgTouchStart(msg, e)}
+                  onTouchEnd={() => onMsgTouchEnd(msg)}
+                  onTouchMove={(e) => onMsgTouchMove(msg, e)}
                   onContextMenu={(e) => { e.preventDefault(); setMsgMenu(msg); }}
-                  className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}
+                  className={`relative flex ${isOwn ? "justify-end" : "justify-start"} group`}
+                  style={{
+                    transform: swipe.id === msg.id ? `translateX(${swipe.dx}px)` : "none",
+                    transition: swipe.id === msg.id ? "none" : "transform 0.2s",
+                  }}
                 >
+                  {/* Icône « répondre » révélée pendant le swipe */}
+                  {swipe.id === msg.id && Math.abs(swipe.dx) > 12 && (
+                    <span className={`material-symbols-outlined absolute top-1/2 -translate-y-1/2 ${isOwn ? "right-full mr-1" : "left-full ml-1"}`}
+                      style={{ color: C.cyan, opacity: Math.min(1, Math.abs(swipe.dx) / SWIPE_REPLY) }}>reply</span>
+                  )}
                   <div className="relative max-w-[78%]">
                     {/* Reply preview (message cité, façon Insta) */}
                     {repliedMsg && (
@@ -1429,25 +1520,36 @@ export default function MessagesPage({ user }) {
                           {!isDataImage(msg.content) && (msg.content || "").length > 2000
                             ? (msg.content || "").slice(0, 2000) + "…"
                             : (isDataImage(msg.content) ? null : msg.content)}
+                          {/* Traduction (façon Instagram : affichée sous le texte) */}
+                          {translations[msg.id] && (
+                            <div className="mt-1.5 pt-1.5 text-sm" style={{ borderTop: `1px solid ${C.outlineVar}`, color: C.onSurface }}>
+                              <span className="text-[9px] font-bold uppercase tracking-widest block mb-0.5" style={{ color: C.cyan }}>Traduit</span>
+                              {translations[msg.id]}
+                            </div>
+                          )}
                         </div>
 
-                        {/* Reactions */}
+                        {/* Reactions — la réaction de l'utilisateur porte une pastille (anneau cyan) */}
                         {groupReactions(msg.reactions).length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
-                            {groupReactions(msg.reactions).map(([emoji, count]) => (
-                              <button key={emoji} onClick={() => handleReaction(msg.id, emoji)}
-                                className="text-xs px-1.5 py-0.5 rounded-full transition-all hover:opacity-80"
-                                style={{ background: C.high, border: `1px solid ${C.outlineVar}` }}>
-                                {emoji} {count}
-                              </button>
-                            ))}
+                            {groupReactions(msg.reactions).map(([emoji, count]) => {
+                              const mine = myReaction(msg.reactions) === emoji;
+                              return (
+                                <button key={emoji} onClick={() => handleReaction(msg.id, emoji)}
+                                  className="text-xs px-1.5 py-0.5 rounded-full transition-all hover:opacity-80"
+                                  style={{ background: mine ? `${C.cyan}22` : C.high, border: `1px solid ${mine ? C.cyan : C.outlineVar}` }}
+                                  title={mine ? "Retirer ma réaction" : undefined}>
+                                  {emoji} {count}
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
 
-                        {/* Hover actions */}
+                        {/* Hover actions (PC uniquement — sur mobile on utilise l'appui long) */}
                         {hoveredMessage === msg.id && (
                           <div
-                            className={`absolute ${isOwn ? "right-full mr-2" : "left-full ml-2"} top-0 flex items-center gap-1 rounded-xl px-1 py-1 shadow-lg`}
+                            className={`hidden sm:flex absolute ${isOwn ? "right-full mr-2" : "left-full ml-2"} top-0 items-center gap-1 rounded-xl px-1 py-1 shadow-lg`}
                             style={glass}
                           >
                             <button onClick={() => setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-sm">
@@ -1899,18 +2001,21 @@ export default function MessagesPage({ user }) {
             className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl overflow-hidden"
             style={{ background: C.surface, border: `1px solid ${C.outlineVar}`, paddingBottom: "env(safe-area-inset-bottom)" }}
             onClick={(e) => e.stopPropagation()}>
-            {/* Rangée d'emojis rapides (réactions) */}
+            {/* Rangée d'emojis rapides (réactions) — pastille sur celle déjà mise */}
             <div className="pt-3 pb-2 flex flex-col items-center gap-3">
               <div className="w-10 h-1 rounded-full" style={{ background: C.outlineVar }} />
               <div className="flex gap-2 px-4">
-                {QUICK_EMOJIS.map((e) => (
-                  <button key={e}
-                    onClick={() => { handleReaction(msgMenu.id, e); setMsgMenu(null); }}
-                    className="w-11 h-11 rounded-full flex items-center justify-center text-2xl transition-transform active:scale-90 hover:scale-110"
-                    style={{ background: C.container }}>
-                    {e}
-                  </button>
-                ))}
+                {QUICK_EMOJIS.map((e) => {
+                  const mine = myReaction(msgMenu.reactions) === e;
+                  return (
+                    <button key={e}
+                      onClick={() => { handleReaction(msgMenu.id, e); setMsgMenu(null); }}
+                      className="w-11 h-11 rounded-full flex items-center justify-center text-2xl transition-transform active:scale-90 hover:scale-110"
+                      style={{ background: mine ? `${C.cyan}22` : C.container, border: mine ? `2px solid ${C.cyan}` : "2px solid transparent" }}>
+                      {e}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <div className="py-1 border-t" style={{ borderColor: C.outlineVar }}>
@@ -1919,23 +2024,84 @@ export default function MessagesPage({ user }) {
                 <span className="material-symbols-outlined" style={{ color: C.cyan }}>reply</span>
                 <span className="text-[15px]">Répondre</span>
               </button>
+              <button onClick={() => { const m = msgMenu; setMsgMenu(null); setForwardMsg(m); }}
+                className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
+                <span className="material-symbols-outlined" style={{ color: C.cyan }}>forward</span>
+                <span className="text-[15px]">Transférer</span>
+              </button>
               {!isDataImage(msgMenu.content) && (msgMenu.content || "").trim() && (
-                <button onClick={() => { handleCopy(msgMenu.content); setMsgMenu(null); }}
-                  className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
-                  <span className="material-symbols-outlined" style={{ color: C.cyan }}>content_copy</span>
-                  <span className="text-[15px]">Copier</span>
-                </button>
+                <>
+                  <button onClick={() => { const m = msgMenu; setMsgMenu(null); translateMessage(m); }}
+                    className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
+                    <span className="material-symbols-outlined" style={{ color: C.cyan }}>translate</span>
+                    <span className="text-[15px]">{translations[msgMenu.id] ? "Afficher l'original" : "Traduire"}</span>
+                  </button>
+                  <button onClick={() => { handleCopy(msgMenu.content); setMsgMenu(null); }}
+                    className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
+                    <span className="material-symbols-outlined" style={{ color: C.cyan }}>content_copy</span>
+                    <span className="text-[15px]">Copier</span>
+                  </button>
+                </>
               )}
+              {/* Supprimer pour vous : disponible sur tout message (masque chez moi
+                  seulement, sans notifier l'autre). */}
+              <button onClick={() => { handleDeleteMessage(msgMenu.id, false); setMsgMenu(null); }}
+                className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
+                <span className="material-symbols-outlined" style={{ color: C.outline }}>visibility_off</span>
+                <span className="text-[15px]">Supprimer pour vous</span>
+              </button>
+              {/* Supprimer pour tout le monde : seulement mes propres messages. */}
               {msgMenu.sender_id === user.id && (
-                <button onClick={() => { handleDeleteMessage(msgMenu.id); setMsgMenu(null); }}
+                <button onClick={() => { handleDeleteMessage(msgMenu.id, true); setMsgMenu(null); }}
                   className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-red-500/10 text-left" style={{ color: "#f87171" }}>
                   <span className="material-symbols-outlined">delete</span>
-                  <span className="text-[15px]">Supprimer</span>
+                  <span className="text-[15px]">Supprimer pour tout le monde</span>
                 </button>
               )}
             </div>
             <button onClick={() => setMsgMenu(null)}
               className="w-full py-4 text-[15px] font-bold border-t" style={{ borderColor: C.outlineVar, color: C.outline }}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Transférer un message : choix de la conversation cible ── */}
+      {forwardMsg && (
+        <div className="fixed inset-0 z-[76] flex items-end sm:items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.55)" }}
+          onClick={() => setForwardMsg(null)}>
+          <div
+            className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col"
+            style={{ background: C.surface, border: `1px solid ${C.outlineVar}`, maxHeight: "70vh", paddingBottom: "env(safe-area-inset-bottom)" }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="pt-3 pb-2 flex flex-col items-center gap-2 flex-shrink-0">
+              <div className="w-10 h-1 rounded-full" style={{ background: C.outlineVar }} />
+              <p className="text-sm font-bold" style={{ color: C.onSurface }}>Transférer à…</p>
+            </div>
+            <div className="overflow-y-auto flex-1" style={{ scrollbarWidth: "none" }}>
+              {chatItems.length === 0 ? (
+                <p className="text-center text-xs py-6" style={{ color: C.outline }}>Aucune conversation</p>
+              ) : chatItems.map((item) => {
+                const g = item.kind === "group";
+                const name = g ? item.data.name : item.data.username;
+                const pic = g ? item.data.avatar_url : item.data.profile_pic;
+                const id = g ? item.data.id : item.data.user_id;
+                return (
+                  <button key={item.key} onClick={() => forwardTo({ kind: item.kind, id })}
+                    className="w-full flex items-center gap-3 px-5 py-3 transition-all hover:bg-white/5 text-left">
+                    {g ? (
+                      pic ? <img src={pic} alt={name} className="w-9 h-9 rounded-xl object-cover" />
+                        : <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm" style={{ background: "linear-gradient(135deg,#8b5cf6,#ec4899)", color: "#fff" }}>{name?.[0]?.toUpperCase()}</div>
+                    ) : <UserAvatar username={name} pic={pic} size={9} />}
+                    <span className="text-sm font-semibold truncate" style={{ color: C.onSurface }}>{name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={() => setForwardMsg(null)}
+              className="w-full py-4 text-[15px] font-bold border-t flex-shrink-0" style={{ borderColor: C.outlineVar, color: C.outline }}>
               Annuler
             </button>
           </div>
