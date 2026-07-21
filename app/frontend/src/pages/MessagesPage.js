@@ -133,11 +133,67 @@ const audioSrcFrom = (msg) => {
 };
 
 // Lecteur de message vocal (contrôles natifs, compact).
+// Lecteur vocal optimisé (façon Insta/WhatsApp) : play/pause, forme d'onde
+// cliquable pour se déplacer, durée fiable (contourne le bug duration=Infinity
+// des enregistrements MediaRecorder), pas de <audio controls> natif moche.
 function VoiceMessage({ src, own }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [dur, setDur] = useState(0);
+  const [cur, setCur] = useState(0);
+  const accent = own ? "#93c5fd" : "#22d3ee";
+
+  const fmt = (s) => (isFinite(s) && s >= 0 ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "0:00");
+
+  const onMeta = (e) => {
+    const a = e.target;
+    if (a.duration === Infinity || Number.isNaN(a.duration)) {
+      // Hack connu : forcer le calcul de la durée réelle des blobs MediaRecorder.
+      a.currentTime = 1e101;
+      a.ontimeupdate = () => { a.ontimeupdate = null; setDur(a.duration); a.currentTime = 0; };
+    } else setDur(a.duration || 0);
+  };
+
+  const toggle = () => {
+    const a = audioRef.current; if (!a) return;
+    if (playing) a.pause(); else a.play().catch(() => {});
+  };
+
+  // Barre de progression cliquable (seek).
+  const seek = (e) => {
+    const a = audioRef.current; if (!a || !dur) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    a.currentTime = ratio * dur;
+  };
+
+  const pct = dur ? (cur / dur) * 100 : 0;
+  // Forme d'onde décorative déterministe (barres pseudo-aléatoires stables).
+  const bars = Array.from({ length: 28 }, (_, i) => 30 + Math.abs(Math.sin(i * 1.3)) * 70);
+
   return (
-    <div className="flex items-center gap-2 mb-1" style={{ minWidth: 180 }}>
-      <span className="material-symbols-outlined text-base" style={{ color: own ? "#93c5fd" : "#22d3ee" }}>graphic_eq</span>
-      <audio src={src} controls preload="metadata" style={{ height: 34, maxWidth: 220 }} />
+    <div className="flex items-center gap-2.5 mb-1 py-1" style={{ minWidth: 210 }}>
+      <audio ref={audioRef} src={src} preload="metadata"
+        onLoadedMetadata={onMeta}
+        onTimeUpdate={(e) => setCur(e.target.currentTime || 0)}
+        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setCur(0); }} />
+      <button type="button" onClick={toggle}
+        className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-90"
+        style={{ background: accent, color: "#00363e" }}>
+        <span className="material-symbols-outlined text-lg">{playing ? "pause" : "play_arrow"}</span>
+      </button>
+      <div className="flex-1 min-w-[120px]">
+        <div className="relative flex items-center gap-[2px] h-6 cursor-pointer" onClick={seek}>
+          {bars.map((h, i) => {
+            const active = (i / bars.length) * 100 <= pct;
+            return <span key={i} className="flex-1 rounded-full" style={{ height: `${h}%`, background: active ? accent : "rgba(255,255,255,0.22)" }} />;
+          })}
+        </div>
+        <div className="text-[10px] mt-0.5 tabular-nums" style={{ color: own ? "#cbd5e1" : "#94a3b8" }}>
+          {fmt(playing || cur > 0 ? cur : dur)}
+        </div>
+      </div>
     </div>
   );
 }
@@ -192,6 +248,8 @@ export default function MessagesPage({ user }) {
   const [showEmojiPicker, setShowEmojiPicker]  = useState(null);
   const [loading,         setLoading]          = useState(false);
   const [lightbox,        setLightbox]         = useState(null); // src de l'image agrandie
+  const [showConvSearch,  setShowConvSearch]   = useState(false); // barre de recherche dans la conv
+  const [convSearch,      setConvSearch]       = useState("");
 
   // Notes éphémères (façon Instagram) affichées en haut de la liste des DMs.
   const [notes,           setNotes]            = useState([]);
@@ -507,6 +565,14 @@ export default function MessagesPage({ user }) {
         const del = data.data || {};
         setMessages((prev) => prev.filter((x) => x.id !== del.id));
         fetchConversations();
+        return;
+      }
+      // L'autre partie a lu la conversation → « Vu » sur mes messages.
+      if (data.type === "messages_read") {
+        const ev = data.data || {};
+        if (selectedUserId && ev.reader_id === selectedUserId) {
+          setMessages((prev) => prev.map((x) => x.sender_id === user.id ? { ...x, status: "read", read: true, read_at: x.read_at || ev.read_at } : x));
+        }
         return;
       }
       // Réaction (ajout/retrait) émise par l'autre partie → maj en direct.
@@ -1154,6 +1220,21 @@ export default function MessagesPage({ user }) {
 
   const getReplied = (id) => messages.find(m => m.id === id);
 
+  // Recherche dans la conversation ouverte (filtre les messages affichés).
+  const convSearchQ = convSearch.trim().toLowerCase();
+  const displayedMessages = convSearchQ
+    ? messages.filter((m) => (m.content || "").toLowerCase().includes(convSearchQ))
+    : messages;
+
+  // « Vu » : dernier message que J'AI envoyé, s'il a été lu par l'autre.
+  const lastOwnReadId = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.sender_id === user.id) return (m.status === "read" || m.read_at) ? m.id : null;
+    }
+    return null;
+  })();
+
   // Liste unifiée : messages privés + groupes, triés du plus récent au plus
   // ancien. Chaque nouveau message remonte sa conversation tout en haut.
   const chatItems = useMemo(() => {
@@ -1422,6 +1503,12 @@ export default function MessagesPage({ user }) {
                   </button>
                 </>
               )}
+              {/* Rechercher dans la conversation */}
+              <button onClick={() => { setShowConvSearch((v) => { if (v) setConvSearch(""); return !v; }); }} title="Rechercher"
+                className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5"
+                style={{ color: showConvSearch ? C.cyan : C.outline }}>
+                <Ico name="search" size={20} />
+              </button>
               {/* Bouton Détails (i) — PC uniquement. Sur mobile, on ouvre les
                   détails en tapant l'avatar/nom (l'appui long sur la liste gère
                   le reste : épingler, sourdine, non lu, supprimer). */}
@@ -1432,6 +1519,27 @@ export default function MessagesPage({ user }) {
               </button>
             </div>
           </div>
+
+          {/* Barre de recherche dans la conversation */}
+          {showConvSearch && (
+            <div className="px-4 py-2 flex items-center gap-2 flex-shrink-0" style={{ background: "rgba(11,19,38,0.6)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <span className="material-symbols-outlined text-base" style={{ color: C.outline }}>search</span>
+              <input
+                autoFocus
+                value={convSearch}
+                onChange={(e) => setConvSearch(e.target.value)}
+                placeholder="Rechercher dans la conversation..."
+                className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600 select-text"
+                style={{ color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
+              />
+              {convSearchQ && (
+                <span className="text-[11px] flex-shrink-0" style={{ color: C.outline }}>{displayedMessages.length}</span>
+              )}
+              <button onClick={() => { setShowConvSearch(false); setConvSearch(""); }} style={{ color: C.outline }} className="hover:text-white transition-colors flex-shrink-0">
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+          )}
 
           {/* Bandeau messages éphémères */}
           {!isGroup && ephemeralTtl > 0 && (
@@ -1466,15 +1574,20 @@ export default function MessagesPage({ user }) {
                 <span className="material-symbols-outlined text-4xl" style={{ color: C.outline, opacity: 0.3 }}>forum</span>
                 <p className="text-sm" style={{ color: C.outline }}>Envoyez le premier message !</p>
               </div>
+            ) : (convSearchQ && displayedMessages.length === 0) ? (
+              <div className="flex flex-col justify-center items-center h-full gap-3">
+                <span className="material-symbols-outlined text-4xl" style={{ color: C.outline, opacity: 0.3 }}>search_off</span>
+                <p className="text-sm" style={{ color: C.outline }}>Aucun message trouvé</p>
+              </div>
             ) : (
               // mt-auto colle les messages EN BAS (peu de messages → collés au bas,
               // pas d'espace vide au-dessus de la saisie ; sinon défilement normal).
               <div className="mt-auto space-y-2">
-              {messages.map((msg, idx) => {
+              {displayedMessages.map((msg, idx) => {
               const isOwn = msg.sender_id === user.id;
               const repliedMsg = msg.reply_to_id ? getReplied(msg.reply_to_id) : null;
               // Séparateur de date : affiché une seule fois, au changement de jour.
-              const prev = messages[idx - 1];
+              const prev = displayedMessages[idx - 1];
               const showDaySeparator =
                 msg.created_at && (!prev || !isSameDay(prev.created_at, msg.created_at));
               return (
@@ -1635,6 +1748,14 @@ export default function MessagesPage({ user }) {
                       </span>
                       {getStatus(msg)}
                     </div>
+                    {/* « Vu » sous le dernier message lu (accusé de lecture, façon Insta) */}
+                    {!isGroup && msg.id === lastOwnReadId && (
+                      <div className="flex justify-end mt-0.5">
+                        <span className="text-[9px] font-semibold" style={{ color: C.cyan }}>
+                          Vu{msg.read_at ? ` ${new Date(msg.read_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 </Fragment>

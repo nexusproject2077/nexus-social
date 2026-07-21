@@ -2958,12 +2958,18 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
         msg["content"] = decrypt_message(msg.get("content"))
         messages.append(Message(**msg))
 
-    # Marquer les messages reçus comme lus
-    await db.messages.update_many(
+    # Marquer les messages reçus comme lus + prévenir l'expéditeur (« Vu »).
+    now_read = datetime.now(timezone.utc).isoformat()
+    res = await db.messages.update_many(
         {"sender_id": user_id, "recipient_id": current_user["id"], "read": False},
-        {"$set": {"read": True}}
+        {"$set": {"read": True, "status": "read", "read_at": now_read}}
     )
-    
+    if res.modified_count:
+        await push_realtime(user_id, {
+            "type": "messages_read",
+            "data": {"reader_id": current_user["id"], "read_at": now_read},
+        })
+
     return messages
 
 # Longueur max d'un message texte (empêche le spam de gros blocs, ex. data URLs collées).
@@ -3145,6 +3151,13 @@ async def mark_conversation_as_read(
         {"user_id": current_user["id"], "target_id": user_id},
         {"$set": {"marked_unread": False}},
     )
+
+    # Prévient l'expéditeur en temps réel pour afficher « Vu ».
+    if result.modified_count:
+        await push_realtime(user_id, {
+            "type": "messages_read",
+            "data": {"reader_id": current_user["id"], "read_at": now},
+        })
 
     return {
         "success": True,
