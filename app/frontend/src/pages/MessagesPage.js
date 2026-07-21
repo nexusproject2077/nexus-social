@@ -773,6 +773,9 @@ export default function MessagesPage({ user }) {
     clearTimeout(longPressTimer.current);
     longPressTimer.current = setTimeout(() => {
       if (navigator.vibrate) { try { navigator.vibrate(15); } catch {} }
+      // Efface toute sélection de texte déclenchée par l'appui long (le menu
+      // remplace ce geste natif).
+      try { window.getSelection()?.removeAllRanges(); } catch {}
       setConvMenu(payload);
     }, 450);
   };
@@ -1060,6 +1063,7 @@ export default function MessagesPage({ user }) {
             ? `linear-gradient(to right, ${C.cyan}10, transparent)`
             : unread ? "rgba(59,130,246,0.10)" : "transparent",
           borderLeft: active ? `2px solid ${C.cyan}` : unread ? "2px solid #3b82f6" : "2px solid transparent",
+          WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none",
         }}
       >
         <div className="relative">
@@ -1098,6 +1102,7 @@ export default function MessagesPage({ user }) {
         style={{
           background: active ? `linear-gradient(to right, rgba(139,92,246,0.1), transparent)` : unread ? "rgba(59,130,246,0.10)" : "transparent",
           borderLeft: active ? "2px solid #8b5cf6" : unread ? "2px solid #3b82f6" : "2px solid transparent",
+          WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none",
         }}
       >
         {group.avatar_url ? (
@@ -1825,8 +1830,8 @@ export default function MessagesPage({ user }) {
 
       {/* ── Menu appui long conversation (mobile) : façon Instagram ── */}
       {convMenu && (
-        <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.55)" }}
+        <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center select-none"
+          style={{ background: "rgba(0,0,0,0.55)", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}
           onClick={() => setConvMenu(null)}>
           <div
             className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl overflow-hidden"
