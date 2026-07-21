@@ -1087,7 +1087,7 @@ export default function MessagesPage({ user }) {
           )}
 
           {/* Messages */}
-          <div ref={messagesScrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2" style={{ scrollbarWidth: "none", overscrollBehavior: "contain" }}>
+          <div ref={messagesScrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 flex flex-col" style={{ scrollbarWidth: "none", overscrollBehavior: "contain" }}>
             {loading ? (
               <div className="flex justify-center items-center h-full">
                 <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
@@ -1097,7 +1097,11 @@ export default function MessagesPage({ user }) {
                 <span className="material-symbols-outlined text-4xl" style={{ color: C.outline, opacity: 0.3 }}>forum</span>
                 <p className="text-sm" style={{ color: C.outline }}>Envoyez le premier message !</p>
               </div>
-            ) : messages.map((msg, idx) => {
+            ) : (
+              // mt-auto colle les messages EN BAS (peu de messages → collés au bas,
+              // pas d'espace vide au-dessus de la saisie ; sinon défilement normal).
+              <div className="mt-auto space-y-2">
+              {messages.map((msg, idx) => {
               const isOwn = msg.sender_id === user.id;
               const repliedMsg = msg.reply_to_id ? getReplied(msg.reply_to_id) : null;
               // Séparateur de date : affiché une seule fois, au changement de jour.
@@ -1237,7 +1241,9 @@ export default function MessagesPage({ user }) {
                 </Fragment>
               );
             })}
-            <div ref={messagesEndRef} />
+              <div ref={messagesEndRef} />
+              </div>
+            )}
           </div>
 
           {/* Reply indicator */}
