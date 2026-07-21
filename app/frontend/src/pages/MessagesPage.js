@@ -175,8 +175,14 @@ export default function MessagesPage({ user }) {
   const selectedGroupId = params.groupId;
   const isGroup = Boolean(selectedGroupId);
 
-  const [conversations,   setConversations]   = useState([]);
-  const [groups,          setGroups]           = useState([]);
+  // Hydratation instantanée depuis le cache local (UI immédiate, façon Insta/X) :
+  // on affiche la dernière liste connue puis on la rafraîchit en arrière-plan.
+  const [conversations,   setConversations]   = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexus_convs_cache") || "[]"); } catch { return []; }
+  });
+  const [groups,          setGroups]           = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexus_groups_cache") || "[]"); } catch { return []; }
+  });
   const [messages,        setMessages]         = useState([]);
   const [messageContent,  setMessageContent]   = useState("");
   const [selectedUser,    setSelectedUser]     = useState(null);
@@ -598,16 +604,20 @@ export default function MessagesPage({ user }) {
   const fetchConversations = async () => {
     try {
       const res = await axios.get(`${API}/messages/conversations`);
-      setConversations(res.data || []);
-    } catch { console.error("Erreur conversations"); }
+      const list = res.data || [];
+      setConversations(list);
+      try { localStorage.setItem("nexus_convs_cache", JSON.stringify(list)); } catch {}
+    } catch { console.error("Erreur conversations"); } // garde le cache en cas d'échec
   };
 
   const fetchGroups = async () => {
     try {
       // Using the alias endpoint to avoid route conflict with /{user_id}
       const res = await axios.get(`${API}/messages/groups-list`);
-      setGroups(res.data.groups || []);
-    } catch { setGroups([]); }
+      const list = res.data.groups || [];
+      setGroups(list);
+      try { localStorage.setItem("nexus_groups_cache", JSON.stringify(list)); } catch {}
+    } catch {} // garde le cache en cas d'échec (on ne vide plus la liste)
   };
 
   const fetchNotes = async () => {
@@ -790,15 +800,30 @@ export default function MessagesPage({ user }) {
   // ── Appui long sur un MESSAGE → menu d'actions (réagir/répondre/copier/supprimer)
   // Remplace le survol PC sur mobile, façon Instagram, adapté à Nexus.
   const [msgMenu, setMsgMenu] = useState(null); // objet message | null
+  const longPressFired = useRef(false);
+  const lastTap = useRef({ id: null, t: 0 });
+  const [heartBurst, setHeartBurst] = useState(null); // id du message qui « pop » un cœur
+
   const startMsgLongPress = (msg) => {
     clearTimeout(longPressTimer.current);
+    longPressFired.current = false;
     longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
       if (navigator.vibrate) { try { navigator.vibrate(15); } catch {} }
       try { window.getSelection()?.removeAllRanges(); } catch {}
       setMsgMenu(msg);
     }, 400);
   };
   const cancelMsgLongPress = () => clearTimeout(longPressTimer.current);
+
+  // Double-tap → « like » cœur (rapide). Ne retire pas si déjà liké au cœur.
+  const likeHeart = (msg) => {
+    if (myReaction(msg.reactions) === "❤️") return;
+    handleReaction(msg.id, "❤️");
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch {} }
+    setHeartBurst(msg.id);
+    setTimeout(() => setHeartBurst((v) => (v === msg.id ? null : v)), 700);
+  };
 
   // ── Swipe → répondre (façon Instagram) ───────────────────────────────────────
   // Glisser un message vers la droite (reçu) / gauche (envoyé) déclenche la réponse.
@@ -808,14 +833,14 @@ export default function MessagesPage({ user }) {
   const onMsgTouchStart = (msg, e) => {
     startMsgLongPress(msg);
     const t = e.touches[0];
-    swipeStart.current = { x: t.clientX, y: t.clientY, own: msg.sender_id === user.id };
+    swipeStart.current = { x: t.clientX, y: t.clientY, own: msg.sender_id === user.id, moved: false };
   };
   const onMsgTouchMove = (msg, e) => {
     const s = swipeStart.current;
     if (!s) return;
     const t = e.touches[0];
     const dx = t.clientX - s.x, dy = t.clientY - s.y;
-    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) cancelMsgLongPress();
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) { cancelMsgLongPress(); s.moved = true; }
     // Sens autorisé : reçu → droite ; envoyé → gauche. Uniquement geste horizontal.
     const dir = s.own ? -1 : 1;
     if (dx * dir > 0 && Math.abs(dx) > Math.abs(dy)) {
@@ -831,6 +856,17 @@ export default function MessagesPage({ user }) {
     if (s && reached) {
       if (navigator.vibrate) { try { navigator.vibrate(12); } catch {} }
       setReplyingTo(msg);
+      return;
+    }
+    if (longPressFired.current) { longPressFired.current = false; return; } // menu ouvert
+    if (s && s.moved) return; // c'était un glissement, pas un tap
+    // Tap simple : détection du double-tap (❤️).
+    const now = Date.now();
+    if (lastTap.current.id === msg.id && now - lastTap.current.t < 300) {
+      lastTap.current = { id: null, t: 0 };
+      likeHeart(msg);
+    } else {
+      lastTap.current = { id: msg.id, t: now };
     }
   };
 
@@ -1409,7 +1445,8 @@ export default function MessagesPage({ user }) {
           {/* Messages */}
           <div ref={messagesScrollRef}
             onTouchStart={onPullStart} onTouchMove={onPullMove} onTouchEnd={onPullEnd}
-            className="flex-1 min-h-0 overflow-y-auto px-4 py-4 flex flex-col" style={{ scrollbarWidth: "none", overscrollBehavior: "contain" }}>
+            className="flex-1 min-h-0 overflow-y-auto px-4 py-4 flex flex-col"
+            style={{ scrollbarWidth: "none", overscrollBehavior: "contain", overscrollBehaviorX: "none", touchAction: "pan-y" }}>
             {/* Indicateur « tirer pour rafraîchir » (mobile) */}
             {(pullDist > 0 || refreshing) && (
               <div className="flex justify-center items-center overflow-hidden flex-shrink-0"
@@ -1456,6 +1493,7 @@ export default function MessagesPage({ user }) {
                   onTouchStart={(e) => onMsgTouchStart(msg, e)}
                   onTouchEnd={() => onMsgTouchEnd(msg)}
                   onTouchMove={(e) => onMsgTouchMove(msg, e)}
+                  onDoubleClick={() => likeHeart(msg)}
                   onContextMenu={(e) => { e.preventDefault(); setMsgMenu(msg); }}
                   className={`relative flex ${isOwn ? "justify-end" : "justify-start"} group`}
                   style={{
@@ -1489,6 +1527,11 @@ export default function MessagesPage({ user }) {
 
                       {/* Bubble */}
                       <div className="relative">
+                        {/* Cœur « pop » au double-tap */}
+                        {heartBurst === msg.id && (
+                          <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-2xl pointer-events-none z-20"
+                            style={{ animation: "ping 0.6s cubic-bezier(0,0,0.2,1)" }}>❤️</span>
+                        )}
                         <div
                           className="px-3 py-2 rounded-2xl text-sm leading-relaxed break-words whitespace-pre-wrap"
                           style={isOwn ? {
