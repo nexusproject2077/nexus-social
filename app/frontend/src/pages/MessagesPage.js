@@ -1296,7 +1296,7 @@ export default function MessagesPage({ user }) {
 
           {/* Input — collé en bas, avec la safe-area iOS pour combler l'espace
               sous la barre (home indicator) et éviter qu'elle « remonte ». */}
-          <div className="px-4 pt-3 flex-shrink-0" style={{ background: "rgba(2,6,23,0.5)", paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}>
+          <div className="px-4 pt-3 flex-shrink-0" style={{ background: "rgba(2,6,23,0.5)", paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))", touchAction: "none" }}>
             {/* Aperçu de l'image en attente */}
             {pendingImage && (
               <div className="mb-2 relative inline-block">
