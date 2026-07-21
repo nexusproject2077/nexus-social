@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import axios from "axios";
@@ -141,6 +141,50 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
     return location.pathname.startsWith(path);
   };
 
+  // ── Pastilles de notification (messages + notifications non lus) ────────────
+  const [badges, setBadges] = useState({ messages: 0, notifications: 0 });
+  const fetchBadges = useCallback(() => {
+    if (!user?.id) return;
+    axios.get(`${API}/badges`)
+      .then((r) => setBadges({ messages: r.data?.messages || 0, notifications: r.data?.notifications || 0 }))
+      .catch(() => {});
+  }, [user?.id]);
+
+  // Recharge au montage et à chaque changement de page (met à jour après lecture).
+  useEffect(() => { fetchBadges(); }, [fetchBadges, location.pathname]);
+
+  // Mise à jour live : messages/notifs entrants (WebSocket) + événement local
+  // « nexus:badges » émis par les pages après avoir marqué comme lu.
+  useEffect(() => {
+    const onRealtime = (e) => {
+      const type = e.detail?.type;
+      if (type === "new_message" || type === "notification") fetchBadges();
+    };
+    const onBadges = () => fetchBadges();
+    window.addEventListener("nexus:realtime", onRealtime);
+    window.addEventListener("nexus:badges", onBadges);
+    return () => {
+      window.removeEventListener("nexus:realtime", onRealtime);
+      window.removeEventListener("nexus:badges", onBadges);
+    };
+  }, [fetchBadges]);
+
+  const badgeFor = (path) =>
+    path === "/messages" ? badges.messages
+    : path === "/notifications" ? badges.notifications
+    : 0;
+
+  // Pastille rouge avec compteur (max 99+).
+  const CountBadge = ({ count, className = "" }) =>
+    count > 0 ? (
+      <span
+        className={`min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-black ${className}`}
+        style={{ background: "#ef4444", color: "#fff" }}
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+    ) : null;
+
   const navItems = [
     { icon: "home",           label: t("home"),          path: "/",                     testId: "nav-home" },
     { icon: "play_circle",    label: "Nexus Clips",      path: "/clips",                testId: "nav-clips" },
@@ -201,10 +245,14 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
                   borderLeft: active ? "2px solid var(--nexus-accent)" : "2px solid transparent",
                 }}
               >
-                <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1, 'wght' 400" : "'FILL' 0, 'wght' 300" }}>
+                <span className="relative material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1, 'wght' 400" : "'FILL' 0, 'wght' 300" }}>
                   {item.icon}
+                  {badgeFor(item.path) > 0 && (
+                    <span className="absolute -top-1.5 -right-2"><CountBadge count={badgeFor(item.path)} /></span>
+                  )}
                 </span>
                 <span>{item.label}</span>
+                {badgeFor(item.path) > 0 && <span className="ml-auto"><CountBadge count={badgeFor(item.path)} /></span>}
               </button>
             );
           })}
@@ -343,8 +391,11 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
+          <button className="relative" style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
             <span className="material-symbols-outlined">notifications</span>
+            {badges.notifications > 0 && (
+              <span className="absolute -top-1.5 -right-1.5"><CountBadge count={badges.notifications} /></span>
+            )}
           </button>
           <button style={{ color: "#859397" }} onClick={() => navigate("/settings")} data-testid="nav-settings-mobile" title={t("settings.title")}>
             <span className="material-symbols-outlined">settings</span>
@@ -374,7 +425,12 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           const active = isActive(item.path);
           return (
             <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "var(--nexus-accent)" : "#859397" }}>
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>{item.icon}</span>
+              <span className="relative material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>
+                {item.icon}
+                {badgeFor(item.path) > 0 && (
+                  <span className="absolute -top-2 -right-2.5"><CountBadge count={badgeFor(item.path)} /></span>
+                )}
+              </span>
               <span className={`text-[9px] ${active ? "font-bold" : ""}`}>{item.label}</span>
             </button>
           );
@@ -397,7 +453,12 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           const active = isActive(item.path);
           return (
             <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "var(--nexus-accent)" : "#859397" }}>
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>{item.icon}</span>
+              <span className="relative material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>
+                {item.icon}
+                {badgeFor(item.path) > 0 && (
+                  <span className="absolute -top-2 -right-2.5"><CountBadge count={badgeFor(item.path)} /></span>
+                )}
+              </span>
               <span className={`text-[9px] ${active ? "font-bold" : ""}`}>{item.label}</span>
             </button>
           );

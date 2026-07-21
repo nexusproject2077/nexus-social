@@ -32,6 +32,7 @@ export default function NotificationsPage({ user }) {
     try {
       await axios.put(`${API}/notifications/read-all`);
       setNotifications(notifications.map(n => ({ ...n, read: true })));
+      window.dispatchEvent(new Event("nexus:badges"));
       toast.success("Toutes les notifications sont marquées comme lues");
     } catch (error) {
       toast.error("Erreur lors de l'action");
@@ -42,9 +43,10 @@ export default function NotificationsPage({ user }) {
     if (!notification.read) {
       try {
         await axios.put(`${API}/notifications/${notification.id}/read`);
-        setNotifications(notifications.map(n => 
+        setNotifications(notifications.map(n =>
           n.id === notification.id ? { ...n, read: true } : n
         ));
+        window.dispatchEvent(new Event("nexus:badges"));
       } catch (error) {
         // Silent fail
       }
@@ -66,6 +68,7 @@ export default function NotificationsPage({ user }) {
     try {
       await axios.delete(`${API}/notifications/${id}`);
       setNotifications((prev) => prev.filter((n) => n.id !== id));
+      window.dispatchEvent(new Event("nexus:badges"));
     } catch {
       toast.error("Erreur lors de la suppression");
     }
@@ -76,6 +79,7 @@ export default function NotificationsPage({ user }) {
     try {
       await axios.delete(`${API}/notifications`);
       setNotifications([]);
+      window.dispatchEvent(new Event("nexus:badges"));
       toast.success("Notifications supprimées");
     } catch {
       toast.error("Erreur lors de la suppression");
