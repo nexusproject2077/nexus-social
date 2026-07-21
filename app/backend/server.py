@@ -2922,12 +2922,12 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
     # On récupère les 60 messages LES PLUS RÉCENTS (tri décroissant + limite),
     # puis on rétablit l'ordre chronologique. Évite de charger tout l'historique
     # (images base64 comprises) qui faisait ramer/planter la page.
-    # NB : on ne filtre PAS sur `deleted_by`. La suppression se fait « pour tout
-    # le monde » (hard delete). Filtrer ici masquait à l'expéditeur d'anciens
-    # messages soft-deletés « pour moi » (ancienne version) sans les retirer chez
-    # le destinataire → l'expéditeur ne pouvait plus les re-supprimer. En les
-    # laissant visibles, il peut de nouveau les supprimer pour tout le monde.
+    # « Supprimer pour vous » : les messages où l'utilisateur figure dans
+    # `deleted_by` sont masqués POUR LUI uniquement (l'autre partie les garde,
+    # sans notification). La suppression « pour tout le monde » reste un hard
+    # delete séparé (voir delete_message).
     query = {
+        "deleted_by": {"$ne": current_user["id"]},
         "$or": [
             {"sender_id": current_user["id"], "recipient_id": user_id},
             {"sender_id": user_id, "recipient_id": current_user["id"]}
@@ -3171,26 +3171,46 @@ async def add_reaction(
     if current_user["id"] not in [message["sender_id"], message["recipient_id"]]:
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    # Vérifier si l'utilisateur a déjà réagi
+    # Réaction déjà posée par l'utilisateur ?
     reactions = message.get("reactions", [])
     existing = next((r for r in reactions if r["user_id"] == current_user["id"]), None)
-    
-    if existing:
-        reactions = [r for r in reactions if r["user_id"] != current_user["id"]]
-    
-    # Ajouter nouvelle réaction
-    reactions.append({
-        "user_id": current_user["id"],
-        "emoji": emoji,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    
+
+    # Retire toujours l'ancienne réaction de l'utilisateur.
+    reactions = [r for r in reactions if r["user_id"] != current_user["id"]]
+
+    # Bascule : re-cliquer sur le MÊME emoji = retirer (aucune nouvelle réaction).
+    toggled_off = bool(existing and existing.get("emoji") == emoji)
+    if not toggled_off:
+        reactions.append({
+            "user_id": current_user["id"],
+            "emoji": emoji,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
     await db.messages.update_one(
         {"id": message_id},
         {"$set": {"reactions": reactions}}
     )
-    
-    return {"success": True, "reactions": reactions}
+
+    # Notifie l'auteur du message quand on réagit à SON message (pas d'auto-notif,
+    # pas de notif quand on retire une réaction).
+    other_id = (
+        message.get("recipient_id")
+        if message["sender_id"] == current_user["id"]
+        else message.get("sender_id")
+    )
+    if not toggled_off and message["sender_id"] != current_user["id"]:
+        await create_notification(
+            message["sender_id"], "reaction", current_user, comment_content=emoji,
+        )
+    # Push temps réel à l'autre partie pour mettre à jour l'affichage des réactions.
+    if other_id:
+        await push_realtime(other_id, {
+            "type": "reaction_update",
+            "data": {"message_id": message_id, "reactions": reactions},
+        })
+
+    return {"success": True, "reactions": reactions, "toggled_off": toggled_off}
 
 @api_router.delete("/messages/{message_id}/react")
 async def remove_reaction(
@@ -3210,8 +3230,39 @@ async def remove_reaction(
         {"id": message_id},
         {"$set": {"reactions": reactions}}
     )
-    
+
     return {"success": True, "reactions": reactions}
+
+
+@api_router.post("/messages/translate")
+async def translate_message(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Traduit un texte vers la langue cible (celle de l'utilisateur). Utilise un
+    endpoint public gratuit de Google (sans clé API) → pas de configuration
+    d'API requise, fonctionne pour toutes les langues, détection auto de la source."""
+    text = (data.get("text") or "").strip()
+    target = (data.get("target") or "fr").split("-")[0].lower()  # "fr-FR" -> "fr"
+    if not text:
+        raise HTTPException(status_code=400, detail="Texte vide")
+    text = text[:5000]
+
+    def _do_translate():
+        import requests as _rq
+        r = _rq.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={"client": "gtx", "sl": "auto", "tl": target, "dt": "t", "q": text},
+            timeout=8,
+        )
+        r.raise_for_status()
+        payload = r.json()
+        translated = "".join(seg[0] for seg in payload[0] if seg and seg[0])
+        detected = payload[2] if len(payload) > 2 else None
+        return translated, detected
+
+    try:
+        translated, detected = await asyncio.get_event_loop().run_in_executor(None, _do_translate)
+        return {"success": True, "translated": translated, "detected": detected, "target": target}
+    except Exception:
+        raise HTTPException(status_code=502, detail="Traduction indisponible")
 
 # Delete Message
 @api_router.delete("/messages/{message_id}")
