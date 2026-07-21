@@ -493,11 +493,19 @@ export default function MessagesPage({ user }) {
   const currentName  = selectedUser?.username || selectedGroup?.name || "";
   const currentPic   = selectedUser?.profile_pic || selectedGroup?.avatar_url || "";
 
-  // ── Fetch on mount ──────────────────────────────────────────────────────────
+  // ── Fetch on mount + auto-refetch au retour sur l'onglet (façon React Query) ──
   useEffect(() => {
     fetchConversations();
     fetchGroups();
     fetchNotes();
+    const onFocus = () => { fetchConversations(); fetchGroups(); fetchNotes(); };
+    const onVisible = () => { if (document.visibilityState === "visible") onFocus(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   useEffect(() => {
@@ -2094,7 +2102,7 @@ export default function MessagesPage({ user }) {
           au footer (h-16). Sinon bottom-0 (conv ouverte = pas de footer ; PC =
           jamais de footer). */}
       <div
-        className="fixed left-0 right-0 lg:left-64 z-10 flex overflow-hidden select-none sm:select-text"
+        className="fixed left-0 right-0 lg:left-20 z-10 flex overflow-hidden select-none sm:select-text"
         style={{
           top: "var(--nexus-vtop, 0px)",
           height: "var(--nexus-vh, 100dvh)",
