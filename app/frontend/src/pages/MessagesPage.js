@@ -259,7 +259,14 @@ export default function MessagesPage({ user }) {
     const c = messagesScrollRef.current;
     if (!c) return;
     const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 220;
-    if (force || nearBottom) c.scrollTop = c.scrollHeight;
+    if (force || nearBottom) {
+      // 1) Réglage direct (rapide). 2) Ancre de fin via scrollIntoView : plus
+      // fiable quand la hauteur n'est pas encore stabilisée (images, viewport
+      // dynamique iOS/Android) — scrollTop=scrollHeight peut être calculé trop
+      // tôt et rester en haut ; l'ancre, elle, cible l'élément réel du bas.
+      c.scrollTop = c.scrollHeight;
+      messagesEndRef.current?.scrollIntoView({ block: "end", inline: "nearest" });
+    }
   };
   const longPressTimer = useRef(null);
 
