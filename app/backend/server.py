@@ -351,10 +351,21 @@ async def live_signaling(websocket: WebSocket, room_id: str, token: str = Query(
 
     await websocket.accept()
     live_rooms.setdefault(room_id, []).append(websocket)
+
+    async def broadcast_viewers():
+        conns = live_rooms.get(room_id, [])
+        payload = json.dumps({"type": "viewers", "count": len(conns)})
+        for c in list(conns):
+            try:
+                await c.send_text(payload)
+            except Exception:
+                pass
+
+    await broadcast_viewers()  # nouveau spectateur → met à jour le compteur pour tous
     try:
         while True:
             data = await websocket.receive_text()
-            # Relaie le message de signaling aux autres pairs de la room
+            # Relaie les messages (signaling WebRTC + chat/likes/gifts) aux autres pairs.
             for client in list(live_rooms.get(room_id, [])):
                 if client is not websocket:
                     try:
@@ -371,6 +382,8 @@ async def live_signaling(websocket: WebSocket, room_id: str, token: str = Query(
             conns.remove(websocket)
         if not conns:
             live_rooms.pop(room_id, None)
+        else:
+            await broadcast_viewers()  # départ → met à jour le compteur
 
 # Health check pour Render
 @app.get("/healthz")
