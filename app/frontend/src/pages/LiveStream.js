@@ -52,14 +52,21 @@ export default function LiveStream({ user }) {
   const [filterIdx, setFilterIdx] = useState(0);
   const [savingReplay, setSavingReplay] = useState(false);
   const [paidGifts, setPaidGifts]   = useState(false);  // cadeaux Stripe activés ?
+  const [connect, setConnect]       = useState(null);   // statut compte créateur (hôte)
 
-  // Statut paiements + retour de Stripe Checkout (cadeau).
+  // Statut paiements + retour de Stripe Checkout (cadeau) + statut Connect (hôte).
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     if (sp.get("gift_sent")) { toast.success("Cadeau envoyé 🎁 Merci !"); window.history.replaceState({}, "", window.location.pathname); }
     else if (sp.get("gift_cancel")) { window.history.replaceState({}, "", window.location.pathname); }
     axios.get(`${API}/billing/status`).then((r) => setPaidGifts(!!r.data?.enabled)).catch(() => {});
-  }, []);
+    if (isHost) axios.get(`${API}/billing/connect/status`).then((r) => setConnect(r.data)).catch(() => {});
+  }, [isHost]);
+
+  const onboardCreator = async () => {
+    try { const r = await axios.post(`${API}/billing/connect/onboard`); if (r.data?.url) window.location.href = r.data.url; }
+    catch { toast.error("Configuration des paiements indisponible"); }
+  };
 
   const localRef  = useRef(null);
   const remoteRef = useRef(null);
@@ -259,6 +266,23 @@ export default function LiveStream({ user }) {
           {status === "ended" ? "Direct terminé." : (isHost ? "Vertical plein écran · chat · likes · cadeaux · replay automatique." : "Vous allez rejoindre ce direct.")}
         </p>
         {savingReplay && <p className="text-xs" style={{ color: C.cyan }}>Enregistrement du replay…</p>}
+
+        {/* Monétisation créateur (Stripe Connect) — hôte uniquement */}
+        {isHost && connect?.enabled && (
+          <div className="w-full max-w-xs rounded-2xl p-3 text-center" style={{ background: "#131b2e" }}>
+            {connect.charges_enabled ? (
+              <p className="text-xs" style={{ color: C.cyan }}>💶 Paiements créateur activés — tu reçois {100 - (connect.fee_percent ?? 20)}% des cadeaux</p>
+            ) : (
+              <>
+                <p className="text-xs mb-2" style={{ color: C.outline }}>Active les paiements pour recevoir les cadeaux de tes viewers (part créateur {100 - (connect.fee_percent ?? 20)}%).</p>
+                <button onClick={onboardCreator} className="text-sm font-bold px-4 py-2 rounded-full" style={{ background: C.cyan, color: C.onPrimary }}>
+                  Configurer mes paiements
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col gap-3 w-full max-w-xs">
           <button onClick={start} data-testid="start-live"
             className="px-6 py-3 rounded-full font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"

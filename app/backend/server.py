@@ -246,6 +246,11 @@ STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID", "")  # prix d'abonnement récurrent
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://nexus-social-3ta5.onrender.com")
+# Commission de la plateforme sur chaque cadeau reversé au créateur (Stripe Connect).
+try:
+    PLATFORM_FEE_PERCENT = max(0, min(100, int(os.environ.get("PLATFORM_FEE_PERCENT", "20"))))
+except ValueError:
+    PLATFORM_FEE_PERCENT = 20
 STRIPE_ENABLED = bool(stripe and STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
 if STRIPE_ENABLED:
     stripe.api_key = STRIPE_SECRET_KEY
@@ -1023,8 +1028,23 @@ async def live_gift_checkout(data: dict = Body(...), current_user: dict = Depend
     room_id = (data.get("room_id") or "")[:120]
     if amount < 50:
         raise HTTPException(status_code=400, detail="Montant invalide")
+
+    # L'hôte est encodé dans le room_id : "live_{host_id}_{timestamp}".
+    parts = room_id.split("_")
+    host_id = parts[1] if len(parts) >= 3 and parts[0] == "live" else None
+    host = await db.users.find_one({"id": host_id}) if host_id else None
+
+    # Reversement direct au créateur (Stripe Connect) avec commission plateforme,
+    # si l'hôte a un compte connecté opérationnel. Sinon, paiement à la plateforme.
+    payment_intent_data = None
+    if host and host.get("stripe_account_id") and host.get("stripe_charges_enabled") and host.get("id") != current_user["id"]:
+        fee = round(amount * PLATFORM_FEE_PERCENT / 100)
+        payment_intent_data = {
+            "application_fee_amount": fee,
+            "transfer_data": {"destination": host["stripe_account_id"]},
+        }
     try:
-        session = stripe.checkout.Session.create(
+        kwargs = dict(
             mode="payment",
             line_items=[{
                 "price_data": {
@@ -1039,11 +1059,59 @@ async def live_gift_checkout(data: dict = Body(...), current_user: dict = Depend
             metadata={
                 "type": "gift", "gift_name": name, "gift_emoji": emoji, "room_id": room_id,
                 "from_user_id": current_user["id"], "from_username": current_user["username"],
+                "host_id": host_id or "",
             },
             success_url=f"{FRONTEND_URL}/live/{room_id}?gift_sent=1",
             cancel_url=f"{FRONTEND_URL}/live/{room_id}?gift_cancel=1",
         )
+        if payment_intent_data:
+            kwargs["payment_intent_data"] = payment_intent_data
+        session = stripe.checkout.Session.create(**kwargs)
         return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
+
+
+# ── Stripe Connect : reversement direct aux créateurs (payout façon TikTok) ──
+@api_router.get("/billing/connect/status")
+async def connect_status(current_user: dict = Depends(get_current_user)):
+    """État du compte connecté du créateur (peut-il recevoir des paiements ?)."""
+    acct_id = current_user.get("stripe_account_id")
+    if not (STRIPE_ENABLED and acct_id):
+        return {"enabled": STRIPE_ENABLED, "connected": False, "charges_enabled": False, "fee_percent": PLATFORM_FEE_PERCENT}
+    try:
+        acct = stripe.Account.retrieve(acct_id)
+        charges = bool(acct.get("charges_enabled"))
+        await db.users.update_one({"id": current_user["id"]}, {"$set": {"stripe_charges_enabled": charges}})
+        return {"enabled": True, "connected": True, "charges_enabled": charges, "fee_percent": PLATFORM_FEE_PERCENT}
+    except Exception:
+        return {"enabled": True, "connected": True, "charges_enabled": bool(current_user.get("stripe_charges_enabled")), "fee_percent": PLATFORM_FEE_PERCENT}
+
+
+@api_router.post("/billing/connect/onboard")
+async def connect_onboard(current_user: dict = Depends(get_current_user)):
+    """Crée (ou réutilise) un compte Stripe Express pour le créateur et renvoie
+    le lien d'onboarding (KYC/IBAN)."""
+    if not STRIPE_ENABLED:
+        raise HTTPException(status_code=503, detail="Les paiements ne sont pas configurés")
+    acct_id = current_user.get("stripe_account_id")
+    try:
+        if not acct_id:
+            acct = stripe.Account.create(
+                type="express",
+                email=current_user.get("email"),
+                capabilities={"transfers": {"requested": True}, "card_payments": {"requested": True}},
+                metadata={"user_id": current_user["id"]},
+            )
+            acct_id = acct.id
+            await db.users.update_one({"id": current_user["id"]}, {"$set": {"stripe_account_id": acct_id}})
+        link = stripe.AccountLink.create(
+            account=acct_id,
+            refresh_url=f"{FRONTEND_URL}/settings?connect=refresh",
+            return_url=f"{FRONTEND_URL}/settings?connect=done",
+            type="account_onboarding",
+        )
+        return {"url": link.url}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
 
@@ -1064,6 +1132,14 @@ async def stripe_webhook(request: Request):
     etype = event["type"]
     obj = event["data"]["object"]
     meta = obj.get("metadata") or {}
+
+    # ── Stripe Connect : le compte créateur devient (in)opérant ──
+    if etype == "account.updated":
+        await db.users.update_one(
+            {"stripe_account_id": obj.get("id")},
+            {"$set": {"stripe_charges_enabled": bool(obj.get("charges_enabled"))}},
+        )
+        return {"received": True}
 
     # ── Cadeau payant en direct : on enregistre + on diffuse à la room ──
     if etype == "checkout.session.completed" and meta.get("type") == "gift":
@@ -5317,14 +5393,41 @@ async def get_adsense_config():
     }
 
 
+# Cache mémoire des vues déjà comptées : { "user_id:clip_id": expiration_ts }.
+# Une « session » = fenêtre de 6 h : dans cet intervalle, les replays d'un même
+# utilisateur ne re-comptent pas (comme TikTok/YouTube). Render tourne en 1 worker
+# → un cache mémoire suffit (pas besoin de Redis).
+_clip_view_cache: Dict[str, float] = {}
+CLIP_VIEW_TTL = 6 * 3600
+
+
 @api_router.post("/clips/{clip_id}/view")
 async def register_clip_view(clip_id: str, current_user: dict = Depends(get_current_user)):
-    """Incrémente le compteur de vues d'un clip (best-effort)."""
+    """Compte une vue UNIQUE par utilisateur et par session (pas à chaque replay)."""
+    key = f"{current_user['id']}:{clip_id}"
+    now = time.time()
+    exp = _clip_view_cache.get(key)
+
+    if exp and exp > now:
+        # Déjà comptée dans cette session → on ne ré-incrémente pas.
+        post = await db.posts.find_one({"id": clip_id}, {"views": 1})
+        if not post:
+            raise HTTPException(status_code=404, detail="Clip introuvable")
+        return {"success": True, "views": post.get("views", 0), "counted": False}
+
+    # Purge légère des entrées expirées quand le cache grossit.
+    if len(_clip_view_cache) > 50000:
+        for k, v in list(_clip_view_cache.items()):
+            if v <= now:
+                _clip_view_cache.pop(k, None)
+
+    _clip_view_cache[key] = now + CLIP_VIEW_TTL
     result = await db.posts.update_one({"id": clip_id}, {"$inc": {"views": 1}})
     if result.matched_count == 0:
+        _clip_view_cache.pop(key, None)
         raise HTTPException(status_code=404, detail="Clip introuvable")
-    post = await db.posts.find_one({"id": clip_id})
-    return {"success": True, "views": (post or {}).get("views", 0)}
+    post = await db.posts.find_one({"id": clip_id}, {"views": 1})
+    return {"success": True, "views": (post or {}).get("views", 0), "counted": True}
 
 
 @api_router.get("/feed/foryou", response_model=List[Post])
