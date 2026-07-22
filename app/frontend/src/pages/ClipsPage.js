@@ -625,7 +625,7 @@ export default function ClipsPage({ user, setUser }) {
       await fetchClips(true);
     } catch (err) {
       console.error("Erreur upload clip:", err);
-      toast.error("Erreur lors de la publication du clip");
+      toast.error(err.response?.data?.detail || "Erreur lors de la publication du clip");
     } finally {
       setUploading(false);
       setUploadProgress(0);

@@ -76,6 +76,18 @@ except ImportError:
     except ImportError:
         send_brevo_email = None
 
+# Modération auto gratuite (toxic-bert + NudeNet) — optionnelle et fail-open :
+# si le module ou ses dépendances (transformers/torch, nudenet) manquent, rien
+# n'est filtré et l'application fonctionne normalement.
+try:
+    from backend import moderation
+except ImportError:
+    try:
+        import moderation
+    except ImportError:
+        moderation = None
+        print("⚠️ Module 'moderation' introuvable — modération auto désactivée")
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -789,6 +801,55 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     if not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
     return current_user
+
+
+# ==================== MODÉRATION AUTOMATIQUE ====================
+# Filtrage gratuit du contenu (toxicité via toxic-bert, NSFW via NudeNet). La
+# logique lourde vit dans moderation.py ; ici on applique la politique métier :
+#   • verdict "block" -> HTTP 400 (le contenu n'est jamais enregistré)
+#   • verdict "flag"  -> le contenu est publié mais poussé en file de modération
+#                        (db.moderation_queue) pour une revue humaine.
+# Fail-open : si moderation est indisponible, on n'applique aucun filtre.
+
+async def flag_for_review(kind: str, ref_id: str, author_id: str, text, verdict: dict, media_kind=None):
+    """Ajoute un contenu signalé à la file de modération humaine."""
+    await db.moderation_queue.insert_one({
+        "id": str(uuid.uuid4()),
+        "kind": kind,               # "post" | "comment" | "clip"
+        "ref_id": ref_id,
+        "author_id": author_id,
+        "text": ((text or "")[:500]),
+        "category": verdict.get("category"),
+        "label": verdict.get("label"),
+        "score": verdict.get("score"),
+        "media_kind": media_kind,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+async def screen_content(text=None, media_url=None):
+    """Analyse texte + média et renvoie le verdict le plus sévère (ou None si la
+    modération est indisponible). Lève HTTP 400 si le contenu doit être bloqué.
+
+    À appeler AVANT d'enregistrer le contenu ; si le verdict renvoyé vaut "flag",
+    l'appelant enregistre le contenu puis appelle flag_for_review()."""
+    if moderation is None:
+        return None
+    verdicts = []
+    if text and text.strip():
+        verdicts.append(moderation.moderate_text(text))
+    if media_url:
+        verdicts.append(moderation.moderate_media(media_url))
+    if not verdicts:
+        return None
+    worst = moderation.worst_verdict(*verdicts)
+    if worst and worst["action"] == "block":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Contenu refusé par la modération ({worst['category']}: {worst['label']})",
+        )
+    return worst
 
 # ==================== RATE LIMITING (anti brute-force) ====================
 # Limiteur en mémoire (cohérent car Render tourne en 1 worker). Fenêtre
@@ -1754,6 +1815,9 @@ async def resolve_mentions(content: str, exclude_id: str = None):
 @api_router.post("/posts", response_model=Post)
 async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
     """Créer un nouveau post"""
+    # Modération auto (toxicité + NSFW) : bloque le contenu interdit avant insertion.
+    verdict = await screen_content(text=post_data.content, media_url=post_data.media_url)
+
     post_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
@@ -1779,6 +1843,11 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
     }
 
     await db.posts.insert_one(post_to_insert)
+
+    # Contenu limite (verdict "flag") : publié mais soumis à revue humaine.
+    if verdict and verdict["action"] == "flag":
+        await flag_for_review("post", post_id, current_user["id"], post_data.content,
+                              verdict, media_kind=post_data.media_type)
 
     # Notifier les personnes mentionnées.
     for uid in mentioned_ids:
@@ -2061,7 +2130,10 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
-    
+
+    # Modération auto du texte du commentaire (toxicité).
+    verdict = await screen_content(text=comment_data.content)
+
     comment_id = str(uuid.uuid4())
     comment_to_insert = {
         "id": comment_id,
@@ -2076,7 +2148,11 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
     
     await db.comments.insert_one(comment_to_insert)
     await db.posts.update_one({"id": post_id}, {"$inc": {"comments_count": 1}})
-    
+
+    if verdict and verdict["action"] == "flag":
+        await flag_for_review("comment", comment_id, current_user["id"],
+                              comment_data.content, verdict)
+
     # Créer une notification
     post = convert_mongo_doc_to_dict(post_raw)
     if post["author_id"] != current_user["id"]:
@@ -5444,6 +5520,19 @@ async def create_clip(
         raise HTTPException(status_code=400, detail="Le fichier doit être une vidéo")
 
     contents = await file.read()
+
+    # Modération auto : texte (légende) + NSFW sur des images échantillonnées de la vidéo.
+    verdict = None
+    if moderation is not None:
+        cap_verdict = moderation.moderate_text(caption)
+        vid_verdict = moderation.moderate_video_bytes(contents, suffix=".mp4")
+        verdict = moderation.worst_verdict(cap_verdict, vid_verdict)
+        if verdict["action"] == "block":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Clip refusé par la modération ({verdict['category']}: {verdict['label']})",
+            )
+
     media_url = f"data:{file.content_type};base64," + base64.b64encode(contents).decode("utf-8")
 
     clip_id = str(uuid.uuid4())
@@ -5466,6 +5555,10 @@ async def create_clip(
     }
     await db.posts.insert_one(clip_to_insert)
 
+    if verdict and verdict["action"] == "flag":
+        await flag_for_review("clip", clip_id, current_user["id"], caption,
+                              verdict, media_kind="video")
+
     clip = convert_mongo_doc_to_dict(clip_to_insert)
     clip["is_liked"] = False
     return Post(**clip)
@@ -5478,6 +5571,58 @@ async def get_adsense_config():
         "client": os.environ.get("ADSENSE_CLIENT", ""),
         "slot": os.environ.get("ADSENSE_SLOT", ""),
     }
+
+
+# ==================== MODÉRATION : FILE DE REVUE HUMAINE (ADMIN) ====================
+@api_router.get("/moderation/status")
+async def moderation_status(admin: dict = Depends(require_admin)):
+    """État de la modération auto + nombre d'éléments en attente de revue."""
+    pending = await db.moderation_queue.count_documents({"status": "pending"})
+    return {
+        "enabled": bool(moderation is not None and getattr(moderation, "MODERATION_ENABLED", False)),
+        "available": moderation is not None,
+        "pending": pending,
+    }
+
+
+@api_router.get("/moderation/queue")
+async def moderation_queue(status: str = "pending", skip: int = 0, limit: int = 50,
+                           admin: dict = Depends(require_admin)):
+    """Liste les contenus signalés par la modération auto (revue humaine)."""
+    limit = max(1, min(limit, 100))
+    query = {} if status in ("", "all") else {"status": status}
+    items = await db.moderation_queue.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    return [convert_mongo_doc_to_dict(i) for i in items]
+
+
+@api_router.post("/moderation/{item_id}/resolve")
+async def moderation_resolve(item_id: str, data: dict = Body(default={}),
+                             admin: dict = Depends(require_admin)):
+    """Résout un élément signalé. action="approve" (conserver) ou "remove" (supprimer)."""
+    item = await db.moderation_queue.find_one({"id": item_id})
+    if not item:
+        raise HTTPException(status_code=404, detail="Élément introuvable")
+    action = (data.get("action") or "approve").lower()
+    if action not in ("approve", "remove"):
+        raise HTTPException(status_code=400, detail="action doit valoir 'approve' ou 'remove'")
+
+    if action == "remove":
+        kind, ref_id = item.get("kind"), item.get("ref_id")
+        if kind in ("post", "clip"):
+            await db.posts.delete_one({"id": ref_id})
+        elif kind == "comment":
+            comment = await db.comments.find_one({"id": ref_id})
+            await db.comments.delete_one({"id": ref_id})
+            if comment and comment.get("post_id"):
+                await db.posts.update_one({"id": comment["post_id"]}, {"$inc": {"comments_count": -1}})
+
+    await db.moderation_queue.update_one(
+        {"id": item_id},
+        {"$set": {"status": "removed" if action == "remove" else "approved",
+                  "resolved_by": admin["id"],
+                  "resolved_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"success": True, "action": action}
 
 
 # Cache mémoire des vues déjà comptées : { "user_id:clip_id": expiration_ts }.
