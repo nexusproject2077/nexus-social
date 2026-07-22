@@ -155,7 +155,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
   );
 }
 
-function ClipCard({ post, currentUser, isActive, onDelete }) {
+function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete }) {
   const navigate  = useNavigate();
   const videoRef  = useRef(null);
   const [isLiked, setIsLiked]       = useState(post.is_liked || false);
@@ -163,10 +163,20 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
   const [comments, setComments]     = useState(post.comments_count || 0);
   const [muted, setMuted]           = useState(true);
   const [paused, setPaused]         = useState(false);
+  const [saved, setSaved]           = useState(false);
+  const [progress, setProgress]     = useState(0);
+  const [heart, setHeart]           = useState(false);   // cœur animé (double-tap)
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [commentsList, setCommentsList] = useState([]);
   const [loadingComments, setLoadingComments] = useState(false);
+  const tapTimer = useRef(null);
+
+  // Enregistre l'élément vidéo auprès du parent (contrôle clavier : espace).
+  useEffect(() => {
+    registerVideo?.(index, videoRef.current);
+    return () => registerVideo?.(index, null);
+  }, [index, registerVideo]);
 
   const openComments = async () => {
     const next = !showComment;
@@ -193,11 +203,48 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
     }
   }, [isActive]);
 
-  const handleTap = () => {
+  const togglePlay = () => {
     const video = videoRef.current;
     if (!video) return;
-    if (paused) { video.play(); setPaused(false); }
+    if (video.paused) { video.play().catch(() => {}); setPaused(false); }
     else { video.pause(); setPaused(true); }
+  };
+
+  const likeHeart = async () => {
+    if (isLiked) return; // double-tap = « like », ne dé-like pas
+    setIsLiked(true); setLikes((p) => p + 1);
+    try {
+      const res = await axios.post(`${API}/posts/${post.id}/like`);
+      setIsLiked(res.data.liked); setLikes((p) => (res.data.liked ? p : p - 1));
+    } catch { setIsLiked(false); setLikes((p) => p - 1); }
+  };
+
+  const triggerHeart = () => { setHeart(true); setTimeout(() => setHeart(false), 800); };
+
+  // Tap simple = play/pause (retardé pour ne pas déclencher au double-tap).
+  // Double-tap = like + cœur animé (façon TikTok).
+  const handleTap = () => {
+    if (tapTimer.current) {
+      clearTimeout(tapTimer.current); tapTimer.current = null;
+      likeHeart(); triggerHeart();
+    } else {
+      tapTimer.current = setTimeout(() => { tapTimer.current = null; togglePlay(); }, 260);
+    }
+  };
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    const url = `${window.location.origin}/post/${post.id}`;
+    try {
+      if (navigator.share) await navigator.share({ title: "Nexus Clips", url });
+      else { await navigator.clipboard.writeText(url); toast.success("Lien copié"); }
+    } catch { /* annulé */ }
+  };
+
+  const toggleSave = (e) => {
+    e.stopPropagation();
+    setSaved((v) => !v);
+    toast.success(saved ? "Retiré des enregistrements" : "Clip enregistré");
   };
 
   const handleLike = async (e) => {
@@ -233,20 +280,31 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
   const fmtDate = (d) => { try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); } catch { return ""; } };
 
   return (
-    <div className="relative w-full h-screen flex-shrink-0 overflow-hidden" style={{ background: "#000" }}>
+    <div className="relative w-full h-full flex-shrink-0 overflow-hidden flex items-center justify-center" style={{ background: "#000" }}>
+      {/* Scène : plein écran sur mobile ; colonne 9:16 centrée (letterbox, barres
+          noires sur les côtés) sur PC. */}
+      <div className="relative h-full w-full lg:w-auto lg:aspect-[9/16] overflow-hidden">
       {/* Video (Nexus Clips = vidéos uniquement) */}
       <video
         ref={videoRef}
         src={post.media_url}
-        className="w-full h-full object-contain sm:object-cover"
+        className="w-full h-full object-cover"
         loop
         muted={muted}
         playsInline
         onClick={handleTap}
+        onTimeUpdate={(e) => { const v = e.target; if (v.duration) setProgress((v.currentTime / v.duration) * 100); }}
       />
 
       {/* Gradient overlay */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 40%, rgba(0,0,0,0.2) 100%)" }} />
+
+      {/* Cœur animé (double-tap) */}
+      {heart && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="material-symbols-outlined" style={{ color: "#f87171", fontSize: 120, fontVariationSettings: "'FILL' 1", animation: "ping 0.7s cubic-bezier(0,0,0.2,1)", filter: "drop-shadow(0 4px 20px rgba(0,0,0,0.5))" }}>favorite</span>
+        </div>
+      )}
 
       {/* Pause indicator */}
       {paused && (
@@ -257,8 +315,13 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
         </div>
       )}
 
+      {/* Barre de progression discrète (bas de la vidéo) */}
+      <div className="absolute bottom-0 left-0 right-0 h-[3px] pointer-events-none" style={{ background: "rgba(255,255,255,0.15)" }}>
+        <div className="h-full" style={{ width: `${progress}%`, background: C.cyan, transition: "width 0.1s linear" }} />
+      </div>
+
       {/* Right action bar */}
-      <div className="absolute right-4 bottom-32 flex flex-col gap-5 items-center">
+      <div className="absolute right-3 bottom-28 flex flex-col gap-4 items-center">
         {/* Avatar */}
         <button onClick={() => navigate(`/profile/${post.author_id}`)} className="relative">
           {post.author_profile_pic ? (
@@ -289,6 +352,22 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
             <span className="material-symbols-outlined text-2xl text-white">chat_bubble</span>
           </div>
           <span className="text-white text-xs font-bold">{fmt(comments)}</span>
+        </button>
+
+        {/* Save (enregistrer) */}
+        <button onClick={toggleSave} className="flex flex-col items-center gap-1">
+          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+            <span className="material-symbols-outlined text-2xl" style={{ color: saved ? C.cyan : "#fff", fontVariationSettings: saved ? "'FILL' 1" : "'FILL' 0" }}>bookmark</span>
+          </div>
+          <span className="text-white text-xs font-bold">Enreg.</span>
+        </button>
+
+        {/* Share (partager) */}
+        <button onClick={handleShare} className="flex flex-col items-center gap-1">
+          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+            <span className="material-symbols-outlined text-2xl text-white">share</span>
+          </div>
+          <span className="text-white text-xs font-bold">Partager</span>
         </button>
 
         {/* Mute */}
@@ -374,6 +453,7 @@ function ClipCard({ post, currentUser, isActive, onDelete }) {
           </div>
         </div>
       )}
+      </div>{/* /stage */}
     </div>
   );
 }
@@ -385,14 +465,58 @@ export default function ClipsPage({ user, setUser }) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [view, setView] = useState("immersive"); // "immersive" | "grid"
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const containerRef = useRef(null);
   const observerRef  = useRef(null);
   const fileInputRef = useRef(null);
   const viewedRef    = useRef(new Set());
+  const videosRef    = useRef({});   // registre des <video> par index (contrôle clavier)
+  const skipRef      = useRef(0);
+  const PAGE = 10;
+
+  // Le parent enregistre chaque vidéo pour piloter la lecture au clavier.
+  const registerVideo = useCallback((idx, el) => {
+    if (el) videosRef.current[idx] = el; else delete videosRef.current[idx];
+  }, []);
+
+  // Défilement programmé vers un clip (clavier / navigation).
+  const goTo = useCallback((idx) => {
+    const clamped = Math.max(0, idx);
+    const el = containerRef.current?.querySelector(`[data-index="${clamped}"]`);
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   useEffect(() => {
-    fetchClips();
+    fetchClips(true);
   }, []);
+
+  // Raccourcis clavier : Espace = pause/play, Entrée/↓ = suivant, ↑ = précédent.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (view !== "immersive") return;
+      const tag = (e.target?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea") return; // ne pas gêner la saisie
+      if (e.key === " ") {
+        e.preventDefault();
+        const v = videosRef.current[activeIndex];
+        if (v) { v.paused ? v.play().catch(() => {}) : v.pause(); }
+      } else if (e.key === "Enter" || e.key === "ArrowDown") {
+        e.preventDefault(); goTo(activeIndex + 1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault(); goTo(activeIndex - 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeIndex, view, goTo]);
+
+  // Scroll infini : charge la page suivante en approchant de la fin.
+  useEffect(() => {
+    if (!loadingMore && hasMore && clips.length > 0 && activeIndex >= clips.length - 3) {
+      loadMore();
+    }
+  }, [activeIndex, clips.length]);
 
   // Compte une vue quand un clip devient actif (une fois par clip et par visite)
   useEffect(() => {
@@ -420,21 +544,34 @@ export default function ClipsPage({ user, setUser }) {
     return () => observerRef.current?.disconnect();
   }, [clips, view]);
 
-  const fetchClips = async () => {
+  const fetchClips = async (reset = false) => {
+    const skip = reset ? 0 : skipRef.current;
+    if (reset) setLoading(true); else setLoadingMore(true);
     try {
-      // Nexus Clips = uniquement des vidéos courtes, de tout le monde
-      const res = await axios.get(`${API}/clips`);
-      const videos = (res.data || []).filter(
-        (p) => p.media_type === "video" && p.media_url
-      );
-      setClips(videos);
+      const res = await axios.get(`${API}/clips`, { params: { skip, limit: PAGE } });
+      const videos = (res.data || []).filter((p) => p.media_type === "video" && p.media_url);
+      if (reset) {
+        setClips(videos);
+        skipRef.current = videos.length;
+      } else {
+        // Dédoublonne au cas où.
+        setClips((prev) => {
+          const ids = new Set(prev.map((c) => c.id));
+          const merged = [...prev, ...videos.filter((v) => !ids.has(v.id))];
+          skipRef.current = merged.length;
+          return merged;
+        });
+      }
+      setHasMore(videos.length >= PAGE);
     } catch (err) {
       console.error("Erreur clips:", err);
-      toast.error("Erreur lors du chargement des clips");
+      if (reset) toast.error("Erreur lors du chargement des clips");
     } finally {
-      setLoading(false);
+      setLoading(false); setLoadingMore(false);
     }
   };
+
+  const loadMore = () => { if (!loadingMore && hasMore) fetchClips(false); };
 
   const handleUploadClick = () => fileInputRef.current?.click();
 
@@ -480,7 +617,8 @@ export default function ClipsPage({ user, setUser }) {
       });
       toast.success("Clip publié !");
       setActiveIndex(0);
-      await fetchClips();
+      skipRef.current = 0;
+      await fetchClips(true);
     } catch (err) {
       console.error("Erreur upload clip:", err);
       toast.error("Erreur lors de la publication du clip");
@@ -585,29 +723,32 @@ export default function ClipsPage({ user, setUser }) {
         /* Full-screen vertical scroll snapping */
         <div
           ref={containerRef}
-          className="h-screen overflow-y-scroll"
+          className="h-screen overflow-y-scroll select-none"
           style={{
             scrollSnapType: "y mandatory",
             scrollBehavior: "smooth",
             WebkitOverflowScrolling: "touch",
-            /* Adjust for mobile header/nav */
             marginTop: 0,
             scrollbarWidth: "none",
+            WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none",
           }}
         >
           <style>{`
-            div::-webkit-scrollbar { display: none; }
             [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
           `}</style>
           {clips.map((clip, idx) => (
             <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100svh" }}>
-              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex} onDelete={handleDeleteClip} />
+              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex}
+                index={idx} registerVideo={registerVideo} onDelete={handleDeleteClip} />
             </div>
           ))}
+          {loadingMore && (
+            <div className="flex justify-center py-8"><div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} /></div>
+          )}
         </div>
       ) : (
         /* Grille des clips (style Reels) */
-        <div className="h-screen overflow-y-auto px-2 pt-16 pb-24 lg:pt-6" style={{ background: "#000" }}>
+        <div className="h-screen overflow-y-auto px-2 pt-16 pb-24 lg:pt-6 select-none" style={{ background: "#000", WebkitUserSelect: "none", userSelect: "none" }}>
           <div className="grid grid-cols-3 gap-1.5 max-w-4xl mx-auto">
             {clips.map((clip, idx) => (
               <button
