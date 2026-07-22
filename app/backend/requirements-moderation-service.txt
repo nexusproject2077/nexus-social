@@ -1,0 +1,19 @@
+# Dépendances du micro-service de modération (moderation_service.py), à installer
+# SUR LE VPS uniquement. Prévoir ~2 Go de RAM libre minimum (idéalement 4 Go).
+#
+#   pip install -r requirements-moderation-service.txt
+#   export MODERATION_ENABLED=true
+#   export MODERATION_SERVICE_TOKEN="votre-secret"
+#   gunicorn moderation_service:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8080 --timeout 120
+
+# API HTTP
+fastapi>=0.110.0
+uvicorn>=0.25.0
+gunicorn>=21.0.0
+pydantic>=2.6.0
+
+# Modèles de modération
+transformers>=4.40.0            # toxic-bert (toxicité / haine)
+torch>=2.2.0                    # backend d'inférence
+nudenet>=3.4.0                  # NSFW (images)
+opencv-python-headless>=4.9.0   # échantillonnage d'images des vidéos (NSFW vidéo)

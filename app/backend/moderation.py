@@ -37,6 +37,15 @@ TOXIC_FLAG_THRESHOLD = float(os.environ.get("TOXIC_FLAG_THRESHOLD", "0.60"))
 NSFW_BLOCK_THRESHOLD = float(os.environ.get("NSFW_BLOCK_THRESHOLD", "0.75"))
 NSFW_FLAG_THRESHOLD = float(os.environ.get("NSFW_FLAG_THRESHOLD", "0.45"))
 
+# Mode DISTANT (recommandé sur un hébergeur léger comme Render) : au lieu de
+# charger les modèles ici, on délègue à un micro-service de modération qui tourne
+# sur une machine avec assez de RAM (ex : un VPS). Si MODERATION_SERVICE_URL est
+# défini, moderate_text / moderate_media appellent ce service en HTTP.
+# Voir moderation_service.py pour le service à déployer sur le VPS.
+MODERATION_SERVICE_URL = os.environ.get("MODERATION_SERVICE_URL", "").rstrip("/")
+MODERATION_SERVICE_TOKEN = os.environ.get("MODERATION_SERVICE_TOKEN", "")
+MODERATION_TIMEOUT = float(os.environ.get("MODERATION_TIMEOUT", "20"))
+
 # Nombre d'images échantillonnées dans une vidéo (début / milieu / fin).
 VIDEO_SAMPLE_POSITIONS = (0.1, 0.5, 0.9)
 
@@ -112,6 +121,33 @@ def _allow(category="toxicity", label="clean"):
     return _verdict(0.0, 1.0, 1.0, label, category)
 
 
+def _normalize_verdict(data, category="toxicity"):
+    """Sécurise un verdict reçu du service distant (dict JSON) -> format interne."""
+    if not isinstance(data, dict):
+        return _allow(category)
+    action = data.get("action") if data.get("action") in ("allow", "flag", "block") else "allow"
+    return {
+        "flagged": action != "allow",
+        "action": action,
+        "category": data.get("category", category),
+        "label": data.get("label", "clean"),
+        "score": float(data.get("score", 0.0) or 0.0),
+    }
+
+
+# --- Mode distant (micro-service sur VPS) ------------------------------------
+def _remote_call(path, payload):
+    """Appelle le service de modération distant. Lève en cas d'échec (géré par l'appelant)."""
+    import requests
+    headers = {"Content-Type": "application/json"}
+    if MODERATION_SERVICE_TOKEN:
+        headers["Authorization"] = f"Bearer {MODERATION_SERVICE_TOKEN}"
+    resp = requests.post(f"{MODERATION_SERVICE_URL}{path}", json=payload,
+                         headers=headers, timeout=MODERATION_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
 # --- Texte ------------------------------------------------------------------
 def moderate_text(text):
     """Analyse un texte -> {flagged, action, category, label, score}.
@@ -121,6 +157,12 @@ def moderate_text(text):
     clean = (text or "").strip()
     if not MODERATION_ENABLED or not clean:
         return _allow("toxicity")
+    if MODERATION_SERVICE_URL:
+        try:
+            return _normalize_verdict(_remote_call("/moderate/text", {"text": clean[:5000]}), "toxicity")
+        except Exception as e:
+            print(f"⚠️ service modération (texte) indisponible ({e}) — non filtré")
+            return _allow("toxicity")
     pipe = _get_text_pipe()
     if pipe is None:
         return _allow("toxicity")
@@ -237,6 +279,14 @@ def parse_data_url(data_url):
 
 def moderate_media(data_url):
     """Analyse un média encodé en data URL (image ou vidéo) -> verdict NSFW."""
+    if not MODERATION_ENABLED or not data_url:
+        return _allow("nsfw", "safe")
+    if MODERATION_SERVICE_URL:
+        try:
+            return _normalize_verdict(_remote_call("/moderate/media", {"data_url": data_url}), "nsfw")
+        except Exception as e:
+            print(f"⚠️ service modération (média) indisponible ({e}) — non filtré")
+            return _allow("nsfw", "safe")
     raw, suffix, mime = parse_data_url(data_url)
     if raw is None:
         return _allow("nsfw", "safe")
