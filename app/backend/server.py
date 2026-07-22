@@ -3841,6 +3841,95 @@ async def search(q: str, type: str = "all", skip: int = 0, limit: int = 20,
         "hashtags": await get_hashtags(),
     }
 
+# ==================== LISTES D'UTILISATEURS (façon X) ====================
+
+async def _list_members_preview(member_ids):
+    previews = []
+    for uid in (member_ids or [])[:3]:
+        u = await db.users.find_one({"id": uid}, {"id": 1, "username": 1, "profile_pic": 1})
+        if u:
+            previews.append({"id": u["id"], "username": u.get("username"), "profile_pic": u.get("profile_pic")})
+    return previews
+
+
+@api_router.post("/lists")
+async def create_list(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Crée une liste d'utilisateurs."""
+    name = (data.get("name") or "").strip()[:60]
+    if not name:
+        raise HTTPException(status_code=400, detail="Nom requis")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "owner_id": current_user["id"],
+        "name": name,
+        "member_ids": [],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.user_lists.insert_one(dict(doc))
+    return {"success": True, "list": {"id": doc["id"], "name": name, "member_count": 0, "members_preview": [], "created_at": doc["created_at"]}}
+
+
+@api_router.get("/lists")
+async def get_my_lists(current_user: dict = Depends(get_current_user)):
+    """Listes de l'utilisateur, avec aperçu des membres."""
+    raw = await db.user_lists.find({"owner_id": current_user["id"]}).sort("created_at", -1).to_list(length=200)
+    out = []
+    for l in raw:
+        l = convert_mongo_doc_to_dict(l)
+        out.append({
+            "id": l["id"], "name": l.get("name", ""),
+            "member_count": len(l.get("member_ids", [])),
+            "members_preview": await _list_members_preview(l.get("member_ids", [])),
+            "created_at": l.get("created_at"),
+        })
+    return {"lists": out}
+
+
+@api_router.get("/lists/{list_id}")
+async def get_list_detail(list_id: str, current_user: dict = Depends(get_current_user)):
+    """Détail d'une liste (membres complets)."""
+    l = await db.user_lists.find_one({"id": list_id, "owner_id": current_user["id"]})
+    if not l:
+        raise HTTPException(status_code=404, detail="Liste introuvable")
+    l = convert_mongo_doc_to_dict(l)
+    members = []
+    for uid in l.get("member_ids", []):
+        u = await db.users.find_one({"id": uid})
+        if u:
+            u = convert_mongo_doc_to_dict(u)
+            members.append({"id": u["id"], "username": u["username"], "profile_pic": u.get("profile_pic"), "bio": u.get("bio", "")})
+    return {"id": l["id"], "name": l.get("name", ""), "members": members}
+
+
+@api_router.post("/lists/{list_id}/members")
+async def add_list_member(list_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Ajoute un utilisateur à une liste."""
+    uid = data.get("user_id")
+    if not uid:
+        raise HTTPException(status_code=400, detail="user_id requis")
+    l = await db.user_lists.find_one({"id": list_id, "owner_id": current_user["id"]})
+    if not l:
+        raise HTTPException(status_code=404, detail="Liste introuvable")
+    await db.user_lists.update_one({"id": list_id}, {"$addToSet": {"member_ids": uid}})
+    return {"success": True}
+
+
+@api_router.delete("/lists/{list_id}/members/{user_id}")
+async def remove_list_member(list_id: str, user_id: str, current_user: dict = Depends(get_current_user)):
+    """Retire un utilisateur d'une liste."""
+    l = await db.user_lists.find_one({"id": list_id, "owner_id": current_user["id"]})
+    if not l:
+        raise HTTPException(status_code=404, detail="Liste introuvable")
+    await db.user_lists.update_one({"id": list_id}, {"$pull": {"member_ids": user_id}})
+    return {"success": True}
+
+
+@api_router.delete("/lists/{list_id}")
+async def delete_list(list_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprime une liste."""
+    await db.user_lists.delete_one({"id": list_id, "owner_id": current_user["id"]})
+    return {"success": True}
+
 # ==================== STORIES ROUTES ====================
 @api_router.post("/stories", response_model=Story)
 async def create_story(
