@@ -20,10 +20,12 @@ const FILTERS = [
 ];
 
 const GIFTS = [
-  { emoji: "🌹", name: "Rose" }, { emoji: "❤️", name: "Cœur" }, { emoji: "🎉", name: "Confetti" },
-  { emoji: "🔥", name: "Feu" }, { emoji: "💎", name: "Diamant" }, { emoji: "👑", name: "Couronne" },
-  { emoji: "🦄", name: "Licorne" }, { emoji: "🚀", name: "Fusée" },
+  { emoji: "🌹", name: "Rose", cents: 99 }, { emoji: "❤️", name: "Cœur", cents: 199 },
+  { emoji: "🎉", name: "Confetti", cents: 299 }, { emoji: "🔥", name: "Feu", cents: 399 },
+  { emoji: "💎", name: "Diamant", cents: 499 }, { emoji: "👑", name: "Couronne", cents: 999 },
+  { emoji: "🦄", name: "Licorne", cents: 1499 }, { emoji: "🚀", name: "Fusée", cents: 1999 },
 ];
+const euro = (c) => (c / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 
 function drawCover(ctx, video, cw, ch) {
   const vw = video.videoWidth, vh = video.videoHeight;
@@ -49,6 +51,15 @@ export default function LiveStream({ user }) {
   const [showGifts, setShowGifts] = useState(false);
   const [filterIdx, setFilterIdx] = useState(0);
   const [savingReplay, setSavingReplay] = useState(false);
+  const [paidGifts, setPaidGifts]   = useState(false);  // cadeaux Stripe activés ?
+
+  // Statut paiements + retour de Stripe Checkout (cadeau).
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("gift_sent")) { toast.success("Cadeau envoyé 🎁 Merci !"); window.history.replaceState({}, "", window.location.pathname); }
+    else if (sp.get("gift_cancel")) { window.history.replaceState({}, "", window.location.pathname); }
+    axios.get(`${API}/billing/status`).then((r) => setPaidGifts(!!r.data?.enabled)).catch(() => {});
+  }, []);
 
   const localRef  = useRef(null);
   const remoteRef = useRef(null);
@@ -102,10 +113,18 @@ export default function LiveStream({ user }) {
     send({ type: "chat", ...m });
     setChatInput("");
   };
-  const sendGift = (g) => {
+  const sendGift = async (g) => {
+    setShowGifts(false);
+    // Cadeau payant via Stripe Checkout (redirige puis revient à la room).
+    if (paidGifts) {
+      try {
+        const r = await axios.post(`${API}/live/gift-checkout`, { name: g.name, emoji: g.emoji, amount_cents: g.cents, room_id: roomId });
+        if (r.data?.url) { window.location.href = r.data.url; return; }
+      } catch { /* repli sur le cadeau gratuit */ }
+    }
+    // Cadeau gratuit (visuel) : diffusion directe via WebSocket.
     spawnGift(g, "Vous");
     send({ type: "gift", from: user.username, emoji: g.emoji, name: g.name });
-    setShowGifts(false);
     toast.success(`${g.emoji} ${g.name} envoyé`);
   };
 
@@ -359,13 +378,16 @@ export default function LiveStream({ user }) {
           </div>
           <div className="grid grid-cols-4 gap-3">
             {GIFTS.map((g) => (
-              <button key={g.name} onClick={() => sendGift(g)} className="flex flex-col items-center gap-1 py-3 rounded-2xl active:scale-95 transition-transform" style={{ background: "#171f33" }}>
-                <span style={{ fontSize: 32 }}>{g.emoji}</span>
+              <button key={g.name} onClick={() => sendGift(g)} className="flex flex-col items-center gap-0.5 py-3 rounded-2xl active:scale-95 transition-transform" style={{ background: "#171f33" }}>
+                <span style={{ fontSize: 30 }}>{g.emoji}</span>
                 <span className="text-white text-[11px] font-semibold">{g.name}</span>
+                {paidGifts && <span className="text-[10px] font-bold" style={{ color: C.cyan }}>{euro(g.cents)}</span>}
               </button>
             ))}
           </div>
-          <p className="text-[10px] text-center mt-3" style={{ color: C.outline }}>Cadeaux visuels · monétisation réelle bientôt</p>
+          <p className="text-[10px] text-center mt-3" style={{ color: C.outline }}>
+            {paidGifts ? "Paiement sécurisé par Stripe · le créateur reçoit ton soutien" : "Cadeaux visuels · configure Stripe pour les cadeaux payants"}
+          </p>
         </div>
       )}
 

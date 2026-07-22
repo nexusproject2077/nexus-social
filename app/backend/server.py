@@ -1010,6 +1010,44 @@ async def create_checkout_session(current_user: dict = Depends(get_current_user)
         raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
 
 
+@api_router.post("/live/gift-checkout")
+async def live_gift_checkout(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Crée une session Stripe Checkout (paiement unique) pour envoyer un cadeau
+    payant pendant un direct. À la validation, le webhook enregistre le cadeau et
+    le diffuse en temps réel à la room."""
+    if not STRIPE_ENABLED:
+        raise HTTPException(status_code=503, detail="Les paiements ne sont pas configurés")
+    name = (data.get("name") or "Cadeau")[:40]
+    emoji = (data.get("emoji") or "🎁")[:8]
+    amount = int(data.get("amount_cents") or 0)
+    room_id = (data.get("room_id") or "")[:120]
+    if amount < 50:
+        raise HTTPException(status_code=400, detail="Montant invalide")
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": f"Cadeau Nexus — {name} {emoji}"},
+                    "unit_amount": amount,
+                },
+                "quantity": 1,
+            }],
+            customer_email=current_user.get("email"),
+            client_reference_id=current_user["id"],
+            metadata={
+                "type": "gift", "gift_name": name, "gift_emoji": emoji, "room_id": room_id,
+                "from_user_id": current_user["id"], "from_username": current_user["username"],
+            },
+            success_url=f"{FRONTEND_URL}/live/{room_id}?gift_sent=1",
+            cancel_url=f"{FRONTEND_URL}/live/{room_id}?gift_cancel=1",
+        )
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
+
+
 @app.post("/api/billing/webhook")
 async def stripe_webhook(request: Request):
     """Webhook Stripe (signature vérifiée) : met à jour l'abonnement de l'utilisateur."""
@@ -1025,6 +1063,34 @@ async def stripe_webhook(request: Request):
 
     etype = event["type"]
     obj = event["data"]["object"]
+    meta = obj.get("metadata") or {}
+
+    # ── Cadeau payant en direct : on enregistre + on diffuse à la room ──
+    if etype == "checkout.session.completed" and meta.get("type") == "gift":
+        room_id = meta.get("room_id")
+        gift = {
+            "id": str(uuid.uuid4()),
+            "room_id": room_id,
+            "from_user_id": meta.get("from_user_id"),
+            "from_username": meta.get("from_username"),
+            "gift_name": meta.get("gift_name"),
+            "gift_emoji": meta.get("gift_emoji"),
+            "amount_total": obj.get("amount_total"),
+            "currency": obj.get("currency"),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            await db.live_gifts.insert_one(dict(gift))
+        except Exception:
+            pass
+        if room_id and room_id in live_rooms:
+            payload = json.dumps({"type": "gift", "from": gift["from_username"], "emoji": gift["gift_emoji"], "name": gift["gift_name"], "paid": True})
+            for c in list(live_rooms.get(room_id, [])):
+                try:
+                    await c.send_text(payload)
+                except Exception:
+                    pass
+        return {"received": True}
 
     if etype == "checkout.session.completed":
         user_id = (obj.get("metadata") or {}).get("user_id") or obj.get("client_reference_id")
