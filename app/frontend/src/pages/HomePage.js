@@ -1,5 +1,4 @@
 import { useState, useEffect, Fragment } from "react";
-import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
 import Layout from "../components/Layout";
@@ -11,15 +10,29 @@ import { Skeleton } from "../components/ui/skeleton";
 import { toast } from "sonner";
 
 export default function HomePage({ user, setUser }) {
-  const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreatePost, setShowCreatePost] = useState(false);
-  const [feedType, setFeedType] = useState("following"); // "following" | "foryou"
+  // "following" | "foryou" — synchronisé avec les onglets du header (mobile) via
+  // localStorage + événement, pour que les deux sources restent cohérentes.
+  const [feedType, setFeedType] = useState(() => localStorage.getItem("nexus_feedtab") || "following");
+
+  const selectFeed = (key) => {
+    setFeedType(key);
+    localStorage.setItem("nexus_feedtab", key);
+    window.dispatchEvent(new CustomEvent("nexus:feedtab", { detail: key }));
+  };
 
   useEffect(() => {
     fetchFeed();
   }, [feedType]);
+
+  // Onglets déplacés dans le header (mobile) : on écoute leurs changements.
+  useEffect(() => {
+    const onTab = (e) => setFeedType(e.detail || localStorage.getItem("nexus_feedtab") || "following");
+    window.addEventListener("nexus:feedtab", onTab);
+    return () => window.removeEventListener("nexus:feedtab", onTab);
+  }, []);
 
   const fetchFeed = async () => {
     setLoading(true);
@@ -77,109 +90,32 @@ export default function HomePage({ user, setUser }) {
         {/* Stories */}
         <StoriesFeed />
 
-        {/* Switch Feed / Reels : Abonnements · Pour toi · Reels (ouvre le lecteur immersif) */}
-        <div className="flex items-center gap-2 mx-4 mt-4">
+        {/* Switch Feed (PC uniquement) — sur mobile ces onglets sont dans le header.
+            La box de création « Quoi de neuf ? » a été retirée : on publie via le
+            bouton « + ». */}
+        <div className="hidden lg:flex items-center gap-2 mx-4 mt-4">
           {[
+            { key: "foryou", label: "Pour vous" },
             { key: "following", label: "Abonnements" },
-            { key: "foryou", label: "Pour toi" },
-          ].map(({ key, label, nav, icon }) => {
-            const active = !nav && feedType === key;
+          ].map(({ key, label }) => {
+            const active = feedType === key;
             return (
               <button
                 key={key}
                 data-testid={`feed-toggle-${key}`}
-                onClick={() => (nav ? navigate(nav) : setFeedType(key))}
-                className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                onClick={() => selectFeed(key)}
+                className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
                 style={{
                   backgroundColor: active ? "var(--nexus-accent)" : "#171f33",
                   color: active ? "#00363e" : "#859397",
                   border: "1px solid rgba(255,255,255,0.05)",
                 }}
               >
-                {icon && <span className="material-symbols-outlined text-base">{icon}</span>}
                 {label}
               </button>
             );
           })}
         </div>
-
-        {/* Post Creation Box */}
-        <section
-          className="mx-4 mt-4 lg:mt-6 rounded-2xl p-4 lg:p-6 border cursor-pointer"
-          style={{
-            backgroundColor: "#171f33",
-            borderColor: "rgba(255,255,255,0.05)",
-          }}
-          onClick={() => setShowCreatePost(true)}
-        >
-          <div className="flex gap-3 lg:gap-4">
-            {user.profile_pic ? (
-              <img
-                src={user.profile_pic}
-                alt="Profile"
-                className="w-10 h-10 lg:w-12 lg:h-12 rounded-full object-cover flex-shrink-0"
-              />
-            ) : (
-              <div
-                className="w-10 h-10 lg:w-12 lg:h-12 rounded-full flex items-center justify-center font-bold flex-shrink-0"
-                style={{
-                  background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)",
-                  color: "#00363e",
-                }}
-              >
-                {user.username[0].toUpperCase()}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <div
-                className="w-full py-3 text-base lg:text-lg font-medium"
-                style={{ color: "#3c494c" }}
-              >
-                Quoi de neuf ?
-              </div>
-              <div
-                className="flex items-center justify-between mt-2 pt-4"
-                style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex gap-4" style={{ color: "#859397" }}>
-                  <button
-                    className="hover:text-cyan-400 transition-colors"
-                    onClick={() => setShowCreatePost(true)}
-                  >
-                    <span className="material-symbols-outlined text-xl">
-                      image
-                    </span>
-                  </button>
-                  <button
-                    className="hover:text-cyan-400 transition-colors"
-                    onClick={() => setShowCreatePost(true)}
-                  >
-                    <span className="material-symbols-outlined text-xl">
-                      gif_box
-                    </span>
-                  </button>
-                  <button
-                    className="hover:text-cyan-400 transition-colors"
-                    onClick={() => setShowCreatePost(true)}
-                  >
-                    <span className="material-symbols-outlined text-xl">
-                      sentiment_satisfied
-                    </span>
-                  </button>
-                </div>
-                <button
-                  data-testid="create-post-button"
-                  onClick={() => setShowCreatePost(true)}
-                  className="px-5 lg:px-6 py-1.5 lg:py-2 font-bold rounded-lg text-sm transition-all active:scale-95"
-                  style={{ backgroundColor: "var(--nexus-accent)", color: "#00363e" }}
-                >
-                  Post
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
 
         {/* Feed */}
         <div className="px-4 py-4 lg:py-6 space-y-4 lg:space-y-6">

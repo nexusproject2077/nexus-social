@@ -271,7 +271,8 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
       String(currentGroup.user_id) === currentUserId);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center select-none"
+      style={{ WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
       <div className="relative w-full h-full max-w-lg mx-auto flex flex-col bg-black">
         {/* Boutons en haut à droite */}
         <div className="absolute top-4 right-4 z-30 flex gap-2">

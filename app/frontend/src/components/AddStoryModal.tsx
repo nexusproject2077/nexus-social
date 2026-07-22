@@ -79,15 +79,11 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
 
   return (
     <Dialog open onOpenChange={handleClose}>
-      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md">
+      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md select-none">
         <DialogHeader>
+          {/* Pas de bouton de fermeture custom ici : DialogContent fournit déjà
+              sa propre croix (X) en haut à droite → évite la « double croix ». */}
           <DialogTitle className="text-xl font-bold">Publier une story</DialogTitle>
-          <button
-            onClick={handleClose}
-            className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100"
-          >
-            <X className="h-5 w-5" />
-          </button>
         </DialogHeader>
 
         <div className="mt-4">

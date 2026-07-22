@@ -16,6 +16,18 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
   const [sbExpanded, setSbExpanded] = useState(false);
   // En-tête mobile masqué au scroll vers le bas (page d'accueil), réaffiché au scroll vers le haut.
   const [headerHidden, setHeaderHidden] = useState(false);
+  // Onglets de fil (Pour vous / Abonnements) déplacés dans le header mobile.
+  const [feedTab, setFeedTab] = useState(() => localStorage.getItem("nexus_feedtab") || "following");
+  const selectFeed = (key) => {
+    setFeedTab(key);
+    localStorage.setItem("nexus_feedtab", key);
+    window.dispatchEvent(new CustomEvent("nexus:feedtab", { detail: key }));
+  };
+  useEffect(() => {
+    const onTab = (e) => setFeedTab(e.detail || localStorage.getItem("nexus_feedtab") || "following");
+    window.addEventListener("nexus:feedtab", onTab);
+    return () => window.removeEventListener("nexus:feedtab", onTab);
+  }, []);
 
   // Détection automatique de la langue via le pays (adresse IP).
   // On n'écrase jamais un choix explicite de l'utilisateur.
@@ -403,31 +415,59 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* ===== Mobile Header ===== */}
       {!hideMobileChrome && !hideMobileHeader && (
       <header
-        className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4 select-none transition-transform duration-300"
+        className="lg:hidden fixed top-0 left-0 right-0 z-50 flex flex-col select-none transition-transform duration-300"
         style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", transform: headerHidden ? "translateY(-100%)" : "translateY(0)" }}
       >
-        {/* Pas de trait de séparation (bord supprimé). Recherche déplacée dans la
-            barre du bas (pictogramme entre Messages et Profil). */}
-        <div
-          className="font-headline font-black text-xl tracking-tighter bg-clip-text"
-          style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
-        >
-          NEXUS
+        {/* Ligne 1 : « Nexus Social » centré, cloche de notifications juste à droite.
+            Pas de trait de séparation ; recherche dans la barre du bas. */}
+        <div className="h-14 flex items-center justify-center gap-2 px-4">
+          <div
+            className="font-headline font-black text-lg tracking-tighter bg-clip-text"
+            style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+          >
+            Nexus Social
+          </div>
+          <button className="relative" style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
+            <span className="material-symbols-outlined">notifications</span>
+            {badges.notifications > 0 && (
+              <span className="absolute -top-1.5 -right-1.5"><CountBadge count={badges.notifications} /></span>
+            )}
+          </button>
         </div>
-        {/* Notifications = seule action à droite (Paramètres → page Profil). */}
-        <button className="relative" style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
-          <span className="material-symbols-outlined">notifications</span>
-          {badges.notifications > 0 && (
-            <span className="absolute -top-1.5 -right-1.5"><CountBadge count={badges.notifications} /></span>
-          )}
-        </button>
+
+        {/* Ligne 2 : onglets de fil (accueil uniquement), fondus dans le header
+            (aucun fond ni bordure ni forme). Actif = couleur accent + soulignement. */}
+        {location.pathname === "/" && (
+          <div className="flex items-center justify-center gap-8 pb-2">
+            {[
+              { key: "foryou", label: "Pour vous" },
+              { key: "following", label: "Abonnements" },
+            ].map(({ key, label }) => {
+              const active = feedTab === key;
+              return (
+                <button
+                  key={key}
+                  data-testid={`header-feed-${key}`}
+                  onClick={() => selectFeed(key)}
+                  className="relative text-sm bg-transparent border-0 p-0 transition-colors"
+                  style={{ color: active ? "var(--nexus-accent)" : "#859397", fontWeight: active ? 800 : 500 }}
+                >
+                  {label}
+                  {active && (
+                    <span className="absolute -bottom-1 left-0 right-0 h-[2px] rounded-full" style={{ background: "var(--nexus-accent)" }} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </header>
       )}
 
       {/* ===== Main Content ===== */}
       {/* lg:ml-20 = largeur de la sidebar repliée (pas de chevauchement ; la
           sidebar déployée passe au-dessus au survol). */}
-      <main className={`ml-0 lg:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : "pt-14 pb-20")} lg:pt-0 lg:pb-0`}>
+      <main className={`ml-0 lg:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : (location.pathname === "/" ? "pt-[5.5rem] pb-20" : "pt-14 pb-20"))} lg:pt-0 lg:pb-0`}>
         {children}
       </main>
 
