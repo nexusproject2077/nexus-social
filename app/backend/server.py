@@ -260,6 +260,43 @@ elif stripe is None:
 else:
     print("ℹ️ Stripe désactivé (STRIPE_SECRET_KEY/STRIPE_PRICE_ID absents) — abonnements désactivés")
 
+# Stripe Client (API V2) : utilisé pour Connect (comptes créateurs V2). Indépendant
+# de STRIPE_PRICE_ID (Connect n'en a pas besoin) : suffit d'avoir la clé + un SDK récent.
+try:
+    from stripe import StripeClient as _StripeClient
+except Exception:
+    _StripeClient = None
+stripe_client = _StripeClient(STRIPE_SECRET_KEY) if (_StripeClient and STRIPE_SECRET_KEY) else None
+
+
+def _v2d(obj):
+    """Objet Stripe V2 -> dict (support .to_dict / dict / passthrough)."""
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    if hasattr(obj, "to_dict"):
+        try:
+            return obj.to_dict()
+        except Exception:
+            pass
+    return obj
+
+
+def _v2_deep(obj, *keys, default=None):
+    cur = _v2d(obj)
+    for k in keys:
+        if not isinstance(cur, dict):
+            return default
+        cur = _v2d(cur.get(k))
+    return cur if cur is not None else default
+
+
+def _v2_transfers_active(account) -> bool:
+    """Le compte connecté V2 peut-il recevoir des virements (capacité active) ?"""
+    return _v2_deep(account, "configuration", "recipient", "capabilities",
+                    "stripe_balance", "stripe_transfers", "status") == "active"
+
 # ==================== ADMINISTRATION ====================
 # ADMIN_EMAILS (emails séparés par des virgules) identifie les comptes
 # administrateurs, exposés via is_admin sur /auth/me. Optionnel : réservé à
@@ -1034,10 +1071,23 @@ async def live_gift_checkout(data: dict = Body(...), current_user: dict = Depend
     host_id = parts[1] if len(parts) >= 3 and parts[0] == "live" else None
     host = await db.users.find_one({"id": host_id}) if host_id else None
 
-    # Reversement direct au créateur (Stripe Connect) avec commission plateforme,
-    # si l'hôte a un compte connecté opérationnel. Sinon, paiement à la plateforme.
+    # Reversement direct au créateur (Stripe Connect V2) avec commission plateforme,
+    # si l'hôte a un compte connecté opérationnel. On vérifie la capacité EN DIRECT
+    # (V2 accounts.retrieve) pour éviter de router vers un compte pas encore prêt.
     payment_intent_data = None
-    if host and host.get("stripe_account_id") and host.get("stripe_charges_enabled") and host.get("id") != current_user["id"]:
+    host_ready = False
+    if host and host.get("stripe_account_id") and host.get("id") != current_user["id"]:
+        if stripe_client:
+            try:
+                acct = stripe_client.v2.core.accounts.retrieve(
+                    host["stripe_account_id"], params={"include": ["configuration.recipient"]}
+                )
+                host_ready = _v2_transfers_active(acct)
+            except Exception:
+                host_ready = bool(host.get("stripe_charges_enabled"))
+        else:
+            host_ready = bool(host.get("stripe_charges_enabled"))
+    if host_ready:
         fee = round(amount * PLATFORM_FEE_PERCENT / 100)
         payment_intent_data = {
             "application_fee_amount": fee,
@@ -1072,46 +1122,61 @@ async def live_gift_checkout(data: dict = Body(...), current_user: dict = Depend
         raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
 
 
-# ── Stripe Connect : reversement direct aux créateurs (payout façon TikTok) ──
+# ── Stripe Connect (API V2) : reversement direct aux créateurs (payout TikTok) ──
+# Comptes connectés créés avec l'API V2 (dashboard Express, plateforme = fees/losses
+# collector, capacité stripe_transfers). Le statut est lu EN DIRECT via l'API.
 @api_router.get("/billing/connect/status")
 async def connect_status(current_user: dict = Depends(get_current_user)):
-    """État du compte connecté du créateur (peut-il recevoir des paiements ?)."""
+    """État du compte connecté V2 du créateur (peut-il recevoir des virements ?)."""
     acct_id = current_user.get("stripe_account_id")
-    if not (STRIPE_ENABLED and acct_id):
-        return {"enabled": STRIPE_ENABLED, "connected": False, "charges_enabled": False, "fee_percent": PLATFORM_FEE_PERCENT}
+    if not (stripe_client and acct_id):
+        return {"enabled": bool(stripe_client), "connected": False, "charges_enabled": False, "fee_percent": PLATFORM_FEE_PERCENT}
     try:
-        acct = stripe.Account.retrieve(acct_id)
-        charges = bool(acct.get("charges_enabled"))
-        await db.users.update_one({"id": current_user["id"]}, {"$set": {"stripe_charges_enabled": charges}})
-        return {"enabled": True, "connected": True, "charges_enabled": charges, "fee_percent": PLATFORM_FEE_PERCENT}
+        acct = stripe_client.v2.core.accounts.retrieve(
+            acct_id, params={"include": ["configuration.recipient", "requirements"]}
+        )
+        ready = _v2_transfers_active(acct)
+        req_status = _v2_deep(acct, "requirements", "summary", "minimum_deadline", "status")
+        onboarding_complete = req_status not in ("currently_due", "past_due")
+        await db.users.update_one({"id": current_user["id"]}, {"$set": {"stripe_charges_enabled": bool(ready)}})
+        return {"enabled": True, "connected": True, "charges_enabled": bool(ready),
+                "onboarding_complete": bool(onboarding_complete), "fee_percent": PLATFORM_FEE_PERCENT}
     except Exception:
         return {"enabled": True, "connected": True, "charges_enabled": bool(current_user.get("stripe_charges_enabled")), "fee_percent": PLATFORM_FEE_PERCENT}
 
 
 @api_router.post("/billing/connect/onboard")
 async def connect_onboard(current_user: dict = Depends(get_current_user)):
-    """Crée (ou réutilise) un compte Stripe Express pour le créateur et renvoie
-    le lien d'onboarding (KYC/IBAN)."""
-    if not STRIPE_ENABLED:
+    """Crée (ou réutilise) un compte connecté **V2** (Express) pour le créateur et
+    renvoie le lien d'onboarding (KYC/IBAN)."""
+    if not stripe_client:
         raise HTTPException(status_code=503, detail="Les paiements ne sont pas configurés")
     acct_id = current_user.get("stripe_account_id")
     try:
         if not acct_id:
-            acct = stripe.Account.create(
-                type="express",
-                email=current_user.get("email"),
-                capabilities={"transfers": {"requested": True}, "card_payments": {"requested": True}},
-                metadata={"user_id": current_user["id"]},
-            )
-            acct_id = acct.id
+            account = stripe_client.v2.core.accounts.create(params={
+                "display_name": current_user.get("username") or current_user.get("email") or "Créateur Nexus",
+                "contact_email": current_user.get("email"),
+                "identity": {"country": "fr"},          # pays de l'entité (app FR)
+                "dashboard": "express",                  # dashboard Express géré par Stripe
+                "defaults": {"responsibilities": {"fees_collector": "application", "losses_collector": "application"}},
+                "configuration": {"recipient": {"capabilities": {"stripe_balance": {"stripe_transfers": {"requested": True}}}}},
+                "metadata": {"user_id": current_user["id"]},
+            })
+            acct_id = _v2d(account).get("id") or getattr(account, "id", None)
             await db.users.update_one({"id": current_user["id"]}, {"$set": {"stripe_account_id": acct_id}})
-        link = stripe.AccountLink.create(
-            account=acct_id,
-            refresh_url=f"{FRONTEND_URL}/settings?connect=refresh",
-            return_url=f"{FRONTEND_URL}/settings?connect=done",
-            type="account_onboarding",
-        )
-        return {"url": link.url}
+        link = stripe_client.v2.core.account_links.create(params={
+            "account": acct_id,
+            "use_case": {
+                "type": "account_onboarding",
+                "account_onboarding": {
+                    "configurations": ["recipient"],
+                    "refresh_url": f"{FRONTEND_URL}/settings?connect=refresh",
+                    "return_url": f"{FRONTEND_URL}/settings?connect=done",
+                },
+            },
+        })
+        return {"url": _v2d(link).get("url") or getattr(link, "url", None)}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
 
