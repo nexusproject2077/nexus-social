@@ -1443,7 +1443,7 @@ export default function MessagesPage({ user }) {
           pb-20 sur mobile pour ne pas passer sous le footer. */}
       <div ref={convScrollRef}
         onTouchStart={onConvPullStart} onTouchMove={onConvPullMove} onTouchEnd={onConvPullEnd}
-        className="flex-1 min-h-0 overflow-y-auto pb-20 lg:pb-0" style={{ scrollbarWidth: "none", overscrollBehavior: "contain" }}>
+        className="flex-1 min-h-0 overflow-y-auto pb-20 lg:pb-0" style={{ overscrollBehavior: "contain" }}>
         {/* Indicateur « tirer pour rafraîchir » (mobile) */}
         {(convPull > 0 || convRefreshing) && (
           <div className="flex justify-center items-center overflow-hidden"
@@ -1562,7 +1562,7 @@ export default function MessagesPage({ user }) {
           <div ref={messagesScrollRef}
             onTouchStart={onPullStart} onTouchMove={onPullMove} onTouchEnd={onPullEnd}
             className="flex-1 min-h-0 overflow-y-auto px-4 py-4 flex flex-col"
-            style={{ scrollbarWidth: "none", overscrollBehavior: "contain", overscrollBehaviorX: "none", touchAction: "pan-y" }}>
+            style={{ overscrollBehavior: "contain", overscrollBehaviorX: "none", touchAction: "pan-y" }}>
             {/* Indicateur « tirer pour rafraîchir » (mobile) */}
             {(pullDist > 0 || refreshing) && (
               <div className="flex justify-center items-center overflow-hidden flex-shrink-0"

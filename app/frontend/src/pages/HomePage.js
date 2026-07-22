@@ -14,8 +14,8 @@ export default function HomePage({ user, setUser }) {
   const [loading, setLoading] = useState(true);
   const [showCreatePost, setShowCreatePost] = useState(false);
   // "following" | "foryou" — synchronisé avec les onglets du header (mobile) via
-  // localStorage + événement, pour que les deux sources restent cohérentes.
-  const [feedType, setFeedType] = useState(() => localStorage.getItem("nexus_feedtab") || "following");
+  // localStorage + événement. À l'arrivée sur l'accueil, on démarre sur « Pour vous ».
+  const [feedType, setFeedType] = useState("foryou");
 
   const selectFeed = (key) => {
     setFeedType(key);
@@ -23,13 +23,16 @@ export default function HomePage({ user, setUser }) {
     window.dispatchEvent(new CustomEvent("nexus:feedtab", { detail: key }));
   };
 
+  // Force « Pour vous » à chaque arrivée sur la page d'accueil.
+  useEffect(() => { selectFeed("foryou"); }, []);
+
   useEffect(() => {
     fetchFeed();
   }, [feedType]);
 
   // Onglets déplacés dans le header (mobile) : on écoute leurs changements.
   useEffect(() => {
-    const onTab = (e) => setFeedType(e.detail || localStorage.getItem("nexus_feedtab") || "following");
+    const onTab = (e) => setFeedType(e.detail || localStorage.getItem("nexus_feedtab") || "foryou");
     window.addEventListener("nexus:feedtab", onTab);
     return () => window.removeEventListener("nexus:feedtab", onTab);
   }, []);

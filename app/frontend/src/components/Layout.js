@@ -17,7 +17,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
   // En-tête mobile masqué au scroll vers le bas (page d'accueil), réaffiché au scroll vers le haut.
   const [headerHidden, setHeaderHidden] = useState(false);
   // Onglets de fil (Pour vous / Abonnements) déplacés dans le header mobile.
-  const [feedTab, setFeedTab] = useState(() => localStorage.getItem("nexus_feedtab") || "following");
+  const [feedTab, setFeedTab] = useState(() => localStorage.getItem("nexus_feedtab") || "foryou");
   const selectFeed = (key) => {
     setFeedTab(key);
     localStorage.setItem("nexus_feedtab", key);
@@ -184,6 +184,14 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       window.removeEventListener("nexus:badges", onBadges);
     };
   }, [fetchBadges]);
+
+  // Barres de défilement : visibles sur Messages / Profil / Recherche, masquées
+  // ailleurs (via la classe `hide-scroll` sur <body>).
+  useEffect(() => {
+    const showScroll = ["/messages", "/profile", "/search"].some((p) => location.pathname.startsWith(p));
+    document.body.classList.toggle("hide-scroll", !showScroll);
+    return () => document.body.classList.remove("hide-scroll");
+  }, [location.pathname]);
 
   // Masque l'en-tête mobile quand on descend, le réaffiche quand on remonte
   // (uniquement sur la page d'accueil).
@@ -418,20 +426,21 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         className="lg:hidden fixed top-0 left-0 right-0 z-50 flex flex-col select-none transition-transform duration-300"
         style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", transform: headerHidden ? "translateY(-100%)" : "translateY(0)" }}
       >
-        {/* Ligne 1 : « Nexus Social » centré, cloche de notifications juste à droite.
-            Pas de trait de séparation ; recherche dans la barre du bas. */}
-        <div className="h-14 flex items-center justify-center gap-2 px-4">
+        {/* Ligne 1 : « Nexus Social » centré, cloche de notifications à droite
+            (comme avant). Pas de trait de séparation. */}
+        <div className="relative h-14 flex items-center justify-center px-4">
           <div
             className="font-headline font-black text-lg tracking-tighter bg-clip-text"
             style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
           >
             Nexus Social
           </div>
-          <button className="relative" style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
-            <span className="material-symbols-outlined">notifications</span>
-            {badges.notifications > 0 && (
-              <span className="absolute -top-1.5 -right-1.5"><CountBadge count={badges.notifications} /></span>
-            )}
+          <button className="absolute right-4 top-1/2 -translate-y-1/2" style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
+            <span className="relative material-symbols-outlined">notifications
+              {badges.notifications > 0 && (
+                <span className="absolute -top-1.5 -right-1.5"><CountBadge count={badges.notifications} /></span>
+              )}
+            </span>
           </button>
         </div>
 

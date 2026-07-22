@@ -44,13 +44,16 @@ body {
     background-color: #0b1326;
 }
 
-/* Masque les barres de défilement (rendu épuré / tactile), le défilement reste
-   fonctionnel. */
-* {
+/* Masque les barres de défilement UNIQUEMENT quand <body> a la classe
+   `hide-scroll` (posée par le Layout selon la page). Ainsi les pages Messages,
+   Profil et Recherche gardent leur barre, les autres sont épurées. Le
+   défilement reste toujours fonctionnel. */
+body.hide-scroll,
+body.hide-scroll * {
     scrollbar-width: none;        /* Firefox */
     -ms-overflow-style: none;     /* IE/Edge ancien */
 }
-*::-webkit-scrollbar {
+body.hide-scroll ::-webkit-scrollbar {
     display: none;                /* Chrome / Safari / Edge */
     width: 0;
     height: 0;
