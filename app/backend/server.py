@@ -5497,6 +5497,15 @@ if follow_router is not None:
 # Inclure le routeur principal
 app.include_router(api_router)
 
+# Exemple d'intégration Stripe Connect (API V2) — monté sous /connect-sample.
+# Autonome : si le SDK/clé manquent, les pages affichent une erreur claire.
+try:
+    from stripe_connect_sample import router as connect_sample_router
+    app.include_router(connect_sample_router)
+    print("✅ Stripe Connect sample (V2) monté sur /connect-sample")
+except Exception as _e:
+    print(f"ℹ️ Exemple Stripe Connect non monté: {_e}")
+
 # Logging
 logging.basicConfig(
     level=logging.INFO,
