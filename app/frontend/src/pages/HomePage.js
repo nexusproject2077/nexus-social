@@ -82,7 +82,6 @@ export default function HomePage({ user, setUser }) {
           {[
             { key: "following", label: "Abonnements" },
             { key: "foryou", label: "Pour toi" },
-            { key: "reels", label: "Nexus Clips", nav: "/clips", icon: "play_circle" },
           ].map(({ key, label, nav, icon }) => {
             const active = !nav && feedType === key;
             return (
