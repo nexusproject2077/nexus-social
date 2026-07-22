@@ -178,6 +178,63 @@ EU_GEO_BLOCK_ENABLED = os.environ.get("EU_GEO_BLOCK_ENABLED", "true").lower() ==
 CLIPS_EU_GEO_BLOCK = os.environ.get("CLIPS_EU_GEO_BLOCK", "true").lower() == "true"
 GEOIP_DB_PATH = os.environ.get("GEOIP_DB_PATH", str(ROOT_DIR / "GeoLite2-Country.mmdb"))
 
+# Téléchargement automatique de la base GeoLite2 (option pratique pour les dépôts
+# publics : ne pas commiter le .mmdb, le récupérer au démarrage). Si la base est
+# absente et qu'une clé de licence MaxMind (gratuite) est fournie via
+# MAXMIND_LICENSE_KEY, on la télécharge et on l'extrait vers GEOIP_DB_PATH.
+MAXMIND_LICENSE_KEY = os.environ.get("MAXMIND_LICENSE_KEY", "")
+MAXMIND_EDITION = os.environ.get("MAXMIND_EDITION", "GeoLite2-Country")
+
+
+def _download_geolite2_db(dest_path: str, license_key: str, edition: str = "GeoLite2-Country") -> bool:
+    """Télécharge l'archive GeoLite2 chez MaxMind et extrait le .mmdb vers dest_path.
+
+    Renvoie True en cas de succès. Best-effort : ne lève jamais (fail-open).
+    """
+    import urllib.request
+    import tarfile
+    import tempfile
+    import shutil
+    url = (
+        "https://download.maxmind.com/app/geoip_download"
+        f"?edition_id={edition}&license_key={license_key}&suffix=tar.gz"
+    )
+    tmp_archive = None
+    try:
+        print(f"⬇️ Téléchargement de la base GeoIP {edition} depuis MaxMind…")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as tmp:
+            tmp_archive = tmp.name
+            with urllib.request.urlopen(url, timeout=60) as resp:
+                shutil.copyfileobj(resp, tmp)
+        # L'archive contient .../GeoLite2-XXX_YYYYMMDD/GeoLite2-XXX.mmdb
+        with tarfile.open(tmp_archive, "r:gz") as tar:
+            member = next((m for m in tar.getmembers() if m.name.endswith(".mmdb")), None)
+            if member is None:
+                print("⚠️ Archive MaxMind sans fichier .mmdb — téléchargement ignoré")
+                return False
+            src = tar.extractfile(member)
+            if src is None:
+                return False
+            os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+            with open(dest_path, "wb") as out:
+                shutil.copyfileobj(src, out)
+        print(f"✅ Base GeoIP installée : {dest_path}")
+        return True
+    except Exception as e:
+        # Clé invalide, pas de réseau, quota MaxMind, etc. -> on continue sans geo-block.
+        print(f"⚠️ Téléchargement GeoIP échoué ({e}) — géolocalisation désactivée")
+        return False
+    finally:
+        if tmp_archive:
+            try:
+                os.remove(tmp_archive)
+            except Exception:
+                pass
+
+
+if geoip2 is not None and not os.path.exists(GEOIP_DB_PATH) and MAXMIND_LICENSE_KEY:
+    _download_geolite2_db(GEOIP_DB_PATH, MAXMIND_LICENSE_KEY, MAXMIND_EDITION)
+
 # La base GeoIP est ouverte dès qu'elle est disponible, indépendamment du blocage
 # global : elle sert aussi à la détection de langue et au geo-block par clip.
 _geoip_reader = None
