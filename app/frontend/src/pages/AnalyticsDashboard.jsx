@@ -81,7 +81,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
 
   if (loading && !stats) {
     return (
-      <Layout user={user} setUser={setUser}>
+      <Layout user={user} setUser={setUser} compact>
         <div className="flex items-center justify-center h-screen">
           <div className="text-center">
             <Activity className="h-12 w-12 text-cyan-500 animate-pulse mx-auto mb-4" />
@@ -101,7 +101,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
   ];
 
   return (
-    <Layout user={user} setUser={setUser}>
+    <Layout user={user} setUser={setUser} compact>
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-4 pb-20">
         {/* Header */}
         <div className="mb-4 sm:mb-6">

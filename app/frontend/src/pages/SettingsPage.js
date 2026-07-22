@@ -248,7 +248,7 @@ export default function SettingsPage({ user, setUser }) {
 
   if (loading) {
     return (
-      <Layout user={user} setUser={setUser} compact>
+      <Layout user={user} setUser={setUser} compact hideMobileHeader>
         <div className="flex items-center justify-center h-screen">
           <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
         </div>
@@ -625,7 +625,7 @@ export default function SettingsPage({ user, setUser }) {
   };
 
   return (
-    <Layout user={user} setUser={setUser} compact>
+    <Layout user={user} setUser={setUser} compact hideMobileHeader>
       <div className="flex min-h-screen" style={{ backgroundColor: C.surface }}>
 
         {/* ── Settings sidebar ──────────────────────────────────────────────── */}

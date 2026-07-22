@@ -14,6 +14,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
   const [trending, setTrending] = useState([]);
   // Sidebar PC : repliée par défaut (pictogrammes seuls), se déploie au survol.
   const [sbExpanded, setSbExpanded] = useState(false);
+  // En-tête mobile masqué au scroll vers le bas (page d'accueil), réaffiché au scroll vers le haut.
+  const [headerHidden, setHeaderHidden] = useState(false);
 
   // Détection automatique de la langue via le pays (adresse IP).
   // On n'écrase jamais un choix explicite de l'utilisateur.
@@ -171,6 +173,21 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
     };
   }, [fetchBadges]);
 
+  // Masque l'en-tête mobile quand on descend, le réaffiche quand on remonte
+  // (uniquement sur la page d'accueil).
+  useEffect(() => {
+    if (location.pathname !== "/") { setHeaderHidden(false); return; }
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y > lastY && y > 60) setHeaderHidden(true);       // scroll ↓ → masque
+      else if (y < lastY - 4) setHeaderHidden(false);       // scroll ↑ → affiche
+      lastY = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [location.pathname]);
+
   const badgeFor = (path) =>
     path === "/messages" ? badges.messages
     : path === "/notifications" ? badges.notifications
@@ -270,18 +287,20 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           })}
         </nav>
 
-        {/* Créer une publication */}
-        <div className={`mt-2 ${sbExpanded ? "px-2" : ""}`}>
-          <button
-            data-testid="create-post-button"
-            onClick={handleCreatePost}
-            title={t("create_post")}
-            className={`font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm flex items-center justify-center ${sbExpanded ? "w-full py-3.5" : "w-11 h-11 mx-auto"}`}
-            style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 8px 20px rgba(34,211,238,0.2)" }}
-          >
-            {sbExpanded ? t("create_post") : <span className="material-symbols-outlined">add</span>}
-          </button>
-        </div>
+        {/* Créer une publication — page d'accueil uniquement. */}
+        {location.pathname === "/" && (
+          <div className={`mt-2 ${sbExpanded ? "px-2" : ""}`}>
+            <button
+              data-testid="create-post-button"
+              onClick={handleCreatePost}
+              title={t("create_post")}
+              className={`font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm flex items-center justify-center ${sbExpanded ? "w-full py-3.5" : "w-11 h-11 mx-auto"}`}
+              style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 8px 20px rgba(34,211,238,0.2)" }}
+            >
+              {sbExpanded ? t("create_post") : <span className="material-symbols-outlined">add</span>}
+            </button>
+          </div>
+        )}
 
         {/* Profil / déconnexion */}
         <div className={`mt-auto ${sbExpanded ? "px-2" : ""}`}>
@@ -384,37 +403,24 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* ===== Mobile Header ===== */}
       {!hideMobileChrome && !hideMobileHeader && (
       <header
-        className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4 select-none"
-        style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+        className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4 select-none transition-transform duration-300"
+        style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", transform: headerHidden ? "translateY(-100%)" : "translateY(0)" }}
       >
+        {/* Pas de trait de séparation (bord supprimé). Recherche déplacée dans la
+            barre du bas (pictogramme entre Messages et Profil). */}
         <div
           className="font-headline font-black text-xl tracking-tighter bg-clip-text"
           style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
         >
           NEXUS
         </div>
-        <div className="flex-1 px-4 max-w-xs mx-auto">
-          <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#859397", fontSize: "18px" }}>search</span>
-            <input
-              className="w-full border-none rounded-full py-1.5 pl-8 pr-4 text-xs outline-none placeholder:text-slate-500"
-              style={{ backgroundColor: "#131b2e", color: "#dae2fd" }}
-              placeholder={`${t("search")}...`}
-              type="text"
-              onKeyDown={(e) => { if (e.key === "Enter" && e.target.value) navigate(`/search?q=${e.target.value}`); }}
-            />
-          </div>
-        </div>
-        {/* Notifications prend la place de l'ancien bouton Paramètres (retiré ;
-            les Paramètres sont désormais en haut à droite de la page Profil). */}
-        <div className="flex items-center gap-3">
-          <button className="relative" style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
-            <span className="material-symbols-outlined">notifications</span>
-            {badges.notifications > 0 && (
-              <span className="absolute -top-1.5 -right-1.5"><CountBadge count={badges.notifications} /></span>
-            )}
-          </button>
-        </div>
+        {/* Notifications = seule action à droite (Paramètres → page Profil). */}
+        <button className="relative" style={{ color: "#859397" }} onClick={() => navigate("/notifications")} data-testid="nav-notifications-mobile">
+          <span className="material-symbols-outlined">notifications</span>
+          {badges.notifications > 0 && (
+            <span className="absolute -top-1.5 -right-1.5"><CountBadge count={badges.notifications} /></span>
+          )}
+        </button>
       </header>
       )}
 
@@ -434,11 +440,13 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4 select-none"
         style={{ backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
       >
-        {/* Le bouton « + » n'est plus au centre : il flotte en bas à droite (FAB). */}
+        {/* Le bouton « + » n'est plus au centre : il flotte en bas à droite (FAB,
+            page d'accueil uniquement). Recherche = pictogramme entre Messages et Profil. */}
         {[
           { icon: "home",           path: "/",                   label: t("home"),      testId: "nav-home" },
           { icon: "play_circle",    path: "/clips",              label: "Nexus Clips",  testId: "nav-clips" },
           { icon: "mail",           path: "/messages",           label: t("messages"),  testId: "nav-messages" },
+          { icon: "search",         path: "/search",             label: t("search"),    testId: "nav-search-mobile" },
           { icon: "account_circle", path: `/profile/${user.id}`, label: t("profile"),   testId: "nav-profile" },
         ].map((item) => {
           const active = isActive(item.path);
@@ -456,16 +464,20 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         })}
       </nav>
 
-      {/* FAB « + » flottant en bas à droite (au-dessus de la barre de nav). */}
-      <button
-        data-testid="fab-create-post"
-        onClick={handleCreatePost}
-        className="lg:hidden fixed right-4 z-[55] w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95"
-        style={{ bottom: "calc(4.5rem + env(safe-area-inset-bottom))", background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 6px 20px rgba(34,211,238,0.45)" }}
-        aria-label={t("create_post")}
-      >
-        <span className="material-symbols-outlined text-3xl">add</span>
-      </button>
+      {/* FAB « + » flottant en bas à droite — PAGE D'ACCUEIL uniquement.
+          (Sur Nexus Clips, l'ajout se fait via le bouton en haut à droite ;
+          ailleurs, plus de bouton d'ajout de publication.) */}
+      {location.pathname === "/" && (
+        <button
+          data-testid="fab-create-post"
+          onClick={handleCreatePost}
+          className="lg:hidden fixed right-4 z-[55] w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95"
+          style={{ bottom: "calc(4.5rem + env(safe-area-inset-bottom))", background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 6px 20px rgba(34,211,238,0.45)" }}
+          aria-label={t("create_post")}
+        >
+          <span className="material-symbols-outlined text-3xl">add</span>
+        </button>
+      )}
       </>
       )}
 
