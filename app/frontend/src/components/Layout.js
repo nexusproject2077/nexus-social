@@ -189,8 +189,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
   // ailleurs (via la classe `hide-scroll` sur <body>).
   useEffect(() => {
     const showScroll = ["/messages", "/profile", "/search"].some((p) => location.pathname.startsWith(p));
-    document.body.classList.toggle("hide-scroll", !showScroll);
-    return () => document.body.classList.remove("hide-scroll");
+    document.documentElement.classList.toggle("hide-scroll", !showScroll);
+    return () => document.documentElement.classList.remove("hide-scroll");
   }, [location.pathname]);
 
   // Masque l'en-tête mobile quand on descend, le réaffiche quand on remonte
