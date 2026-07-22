@@ -83,10 +83,13 @@ try:
     from backend import moderation
 except ImportError:
     try:
-        import moderation
+        from app.backend import moderation
     except ImportError:
-        moderation = None
-        print("⚠️ Module 'moderation' introuvable — modération auto désactivée")
+        try:
+            import moderation
+        except ImportError:
+            moderation = None
+            print("⚠️ Module 'moderation' introuvable — modération auto désactivée")
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -5755,7 +5758,13 @@ app.include_router(api_router)
 # Exemple d'intégration Stripe Connect (API V2) — monté sous /connect-sample.
 # Autonome : si le SDK/clé manquent, les pages affichent une erreur claire.
 try:
-    from stripe_connect_sample import router as connect_sample_router
+    try:
+        from backend.stripe_connect_sample import router as connect_sample_router
+    except ImportError:
+        try:
+            from app.backend.stripe_connect_sample import router as connect_sample_router
+        except ImportError:
+            from stripe_connect_sample import router as connect_sample_router
     app.include_router(connect_sample_router)
     print("✅ Stripe Connect sample (V2) monté sur /connect-sample")
 except Exception as _e:
