@@ -3777,48 +3777,69 @@ async def call_signal(data: dict = Body(...), current_user: dict = Depends(get_c
 
 # ==================== SEARCH ROUTES ====================
 @api_router.get("/search")
-async def search(q: str, current_user: dict = Depends(get_current_user)):
-    """Recherche globale (utilisateurs et posts)"""
-    if not q or len(q.strip()) == 0:
-        return {"users": [], "posts": []}
-    
-    # Search users
-    users_raw = await db.users.find({
-        "$or": [
-            {"username": {"$regex": q, "$options": "i"}},
-            {"bio": {"$regex": q, "$options": "i"}}
-        ]
-    }).limit(10).to_list(length=10)
-    
-    users = []
-    for user_raw in users_raw:
-        user = convert_mongo_doc_to_dict(user_raw)
-        is_following = await check_is_following(current_user["id"], user["id"])
-        users.append(UserProfile(
-            id=user["id"],
-            username=user["username"],
-            bio=user.get("bio", ""),
-            profile_pic=user.get("profile_pic"),
-            followers_count=user.get("followers_count", 0),
-            following_count=user.get("following_count", 0),
-            is_following=is_following,
-            created_at=user["created_at"]
-        ))
-    
-    # Search posts
-    posts_raw = await db.posts.find({
-        "content": {"$regex": q, "$options": "i"}
-    }).sort("created_at", -1).limit(20).to_list(length=20)
-    
-    posts = []
-    for post_raw in posts_raw:
-        post = convert_mongo_doc_to_dict(post_raw)
-        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
-        post["is_liked"] = bool(like_raw)
-        enrich_post_poll(post, current_user["id"])
-        posts.append(Post(**post))
-    
-    return {"users": users, "posts": posts}
+async def search(q: str, type: str = "all", skip: int = 0, limit: int = 20,
+                 current_user: dict = Depends(get_current_user)):
+    """Recherche globale façon X : onglets (all/top/latest/people/media/hashtags),
+    pagination (skip/limit) pour le scroll infini, résultats users/posts/hashtags."""
+    q = (q or "").strip()
+    if not q:
+        return {"users": [], "posts": [], "hashtags": []}
+
+    rx = {"$regex": re.escape(q.lstrip("#")), "$options": "i"}
+    limit = max(1, min(limit, 40))
+
+    async def get_users(sk, lm):
+        raw = await db.users.find({"$or": [{"username": rx}, {"bio": rx}]}).skip(sk).limit(lm).to_list(length=lm)
+        out = []
+        for u in raw:
+            u = convert_mongo_doc_to_dict(u)
+            out.append(UserProfile(
+                id=u["id"], username=u["username"], bio=u.get("bio", ""),
+                profile_pic=u.get("profile_pic"),
+                followers_count=u.get("followers_count", 0),
+                following_count=u.get("following_count", 0),
+                is_following=await check_is_following(current_user["id"], u["id"]),
+                created_at=u["created_at"]))
+        return out
+
+    async def get_posts(sk, lm, sort_field, media_only=False):
+        query = {"content": rx}
+        if media_only:
+            query = {"$and": [{"content": rx}, {"$or": [
+                {"media_url": {"$nin": [None, ""]}},
+                {"media_urls": {"$exists": True, "$ne": []}},
+            ]}]}
+        raw = await db.posts.find(query).sort(sort_field, -1).skip(sk).limit(lm).to_list(length=lm)
+        out = []
+        for p in raw:
+            p = convert_mongo_doc_to_dict(p)
+            p["is_liked"] = bool(await db.likes.find_one({"post_id": p["id"], "user_id": current_user["id"]}))
+            enrich_post_poll(p, current_user["id"])
+            out.append(Post(**p))
+        return out
+
+    async def get_hashtags():
+        trending = await compute_trending_hashtags(60)
+        ql = q.lstrip("#").lower()
+        return [t for t in trending if ql in (t.get("tag", "").lower())][:15]
+
+    if type == "people":
+        return {"users": await get_users(skip, limit), "posts": [], "hashtags": []}
+    if type == "latest":
+        return {"users": [], "posts": await get_posts(skip, limit, "created_at"), "hashtags": []}
+    if type == "top":
+        return {"users": [], "posts": await get_posts(skip, limit, "likes_count"), "hashtags": []}
+    if type == "media":
+        return {"users": [], "posts": await get_posts(skip, limit, "created_at", media_only=True), "hashtags": []}
+    if type == "hashtags":
+        return {"users": [], "posts": [], "hashtags": await get_hashtags()}
+
+    # « Pour toi » / all : mélange users + posts + hashtags (page 0 des annexes).
+    return {
+        "users": await get_users(0, 6),
+        "posts": await get_posts(skip, limit, "created_at"),
+        "hashtags": await get_hashtags(),
+    }
 
 # ==================== STORIES ROUTES ====================
 @api_router.post("/stories", response_model=Story)
