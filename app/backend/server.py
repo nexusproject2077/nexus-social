@@ -154,40 +154,43 @@ EU_COUNTRIES = {
 # Chemins toujours accessibles, même depuis l'UE (obligations légales + santé)
 GEO_BLOCK_ALLOWED_PATHS = ("/privacy", "/gdpr", "/legal", "/healthz", "/docs", "/openapi.json")
 
+# Blocage GLOBAL de l'UE (HTTP 451 sur tout le site). Optionnel. On peut le
+# désactiver (EU_GEO_BLOCK_ENABLED=false) tout en gardant la géolocalisation
+# active, pour n'appliquer qu'un blocage granulaire (ex : Nexus Clips).
 EU_GEO_BLOCK_ENABLED = os.environ.get("EU_GEO_BLOCK_ENABLED", "true").lower() == "true"
+# Blocage PAR CLIP : les clips marqués eu_blocked sont masqués/refusés aux
+# visiteurs de l'UE (indépendant du blocage global). Nécessite une base GeoIP.
+CLIPS_EU_GEO_BLOCK = os.environ.get("CLIPS_EU_GEO_BLOCK", "true").lower() == "true"
 GEOIP_DB_PATH = os.environ.get("GEOIP_DB_PATH", str(ROOT_DIR / "GeoLite2-Country.mmdb"))
 
+# La base GeoIP est ouverte dès qu'elle est disponible, indépendamment du blocage
+# global : elle sert aussi à la détection de langue et au geo-block par clip.
 _geoip_reader = None
-if EU_GEO_BLOCK_ENABLED and geoip2 is not None and os.path.exists(GEOIP_DB_PATH):
+if geoip2 is not None and os.path.exists(GEOIP_DB_PATH):
     try:
         _geoip_reader = geoip2.database.Reader(GEOIP_DB_PATH)
-        print(f"✅ EU geo-block actif (base GeoIP: {GEOIP_DB_PATH})")
+        print(f"✅ Géolocalisation GeoIP active (base: {GEOIP_DB_PATH})")
     except Exception as e:
-        print(f"⚠️ Impossible d'ouvrir la base GeoIP ({e}) — geo-block désactivé")
+        print(f"⚠️ Impossible d'ouvrir la base GeoIP ({e}) — géolocalisation désactivée")
         _geoip_reader = None
-elif EU_GEO_BLOCK_ENABLED:
-    print("⚠️ EU geo-block demandé mais base GeoLite2-Country.mmdb introuvable — les requêtes passent normalement")
+else:
+    print("⚠️ Base GeoLite2-Country.mmdb introuvable — géolocalisation désactivée (les requêtes passent normalement)")
+
+if _geoip_reader is not None:
+    print(f"   • blocage global UE : {'ON (451)' if EU_GEO_BLOCK_ENABLED else 'OFF'}")
+    print(f"   • blocage clips UE  : {'ON' if CLIPS_EU_GEO_BLOCK else 'OFF'}")
 
 
 @app.middleware("http")
 async def eu_geo_block(request, call_next):
     """Retourne 451 aux visiteurs de l'UE, sauf sur les pages légales."""
-    if _geoip_reader is not None:
+    if EU_GEO_BLOCK_ENABLED and _geoip_reader is not None:
         path = request.url.path
-        if not any(p in path for p in GEO_BLOCK_ALLOWED_PATHS):
-            client_host = request.client.host if request.client else ""
-            forwarded = request.headers.get("x-forwarded-for", client_host)
-            ip = forwarded.split(",")[0].strip() if forwarded else client_host
-            try:
-                iso_code = _geoip_reader.country(ip).country.iso_code
-                if iso_code in EU_COUNTRIES:
-                    return JSONResponse(
-                        status_code=451,
-                        content={"error": "EU restricted - VPN/Tor required"}
-                    )
-            except Exception:
-                # IP privée / introuvable dans la base → on laisse passer
-                pass
+        if not any(p in path for p in GEO_BLOCK_ALLOWED_PATHS) and is_eu_request(request):
+            return JSONResponse(
+                status_code=451,
+                content={"error": "EU restricted - VPN/Tor required"}
+            )
     return await call_next(request)
 
 # ==================== E2EE HELPER ====================
@@ -628,6 +631,7 @@ class Post(BaseModel):
     shares_count: int = 0
     is_liked: bool = False
     views: int = 0
+    eu_blocked: bool = False  # clip restreint dans l'UE (geo-block Nexus Clips)
     affiliate_link: Optional[str] = None
     affiliate_clicks: int = 0
     poll: Optional[Poll] = None
@@ -809,6 +813,27 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def country_for_request(request: Request) -> Optional[str]:
+    """Code pays ISO 3166-1 alpha-2 du visiteur (via GeoIP), ou None si indéterminé.
+
+    Best-effort : ne lève jamais. Fonctionne dès qu'une base GeoIP est chargée,
+    indépendamment du blocage global de l'UE (EU_GEO_BLOCK_ENABLED).
+    """
+    if _geoip_reader is None:
+        return None
+    try:
+        return _geoip_reader.country(client_ip(request)).country.iso_code
+    except Exception:
+        # IP privée / introuvable dans la base → indéterminé (on laisse passer)
+        return None
+
+
+def is_eu_request(request: Request) -> bool:
+    """True si le visiteur est géolocalisé dans un pays de l'UE (sinon False)."""
+    country = country_for_request(request)
+    return bool(country and country in EU_COUNTRIES)
+
+
 # ==================== GEO / LANGUE ====================
 # Détection de la langue à partir du pays (adresse IP) pour adapter
 # automatiquement l'interface. Les pays non listés retombent sur l'anglais.
@@ -875,13 +900,7 @@ async def detect_language(request: Request):
     Best-effort : si la base GeoIP est absente, renvoie 'en' et le frontend
     retombe sur la détection navigateur. Ne bloque jamais.
     """
-    ip = client_ip(request)
-    country = None
-    if _geoip_reader is not None:
-        try:
-            country = _geoip_reader.country(ip).country.iso_code
-        except Exception:
-            country = None
+    country = country_for_request(request)
     lang = lang_for_country(country)
     return {"country": country, "language": lang, "supported": sorted(SUPPORTED_UI_LANGS)}
 
@@ -894,13 +913,7 @@ async def geo_status(request: Request):
     complet). Hors-UE : accès complet + bandeau cookies discret.
     Best-effort : si la base GeoIP est absente, on considère non-restreint.
     """
-    ip = client_ip(request)
-    country = None
-    if _geoip_reader is not None:
-        try:
-            country = _geoip_reader.country(ip).country.iso_code
-        except Exception:
-            country = None
+    country = country_for_request(request)
     restricted = bool(country and country in EU_COUNTRIES)
     return {"country": country, "restricted": restricted, "eu": restricted}
 
@@ -5390,15 +5403,19 @@ async def analytics_my_hourly(
 
 
 @api_router.get("/clips", response_model=List[Post])
-async def get_clips_feed(skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
+async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
     """
     Fil Nexus Clips : publications vidéo de tout le monde, du plus récent au plus
     ancien, paginé (skip/limit) pour le scroll infini façon TikTok.
+
+    Geo-block : pour un visiteur de l'UE, les clips marqués eu_blocked sont retirés
+    du fil (l'auteur voit toujours les siens).
     """
     limit = max(1, min(limit, 40))
-    videos_raw = await db.posts.find(
-        {"media_type": "video", "media_url": {"$ne": None}}
-    ).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    query = {"media_type": "video", "media_url": {"$ne": None}}
+    if CLIPS_EU_GEO_BLOCK and is_eu_request(request):
+        query["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
+    videos_raw = await db.posts.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
 
     clips = []
     for post_raw in videos_raw:
@@ -5413,11 +5430,15 @@ async def get_clips_feed(skip: int = 0, limit: int = 20, current_user: dict = De
 async def create_clip(
     file: UploadFile = File(...),
     caption: str = Form(""),
+    eu_blocked: bool = Form(False),
     current_user: dict = Depends(get_current_user),
 ):
     """
     Créer un Clip / Reel : la vidéo uploadée est stockée comme publication vidéo,
     ce qui la fait apparaître dans le fil Nexus Clips (GET /api/clips) et le feed.
+
+    eu_blocked=true restreint le clip dans l'UE (masqué du fil / lecture refusée
+    pour les visiteurs européens).
     """
     if not (file.content_type or "").startswith("video/"):
         raise HTTPException(status_code=400, detail="Le fichier doit être une vidéo")
@@ -5440,6 +5461,7 @@ async def create_clip(
         "comments_count": 0,
         "shares_count": 0,
         "views": 0,
+        "eu_blocked": bool(eu_blocked),
         "created_at": now.isoformat(),
     }
     await db.posts.insert_one(clip_to_insert)
@@ -5466,9 +5488,32 @@ _clip_view_cache: Dict[str, float] = {}
 CLIP_VIEW_TTL = 6 * 3600
 
 
+@api_router.post("/clips/{clip_id}/geo-block")
+async def set_clip_geo_block(clip_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    """Restreint (ou lève la restriction d')un clip dans l'UE. Réservé à l'auteur.
+
+    Corps : {"eu_blocked": true|false} (true par défaut).
+    """
+    clip = await db.posts.find_one({"id": clip_id}, {"author_id": 1})
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip introuvable")
+    if clip.get("author_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Action réservée à l'auteur du clip")
+    eu_blocked = bool(data.get("eu_blocked", True))
+    await db.posts.update_one({"id": clip_id}, {"$set": {"eu_blocked": eu_blocked}})
+    return {"success": True, "eu_blocked": eu_blocked}
+
+
 @api_router.post("/clips/{clip_id}/view")
-async def register_clip_view(clip_id: str, current_user: dict = Depends(get_current_user)):
+async def register_clip_view(clip_id: str, request: Request, current_user: dict = Depends(get_current_user)):
     """Compte une vue UNIQUE par utilisateur et par session (pas à chaque replay)."""
+    # Geo-block par clip : un visiteur de l'UE ne peut pas visionner un clip
+    # restreint (sauf son auteur, pour la prévisualisation).
+    if CLIPS_EU_GEO_BLOCK and is_eu_request(request):
+        clip = await db.posts.find_one({"id": clip_id}, {"eu_blocked": 1, "author_id": 1})
+        if clip and clip.get("eu_blocked") and clip.get("author_id") != current_user["id"]:
+            raise HTTPException(status_code=451, detail="Ce clip n'est pas disponible dans votre région")
+
     key = f"{current_user['id']}:{clip_id}"
     now = time.time()
     exp = _clip_view_cache.get(key)

@@ -600,12 +600,16 @@ export default function ClipsPage({ user, setUser }) {
       return;
     }
     const caption = window.prompt("Légende de votre clip (optionnel)") || "";
+    const euBlocked = window.confirm(
+      "Restreindre ce clip dans l'Union européenne ?\n\nOK = masqué aux visiteurs de l'UE • Annuler = visible partout"
+    );
     setUploading(true);
     setUploadProgress(0);
     try {
       const form = new FormData();
       form.append("file", file);
       form.append("caption", caption);
+      form.append("eu_blocked", euBlocked ? "true" : "false");
       // axios ajoute le token via l'intercepteur + gère la limite multipart
       await axios.post(`${API}/clips`, form, {
         headers: { "Content-Type": "multipart/form-data" },
