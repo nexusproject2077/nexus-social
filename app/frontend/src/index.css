@@ -44,6 +44,18 @@ body {
     background-color: #0b1326;
 }
 
+/* Masque les barres de défilement (rendu épuré / tactile), le défilement reste
+   fonctionnel. */
+* {
+    scrollbar-width: none;        /* Firefox */
+    -ms-overflow-style: none;     /* IE/Edge ancien */
+}
+*::-webkit-scrollbar {
+    display: none;                /* Chrome / Safari / Edge */
+    width: 0;
+    height: 0;
+}
+
 body {
     margin: 0;
     font-family:

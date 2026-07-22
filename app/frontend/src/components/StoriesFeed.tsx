@@ -107,8 +107,8 @@ export default function StoriesFeed() {
   return (
     <>
       <section
-        className="flex gap-4 overflow-x-auto py-4 px-4 pb-2"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        className="flex gap-4 overflow-x-auto py-4 px-4 pb-2 select-none"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}
       >
         {/* Add Story */}
         <button
