@@ -11,6 +11,14 @@
     font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
 }
 
+/* Cœur « pop » du double-tap like (façon Instagram/TikTok). */
+@keyframes heartPop {
+    0%   { transform: scale(0);   opacity: 0; }
+    30%  { transform: scale(1.15); opacity: 1; }
+    60%  { transform: scale(0.95); opacity: 1; }
+    100% { transform: scale(1.05); opacity: 0; }
+}
+
 .bg-kinetic-gradient {
     background: linear-gradient(90deg, var(--nexus-accent) 0%, #3B82F6 100%);
 }

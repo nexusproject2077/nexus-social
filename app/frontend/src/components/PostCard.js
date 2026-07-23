@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
@@ -49,6 +49,20 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     } catch {
       toast.error("Erreur lors du like");
     }
+  };
+
+  // Double-tap « like » sur la photo (façon Instagram) : cœur animé + like.
+  const lastTapRef = useRef(0);
+  const [heartBurst, setHeartBurst] = useState(false);
+  const doubleTapLike = () => {
+    if (!isLiked) handleLike();          // ne fait que liker (jamais unliker) au double-tap
+    setHeartBurst(true);
+    setTimeout(() => setHeartBurst(false), 700);
+  };
+  const onMediaTap = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) { doubleTapLike(); lastTapRef.current = 0; }
+    else lastTapRef.current = now;
   };
 
   const handleRepost = async () => {
@@ -288,8 +302,30 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
         {/* Media */}
         {post.media_url && post.media_type === "image" && (
-          <div className="rounded-xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-            <img src={post.media_url} alt="Post media" className="w-full h-auto object-contain max-h-[560px]" loading="lazy" />
+          <div
+            className="relative rounded-xl overflow-hidden border select-none"
+            style={{ borderColor: "rgba(255,255,255,0.06)" }}
+            onClick={onMediaTap}
+            onDoubleClick={doubleTapLike}
+          >
+            <img src={post.media_url} alt="Post media" className="w-full h-auto object-contain max-h-[560px]" loading="lazy" draggable={false} />
+            {/* Cœur animé au double-tap */}
+            {heartBurst && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <span
+                  className="material-symbols-outlined"
+                  style={{
+                    fontSize: 110,
+                    color: "#fff",
+                    fontVariationSettings: "'FILL' 1",
+                    textShadow: "0 2px 16px rgba(0,0,0,0.45)",
+                    animation: "heartPop 0.7s ease-out",
+                  }}
+                >
+                  favorite
+                </span>
+              </div>
+            )}
           </div>
         )}
         {post.media_url && post.media_type === "video" && (
