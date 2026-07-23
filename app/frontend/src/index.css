@@ -11,6 +11,10 @@
     font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
 }
 
+/* Masque la barre de défilement d'un conteneur (ex. rangée d'onglets scrollable). */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
 /* Cœur « pop » du double-tap like (façon Instagram/TikTok). */
 @keyframes heartPop {
     0%   { transform: scale(0);   opacity: 0; }

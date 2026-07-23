@@ -2921,10 +2921,13 @@ async def active_lives(current_user: dict = Depends(get_current_user)):
 
 # ==================== NOTIFICATIONS ROUTES ====================
 @api_router.get("/notifications", response_model=List[Notification])
-async def get_notifications(current_user: dict = Depends(get_current_user)):
-    """Récupère les notifications de l'utilisateur"""
-    notifications_raw = await db.notifications.find({"user_id": current_user["id"]}).sort("created_at", -1).limit(50).to_list(length=50)
-    
+async def get_notifications(skip: int = 0, limit: int = 30, current_user: dict = Depends(get_current_user)):
+    """Récupère les notifications de l'utilisateur (paginé pour le scroll infini)."""
+    limit = max(1, min(limit, 50))
+    notifications_raw = await db.notifications.find(
+        {"user_id": current_user["id"]}
+    ).sort("created_at", -1).skip(max(0, skip)).limit(limit).to_list(length=limit)
+
     notifications = []
     for notif_raw in notifications_raw:
         notif = convert_mongo_doc_to_dict(notif_raw)
