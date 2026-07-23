@@ -6,7 +6,7 @@ import Layout from "@/components/Layout";
 import PostCard from "@/components/PostCard";
 import EditProfileModal from "@/components/EditProfileModal";
 import FollowListModal from "@/components/FollowListModal";
-import { Lock, Clock, UserPlus, UserMinus, Edit } from "lucide-react";
+import { Lock, Clock, UserPlus, UserMinus, Edit, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 // ── Design tokens (from Tailwind config) ──────────────────────────────────────
@@ -304,6 +304,22 @@ export default function ProfilePage({ user, setUser }) {
                 )}
                 {profile.is_private && <Lock size={18} color={C.outline} />}
                 <FollowButton />
+                {/* Partager le profil : copie l'URL /profil/:userId (ou partage natif). */}
+                <button
+                  data-testid="share-profile"
+                  title="Partager le profil"
+                  onClick={async () => {
+                    const url = `${window.location.origin}/profil/${userId}`;
+                    try {
+                      if (navigator.share) await navigator.share({ title: `@${profile.username} sur Nexus`, url });
+                      else { await navigator.clipboard.writeText(url); toast.success("Lien du profil copié"); }
+                    } catch { /* annulé */ }
+                  }}
+                  style={{ background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}
+                  className="flex items-center justify-center w-9 h-9 rounded-xl transition-all active:scale-95 hover:opacity-80"
+                >
+                  <Share2 size={16} />
+                </button>
                 {!isOwnProfile && profile.crypto_wallet && (
                   <button
                     data-testid="tip-crypto"

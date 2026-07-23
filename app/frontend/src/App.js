@@ -100,11 +100,18 @@ function App() {
         <Routes>
           <Route
             path="/auth"
-            element={!user ? <AuthPage setUser={setUser} /> : <Navigate to="/" />}
+            element={!user ? <AuthPage setUser={setUser} /> : <Navigate to="/feed" />}
           />
+          {/* Accueil : l'URL canonique est /feed. "/" redirige vers /feed. */}
+          <Route path="/" element={<Navigate to="/feed" replace />} />
           <Route
-            path="/"
+            path="/feed"
             element={user ? <HomePage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          {/* Profil : /profil/:userId est l'URL partageable ; /profile/:userId reste un alias. */}
+          <Route
+            path="/profil/:userId"
+            element={user ? <ProfilePage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           <Route
             path="/profile/:userId"
@@ -141,6 +148,16 @@ function App() {
           <Route
             path="/privacy-center"
             element={user ? <PrivacyCenter user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          {/* Nexus Clips : /nexus-clips est l'URL canonique ; /nexus-clips/:clipId
+              ouvre (et permet de partager) une vidéo précise. /clips reste un alias. */}
+          <Route
+            path="/nexus-clips"
+            element={user ? <ClipsPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/nexus-clips/:clipId"
+            element={user ? <ClipsPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           <Route
             path="/clips"

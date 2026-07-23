@@ -149,11 +149,11 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
 
   const handleCreatePost = () => {
     if (onCreatePost) onCreatePost();
-    else navigate("/");
+    else navigate("/feed");
   };
 
   const isActive = (path) => {
-    if (path === "/") return location.pathname === "/";
+    if (path === "/feed") return location.pathname === "/feed" || (location.pathname === "/feed" || location.pathname === "/");
     return location.pathname.startsWith(path);
   };
 
@@ -188,7 +188,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
   // Barres de défilement : visibles sur Messages / Profil / Recherche, masquées
   // ailleurs (via la classe `hide-scroll` sur <body>).
   useEffect(() => {
-    const showScroll = ["/messages", "/profile", "/search"].some((p) => location.pathname.startsWith(p));
+    const showScroll = ["/messages", "/profil", "/search"].some((p) => location.pathname.startsWith(p));
     document.documentElement.classList.toggle("hide-scroll", !showScroll);
     return () => document.documentElement.classList.remove("hide-scroll");
   }, [location.pathname]);
@@ -196,7 +196,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
   // Masque l'en-tête mobile quand on descend, le réaffiche quand on remonte
   // (uniquement sur la page d'accueil).
   useEffect(() => {
-    if (location.pathname !== "/") { setHeaderHidden(false); return; }
+    if (location.pathname !== "/feed" && location.pathname !== "/") { setHeaderHidden(false); return; }
     let lastY = window.scrollY;
     const onScroll = () => {
       const y = window.scrollY;
@@ -225,13 +225,13 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
     ) : null;
 
   const navItems = [
-    { icon: "home",           label: t("home"),          path: "/",                     testId: "nav-home" },
-    { icon: "play_circle",    label: "Nexus Clips",      path: "/clips",                testId: "nav-clips" },
+    { icon: "home",           label: t("home"),          path: "/feed",                 testId: "nav-home" },
+    { icon: "play_circle",    label: "Nexus Clips",      path: "/nexus-clips",          testId: "nav-clips" },
     { icon: "sensors",        label: t("nav_live"),      path: "/live",                 testId: "nav-live" },
     { icon: "explore",        label: t("explore"),       path: "/search",               testId: "nav-search" },
     { icon: "notifications",  label: t("notifications"), path: "/notifications",        testId: "nav-notifications" },
     { icon: "mail",           label: t("messages"),      path: "/messages",             testId: "nav-messages" },
-    { icon: "account_circle", label: t("profile"),       path: `/profile/${user.id}`,   testId: "nav-profile" },
+    { icon: "account_circle", label: t("profile"),       path: `/profil/${user.id}`,    testId: "nav-profile" },
     { icon: "settings",       label: t("settings.title"),      path: "/settings",             testId: "nav-settings" },
   ];
 
@@ -308,7 +308,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         </nav>
 
         {/* Créer une publication — page d'accueil uniquement. */}
-        {location.pathname === "/" && (
+        {(location.pathname === "/feed" || location.pathname === "/") && (
           <div className={`mt-2 ${sbExpanded ? "px-2" : ""}`}>
             <button
               data-testid="create-post-button"
@@ -326,12 +326,12 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         <div className={`mt-auto ${sbExpanded ? "px-2" : ""}`}>
           <div className={`flex items-center ${sbExpanded ? "gap-3" : "justify-center"}`}>
             {user.profile_pic ? (
-              <img src={user.profile_pic} alt="Profile" className="w-10 h-10 rounded-full object-cover cursor-pointer flex-shrink-0" onClick={() => navigate(`/profile/${user.id}`)} />
+              <img src={user.profile_pic} alt="Profile" className="w-10 h-10 rounded-full object-cover cursor-pointer flex-shrink-0" onClick={() => navigate(`/profil/${user.id}`)} />
             ) : (
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm cursor-pointer flex-shrink-0"
                 style={{ background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)", color: "#00363e" }}
-                onClick={() => navigate(`/profile/${user.id}`)}
+                onClick={() => navigate(`/profil/${user.id}`)}
               >
                 {user.username[0].toUpperCase()}
               </div>
@@ -387,7 +387,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
               <div className="space-y-4">
                 {suggestedUsers.map((u) => (
                   <div key={u.id} className="flex items-center justify-between">
-                    <button className="flex items-center gap-3" onClick={() => navigate(`/profile/${u.id}`)}>
+                    <button className="flex items-center gap-3" onClick={() => navigate(`/profil/${u.id}`)}>
                       {u.profile_pic ? (
                         <img src={u.profile_pic} alt={u.username} className="w-10 h-10 rounded-full object-cover" />
                       ) : (
@@ -400,7 +400,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
                         <span className="text-[10px]" style={{ color: "#859397" }}>@{u.username}</span>
                       </div>
                     </button>
-                    <button onClick={() => navigate(`/profile/${u.id}`)} className="px-3 py-1 rounded-full text-[10px] font-bold transition-colors hover:bg-cyan-400/20 hover:text-cyan-400" style={{ backgroundColor: "#222a3d", color: "#dae2fd" }}>
+                    <button onClick={() => navigate(`/profil/${u.id}`)} className="px-3 py-1 rounded-full text-[10px] font-bold transition-colors hover:bg-cyan-400/20 hover:text-cyan-400" style={{ backgroundColor: "#222a3d", color: "#dae2fd" }}>
                       Voir
                     </button>
                   </div>
@@ -446,7 +446,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
 
         {/* Ligne 2 : onglets de fil (accueil uniquement), fondus dans le header
             (aucun fond ni bordure ni forme). Actif = couleur accent + soulignement. */}
-        {location.pathname === "/" && (
+        {(location.pathname === "/feed" || location.pathname === "/") && (
           <div className="flex items-center justify-center gap-8 pb-2">
             {[
               { key: "foryou", label: "Pour vous" },
@@ -476,7 +476,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* ===== Main Content ===== */}
       {/* lg:ml-20 = largeur de la sidebar repliée (pas de chevauchement ; la
           sidebar déployée passe au-dessus au survol). */}
-      <main className={`ml-0 lg:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : (location.pathname === "/" ? "pt-[5.5rem] pb-20" : "pt-14 pb-20"))} lg:pt-0 lg:pb-0`}>
+      <main className={`ml-0 lg:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : ((location.pathname === "/feed" || location.pathname === "/") ? "pt-[5.5rem] pb-20" : "pt-14 pb-20"))} lg:pt-0 lg:pb-0`}>
         {children}
       </main>
 
@@ -492,11 +492,11 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         {/* Le bouton « + » n'est plus au centre : il flotte en bas à droite (FAB,
             page d'accueil uniquement). Recherche = pictogramme entre Messages et Profil. */}
         {[
-          { icon: "home",           path: "/",                   label: t("home"),      testId: "nav-home" },
-          { icon: "play_circle",    path: "/clips",              label: "Nexus Clips",  testId: "nav-clips" },
+          { icon: "home",           path: "/feed",               label: t("home"),      testId: "nav-home" },
+          { icon: "play_circle",    path: "/nexus-clips",        label: "Nexus Clips",  testId: "nav-clips" },
           { icon: "mail",           path: "/messages",           label: t("messages"),  testId: "nav-messages" },
           { icon: "search",         path: "/search",             label: t("search"),    testId: "nav-search-mobile" },
-          { icon: "account_circle", path: `/profile/${user.id}`, label: t("profile"),   testId: "nav-profile" },
+          { icon: "account_circle", path: `/profil/${user.id}`,  label: t("profile"),   testId: "nav-profile" },
         ].map((item) => {
           const active = isActive(item.path);
           return (
@@ -516,7 +516,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* FAB « + » flottant en bas à droite — PAGE D'ACCUEIL uniquement.
           (Sur Nexus Clips, l'ajout se fait via le bouton en haut à droite ;
           ailleurs, plus de bouton d'ajout de publication.) */}
-      {location.pathname === "/" && (
+      {(location.pathname === "/feed" || location.pathname === "/") && (
         <button
           data-testid="fab-create-post"
           onClick={handleCreatePost}

@@ -757,6 +757,7 @@ class Message(BaseModel):
     media_type: Optional[str] = None
     reply_to_id: Optional[str] = None
     read: bool = False
+    reactions: List[dict] = []  # [{user_id, emoji, ...}] — sinon perdues au rechargement
     created_at: str
     expires_at: Optional[str] = None  # message éphémère : date d'auto-suppression
 

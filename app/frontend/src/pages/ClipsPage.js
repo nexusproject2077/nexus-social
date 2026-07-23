@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
@@ -234,7 +234,8 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
 
   const handleShare = async (e) => {
     e.stopPropagation();
-    const url = `${window.location.origin}/post/${post.id}`;
+    // URL partageable du clip : /nexus-clips/:clipId ouvre directement la vidéo.
+    const url = `${window.location.origin}/nexus-clips/${post.id}`;
     try {
       if (navigator.share) await navigator.share({ title: "Nexus Clips", url });
       else { await navigator.clipboard.writeText(url); toast.success("Lien copié"); }
@@ -473,7 +474,12 @@ export default function ClipsPage({ user, setUser }) {
   const viewedRef    = useRef(new Set());
   const videosRef    = useRef({});   // registre des <video> par index (contrôle clavier)
   const skipRef      = useRef(0);
+  const openedShareRef = useRef(false);
   const PAGE = 10;
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { clipId } = useParams();  // /nexus-clips/:clipId → clip partagé à ouvrir
 
   // Le parent enregistre chaque vidéo pour piloter la lecture au clavier.
   const registerVideo = useCallback((idx, el) => {
@@ -490,6 +496,31 @@ export default function ClipsPage({ user, setUser }) {
   useEffect(() => {
     fetchClips(true);
   }, []);
+
+  // Ouvre le clip partagé (/nexus-clips/:clipId) : place la vidéo en tête si elle
+  // n'est pas déjà chargée, puis défile dessus. Ne s'exécute qu'une fois.
+  useEffect(() => {
+    if (!clipId || loading || openedShareRef.current) return;
+    openedShareRef.current = true;
+    const idx = clips.findIndex((c) => c.id === clipId);
+    if (idx >= 0) { setTimeout(() => goTo(idx), 150); return; }
+    axios.get(`${API}/posts/${clipId}`).then((res) => {
+      const c = res.data;
+      if (c && c.media_type === "video" && c.media_url) {
+        setClips((prev) => (prev.some((x) => x.id === c.id) ? prev : [c, ...prev]));
+        setActiveIndex(0);
+      }
+    }).catch(() => {});
+  }, [clipId, loading, clips, goTo]);
+
+  // Garde la barre d'adresse synchronisée avec le clip affiché (URL partageable).
+  useEffect(() => {
+    if (loading || view !== "immersive") return;
+    const c = clips[activeIndex];
+    if (c && location.pathname.startsWith("/nexus-clips")) {
+      navigate(`/nexus-clips/${c.id}`, { replace: true });
+    }
+  }, [activeIndex, clips, loading, view]);
 
   // Raccourcis clavier : Espace = pause/play, Entrée/↓ = suivant, ↑ = précédent.
   useEffect(() => {
