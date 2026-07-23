@@ -1269,8 +1269,8 @@ export default function MessagesPage({ user }) {
     const unread = conv.unread_count > 0 || conv.marked_unread;
     const lp = { kind: "dm", id: conv.user_id, name: conv.username, pinned: !!conv.pinned, muted: !!conv.muted };
     return (
+      <div className="relative group">
       <button
-        key={conv.user_id}
         onClick={() => navigate(`/messages/${conv.user_id}`)}
         onContextMenu={(e) => { e.preventDefault(); setConvMenu(lp); }}
         onTouchStart={() => startConvLongPress(lp)}
@@ -1304,6 +1304,16 @@ export default function MessagesPage({ user }) {
           <p className="text-xs truncate" style={{ color: unread ? C.onVariant : C.outline, fontWeight: unread ? 600 : 400 }}>{conv.last_message}</p>
         </div>
       </button>
+      {/* PC : 3 points au survol → menu (non lu / épingler / sourdine / supprimer). */}
+      <button
+        title="Options"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvMenu(lp); }}
+        className="hidden lg:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: 20 }}>more_horiz</span>
+      </button>
+      </div>
     );
   };
 
@@ -1312,6 +1322,7 @@ export default function MessagesPage({ user }) {
     const unread = !!group.marked_unread;
     const lp = { kind: "group", id: group.id, name: group.name, pinned: !!group.pinned, muted: !!group.muted };
     return (
+      <div className="relative group">
       <button
         onClick={() => navigate(`/messages/group/${group.id}`)}
         onContextMenu={(e) => { e.preventDefault(); setConvMenu(lp); }}
@@ -1344,6 +1355,16 @@ export default function MessagesPage({ user }) {
           </p>
         </div>
       </button>
+      {/* PC : 3 points au survol → menu (non lu / épingler / sourdine / supprimer). */}
+      <button
+        title="Options"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvMenu(lp); }}
+        className="hidden lg:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: 20 }}>more_horiz</span>
+      </button>
+      </div>
     );
   };
 
