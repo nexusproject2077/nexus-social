@@ -7,6 +7,7 @@ import CreatePostModal from "../components/CreatePostModal";
 import StoriesFeed from "../components/StoriesFeed";
 import AdSense from "../components/AdSense";
 import { Skeleton } from "../components/ui/skeleton";
+import PullToRefresh from "../components/PullToRefresh";
 import { toast } from "sonner";
 
 export default function HomePage({ user, setUser }) {
@@ -73,6 +74,8 @@ export default function HomePage({ user, setUser }) {
       setUser={setUser}
       onCreatePost={() => setShowCreatePost(true)}
     >
+      {/* Tirer vers le bas pour rafraîchir le fil (mobile). */}
+      <PullToRefresh onRefresh={fetchFeed} />
       <div className="max-w-3xl mx-auto">
         {/* Sticky Header */}
         <header

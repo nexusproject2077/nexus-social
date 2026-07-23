@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
+import PullToRefresh from "@/components/PullToRefresh";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -754,6 +755,12 @@ export default function ClipsPage({ user, setUser }) {
 
   return (
     <Layout user={user} setUser={setUser} compact>
+      {/* Tirer vers le bas (sur le 1er clip) pour rafraîchir le fil. */}
+      <PullToRefresh
+        onRefresh={() => fetchClips(true)}
+        getScrollTop={() => containerRef.current?.scrollTop || 0}
+        enabled={view === "immersive"}
+      />
       {view === "immersive" ? (
         /* Full-screen vertical scroll snapping */
         <div

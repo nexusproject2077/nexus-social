@@ -6,6 +6,7 @@ import Layout from "@/components/Layout";
 import PostCard from "@/components/PostCard";
 import EditProfileModal from "@/components/EditProfileModal";
 import FollowListModal from "@/components/FollowListModal";
+import PullToRefresh from "@/components/PullToRefresh";
 import { Lock, Clock, UserPlus, UserMinus, Edit, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,6 +56,15 @@ export default function ProfilePage({ user, setUser }) {
       if (!isOwnProfile) fetchFollowStatus();
     }
   }, [userId]);
+
+  // Tirer vers le bas pour rafraîchir (profil + publications).
+  const refreshProfile = async () => {
+    await Promise.all([
+      fetchProfile(),
+      fetchUserPosts(),
+      ...(isOwnProfile ? [] : [fetchFollowStatus()]),
+    ]);
+  };
 
   // ── Data fetching ──────────────────────────────────────────────────────────
   const fetchProfile = async () => {
@@ -231,6 +241,8 @@ export default function ProfilePage({ user, setUser }) {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <Layout user={user} setUser={setUser} hideMobileHeader>
+      {/* Tirer vers le bas pour rafraîchir le profil (mobile). */}
+      <PullToRefresh onRefresh={refreshProfile} />
 
       {/* Bouton Paramètres — en haut à droite, sur mon propre profil (mobile).
           Sans fond : uniquement le pictogramme, façon Instagram. */}
