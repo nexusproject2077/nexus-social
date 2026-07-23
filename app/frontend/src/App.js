@@ -36,28 +36,53 @@ axios.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Intercepteur de réponse pour gérer les 401 (session expirée)
+// Intercepteur de réponse : on ne déconnecte QUE sur un vrai 401 (token
+// invalide/expiré). Les erreurs réseau / 5xx (ex. cold start Render) n'ont pas
+// de `response` → on ne touche pas à la session, l'utilisateur reste connecté.
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
-      window.location.href = "/auth";
+      localStorage.removeItem("nexus_user");
+      // Évite une boucle de redirection si on est déjà sur /auth.
+      if (!window.location.pathname.startsWith("/auth")) {
+        window.location.href = "/auth";
+      }
     }
     return Promise.reject(error);
   }
 );
 
+// Utilisateur mis en cache (hydratation optimiste) : permet de rester sur la
+// page courante lors d'un refresh, même si /auth/me met du temps à répondre.
+const cachedUser = (() => {
+  try { return JSON.parse(localStorage.getItem("nexus_user") || "null"); } catch { return null; }
+})();
+
 function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUserState] = useState(cachedUser);
+  // On n'affiche le spinner plein écran QUE si on n'a aucun utilisateur en cache
+  // mais un token à vérifier (premier chargement). Sinon on rend tout de suite.
+  const [loading, setLoading] = useState(!cachedUser && !!localStorage.getItem("token"));
+
+  // setUser persistant : chaque mise à jour est mise en cache (et purgée à la
+  // déconnexion). Passé aux pages/enfants à la place de setUser brut.
+  const setUser = (u) => {
+    setUserState(u);
+    try {
+      if (u) localStorage.setItem("nexus_user", JSON.stringify(u));
+      else localStorage.removeItem("nexus_user");
+    } catch { /* quota */ }
+  };
 
   // ✅ Active le time tracking
   useTimeTracking(user);
 
-  const checkAuth = async () => {
+  const checkAuth = async (attempt = 0) => {
     const token = localStorage.getItem("token");
     if (!token) {
+      setUser(null);
       setLoading(false);
       return;
     }
@@ -65,16 +90,26 @@ function App() {
     try {
       const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
-      // La personnalisation enregistrée côté serveur prime : elle suit
-      // l'utilisateur sur tous ses appareils/navigateurs. Sinon, on garde
-      // la valeur locale (ou le défaut) déjà appliquée par initAccent().
       if (response.data?.accent_color) {
         applyAccent(response.data.accent_color);
       }
-    } catch (error) {
-      localStorage.removeItem("token");
-    } finally {
       setLoading(false);
+    } catch (error) {
+      const status = error?.response?.status;
+      if (status === 401 || status === 403) {
+        // Token réellement invalide → déconnexion.
+        localStorage.removeItem("token");
+        setUser(null);
+        setLoading(false);
+      } else if (attempt < 4) {
+        // Erreur transitoire (réseau, cold start Render…) : on retente sans
+        // déconnecter, pour ne PAS éjecter l'utilisateur de sa page.
+        setTimeout(() => checkAuth(attempt + 1), 1000 * (attempt + 1));
+      } else {
+        // Échecs répétés : on arrête le spinner mais on GARDE la session
+        // (utilisateur en cache s'il existe) → on reste sur la page courante.
+        setLoading(false);
+      }
     }
   };
 
@@ -175,6 +210,8 @@ function App() {
             path="/live/:roomId"
             element={user ? <LiveStream user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
+          {/* Chemin inconnu → accueil (évite une page blanche). */}
+          <Route path="*" element={<Navigate to="/feed" replace />} />
         </Routes>
       </BrowserRouter>
     </div>
