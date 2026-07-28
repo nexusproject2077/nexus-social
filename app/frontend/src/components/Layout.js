@@ -80,6 +80,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
     let reconnectTimer = null;
     let attempts = 0;
     let stopped = false; // vrai quand l'effet est démonté
+    let everConnected = false; // pour ne resynchroniser qu'aux RECONNEXIONS
 
     const scheduleReconnect = () => {
       if (stopped || reconnectTimer) return;
@@ -98,6 +99,13 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       }
 
       ws.onopen = () => {
+        // Reconnexion (pas la 1re connexion) → on demande aux pages de se
+        // resynchroniser pour rattraper les messages/stories reçus pendant la
+        // coupure (ex. mise en veille du backend Render).
+        if (everConnected) {
+          window.dispatchEvent(new CustomEvent("nexus:resync"));
+        }
+        everConnected = true;
         attempts = 0; // reconnexion réussie → on réinitialise le backoff
         heartbeat = setInterval(() => {
           try { ws.send("ping"); } catch { /* socket fermé */ }
@@ -177,11 +185,20 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       if (type === "new_message" || type === "notification") fetchBadges();
     };
     const onBadges = () => fetchBadges();
+    const onResync = () => fetchBadges();
     window.addEventListener("nexus:realtime", onRealtime);
     window.addEventListener("nexus:badges", onBadges);
+    window.addEventListener("nexus:resync", onResync);
+    // Filet de sécurité : si le temps réel décroche (veille backend), on
+    // rafraîchit les pastilles toutes les 25 s tant que l'onglet est visible.
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") fetchBadges();
+    }, 25000);
     return () => {
       window.removeEventListener("nexus:realtime", onRealtime);
       window.removeEventListener("nexus:badges", onBadges);
+      window.removeEventListener("nexus:resync", onResync);
+      clearInterval(poll);
     };
   }, [fetchBadges]);
 

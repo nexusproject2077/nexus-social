@@ -625,6 +625,35 @@ export default function MessagesPage({ user }) {
     return () => window.removeEventListener("nexus:realtime", onRealtime);
   }, [selectedUserId]);
 
+  // Filet de sécurité temps réel : resynchronise à la reconnexion WebSocket, et
+  // interroge périodiquement (onglet visible) pour afficher les nouveaux
+  // messages même si le temps réel décroche (mise en veille du backend Render) —
+  // sans jamais rafraîchir toute la page.
+  useEffect(() => {
+    const mergeIfChanged = (incoming) => (prev) => {
+      const ids = new Set(prev.map((m) => m.id));
+      const changed = prev.length !== incoming.length || incoming.some((m) => !ids.has(m.id));
+      return changed ? incoming : prev;
+    };
+    const syncOpenThread = async () => {
+      try {
+        if (selectedGroupId) {
+          const r = await axios.get(`${API}/messages/groups/${selectedGroupId}/messages`);
+          setMessages(mergeIfChanged(r.data?.messages || []));
+        } else if (selectedUserId) {
+          const r = await axios.get(`${API}/messages/${selectedUserId}`);
+          setMessages(mergeIfChanged(r.data || []));
+        }
+      } catch { /* silencieux */ }
+    };
+    const onResync = () => { fetchConversations(); fetchGroups(); fetchNotes(); syncOpenThread(); };
+    window.addEventListener("nexus:resync", onResync);
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") { fetchConversations(); syncOpenThread(); }
+    }, 15000);
+    return () => { window.removeEventListener("nexus:resync", onResync); clearInterval(poll); };
+  }, [selectedUserId, selectedGroupId]);
+
   // Search with debounce
   useEffect(() => {
     if (!searchQuery.trim()) { setSearchResults([]); return; }

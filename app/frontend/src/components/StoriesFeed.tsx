@@ -81,14 +81,17 @@ export default function StoriesFeed() {
       const type = e?.detail?.type;
       if (type === "new_story" || type === "story" || type === "live_started" || type === "new_live") { fetchStories(); fetchLives(); }
     };
+    const onResync = () => { fetchStories(); fetchLives(); };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("nexus:realtime", onRealtime as EventListener);
+    window.addEventListener("nexus:resync", onResync);
     return () => {
       clearInterval(t); clearInterval(ts);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("nexus:realtime", onRealtime as EventListener);
+      window.removeEventListener("nexus:resync", onResync);
     };
   }, []);
 

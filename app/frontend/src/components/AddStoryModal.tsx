@@ -58,6 +58,8 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
       });
 
       toast.success("Story publiée avec succès !");
+      // Rafraîchit immédiatement le bandeau des stories (sans recharger la page).
+      window.dispatchEvent(new CustomEvent("nexus:realtime", { detail: { type: "story" } }));
       onSuccess();
     } catch (err: any) {
       console.error("Erreur upload story :", err);
