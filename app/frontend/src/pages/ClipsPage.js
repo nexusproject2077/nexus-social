@@ -159,6 +159,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
 function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete }) {
   const navigate  = useNavigate();
   const videoRef  = useRef(null);
+  const sceneRef  = useRef(null);
   const [isLiked, setIsLiked]       = useState(post.is_liked || false);
   const [likes, setLikes]           = useState(post.likes_count || 0);
   const [comments, setComments]     = useState(post.comments_count || 0);
@@ -172,6 +173,13 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const [commentsList, setCommentsList] = useState([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const tapTimer = useRef(null);
+  // Vitesse 2x (appui long) + plein écran 16:9 + seek ±5s.
+  const [speeding, setSpeeding]     = useState(false);   // lecture 2x en cours
+  const [isLandscape, setIsLandscape] = useState(false); // vidéo publiée en 16:9 ?
+  const [isFs, setIsFs]             = useState(false);    // plein écran actif
+  const [seekFlash, setSeekFlash]   = useState(null);     // "+5" | "-5" (feedback)
+  const longPressTimer = useRef(null);
+  const longPressFired = useRef(false);
 
   // Enregistre l'élément vidéo auprès du parent (contrôle clavier : espace).
   useEffect(() => {
@@ -222,16 +230,78 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
 
   const triggerHeart = () => { setHeart(true); setTimeout(() => setHeart(false), 800); };
 
+  // Avance / recule de 5 s (double-tap en plein écran 16:9, façon YouTube).
+  const seekBy = (delta) => {
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + delta));
+    setSeekFlash(delta > 0 ? "+5" : "-5");
+    setTimeout(() => setSeekFlash(null), 500);
+  };
+
   // Tap simple = play/pause (retardé pour ne pas déclencher au double-tap).
-  // Double-tap = like + cœur animé (façon TikTok).
-  const handleTap = () => {
+  // Double-tap = like + cœur animé (façon TikTok) — SAUF en plein écran 16:9 où
+  // il sert à avancer (droite) / reculer (gauche) de 5 s.
+  const handleTap = (e) => {
+    // Un appui long (vitesse 2x) vient de se terminer → on ignore ce clic.
+    if (longPressFired.current) { longPressFired.current = false; return; }
+    const seekMode = isFs && isLandscape;
     if (tapTimer.current) {
       clearTimeout(tapTimer.current); tapTimer.current = null;
-      likeHeart(); triggerHeart();
+      if (seekMode) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = (e.clientX ?? rect.left + rect.width / 2) - rect.left;
+        seekBy(x > rect.width / 2 ? 5 : -5);
+      } else {
+        likeHeart(); triggerHeart();
+      }
     } else {
       tapTimer.current = setTimeout(() => { tapTimer.current = null; togglePlay(); }, 260);
     }
   };
+
+  // Appui long (mobile) sur la vidéo → lecture 2x ; relâchement → 1x.
+  const startSpeed = () => {
+    longPressFired.current = false;
+    longPressTimer.current = setTimeout(() => {
+      const v = videoRef.current;
+      if (v) { v.playbackRate = 2; setSpeeding(true); longPressFired.current = true; }
+    }, 350);
+  };
+  const endSpeed = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+    const v = videoRef.current;
+    if (v && v.playbackRate !== 1) v.playbackRate = 1;
+    if (speeding) setSpeeding(false);
+  };
+
+  // Plein écran 16:9 : bascule l'API Fullscreen + tente de forcer le paysage.
+  const toggleFullscreen = async (e) => {
+    e?.stopPropagation();
+    const el = sceneRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) {
+        await (el.requestFullscreen?.() || el.webkitRequestFullscreen?.());
+        // Best-effort : verrouille l'orientation paysage (mobiles compatibles).
+        try { await window.screen?.orientation?.lock?.("landscape"); } catch { /* refusé sur PC */ }
+      } else {
+        try { window.screen?.orientation?.unlock?.(); } catch { /* ignore */ }
+        await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());
+      }
+    } catch { /* Fullscreen refusé (contexte non autorisé) */ }
+  };
+
+  // Suit l'état réel du plein écran (bouton Échap, geste système…).
+  useEffect(() => {
+    const onFs = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange", onFs);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      document.removeEventListener("webkitfullscreenchange", onFs);
+    };
+  }, []);
 
   const handleShare = async (e) => {
     e.stopPropagation();
@@ -292,19 +362,50 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   return (
     <div className="relative w-full h-full flex-shrink-0 overflow-hidden flex items-center justify-center" style={{ background: "#000" }}>
       {/* Scène : plein écran sur mobile ; colonne 9:16 centrée (letterbox, barres
-          noires sur les côtés) sur PC. */}
-      <div className="relative h-full w-full lg:w-auto lg:aspect-[9/16] overflow-hidden">
-      {/* Video (Nexus Clips = vidéos uniquement) */}
+          noires sur les côtés) sur PC. En plein écran 16:9, on occupe tout l'écran. */}
+      <div
+        ref={sceneRef}
+        className={`relative overflow-hidden ${isFs ? "h-screen w-screen bg-black flex items-center justify-center" : "h-full w-full lg:w-auto lg:aspect-[9/16]"}`}
+      >
+      {/* Video (Nexus Clips = vidéos uniquement).
+          En plein écran 16:9 on passe en object-contain pour respecter le format. */}
       <video
         ref={videoRef}
         src={post.media_url}
-        className="w-full h-full object-cover"
+        className={`w-full h-full ${isFs && isLandscape ? "object-contain" : "object-cover"}`}
         loop
         muted={muted}
         playsInline
         onClick={handleTap}
+        onPointerDown={startSpeed}
+        onPointerUp={endSpeed}
+        onPointerLeave={endSpeed}
+        onPointerCancel={endSpeed}
+        onContextMenu={(e) => e.preventDefault()}
+        onLoadedMetadata={(e) => {
+          const v = e.target;
+          if (v.videoWidth && v.videoHeight) setIsLandscape(v.videoWidth / v.videoHeight >= 1.4);
+        }}
         onTimeUpdate={(e) => { const v = e.target; if (v.duration) setProgress((v.currentTime / v.duration) * 100); }}
       />
+
+      {/* Indicateur vitesse 2x (appui long) */}
+      {speeding && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none flex items-center gap-1 px-3 py-1 rounded-full" style={{ background: "rgba(0,0,0,0.6)" }}>
+          <span className="material-symbols-outlined text-white text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>fast_forward</span>
+          <span className="text-white text-sm font-bold">2x</span>
+        </div>
+      )}
+
+      {/* Feedback ±5 s (double-tap en plein écran 16:9) */}
+      {seekFlash && (
+        <div className={`absolute top-1/2 -translate-y-1/2 ${seekFlash === "+5" ? "right-10" : "left-10"} pointer-events-none flex flex-col items-center`}>
+          <span className="material-symbols-outlined text-white text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+            {seekFlash === "+5" ? "forward_5" : "replay_5"}
+          </span>
+          <span className="text-white text-sm font-bold">{seekFlash} s</span>
+        </div>
+      )}
 
       {/* Gradient overlay */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 40%, rgba(0,0,0,0.2) 100%)" }} />
@@ -329,6 +430,30 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       <div className="absolute bottom-0 left-0 right-0 h-[3px] pointer-events-none" style={{ background: "rgba(255,255,255,0.15)" }}>
         <div className="h-full" style={{ width: `${progress}%`, background: C.cyan, transition: "width 0.1s linear" }} />
       </div>
+
+      {/* Overlay d'infos en plein écran 16:9 (progression + likes + commentaires),
+          comme la capture. Masqué en mode vertical normal. */}
+      {isFs && isLandscape && (
+        <div className="absolute bottom-0 left-0 right-0 px-5 pb-4 pt-10" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent)" }}>
+          <div className="flex items-center gap-4 mb-2 text-white">
+            <span className="flex items-center gap-1 text-sm font-bold">
+              <span className="material-symbols-outlined text-lg" style={{ color: "#f87171", fontVariationSettings: "'FILL' 1" }}>favorite</span>
+              {fmt(likes)}
+            </span>
+            <span className="flex items-center gap-1 text-sm font-bold">
+              <span className="material-symbols-outlined text-lg">chat_bubble</span>
+              {fmt(comments)}
+            </span>
+            <span className="ml-auto text-xs opacity-80">Double-tap : ±5 s · Appui long : 2x</span>
+            <button onClick={toggleFullscreen} className="flex items-center justify-center w-9 h-9 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} title="Quitter le plein écran">
+              <span className="material-symbols-outlined text-white text-xl">fullscreen_exit</span>
+            </button>
+          </div>
+          <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.25)" }}>
+            <div className="h-full" style={{ width: `${progress}%`, background: C.cyan }} />
+          </div>
+        </div>
+      )}
 
       {/* Right action bar */}
       <div className="absolute right-3 bottom-28 flex flex-col gap-4 items-center">
@@ -379,6 +504,16 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
           </div>
           <span className="text-white text-xs font-bold">Partager</span>
         </button>
+
+        {/* Plein écran — uniquement pour les vidéos publiées en 16:9 (paysage) */}
+        {isLandscape && (
+          <button onClick={toggleFullscreen} className="flex flex-col items-center gap-1" data-testid="clip-fullscreen">
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+              <span className="material-symbols-outlined text-2xl text-white">{isFs ? "fullscreen_exit" : "fullscreen"}</span>
+            </div>
+            <span className="text-white text-xs font-bold">Plein écran</span>
+          </button>
+        )}
 
         {/* Mute */}
         {post.media_type === "video" && (
@@ -533,22 +668,47 @@ export default function ClipsPage({ user, setUser }) {
 
   // Raccourcis clavier : Espace = pause/play, Entrée/↓ = suivant, ↑ = précédent.
   useEffect(() => {
-    const onKey = (e) => {
+    // Barre d'espace : appui court = play/pause ; appui LONG = lecture 2x (relâché → 1x).
+    let spaceTimer = null;
+    let spaceSpeeding = false;
+    const onKeyDown = (e) => {
       if (view !== "immersive") return;
       const tag = (e.target?.tagName || "").toLowerCase();
       if (tag === "input" || tag === "textarea") return; // ne pas gêner la saisie
       if (e.key === " ") {
         e.preventDefault();
+        if (e.repeat) return; // ignore l'auto-répétition du clavier
         const v = videosRef.current[activeIndex];
-        if (v) { v.paused ? v.play().catch(() => {}) : v.pause(); }
+        if (!v) return;
+        spaceTimer = setTimeout(() => {
+          v.playbackRate = 2; spaceSpeeding = true; spaceTimer = null;
+        }, 350);
       } else if (e.key === "Enter" || e.key === "ArrowDown") {
         e.preventDefault(); goTo(activeIndex + 1);
       } else if (e.key === "ArrowUp") {
         e.preventDefault(); goTo(activeIndex - 1);
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const onKeyUp = (e) => {
+      if (e.key !== " ") return;
+      const v = videosRef.current[activeIndex];
+      if (spaceTimer) {
+        // Relâché avant le seuil → c'était un appui court = play/pause.
+        clearTimeout(spaceTimer); spaceTimer = null;
+        if (v) { v.paused ? v.play().catch(() => {}) : v.pause(); }
+      } else if (spaceSpeeding) {
+        // Fin de l'appui long → retour à la vitesse normale.
+        if (v) v.playbackRate = 1;
+        spaceSpeeding = false;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      if (spaceTimer) clearTimeout(spaceTimer);
+    };
   }, [activeIndex, view, goTo]);
 
   // Scroll infini : charge la page suivante en approchant de la fin.
