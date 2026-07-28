@@ -5835,11 +5835,15 @@ async def moderation_resolve(item_id: str, data: dict = Body(default={}),
 
 
 @api_router.post("/moderation/scan")
-async def moderation_scan(limit: int = 40, delete: bool = True, admin: dict = Depends(require_admin)):
-    """Scanne les publications média récentes PAS ENCORE vérifiées et retire les
-    NSFW (verdict "block" -> suppression + avertissement de l'auteur ; "flag" ->
-    file de revue). Réservé admin. À lancer par lots : chaque image scannée
-    consomme une unité Google Vision.
+async def moderation_scan(limit: int = 40, delete: bool = False, admin: dict = Depends(require_admin)):
+    """Scanne les publications média récentes PAS ENCORE vérifiées et traite les
+    NSFW. Réservé admin. À lancer par lots : chaque image scannée consomme une
+    unité Google Vision.
+
+    Par sécurité, `delete` vaut FALSE par défaut : un verdict "block" est mis en
+    file de revue (comme un "flag") au lieu d'être supprimé. Passez explicitement
+    `?delete=true` seulement après avoir vérifié que le seuil de blocage est bien
+    réglé — sinon un mauvais réglage supprime en masse des contenus légitimes.
     """
     if moderation is None or not getattr(moderation, "MODERATION_ENABLED", False):
         return {"scanned": 0, "removed": 0, "flagged": 0, "detail": "modération inactive"}

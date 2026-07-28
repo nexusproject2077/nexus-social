@@ -80,7 +80,14 @@ def provider_info():
 
 
 def _google_safesearch_score(image_bytes):
-    """(score 0..1, label) NSFW via Google Cloud Vision SafeSearch. Lève si échec."""
+    """(adult 0..1, racy 0..1) NSFW via Google Cloud Vision SafeSearch. Lève si échec.
+
+    On renvoie SÉPARÉMENT les deux scores :
+      - `adult` = nudité explicite / pornographie (motif de blocage dur) ;
+      - `racy`  = suggestif (peau, poses, sport de combat…) — NE DOIT PAS bloquer
+        seul, sinon on obtient des faux positifs sur des vidéos parfaitement saines.
+    L'appelant décide de la sévérité (voir _safesearch_verdict).
+    """
     import requests
     import base64
     b64 = base64.b64encode(image_bytes).decode()
@@ -95,7 +102,28 @@ def _google_safesearch_score(image_bytes):
     ann = (resp.json().get("responses") or [{}])[0].get("safeSearchAnnotation", {}) or {}
     adult = _GV_LIKELIHOOD.get(ann.get("adult", "UNKNOWN"), 0.0)
     racy = _GV_LIKELIHOOD.get(ann.get("racy", "UNKNOWN"), 0.0)
-    return (adult, "adult") if adult >= racy else (racy, "racy")
+    return adult, racy
+
+
+def _safesearch_verdict(adult, racy):
+    """Construit le verdict NSFW à partir des scores Vision, sans faux positif.
+
+    Règle : seul `adult` (nudité explicite) peut BLOQUER. Le score `racy`
+    (suggestif) peut au maximum produire un `flag` pour revue humaine — jamais
+    un blocage dur. Ainsi une vidéo de sport/combat (beaucoup de peau, mouvement)
+    n'est plus supprimée à tort.
+    """
+    # Blocage : uniquement sur nudité explicite.
+    if adult >= NSFW_BLOCK_THRESHOLD:
+        return _verdict(adult, NSFW_BLOCK_THRESHOLD, NSFW_FLAG_THRESHOLD, "adult", "nsfw")
+    # Sinon : on signale (flag) si adult OU racy dépasse le seuil de signalement,
+    # mais sans jamais bloquer. On borne le score sous le seuil de blocage.
+    flag_score = max(adult, racy)
+    label = "adult" if adult >= racy else "racy"
+    if flag_score >= NSFW_FLAG_THRESHOLD:
+        capped = min(flag_score, (NSFW_BLOCK_THRESHOLD + NSFW_FLAG_THRESHOLD) / 2)
+        return _verdict(capped, NSFW_BLOCK_THRESHOLD, NSFW_FLAG_THRESHOLD, label, "nsfw")
+    return _allow("nsfw", "safe")
 
 
 def _perspective_toxicity_score(text):
@@ -267,11 +295,12 @@ def moderate_image_bytes(data, suffix=".jpg"):
         return _allow("nsfw", "safe")
     if GOOGLE_VISION_API_KEY:
         try:
-            score, label = _google_safesearch_score(data)
-            v = _verdict(score, NSFW_BLOCK_THRESHOLD, NSFW_FLAG_THRESHOLD, label, "nsfw")
-            # Log de diagnostic : montre le score renvoyé par Google + la décision.
-            print(f"🔎 Vision NSFW: {label}={score:.2f} → {v['action']} "
-                  f"(block≥{NSFW_BLOCK_THRESHOLD}, flag≥{NSFW_FLAG_THRESHOLD})")
+            adult, racy = _google_safesearch_score(data)
+            v = _safesearch_verdict(adult, racy)
+            # Log de diagnostic : montre les scores renvoyés par Google + la décision.
+            # Seul `adult` peut bloquer ; `racy` ne fait au plus que signaler.
+            print(f"🔎 Vision NSFW: adult={adult:.2f} racy={racy:.2f} → {v['action']} "
+                  f"(block≥{NSFW_BLOCK_THRESHOLD} sur adult, flag≥{NSFW_FLAG_THRESHOLD})")
             return v
         except Exception as e:
             print(f"⚠️ Google Vision indisponible ({e}) — image non filtrée")
