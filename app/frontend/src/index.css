@@ -56,6 +56,20 @@ body {
     background-color: #0b1326;
 }
 
+/* iOS (Safari / Chrome iOS) : le vrai conteneur de défilement est souvent #root,
+   pas <body>. On y coupe donc aussi le rebond, et on bloque le rebond
+   horizontal (balayage arrière/avant) via touch-action. La hauteur 100% évite
+   que le document lui-même devienne « scrollable » et rebondisse. */
+html {
+    height: 100%;
+}
+#root {
+    min-height: 100%;
+    overscroll-behavior: none;
+    /* Autorise le scroll vertical et le pinch-zoom, coupe le rebond horizontal. */
+    touch-action: pan-y pinch-zoom;
+}
+
 /* Masque les barres de défilement UNIQUEMENT quand <html> a la classe
    `hide-scroll` (posée par le Layout selon la page). Ainsi les pages Messages,
    Profil et Recherche gardent leur barre, les autres (accueil, clips…) sont

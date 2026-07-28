@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
@@ -17,6 +17,58 @@ const C = {
   onSurface:  "#dae2fd",
   onVariant:  "#bbc9cd",
 };
+
+/**
+ * Vidéo du fil d'accueil : lecture automatique (muette) dès qu'elle est visible
+ * à l'écran, mise en pause quand elle en sort (façon X / Instagram). Un bouton
+ * son permet de réactiver l'audio ; les contrôles natifs restent disponibles.
+ */
+function FeedVideo({ src }) {
+  const ref = useRef(null);
+  const [muted, setMuted] = useState(true);
+
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      },
+      { threshold: [0, 0.6, 1] }
+    );
+    io.observe(video);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <div className="relative rounded-xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <video
+        ref={ref}
+        src={src}
+        className="w-full max-h-[560px] bg-black"
+        muted={muted}
+        loop
+        playsInline
+        controls
+        preload="metadata"
+      />
+      {/* Bouton son (l'autoplay impose le mode muet au départ) */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }}
+        className="absolute bottom-3 right-3 w-9 h-9 rounded-full flex items-center justify-center"
+        style={{ background: "rgba(0,0,0,0.55)" }}
+        title={muted ? "Activer le son" : "Couper le son"}
+      >
+        <span className="material-symbols-outlined text-white text-lg">{muted ? "volume_off" : "volume_up"}</span>
+      </button>
+    </div>
+  );
+}
 
 export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const navigate = useNavigate();
@@ -396,9 +448,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           </div>
         )}
         {post.media_url && post.media_type === "video" && (
-          <div className="rounded-xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-            <video src={post.media_url} controls className="w-full max-h-[560px]" />
-          </div>
+          <FeedVideo src={post.media_url} />
         )}
 
         {/* Action bar — réparti (pas serré) : J'aime · Commentaire · Repost · Partage · Enregistrer */}
