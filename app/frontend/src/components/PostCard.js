@@ -135,6 +135,21 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const renderContent = (text) => {
     if (!text) return null;
     return text.split(/(\s+)/).map((part, i) => {
+      // Lien cliquable : couleur distincte, SANS soulignement.
+      if (/^https?:\/\/\S+$/i.test(part)) {
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{ color: "#60a5fa", textDecoration: "none" }}
+          >
+            {part}
+          </a>
+        );
+      }
       if (/^#[\p{L}0-9_]+$/u.test(part)) {
         return (
           <Link

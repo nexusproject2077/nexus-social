@@ -3405,6 +3405,11 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     if not (message_data.content or "").strip() and not message_data.media_url:
         raise HTTPException(status_code=400, detail="Message vide")
 
+    # Modération NSFW du média envoyé (image). On ne scanne pas le texte privé
+    # des DM ; seul le média est vérifié (anti-nudes non sollicités).
+    if message_data.media_url:
+        await screen_content(media_url=message_data.media_url)
+
     recipient = convert_mongo_doc_to_dict(recipient_raw)
     message_id = str(uuid.uuid4())
 
@@ -3454,6 +3459,92 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     })
 
     return Message(**message)
+
+# Aperçu de lien (Open Graph) pour la messagerie.
+_LINK_PREVIEW_CACHE: Dict[str, dict] = {}
+
+
+def _host_is_public(host: str) -> bool:
+    """Anti-SSRF : refuse localhost / IP privées / lien-local / réservées."""
+    import ipaddress
+    import socket
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception:
+        return False
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+            return False
+    return True
+
+
+@api_router.get("/link-preview")
+async def link_preview(url: str, current_user: dict = Depends(get_current_user)):
+    """Aperçu Open Graph d'un lien (titre/description/image). Best-effort + anti-SSRF."""
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="URL invalide")
+    if url in _LINK_PREVIEW_CACHE:
+        return _LINK_PREVIEW_CACHE[url]
+
+    import asyncio
+    import urllib.request
+    import urllib.parse
+    from html import unescape as _unescape
+
+    result = {"url": url}
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if not parsed.hostname or not _host_is_public(parsed.hostname):
+            raise ValueError("hôte non public")
+
+        def _fetch():
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "Mozilla/5.0 (compatible; NexusBot/1.0)"}
+            )
+            with urllib.request.urlopen(req, timeout=6) as r:
+                if "text/html" not in (r.headers.get("Content-Type", "") or "").lower():
+                    return None
+                return r.read(400000).decode("utf-8", "ignore")
+
+        html = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+        if html:
+            def meta(*props):
+                for p in props:
+                    m = re.search(r'<meta[^>]+(?:property|name)=["\']' + re.escape(p)
+                                  + r'["\'][^>]*content=["\']([^"\']*)["\']', html, re.I) \
+                        or re.search(r'<meta[^>]+content=["\']([^"\']*)["\'][^>]*(?:property|name)=["\']'
+                                     + re.escape(p) + r'["\']', html, re.I)
+                    if m and m.group(1).strip():
+                        return _unescape(m.group(1).strip())
+                return None
+
+            title = meta("og:title", "twitter:title")
+            if not title:
+                mt = re.search(r"<title[^>]*>([^<]+)</title>", html, re.I)
+                title = _unescape(mt.group(1).strip()) if mt else None
+            image = meta("og:image", "twitter:image", "twitter:image:src")
+            if image and not image.lower().startswith(("http://", "https://")):
+                image = urllib.parse.urljoin(url, image)
+            result = {
+                "url": url,
+                "title": title,
+                "description": meta("og:description", "twitter:description", "description"),
+                "image": image,
+                "site_name": meta("og:site_name") or parsed.hostname,
+            }
+    except Exception:
+        pass
+
+    if len(_LINK_PREVIEW_CACHE) > 2000:
+        _LINK_PREVIEW_CACHE.clear()
+    _LINK_PREVIEW_CACHE[url] = result
+    return result
+
 
 # ==================== ENHANCED MESSAGES FEATURES ====================
 
@@ -3824,6 +3915,10 @@ async def send_group_message(
         # Un message doit avoir du texte OU un média.
         if not text.strip() and not media_urls:
             raise HTTPException(status_code=400, detail="Le contenu du message est requis")
+
+        # Modération NSFW des médias du groupe (fail-open si non configurée).
+        for _mu in media_urls:
+            await screen_content(media_url=_mu)
 
         # Vérifier membership
         group_raw = await db.group_chats.find_one({"id": group_id})
@@ -4336,7 +4431,10 @@ async def create_story(
     
     else:
         raise HTTPException(status_code=400, detail="Fichier ou URL requis")
-    
+
+    # Modération NSFW du média (fail-open si non configurée).
+    _stverdict = await screen_content(media_url=media_url)
+
     story_to_insert = {
         "id": story_id,
         "author_id": current_user["id"],
@@ -4351,7 +4449,10 @@ async def create_story(
     }
     
     await db.stories.insert_one(story_to_insert)
-    
+
+    if _stverdict and _stverdict["action"] == "flag":
+        await flag_for_review("story", story_id, current_user["id"], "", _stverdict, media_kind=media_type)
+
     story = convert_mongo_doc_to_dict(story_to_insert)
     story["has_viewed"] = False
     return Story(**story)

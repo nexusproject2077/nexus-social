@@ -6,6 +6,8 @@ import Layout from "@/components/Layout";
 import { toast } from "sonner";
 import { Check, CheckCheck } from "lucide-react";
 import { compressImage, dataUrlBytes } from "@/lib/compressImage";
+import { linkify, extractFirstUrl } from "@/lib/linkify";
+import LinkPreview from "@/components/LinkPreview";
 
 const C = {
   bg:         "#020617",
@@ -1731,15 +1733,21 @@ export default function MessagesPage({ user }) {
                           ].filter(Boolean).map((src, i) => (
                             <MsgImage key={i} src={cleanImageSrc(src)} onOpen={setLightbox} onLoaded={() => scrollToBottom()} />
                           ))}
-                          {!isDataImage(msg.content) && (msg.content || "").length > 2000
-                            ? (msg.content || "").slice(0, 2000) + "…"
-                            : (isDataImage(msg.content) ? null : msg.content)}
+                          {/* Texte : les liens deviennent cliquables et soulignés. */}
+                          {isDataImage(msg.content) ? null : linkify(
+                            (msg.content || "").length > 2000 ? (msg.content || "").slice(0, 2000) + "…" : (msg.content || ""),
+                            { color: C.cyan, underline: true }
+                          )}
                           {/* Traduction (façon Instagram : affichée sous le texte) */}
                           {translations[msg.id] && (
                             <div className="mt-1.5 pt-1.5 text-sm" style={{ borderTop: `1px solid ${C.outlineVar}`, color: C.onSurface }}>
                               <span className="text-[9px] font-bold uppercase tracking-widest block mb-0.5" style={{ color: C.cyan }}>Traduit</span>
                               {translations[msg.id]}
                             </div>
+                          )}
+                          {/* Aperçu du premier lien (Open Graph). */}
+                          {!isDataImage(msg.content) && extractFirstUrl(msg.content) && (
+                            <LinkPreview url={extractFirstUrl(msg.content)} accent={C.cyan} />
                           )}
                         </div>
 
