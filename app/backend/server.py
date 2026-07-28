@@ -889,12 +889,10 @@ async def flag_for_review(kind: str, ref_id: str, author_id: str, text, verdict:
     })
 
 
-async def screen_content(text=None, media_url=None):
+async def evaluate_content(text=None, media_url=None):
     """Analyse texte + média et renvoie le verdict le plus sévère (ou None si la
-    modération est indisponible). Lève HTTP 400 si le contenu doit être bloqué.
-
-    À appeler AVANT d'enregistrer le contenu ; si le verdict renvoyé vaut "flag",
-    l'appelant enregistre le contenu puis appelle flag_for_review()."""
+    modération est indisponible). NE lève JAMAIS — utilisé aussi pour scanner des
+    contenus déjà publiés."""
     if moderation is None:
         return None
     verdicts = []
@@ -904,13 +902,48 @@ async def screen_content(text=None, media_url=None):
         verdicts.append(moderation.moderate_media(media_url))
     if not verdicts:
         return None
-    worst = moderation.worst_verdict(*verdicts)
+    return moderation.worst_verdict(*verdicts)
+
+
+async def screen_content(text=None, media_url=None):
+    """Comme evaluate_content, mais lève HTTP 400 si le contenu doit être bloqué.
+
+    À appeler AVANT d'enregistrer le contenu ; si le verdict renvoyé vaut "flag",
+    l'appelant enregistre le contenu puis appelle flag_for_review()."""
+    worst = await evaluate_content(text=text, media_url=media_url)
     if worst and worst["action"] == "block":
         raise HTTPException(
             status_code=400,
             detail=f"Contenu refusé par la modération ({worst['category']}: {worst['label']})",
         )
     return worst
+
+
+async def notify_content_removed(author_id: str, kind_label: str, verdict: dict):
+    """Avertit l'auteur (notification) que son contenu a été retiré par la modération."""
+    if not author_id:
+        return
+    cat = (verdict or {}).get("category", "nsfw")
+    reason = ("contenu à caractère sexuel ou explicite" if cat == "nsfw"
+              else "propos haineux ou toxiques" if cat == "toxicity"
+              else "non-respect de nos règles")
+    message = f"Votre {kind_label} a été supprimé(e) automatiquement : {reason}."
+    try:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": author_id,
+            "type": "moderation",
+            "from_user_id": author_id,          # système ; requis par le modèle
+            "from_username": "Modération Nexus",
+            "from_profile_pic": None,
+            "comment_content": message,
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+    # Notification temps réel (pastille + toast).
+    await push_realtime(author_id, {"type": "notification", "data": {"message": message}})
 
 # ==================== RATE LIMITING (anti brute-force) ====================
 # Limiteur en mémoire (cohérent car Render tourne en 1 worker). Fenêtre
@@ -5787,6 +5820,10 @@ async def moderation_resolve(item_id: str, data: dict = Body(default={}),
             await db.comments.delete_one({"id": ref_id})
             if comment and comment.get("post_id"):
                 await db.posts.update_one({"id": comment["post_id"]}, {"$inc": {"comments_count": -1}})
+        # Avertit l'auteur de la suppression.
+        kind_label = {"comment": "commentaire", "clip": "clip", "post": "publication"}.get(kind, "contenu")
+        await notify_content_removed(item.get("author_id"), kind_label,
+                                     {"category": item.get("category"), "label": item.get("label")})
 
     await db.moderation_queue.update_one(
         {"id": item_id},
@@ -5795,6 +5832,46 @@ async def moderation_resolve(item_id: str, data: dict = Body(default={}),
                   "resolved_at": datetime.now(timezone.utc).isoformat()}},
     )
     return {"success": True, "action": action}
+
+
+@api_router.post("/moderation/scan")
+async def moderation_scan(limit: int = 40, delete: bool = True, admin: dict = Depends(require_admin)):
+    """Scanne les publications média récentes PAS ENCORE vérifiées et retire les
+    NSFW (verdict "block" -> suppression + avertissement de l'auteur ; "flag" ->
+    file de revue). Réservé admin. À lancer par lots : chaque image scannée
+    consomme une unité Google Vision.
+    """
+    if moderation is None or not getattr(moderation, "MODERATION_ENABLED", False):
+        return {"scanned": 0, "removed": 0, "flagged": 0, "detail": "modération inactive"}
+    limit = max(1, min(limit, 200))
+    posts = await db.posts.find(
+        {"media_url": {"$ne": None}, "moderation_checked": {"$ne": True}}
+    ).sort("created_at", -1).limit(limit).to_list(length=limit)
+
+    scanned = removed = flagged = 0
+    for post in posts:
+        scanned += 1
+        verdict = None
+        try:
+            verdict = await evaluate_content(text=post.get("content"), media_url=post.get("media_url"))
+        except Exception:
+            verdict = None
+        # Marque comme vérifié pour ne pas re-scanner (et ne pas re-facturer).
+        await db.posts.update_one({"id": post["id"]}, {"$set": {"moderation_checked": True}})
+        if not verdict:
+            continue
+        kind_label = "clip" if post.get("media_type") == "video" else "publication"
+        if verdict["action"] == "block" and delete:
+            await db.posts.delete_one({"id": post["id"]})
+            await notify_content_removed(post.get("author_id"), kind_label, verdict)
+            removed += 1
+        elif verdict["action"] in ("block", "flag"):
+            await flag_for_review("clip" if post.get("media_type") == "video" else "post",
+                                  post["id"], post.get("author_id"), post.get("content", ""),
+                                  verdict, media_kind=post.get("media_type"))
+            flagged += 1
+    return {"scanned": scanned, "removed": removed, "flagged": flagged,
+            "remaining_hint": "relancez tant que scanned == limit"}
 
 
 # Cache mémoire des vues déjà comptées : { "user_id:clip_id": expiration_ts }.

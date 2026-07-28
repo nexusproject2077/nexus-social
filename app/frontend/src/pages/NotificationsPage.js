@@ -179,6 +179,7 @@ export default function NotificationsPage({ user }) {
       case "trending": return <TrendingUp className="w-4 h-4 text-orange-400" />;
       case "reaction": return <span className="text-base leading-none">❤️</span>;
       case "live": return <Radio className="w-4 h-4 text-red-500" />;
+      case "moderation": return <span className="text-base leading-none">⚠️</span>;
       default: return <Heart className="w-4 h-4 text-slate-400" />;
     }
   };
@@ -197,6 +198,7 @@ export default function NotificationsPage({ user }) {
       case "follow_request":  return "souhaite s'abonner à vous";
       case "follow_accepted": return "a accepté votre demande d'abonnement";
       case "live":            return "est en direct 🔴 — rejoignez maintenant";
+      case "moderation":      return n.comment_content || "Un de vos contenus a été retiré par la modération.";
       default:                return "";
     }
   };
