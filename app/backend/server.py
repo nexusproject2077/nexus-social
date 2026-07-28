@@ -5741,12 +5741,19 @@ async def get_adsense_config():
 # ==================== MODÉRATION : FILE DE REVUE HUMAINE (ADMIN) ====================
 @api_router.get("/moderation/status")
 async def moderation_status(admin: dict = Depends(require_admin)):
-    """État de la modération auto + nombre d'éléments en attente de revue."""
+    """État de la modération auto + fournisseurs actifs + nombre en attente."""
     pending = await db.moderation_queue.count_documents({"status": "pending"})
+    info = {}
+    if moderation is not None and hasattr(moderation, "provider_info"):
+        try:
+            info = moderation.provider_info()
+        except Exception:
+            info = {}
     return {
         "enabled": bool(moderation is not None and getattr(moderation, "MODERATION_ENABLED", False)),
         "available": moderation is not None,
         "pending": pending,
+        **info,
     }
 
 

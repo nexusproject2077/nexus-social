@@ -60,6 +60,25 @@ _GV_LIKELIHOOD = {
 }
 
 
+def provider_info():
+    """État des fournisseurs + seuils ACTIFS (diagnostic admin). Reflète les
+    variables d'environnement telles que lues au démarrage du process."""
+    return {
+        "enabled": MODERATION_ENABLED,
+        "nsfw_provider": ("service" if MODERATION_SERVICE_URL
+                          else "google_vision" if GOOGLE_VISION_API_KEY else "local"),
+        "text_provider": ("service" if MODERATION_SERVICE_URL
+                          else "perspective" if PERSPECTIVE_API_KEY else "local"),
+        "google_vision": bool(GOOGLE_VISION_API_KEY),
+        "perspective": bool(PERSPECTIVE_API_KEY),
+        "remote_service": bool(MODERATION_SERVICE_URL),
+        "nsfw_block_threshold": NSFW_BLOCK_THRESHOLD,
+        "nsfw_flag_threshold": NSFW_FLAG_THRESHOLD,
+        "toxic_block_threshold": TOXIC_BLOCK_THRESHOLD,
+        "toxic_flag_threshold": TOXIC_FLAG_THRESHOLD,
+    }
+
+
 def _google_safesearch_score(image_bytes):
     """(score 0..1, label) NSFW via Google Cloud Vision SafeSearch. Lève si échec."""
     import requests
@@ -245,7 +264,11 @@ def moderate_image_bytes(data, suffix=".jpg"):
     if GOOGLE_VISION_API_KEY:
         try:
             score, label = _google_safesearch_score(data)
-            return _verdict(score, NSFW_BLOCK_THRESHOLD, NSFW_FLAG_THRESHOLD, label, "nsfw")
+            v = _verdict(score, NSFW_BLOCK_THRESHOLD, NSFW_FLAG_THRESHOLD, label, "nsfw")
+            # Log de diagnostic : montre le score renvoyé par Google + la décision.
+            print(f"🔎 Vision NSFW: {label}={score:.2f} → {v['action']} "
+                  f"(block≥{NSFW_BLOCK_THRESHOLD}, flag≥{NSFW_FLAG_THRESHOLD})")
+            return v
         except Exception as e:
             print(f"⚠️ Google Vision indisponible ({e}) — image non filtrée")
             return _allow("nsfw", "safe")
