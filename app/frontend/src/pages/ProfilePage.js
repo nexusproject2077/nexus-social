@@ -170,14 +170,25 @@ export default function ProfilePage({ user, setUser }) {
     );
 
     if (isOwnProfile) return (
-      <button
-        data-testid="edit-profile-button"
-        onClick={() => setShowEditProfile(true)}
-        style={{ background: C.surfaceHigh, color: C.primary, border: `1px solid ${C.primaryContainer}33` }}
-        className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
-      >
-        <Edit size={14} /> Modifier le profil
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          data-testid="edit-profile-button"
+          onClick={() => setShowEditProfile(true)}
+          style={{ background: C.surfaceHigh, color: C.primary, border: `1px solid ${C.primaryContainer}33` }}
+          className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
+        >
+          <Edit size={14} /> Modifier le profil
+        </button>
+        <button
+          data-testid="saved-shortcut"
+          onClick={() => navigate("/enregistres")}
+          title="Enregistrés"
+          style={{ background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}
+          className="flex items-center justify-center w-10 h-10 rounded-xl transition-all active:scale-95 hover:opacity-90"
+        >
+          <span className="material-symbols-outlined text-lg">bookmark</span>
+        </button>
+      </div>
     );
 
     if (followStatus === "following") return (

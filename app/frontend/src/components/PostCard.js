@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import { formatDistanceToNow } from "date-fns";
@@ -19,10 +19,12 @@ const C = {
 };
 
 export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
+  const navigate = useNavigate();
   const [isLiked, setIsLiked]         = useState(post.is_liked || false);
   const [likesCount, setLikesCount]   = useState(post.likes_count || 0);
   const [sharesCount, setSharesCount] = useState(post.shares_count || 0);
   const [commentsCount, setCommentsCount] = useState(post.comments_count || 0);
+  const [isSaved, setIsSaved]         = useState(post.is_saved || false);
   const [showComments, setShowComments]   = useState(false);
   const [reposted, setReposted]       = useState(
     post.is_reposted || (!!post.repost_of && post.author_id === currentUser?.id)
@@ -50,6 +52,47 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
       toast.error("Erreur lors du like");
     }
   };
+
+  const handleSave = async () => {
+    // Optimiste : on bascule tout de suite, on annule si l'API échoue.
+    const next = !isSaved;
+    setIsSaved(next);
+    try {
+      const res = await axios.post(`${API}/posts/${post.id}/save`);
+      setIsSaved(res.data.saved);
+      toast.success(res.data.saved ? "Enregistré" : "Retiré des enregistrements");
+    } catch {
+      setIsSaved(!next);
+      toast.error("Erreur lors de l'enregistrement");
+    }
+  };
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/post/${post.id}`;
+    const shareData = {
+      title: `${displayAuthorName} sur Nexus`,
+      text: post.content ? post.content.slice(0, 120) : "Découvre cette publication sur Nexus",
+      url,
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success("Lien copié dans le presse-papiers");
+      }
+    } catch (err) {
+      // L'utilisateur a annulé le partage natif → on ne fait rien.
+      if (err && err.name !== "AbortError") {
+        try { await navigator.clipboard.writeText(url); toast.success("Lien copié"); }
+        catch { toast.error("Impossible de partager"); }
+      }
+    }
+  };
+
+  // Clic sur la carte (hors éléments interactifs) → page détail = fil de
+  // commentaires complet (lecture / réponse / identification), façon X.
+  const openThread = () => navigate(`/post/${post.id}`);
 
   // Double-tap « like » sur la photo (façon Instagram) : cœur animé + like.
   const lastTapRef = useRef(0);
@@ -212,9 +255,10 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                 {getInitials(displayAuthorName)}
               </div>
             )}
-            <div>
-              <p className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1" style={{ color: C.onSurface }}>
-                {displayAuthorName}
+            <div className="min-w-0">
+              {/* Nom + @username côte à côte (façon X) */}
+              <p className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1 flex-wrap" style={{ color: C.onSurface }}>
+                <span className="truncate">{displayAuthorName}</span>
                 {displayAuthorVerified && (
                   <span
                     className="material-symbols-outlined text-sm"
@@ -224,6 +268,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                     verified
                   </span>
                 )}
+                <span className="font-normal truncate" style={{ color: C.outline }}>@{displayAuthorName}</span>
               </p>
               <p className="text-xs" style={{ color: C.outline }}>{formatDate(post.created_at)}</p>
             </div>
@@ -235,10 +280,17 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           )}
         </div>
 
-        {/* Content */}
-        <p className="leading-relaxed text-sm lg:text-base whitespace-pre-wrap" style={{ color: C.onVariant }}>
-          {renderContent(post.content)}
-        </p>
+        {/* Content — un clic ouvre le fil complet (façon X). Les liens/mentions
+            à l'intérieur stoppent la propagation, donc restent cliquables. */}
+        {post.content && (
+          <p
+            onClick={openThread}
+            className="leading-relaxed text-sm lg:text-base whitespace-pre-wrap cursor-pointer"
+            style={{ color: C.onVariant }}
+          >
+            {renderContent(post.content)}
+          </p>
+        )}
 
         {/* Poll / Sondage */}
         {poll && Array.isArray(poll.options) && poll.options.length > 0 && (
@@ -349,11 +401,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           </div>
         )}
 
-        {/* Action bar */}
-        <div className="flex items-center gap-5 pt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+        {/* Action bar — réparti (pas serré) : J'aime · Commentaire · Repost · Partage · Enregistrer */}
+        <div className="flex items-center justify-between pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
           {/* Like */}
           <button
             onClick={handleLike}
+            title="J'aime"
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: isLiked ? "#f87171" : C.outline }}
           >
@@ -363,9 +416,10 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             {likesCount > 0 && <span>{likesCount}</span>}
           </button>
 
-          {/* Comment */}
+          {/* Comment — ouvre le composeur / fil de commentaires */}
           <button
             onClick={() => setShowComments(!showComments)}
+            title="Commenter"
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: showComments ? C.cyan : C.outline }}
           >
@@ -376,7 +430,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           </button>
 
           {/* Repost */}
-          {!isOwnPost && (
+          {!isOwnPost ? (
             <button
               onClick={handleRepost}
               disabled={repostLoading}
@@ -391,7 +445,36 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               )}
               {sharesCount > 0 && <span>{sharesCount}</span>}
             </button>
+          ) : (
+            sharesCount > 0 && (
+              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.outline }} title="Republications">
+                <span className="material-symbols-outlined text-lg">repeat</span>
+                {sharesCount}
+              </span>
+            )
           )}
+
+          {/* Share */}
+          <button
+            onClick={handleShare}
+            title="Partager"
+            className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
+            style={{ color: C.outline }}
+          >
+            <span className="material-symbols-outlined text-lg">ios_share</span>
+          </button>
+
+          {/* Save / Enregistrer */}
+          <button
+            onClick={handleSave}
+            title={isSaved ? "Retirer des enregistrements" : "Enregistrer"}
+            className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
+            style={{ color: isSaved ? C.cyan : C.outline }}
+          >
+            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: isSaved ? "'FILL' 1" : "'FILL' 0" }}>
+              bookmark
+            </span>
+          </button>
         </div>
 
         {/* Comments */}

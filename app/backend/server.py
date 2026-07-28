@@ -702,6 +702,7 @@ class Post(BaseModel):
     comments_count: int = 0
     shares_count: int = 0
     is_liked: bool = False
+    is_saved: bool = False  # l'utilisateur courant a-t-il enregistré ce post/clip ?
     views: int = 0
     eu_blocked: bool = False  # clip restreint dans l'UE (geo-block Nexus Clips)
     affiliate_link: Optional[str] = None
@@ -2035,14 +2036,45 @@ async def get_posts_feed(current_user: dict = Depends(get_current_user)):
     }).sort("created_at", -1).limit(50).to_list(length=50)
     
     posts = []
+    saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        post["is_saved"] = post["id"] in saved_ids
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
-    
+
     return posts
+
+# IMPORTANT : cette route doit être déclarée AVANT `/posts/{post_id}`, sinon
+# FastAPI interprète « saved » comme un post_id et renvoie 404.
+@api_router.get("/posts/saved", response_model=List[Post])
+async def get_saved_posts(current_user: dict = Depends(get_current_user)):
+    """Liste les publications et clips enregistrés par l'utilisateur (plus récents
+    d'abord), pour la page « Enregistrés »."""
+    saved = await db.saved_posts.find(
+        {"user_id": current_user["id"]}
+    ).sort("created_at", -1).limit(200).to_list(length=200)
+    order = [s.get("post_id") for s in saved]
+    if not order:
+        return []
+    raw = await db.posts.find({"id": {"$in": order}}).to_list(length=len(order))
+    by_id = {p.get("id"): p for p in raw}
+    liked = {l.get("post_id") for l in await db.likes.find(
+        {"post_id": {"$in": order}, "user_id": current_user["id"]}, {"post_id": 1}
+    ).to_list(length=len(order))}
+    out = []
+    for pid in order:  # conserve l'ordre d'enregistrement (plus récent d'abord)
+        p_raw = by_id.get(pid)
+        if not p_raw:
+            continue  # post supprimé entre-temps → ignoré
+        p = convert_mongo_doc_to_dict(p_raw)
+        p["is_liked"] = pid in liked
+        p["is_saved"] = True
+        enrich_post_poll(p, current_user["id"])
+        out.append(Post(**p))
+    return out
 
 @api_router.get("/posts/{post_id}", response_model=Post)
 async def get_post(post_id: str, current_user: dict = Depends(get_current_user)):
@@ -2050,10 +2082,11 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
-    
+
     post = convert_mongo_doc_to_dict(post_raw)
     like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
     post["is_liked"] = bool(like_raw)
+    post["is_saved"] = bool(await db.saved_posts.find_one({"post_id": post["id"], "user_id": current_user["id"]}))
     enrich_post_poll(post, current_user["id"])
     return Post(**post)
 
@@ -2196,6 +2229,41 @@ async def like_post(post_id: str, current_user: dict = Depends(get_current_user)
             })
         
         return {"liked": True}
+
+
+async def _saved_post_ids(user_id, post_ids):
+    """Ensemble des post_ids (parmi ceux fournis) enregistrés par l'utilisateur.
+
+    Batch en une requête pour enrichir une liste sans N+1.
+    """
+    if not post_ids:
+        return set()
+    rows = await db.saved_posts.find(
+        {"user_id": user_id, "post_id": {"$in": list(post_ids)}}, {"post_id": 1}
+    ).to_list(length=len(post_ids))
+    return {r.get("post_id") for r in rows}
+
+
+@api_router.post("/posts/{post_id}/save")
+async def save_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Enregistre / retire des enregistrements un post ou un clip (façon signet)."""
+    post_raw = await db.posts.find_one({"id": post_id}, {"id": 1})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    existing = await db.saved_posts.find_one({"post_id": post_id, "user_id": current_user["id"]})
+    if existing:
+        await db.saved_posts.delete_one({"post_id": post_id, "user_id": current_user["id"]})
+        return {"saved": False}
+
+    await db.saved_posts.insert_one({
+        "id": str(uuid.uuid4()),
+        "post_id": post_id,
+        "user_id": current_user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"saved": True}
+
 
 @api_router.get("/posts/{post_id}/comments", response_model=List[Comment])
 async def get_post_comments(post_id: str, current_user: dict = Depends(get_current_user)):
@@ -5692,10 +5760,12 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
     videos_raw = await db.posts.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
 
     clips = []
+    saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in videos_raw])
     for post_raw in videos_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        post["is_saved"] = post["id"] in saved_ids
         clips.append(Post(**post))
     return clips
 
@@ -5980,10 +6050,12 @@ async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current
     posts_raw = await db.posts.aggregate(pipeline).to_list(length=limit)
 
     posts = []
+    saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        post["is_saved"] = post["id"] in saved_ids
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 

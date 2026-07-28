@@ -14,6 +14,7 @@ import MessagesPage from "./pages/MessagesPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import SearchPage from "./pages/SearchPage";
 import PostDetailPage from "./pages/PostDetailPage";
+import SavedPage from "./pages/SavedPage";
 import SettingsPage from "./pages/SettingsPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import PrivacyCenter from './pages/PrivacyCenter';
@@ -175,6 +176,15 @@ function App() {
           <Route
             path="/post/:postId"
             element={user ? <PostDetailPage user={user} /> : <Navigate to="/auth" />}
+          />
+          {/* Publications et clips enregistrés (bouton signet). */}
+          <Route
+            path="/enregistres"
+            element={user ? <SavedPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/saved"
+            element={user ? <SavedPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           <Route 
             path="/analytics" 

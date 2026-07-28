@@ -164,7 +164,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const [comments, setComments]     = useState(post.comments_count || 0);
   const [muted, setMuted]           = useState(true);
   const [paused, setPaused]         = useState(false);
-  const [saved, setSaved]           = useState(false);
+  const [saved, setSaved]           = useState(post.is_saved || false);
   const [progress, setProgress]     = useState(0);
   const [heart, setHeart]           = useState(false);   // cœur animé (double-tap)
   const [showComment, setShowComment] = useState(false);
@@ -243,10 +243,18 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     } catch { /* annulé */ }
   };
 
-  const toggleSave = (e) => {
+  const toggleSave = async (e) => {
     e.stopPropagation();
-    setSaved((v) => !v);
-    toast.success(saved ? "Retiré des enregistrements" : "Clip enregistré");
+    const next = !saved;
+    setSaved(next); // optimiste
+    try {
+      const res = await axios.post(`${API}/posts/${post.id}/save`);
+      setSaved(res.data.saved);
+      toast.success(res.data.saved ? "Clip enregistré" : "Retiré des enregistrements");
+    } catch {
+      setSaved(!next);
+      toast.error("Erreur lors de l'enregistrement");
+    }
   };
 
   const handleLike = async (e) => {
