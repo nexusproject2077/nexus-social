@@ -46,6 +46,54 @@ MODERATION_SERVICE_URL = os.environ.get("MODERATION_SERVICE_URL", "").rstrip("/"
 MODERATION_SERVICE_TOKEN = os.environ.get("MODERATION_SERVICE_TOKEN", "")
 MODERATION_TIMEOUT = float(os.environ.get("MODERATION_TIMEOUT", "20"))
 
+# Fournisseurs CLOUD (aucune RAM côté serveur : Google fait le calcul).
+#  - GOOGLE_VISION_API_KEY : NSFW images/vidéos via Cloud Vision « SafeSearch ».
+#  - PERSPECTIVE_API_KEY   : toxicité/haine du texte via Perspective API (gratuit).
+# Priorité : service distant (VPS) > API cloud > modèles locaux. Fail-open partout.
+GOOGLE_VISION_API_KEY = os.environ.get("GOOGLE_VISION_API_KEY", "")
+PERSPECTIVE_API_KEY = os.environ.get("PERSPECTIVE_API_KEY", "")
+
+# Cloud Vision renvoie une échelle de vraisemblance → score 0..1.
+_GV_LIKELIHOOD = {
+    "VERY_UNLIKELY": 0.0, "UNLIKELY": 0.25, "POSSIBLE": 0.5,
+    "LIKELY": 0.75, "VERY_LIKELY": 1.0, "UNKNOWN": 0.0,
+}
+
+
+def _google_safesearch_score(image_bytes):
+    """(score 0..1, label) NSFW via Google Cloud Vision SafeSearch. Lève si échec."""
+    import requests
+    import base64
+    b64 = base64.b64encode(image_bytes).decode()
+    url = f"https://vision.googleapis.com/v1/images:annotate?key={GOOGLE_VISION_API_KEY}"
+    body = {"requests": [{"image": {"content": b64},
+                          "features": [{"type": "SAFE_SEARCH_DETECTION"}]}]}
+    resp = requests.post(url, json=body, timeout=MODERATION_TIMEOUT)
+    resp.raise_for_status()
+    ann = (resp.json().get("responses") or [{}])[0].get("safeSearchAnnotation", {}) or {}
+    adult = _GV_LIKELIHOOD.get(ann.get("adult", "UNKNOWN"), 0.0)
+    racy = _GV_LIKELIHOOD.get(ann.get("racy", "UNKNOWN"), 0.0)
+    return (adult, "adult") if adult >= racy else (racy, "racy")
+
+
+def _perspective_toxicity_score(text):
+    """(score 0..1, label) toxicité via Google Perspective API. Lève si échec."""
+    import requests
+    url = ("https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze"
+           f"?key={PERSPECTIVE_API_KEY}")
+    attrs = {"TOXICITY": {}, "SEVERE_TOXICITY": {}, "THREAT": {}, "INSULT": {}, "IDENTITY_ATTACK": {}}
+    body = {"comment": {"text": text[:3000]}, "languages": ["fr", "en"],
+            "requestedAttributes": attrs, "doNotStore": True}
+    resp = requests.post(url, json=body, timeout=MODERATION_TIMEOUT)
+    resp.raise_for_status()
+    scores = resp.json().get("attributeScores", {}) or {}
+    best_label, best_val = "toxicity", 0.0
+    for name, a in scores.items():
+        v = (a.get("summaryScore") or {}).get("value", 0.0)
+        if v > best_val:
+            best_val, best_label = v, name.lower()
+    return best_val, best_label
+
 # Nombre d'images échantillonnées dans une vidéo (début / milieu / fin).
 VIDEO_SAMPLE_POSITIONS = (0.1, 0.5, 0.9)
 
@@ -163,6 +211,13 @@ def moderate_text(text):
         except Exception as e:
             print(f"⚠️ service modération (texte) indisponible ({e}) — non filtré")
             return _allow("toxicity")
+    if PERSPECTIVE_API_KEY:
+        try:
+            score, label = _perspective_toxicity_score(clean)
+            return _verdict(score, TOXIC_BLOCK_THRESHOLD, TOXIC_FLAG_THRESHOLD, label, "toxicity")
+        except Exception as e:
+            print(f"⚠️ Perspective API indisponible ({e}) — texte non filtré")
+            return _allow("toxicity")
     pipe = _get_text_pipe()
     if pipe is None:
         return _allow("toxicity")
@@ -181,9 +236,19 @@ def moderate_text(text):
 
 # --- Images -----------------------------------------------------------------
 def moderate_image_bytes(data, suffix=".jpg"):
-    """Analyse une image (bytes) -> verdict NSFW. Fail-open."""
+    """Analyse une image (bytes) -> verdict NSFW. Fail-open.
+
+    Priorité : Google Cloud Vision (si clé) sinon NudeNet local.
+    """
     if not MODERATION_ENABLED or not data:
         return _allow("nsfw", "safe")
+    if GOOGLE_VISION_API_KEY:
+        try:
+            score, label = _google_safesearch_score(data)
+            return _verdict(score, NSFW_BLOCK_THRESHOLD, NSFW_FLAG_THRESHOLD, label, "nsfw")
+        except Exception as e:
+            print(f"⚠️ Google Vision indisponible ({e}) — image non filtrée")
+            return _allow("nsfw", "safe")
     detector = _get_nude_detector()
     if detector is None:
         return _allow("nsfw", "safe")
@@ -219,7 +284,8 @@ def moderate_video_bytes(data, suffix=".mp4"):
     """
     if not MODERATION_ENABLED or not data:
         return _allow("nsfw", "safe")
-    if _get_nude_detector() is None:
+    # On peut analyser les images échantillonnées via Google Vision OU NudeNet.
+    if not GOOGLE_VISION_API_KEY and _get_nude_detector() is None:
         return _allow("nsfw", "safe")
     try:
         import cv2
