@@ -84,10 +84,13 @@ def _google_safesearch_score(image_bytes):
     import requests
     import base64
     b64 = base64.b64encode(image_bytes).decode()
-    url = f"https://vision.googleapis.com/v1/images:annotate?key={GOOGLE_VISION_API_KEY}"
+    # Clé via en-tête (et non dans l'URL) → elle n'apparaît pas dans les logs.
+    url = "https://vision.googleapis.com/v1/images:annotate"
     body = {"requests": [{"image": {"content": b64},
                           "features": [{"type": "SAFE_SEARCH_DETECTION"}]}]}
-    resp = requests.post(url, json=body, timeout=MODERATION_TIMEOUT)
+    resp = requests.post(url, json=body,
+                         headers={"X-goog-api-key": GOOGLE_VISION_API_KEY},
+                         timeout=MODERATION_TIMEOUT)
     resp.raise_for_status()
     ann = (resp.json().get("responses") or [{}])[0].get("safeSearchAnnotation", {}) or {}
     adult = _GV_LIKELIHOOD.get(ann.get("adult", "UNKNOWN"), 0.0)
@@ -98,12 +101,13 @@ def _google_safesearch_score(image_bytes):
 def _perspective_toxicity_score(text):
     """(score 0..1, label) toxicité via Google Perspective API. Lève si échec."""
     import requests
-    url = ("https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze"
-           f"?key={PERSPECTIVE_API_KEY}")
+    url = "https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze"
     attrs = {"TOXICITY": {}, "SEVERE_TOXICITY": {}, "THREAT": {}, "INSULT": {}, "IDENTITY_ATTACK": {}}
     body = {"comment": {"text": text[:3000]}, "languages": ["fr", "en"],
             "requestedAttributes": attrs, "doNotStore": True}
-    resp = requests.post(url, json=body, timeout=MODERATION_TIMEOUT)
+    resp = requests.post(url, json=body,
+                         headers={"X-goog-api-key": PERSPECTIVE_API_KEY},
+                         timeout=MODERATION_TIMEOUT)
     resp.raise_for_status()
     scores = resp.json().get("attributeScores", {}) or {}
     best_label, best_val = "toxicity", 0.0
