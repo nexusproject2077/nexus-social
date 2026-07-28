@@ -7,6 +7,7 @@ import PullToRefresh from "@/components/PullToRefresh";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
+import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
 
 const C = {
   surface:   "#0b1326",
@@ -799,6 +800,14 @@ export default function ClipsPage({ user, setUser }) {
       toast.error("Veuillez choisir un fichier vidéo");
       return;
     }
+    // Sans Firebase, on garde l'ancien chemin (base64 via le backend) qui
+    // impose des vidéos courtes/légères. Avec Firebase, on autorise le long.
+    const BACKEND_MAX_MB = 25;
+    if (!isFirebaseConfigured && file.size > BACKEND_MAX_MB * 1024 * 1024) {
+      toast.error(`Vidéo trop lourde (max ${BACKEND_MAX_MB} Mo sans stockage vidéo configuré)`);
+      return;
+    }
+
     const caption = window.prompt("Légende de votre clip (optionnel)") || "";
     const euBlocked = window.confirm(
       "Restreindre ce clip dans l'Union européenne ?\n\nOK = masqué aux visiteurs de l'UE • Annuler = visible partout"
@@ -806,19 +815,39 @@ export default function ClipsPage({ user, setUser }) {
     setUploading(true);
     setUploadProgress(0);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("caption", caption);
-      form.append("eu_blocked", euBlocked ? "true" : "false");
-      // axios ajoute le token via l'intercepteur + gère la limite multipart
-      await axios.post(`${API}/clips`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (evt) => {
-          if (evt.total) {
-            setUploadProgress(Math.round((evt.loaded * 100) / evt.total));
-          }
-        },
-      });
+      if (isFirebaseConfigured) {
+        // Upload direct navigateur → Firebase (reprise auto), puis on
+        // n'envoie que l'URL au backend : longues vidéos autorisées.
+        const url = await uploadVideoResumable(file, user?.id, setUploadProgress);
+        let duration = null;
+        try {
+          duration = await new Promise((resolve, reject) => {
+            const probe = document.createElement("video");
+            const obj = URL.createObjectURL(file);
+            probe.preload = "metadata";
+            probe.onloadedmetadata = () => { URL.revokeObjectURL(obj); resolve(probe.duration || null); };
+            probe.onerror = () => { URL.revokeObjectURL(obj); reject(new Error("probe")); };
+            probe.src = obj;
+          });
+        } catch { /* durée facultative */ }
+        await axios.post(`${API}/clips/external`, {
+          media_url: url,
+          caption,
+          eu_blocked: euBlocked,
+          duration,
+        });
+      } else {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("caption", caption);
+        form.append("eu_blocked", euBlocked ? "true" : "false");
+        await axios.post(`${API}/clips`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+          onUploadProgress: (evt) => {
+            if (evt.total) setUploadProgress(Math.round((evt.loaded * 100) / evt.total));
+          },
+        });
+      }
       toast.success("Clip publié !");
       setActiveIndex(0);
       skipRef.current = 0;

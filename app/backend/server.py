@@ -5832,6 +5832,85 @@ async def create_clip(
     return Post(**clip)
 
 
+class ExternalClip(BaseModel):
+    media_url: str                 # URL https de la vidéo (Firebase Storage / CDN)
+    caption: str = ""
+    eu_blocked: bool = False
+    duration: Optional[float] = None  # durée en secondes (indicatif)
+
+
+# Hôtes de stockage autorisés pour un clip « externe » (upload direct navigateur).
+# On n'accepte pas n'importe quelle URL : uniquement Firebase Storage / GCS.
+_ALLOWED_CLIP_HOSTS = (
+    "firebasestorage.googleapis.com",
+    "storage.googleapis.com",
+    ".firebasestorage.app",
+    ".appspot.com",
+)
+
+
+@api_router.post("/clips/external", response_model=Post)
+async def create_clip_from_url(data: ExternalClip, current_user: dict = Depends(get_current_user)):
+    """Crée un Clip à partir d'une vidéo DÉJÀ téléversée sur Firebase Storage.
+
+    L'upload passe directement du navigateur à Firebase (il ne transite pas par
+    le backend) : cela lève la limite mémoire/taille et autorise les longues
+    vidéos (ex. un combat de 59 min). On ne stocke ici que l'URL.
+
+    Modération : seule la légende (texte) est filtrée ici — la vidéo n'étant pas
+    téléchargée côté serveur, l'analyse NSFW image par image n'est pas possible
+    sur ce chemin (elle reste active pour les uploads courts via /api/clips).
+    """
+    from urllib.parse import urlparse
+    url = (data.media_url or "").strip()
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="URL de vidéo invalide (https requis)")
+    host = parsed.hostname.lower()
+    if not any(host == h or host.endswith(h) for h in _ALLOWED_CLIP_HOSTS):
+        raise HTTPException(status_code=400, detail="Hôte de stockage non autorisé")
+
+    caption = data.caption or ""
+    # Modération du texte de la légende (fail-open).
+    verdict = None
+    if moderation is not None:
+        verdict = moderation.moderate_text(caption)
+        if verdict["action"] == "block":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Légende refusée par la modération ({verdict['category']}: {verdict['label']})",
+            )
+
+    clip_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    clip_to_insert = {
+        "id": clip_id,
+        "author_id": current_user["id"],
+        "author_username": current_user["username"],
+        "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
+        "content": caption,
+        "media_type": "video",
+        "media_url": url,
+        "media_duration": data.duration,
+        "likes_count": 0,
+        "comments_count": 0,
+        "shares_count": 0,
+        "views": 0,
+        "eu_blocked": bool(data.eu_blocked),
+        "created_at": now.isoformat(),
+    }
+    await db.posts.insert_one(clip_to_insert)
+
+    if verdict and verdict["action"] == "flag":
+        await flag_for_review("clip", clip_id, current_user["id"], caption, verdict, media_kind="video")
+
+    clip = convert_mongo_doc_to_dict(clip_to_insert)
+    clip["is_liked"] = False
+    clip["is_saved"] = False
+    return Post(**clip)
+
+
 @api_router.get("/adsense")
 async def get_adsense_config():
     """Config AdSense côté client (vide par défaut => aucune pub)."""
