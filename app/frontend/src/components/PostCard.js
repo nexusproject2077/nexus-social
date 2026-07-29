@@ -142,6 +142,18 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     }
   };
 
+  const [pinned, setPinned] = useState(post.is_pinned || false);
+  const handlePin = async () => {
+    try {
+      const res = await axios.post(`${API}/posts/${post.id}/pin`);
+      setPinned(res.data.pinned);
+      toast.success(res.data.pinned ? "Publication épinglée en haut du profil" : "Publication désépinglée");
+      onUpdate?.({ ...post, is_pinned: res.data.pinned });
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Action impossible");
+    }
+  };
+
   // Clic sur la carte (hors éléments interactifs) → page détail = fil de
   // commentaires complet (lecture / réponse / identification), façon X.
   const openThread = () => navigate(`/post/${post.id}`);
@@ -320,15 +332,45 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                     verified
                   </span>
                 )}
+                {post.author_is_premium && (
+                  <span
+                    className="material-symbols-outlined text-sm"
+                    style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}
+                    title="Membre Nexus Premium"
+                  >
+                    workspace_premium
+                  </span>
+                )}
                 <span className="font-normal truncate" style={{ color: C.outline }}>@{displayAuthorName}</span>
               </p>
-              <p className="text-xs" style={{ color: C.outline }}>{formatDate(post.created_at)}</p>
+              <p className="text-xs flex items-center gap-1" style={{ color: C.outline }}>
+                {post.is_pinned && (
+                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title="Publication épinglée">
+                    <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>push_pin</span>
+                    Épinglé ·
+                  </span>
+                )}
+                {formatDate(post.created_at)}
+              </p>
             </div>
           </Link>
           {isOwnPost && (
-            <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title="Supprimer">
-              <span className="material-symbols-outlined text-xl">delete</span>
-            </button>
+            <div className="flex items-center gap-1">
+              {/* Épingler (créateur Premium). Non affiché pour les reposts. */}
+              {!isRepost && (
+                <button
+                  onClick={handlePin}
+                  className="transition-colors hover:text-cyan-400"
+                  style={{ color: pinned ? C.cyan : C.outline }}
+                  title={pinned ? "Désépingler" : "Épingler en haut du profil (Premium)"}
+                >
+                  <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: pinned ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
+                </button>
+              )}
+              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title="Supprimer">
+                <span className="material-symbols-outlined text-xl">delete</span>
+              </button>
+            </div>
           )}
         </div>
 

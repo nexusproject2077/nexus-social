@@ -696,6 +696,8 @@ class Post(BaseModel):
     author_username: str
     author_profile_pic: Optional[str] = None
     author_is_verified: bool = False
+    author_is_premium: bool = False  # badge Premium sur la publication (avantage réel)
+    is_pinned: bool = False          # post épinglé en haut du profil (créateur Premium)
     content: str
     media_type: Optional[str] = None
     media_url: Optional[str] = None
@@ -2057,11 +2059,13 @@ async def get_posts_feed(current_user: dict = Depends(get_current_user)):
     
     posts = []
     saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
+    premium_ids = await _premium_author_ids([p.get("author_id") for p in posts_raw])
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
         post["is_saved"] = post["id"] in saved_ids
+        post["author_is_premium"] = post.get("author_id") in premium_ids
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 
@@ -2084,6 +2088,7 @@ async def get_saved_posts(current_user: dict = Depends(get_current_user)):
     liked = {l.get("post_id") for l in await db.likes.find(
         {"post_id": {"$in": order}, "user_id": current_user["id"]}, {"post_id": 1}
     ).to_list(length=len(order))}
+    premium_ids = await _premium_author_ids([p.get("author_id") for p in raw])
     out = []
     for pid in order:  # conserve l'ordre d'enregistrement (plus récent d'abord)
         p_raw = by_id.get(pid)
@@ -2092,6 +2097,7 @@ async def get_saved_posts(current_user: dict = Depends(get_current_user)):
         p = convert_mongo_doc_to_dict(p_raw)
         p["is_liked"] = pid in liked
         p["is_saved"] = True
+        p["author_is_premium"] = p.get("author_id") in premium_ids
         enrich_post_poll(p, current_user["id"])
         out.append(Post(**p))
     return out
@@ -2107,6 +2113,8 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
     like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
     post["is_liked"] = bool(like_raw)
     post["is_saved"] = bool(await db.saved_posts.find_one({"post_id": post["id"], "user_id": current_user["id"]}))
+    author = await db.users.find_one({"id": post.get("author_id")}, {"is_premium": 1})
+    post["author_is_premium"] = bool(author and author.get("is_premium"))
     enrich_post_poll(post, current_user["id"])
     return Post(**post)
 
@@ -2264,6 +2272,21 @@ async def _saved_post_ids(user_id, post_ids):
     return {r.get("post_id") for r in rows}
 
 
+async def _premium_author_ids(author_ids):
+    """Sous-ensemble des author_ids qui sont membres Premium (badge sur les posts).
+
+    Batch en une requête (pas de N+1). Le statut Premium étant dynamique, on le
+    lit au moment de l'affichage plutôt que de le figer dans le post.
+    """
+    ids = [a for a in set(author_ids or []) if a]
+    if not ids:
+        return set()
+    rows = await db.users.find(
+        {"id": {"$in": ids}, "is_premium": True}, {"id": 1}
+    ).to_list(length=len(ids))
+    return {r.get("id") for r in rows}
+
+
 @api_router.post("/posts/{post_id}/save")
 async def save_post(post_id: str, current_user: dict = Depends(get_current_user)):
     """Enregistre / retire des enregistrements un post ou un clip (façon signet)."""
@@ -2283,6 +2306,32 @@ async def save_post(post_id: str, current_user: dict = Depends(get_current_user)
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     return {"saved": True}
+
+
+@api_router.post("/posts/{post_id}/pin")
+async def pin_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Épingle / désépingle un de ses posts en haut du profil.
+
+    Avantage créateur Premium : réservé à l'auteur ET aux membres Premium. Un
+    seul post épinglé à la fois (épingler un nouveau désépingle l'ancien).
+    """
+    post = await db.posts.find_one({"id": post_id}, {"author_id": 1, "pinned": 1})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post introuvable")
+    if post.get("author_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Action réservée à l'auteur")
+    if not current_user.get("is_premium"):
+        raise HTTPException(status_code=403, detail="Épingler un post est réservé aux membres Premium")
+
+    if post.get("pinned"):
+        await db.posts.update_one({"id": post_id}, {"$set": {"pinned": False}})
+        return {"pinned": False}
+    # Un seul post épinglé : on retire l'épingle des autres posts de l'auteur.
+    await db.posts.update_many(
+        {"author_id": current_user["id"], "pinned": True}, {"$set": {"pinned": False}}
+    )
+    await db.posts.update_one({"id": post_id}, {"$set": {"pinned": True}})
+    return {"pinned": True}
 
 
 @api_router.get("/posts/{post_id}/comments", response_model=List[Comment])
@@ -2543,15 +2592,22 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
                 )
     
     # Publications originales uniquement (les reposts ont leur propre section).
+    # Post épinglé d'abord (créateur Premium), puis du plus récent au plus ancien.
     posts_raw = await db.posts.find(
         {"author_id": user_id, "repost_of": None}
-    ).sort("created_at", -1).to_list(length=50)
+    ).sort([("pinned", -1), ("created_at", -1)]).to_list(length=50)
+
+    # Statut Premium de l'auteur (badge sur ses posts) : une seule lecture.
+    author = await db.users.find_one({"id": user_id}, {"is_premium": 1})
+    author_premium = bool(author and author.get("is_premium"))
 
     posts = []
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        post["author_is_premium"] = author_premium
+        post["is_pinned"] = bool(post.get("pinned"))
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 
@@ -4531,8 +4587,10 @@ async def create_story(
     """Créer une nouvelle story - supporte upload de fichier OU URL"""
     story_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(hours=24)
-    
+    # Avantage Premium : stories valables 48 h au lieu de 24 h.
+    story_ttl_hours = 48 if current_user.get("is_premium") else 24
+    expires_at = now + timedelta(hours=story_ttl_hours)
+
     # CAS 1: Upload de fichier
     if file:
         content_type = file.content_type
@@ -5782,11 +5840,13 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
 
     clips = []
     saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in videos_raw])
+    premium_ids = await _premium_author_ids([p.get("author_id") for p in videos_raw])
     for post_raw in videos_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
         post["is_saved"] = post["id"] in saved_ids
+        post["author_is_premium"] = post.get("author_id") in premium_ids
         clips.append(Post(**post))
     return clips
 
@@ -6131,6 +6191,11 @@ async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current
         if fid:
             followed_ids.append(fid)
 
+    # Auteurs Premium : petit bonus de visibilité dans « Pour toi » (avantage réel).
+    premium_authors = [u["id"] for u in await db.users.find(
+        {"is_premium": True}, {"id": 1}
+    ).to_list(length=5000)]
+
     pipeline = [
         {"$addFields": {
             "engagement_score": {
@@ -6140,6 +6205,8 @@ async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current
                     {"$multiply": [{"$ifNull": ["$shares_count", 0]}, 4]},
                     # Bonus de personnalisation : les comptes suivis remontent
                     {"$cond": [{"$in": ["$author_id", followed_ids]}, 15, 0]},
+                    # Bonus Premium : priorité dans le feed « Pour toi »
+                    {"$cond": [{"$in": ["$author_id", premium_authors]}, 8, 0]},
                 ]
             }
         }},
@@ -6151,11 +6218,13 @@ async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current
 
     posts = []
     saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
+    premium_set = set(premium_authors)
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
         post["is_saved"] = post["id"] in saved_ids
+        post["author_is_premium"] = post.get("author_id") in premium_set
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 

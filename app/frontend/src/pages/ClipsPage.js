@@ -542,8 +542,11 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
 
       {/* Bottom info */}
       <div className="absolute bottom-24 left-4 right-20">
-        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="font-bold text-white text-sm mb-1 hover:text-cyan-300 transition-colors">
+        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="font-bold text-white text-sm mb-1 hover:text-cyan-300 transition-colors inline-flex items-center gap-1">
           @{post.author_username}
+          {post.author_is_premium && (
+            <span className="material-symbols-outlined text-sm" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }} title="Membre Nexus Premium">workspace_premium</span>
+          )}
         </button>
         <p className="text-white/80 text-sm leading-snug line-clamp-2">{post.content}</p>
         <p className="text-white/40 text-xs mt-1 flex items-center gap-1.5">
