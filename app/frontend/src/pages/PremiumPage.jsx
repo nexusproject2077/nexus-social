@@ -49,9 +49,14 @@ export default function PremiumPage() {
 
   const priceLabel = () => {
     if (!plan) return "…";
-    if (plan.amount == null) return "Tarif bientôt disponible";
-    const per = plan.interval === "year" ? "an" : "mois";
-    return `${plan.amount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} ${plan.currency || "EUR"} / ${per}`;
+    if (plan.amount != null) {
+      const per = plan.interval === "year" ? "an" : "mois";
+      return `${plan.amount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} ${plan.currency || "EUR"} / ${per}`;
+    }
+    // Paiement actif mais prix non lisible (ex. backend en cours de déploiement) :
+    // on n'affiche pas « bientôt » — le tarif est confirmé à l'étape Stripe.
+    if (plan.enabled) return "Voir le tarif à l'étape suivante";
+    return "Tarif bientôt disponible";
   };
 
   const subscribe = async () => {
@@ -145,8 +150,10 @@ export default function PremiumPage() {
         </p>
 
         {/* Liens légaux (les processeurs de paiement les demandent) */}
-        <div className="flex items-center justify-center gap-4 mt-6 text-xs" style={{ color: "#8ea0c4" }}>
-          <button onClick={() => navigate("/privacy-center")} className="hover:underline">Confidentialité</button>
+        <div className="flex items-center justify-center gap-4 mt-6 text-xs flex-wrap" style={{ color: "#8ea0c4" }}>
+          <button onClick={() => navigate("/cgu")} className="hover:underline">Conditions d'utilisation</button>
+          <span>·</span>
+          <button onClick={() => navigate("/confidentialite")} className="hover:underline">Confidentialité</button>
           <span>·</span>
           <button onClick={() => navigate("/settings")} className="hover:underline">Gérer l'abonnement</button>
         </div>

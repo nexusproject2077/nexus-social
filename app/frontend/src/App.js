@@ -15,6 +15,7 @@ import NotificationsPage from "./pages/NotificationsPage";
 import SearchPage from "./pages/SearchPage";
 import PostDetailPage from "./pages/PostDetailPage";
 import PremiumPage from "./pages/PremiumPage";
+import LegalPage from "./pages/LegalPage";
 import SavedPage from "./pages/SavedPage";
 import SettingsPage from "./pages/SettingsPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
@@ -183,6 +184,11 @@ function App() {
               produits/tarifs doivent être accessibles publiquement). */}
           <Route path="/premium" element={<PremiumPage />} />
           <Route path="/devenir-premium" element={<PremiumPage />} />
+          {/* Pages légales PUBLIQUES (exigées par Stripe / conformité). */}
+          <Route path="/cgu" element={<LegalPage kind="cgu" />} />
+          <Route path="/conditions" element={<LegalPage kind="cgu" />} />
+          <Route path="/confidentialite" element={<LegalPage kind="privacy" />} />
+          <Route path="/privacy" element={<LegalPage kind="privacy" />} />
           {/* Publications et clips enregistrés (bouton signet). */}
           <Route
             path="/enregistres"
