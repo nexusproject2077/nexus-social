@@ -164,7 +164,12 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const [isLiked, setIsLiked]       = useState(post.is_liked || false);
   const [likes, setLikes]           = useState(post.likes_count || 0);
   const [comments, setComments]     = useState(post.comments_count || 0);
-  const [muted, setMuted]           = useState(true);
+  // Son ACTIVÉ par défaut. Si le navigateur bloque l'autoplay avec son (politique
+  // mobile), on retombe automatiquement en muet pour au moins lancer la lecture,
+  // puis un tap réactive le son. La préférence de l'utilisateur est mémorisée.
+  const [muted, setMuted] = useState(() => {
+    try { return localStorage.getItem("nexus_clips_muted") === "1"; } catch { return false; }
+  });
   const [paused, setPaused]         = useState(false);
   const [saved, setSaved]           = useState(post.is_saved || false);
   const [progress, setProgress]     = useState(0);
@@ -205,13 +210,29 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     const video = videoRef.current;
     if (!video) return;
     if (isActive) {
-      video.play().catch(() => {});
+      video.muted = muted;
+      // On tente la lecture AVEC le son ; si le navigateur la refuse (autoplay
+      // policy), on repasse en muet et on relance — au moins la vidéo démarre.
+      video.play().catch(() => {
+        if (!video.muted) {
+          video.muted = true;
+          setMuted(true);
+          video.play().catch(() => {});
+        }
+      });
       setPaused(false);
     } else {
       video.pause();
       video.currentTime = 0;
     }
   }, [isActive]);
+
+  // Mémorise la préférence son/muet et l'applique à la vidéo courante.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v) v.muted = muted;
+    try { localStorage.setItem("nexus_clips_muted", muted ? "1" : "0"); } catch { /* ignore */ }
+  }, [muted]);
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -373,7 +394,10 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       <video
         ref={videoRef}
         src={post.media_url}
-        className={`w-full h-full ${isFs && isLandscape ? "object-contain" : "object-cover"}`}
+        // Jamais de crop du contenu large : vidéos paysage/16:9 en `contain`
+        // (letterbox, entièrement visibles) ; vidéos verticales en `cover` (plein
+        // cadre, façon TikTok). Sur PC le conteneur est déjà en colonne 9:16.
+        className={`w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
         loop
         muted={muted}
         playsInline
@@ -902,7 +926,7 @@ export default function ClipsPage({ user, setUser }) {
       onClick={() => setView((v) => (v === "immersive" ? "grid" : "immersive"))}
       data-testid="toggle-clips-view"
       title={view === "immersive" ? "Vue grille" : "Vue immersive"}
-      className="fixed z-50 top-16 left-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+      className="fixed z-50 top-4 left-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
       style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
     >
       <span className="material-symbols-outlined text-2xl">
@@ -913,7 +937,7 @@ export default function ClipsPage({ user, setUser }) {
 
   if (loading) {
     return (
-      <Layout user={user} setUser={setUser} compact>
+      <Layout user={user} setUser={setUser} compact hideMobileHeader>
         <div className="flex items-center justify-center h-screen">
           <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
         </div>
@@ -923,7 +947,7 @@ export default function ClipsPage({ user, setUser }) {
 
   if (clips.length === 0) {
     return (
-      <Layout user={user} setUser={setUser} compact>
+      <Layout user={user} setUser={setUser} compact hideMobileHeader>
         <div className="flex flex-col items-center justify-center h-screen gap-4">
           <span className="material-symbols-outlined text-6xl" style={{ color: C.outline, opacity: 0.4 }}>play_circle</span>
           <p className="text-sm font-bold uppercase tracking-widest" style={{ color: C.outline }}>Aucun clip disponible</p>
@@ -954,7 +978,7 @@ export default function ClipsPage({ user, setUser }) {
   }
 
   return (
-    <Layout user={user} setUser={setUser} compact>
+    <Layout user={user} setUser={setUser} compact hideMobileHeader>
       {/* Tirer vers le bas (sur le 1er clip) pour rafraîchir le fil. */}
       <PullToRefresh
         onRefresh={() => fetchClips(true)}
