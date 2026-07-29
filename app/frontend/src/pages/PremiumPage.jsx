@@ -14,8 +14,9 @@ const ACCENT = "#22d3ee";
 const USER_PERKS = [
   { icon: "verified", label: "Badge Premium sur le profil et les publications", live: true },
   { icon: "block", label: "Suppression totale des publicités", live: true },
-  { icon: "trending_up", label: "Priorité dans le feed « Pour toi »", live: false },
-  { icon: "hd", label: "Upload vidéo haute qualité + Clips plus longs, Stories 48 h", live: false },
+  { icon: "trending_up", label: "Priorité dans le feed « Pour toi »", live: true },
+  { icon: "schedule", label: "Stories valables 48 h + Clips longue durée", live: true },
+  { icon: "hd", label: "Upload vidéo 4K", live: false },
   { icon: "cloud_done", label: "Stockage média étendu", live: false },
   { icon: "palette", label: "Thèmes exclusifs + stickers / effets réservés", live: false },
   { icon: "download_for_offline", label: "Lecture hors-ligne des Clips et posts enregistrés", live: false },
@@ -23,11 +24,11 @@ const USER_PERKS = [
 ];
 
 const CREATOR_PERKS = [
+  { icon: "push_pin", label: "Épingler un post en haut du profil", live: true },
   { icon: "analytics", label: "Analytics avancés (rétention, audience, meilleurs horaires, revenus)", live: false },
   { icon: "payments", label: "Monétisation : Tip, abonnement au profil, badges payants", live: false },
   { icon: "campaign", label: "Priorité dans les recommandations et les lives", live: false },
   { icon: "auto_fix_high", label: "Outils d'édition vidéo/photo plus poussés", live: false },
-  { icon: "push_pin", label: "Épingler un post en haut du profil", live: false },
   { icon: "shield", label: "Anti-spam renforcé + modération prioritaire", live: false },
 ];
 
