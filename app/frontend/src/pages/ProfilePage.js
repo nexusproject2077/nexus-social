@@ -6,7 +6,8 @@ import Layout from "@/components/Layout";
 import PostCard from "@/components/PostCard";
 import EditProfileModal from "@/components/EditProfileModal";
 import FollowListModal from "@/components/FollowListModal";
-import { Lock, Clock, UserPlus, UserMinus, Edit } from "lucide-react";
+import PullToRefresh from "@/components/PullToRefresh";
+import { Lock, Clock, UserPlus, UserMinus, Edit, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 // ── Design tokens (from Tailwind config) ──────────────────────────────────────
@@ -45,8 +46,28 @@ export default function ProfilePage({ user, setUser }) {
   const [reposts, setReposts]         = useState([]);
   const [mentions, setMentions]       = useState([]);
   const [followModal, setFollowModal] = useState(null); // { kind: "followers"|"following" }
+  const [showTip, setShowTip] = useState(false); // sélecteur de montant de pourboire
 
   const isOwnProfile = user && userId && user.id === userId;
+
+  // Retour de Stripe après un pourboire (?tip=success|cancel).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get("tip");
+    if (p === "success") toast.success("Merci pour votre pourboire 💸");
+    else if (p === "cancel") toast("Pourboire annulé");
+    if (p) window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
+  const sendTip = async (euros) => {
+    try {
+      const res = await axios.post(`${API}/users/${userId}/tip-checkout`, { amount_cents: Math.round(euros * 100) });
+      if (res.data?.url) window.location.href = res.data.url;
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Pourboire momentanément indisponible");
+    } finally {
+      setShowTip(false);
+    }
+  };
 
   useEffect(() => {
     if (userId) {
@@ -55,6 +76,15 @@ export default function ProfilePage({ user, setUser }) {
       if (!isOwnProfile) fetchFollowStatus();
     }
   }, [userId]);
+
+  // Tirer vers le bas pour rafraîchir (profil + publications).
+  const refreshProfile = async () => {
+    await Promise.all([
+      fetchProfile(),
+      fetchUserPosts(),
+      ...(isOwnProfile ? [] : [fetchFollowStatus()]),
+    ]);
+  };
 
   // ── Data fetching ──────────────────────────────────────────────────────────
   const fetchProfile = async () => {
@@ -160,14 +190,25 @@ export default function ProfilePage({ user, setUser }) {
     );
 
     if (isOwnProfile) return (
-      <button
-        data-testid="edit-profile-button"
-        onClick={() => setShowEditProfile(true)}
-        style={{ background: C.surfaceHigh, color: C.primary, border: `1px solid ${C.primaryContainer}33` }}
-        className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
-      >
-        <Edit size={14} /> Modifier le profil
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          data-testid="edit-profile-button"
+          onClick={() => setShowEditProfile(true)}
+          style={{ background: C.surfaceHigh, color: C.primary, border: `1px solid ${C.primaryContainer}33` }}
+          className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
+        >
+          <Edit size={14} /> Modifier le profil
+        </button>
+        <button
+          data-testid="saved-shortcut"
+          onClick={() => navigate("/enregistres")}
+          title="Enregistrés"
+          style={{ background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}
+          className="flex items-center justify-center w-10 h-10 rounded-xl transition-all active:scale-95 hover:opacity-90"
+        >
+          <span className="material-symbols-outlined text-lg">bookmark</span>
+        </button>
+      </div>
     );
 
     if (followStatus === "following") return (
@@ -231,6 +272,8 @@ export default function ProfilePage({ user, setUser }) {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <Layout user={user} setUser={setUser} hideMobileHeader>
+      {/* Tirer vers le bas pour rafraîchir le profil (mobile). */}
+      <PullToRefresh onRefresh={refreshProfile} />
 
       {/* Bouton Paramètres — en haut à droite, sur mon propre profil (mobile).
           Sans fond : uniquement le pictogramme, façon Instagram. */}
@@ -302,8 +345,48 @@ export default function ProfilePage({ user, setUser }) {
                     verified
                   </span>
                 )}
+                {/* Badge Premium (avantage réel) */}
+                {profile.is_premium && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-black"
+                    style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}
+                    title="Membre Nexus Premium"
+                  >
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+                    Premium
+                  </span>
+                )}
                 {profile.is_private && <Lock size={18} color={C.outline} />}
                 <FollowButton />
+                {/* Pourboire (Tip) — seulement pour les créateurs ayant activé Stripe Connect. */}
+                {!isOwnProfile && profile.can_receive_tips && (
+                  <button
+                    data-testid="tip-button"
+                    title="Envoyer un pourboire"
+                    onClick={() => setShowTip(true)}
+                    style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
+                  >
+                    <span className="material-symbols-outlined text-lg">volunteer_activism</span>
+                    Pourboire
+                  </button>
+                )}
+                {/* Partager le profil : copie l'URL /profil/:userId (ou partage natif). */}
+                <button
+                  data-testid="share-profile"
+                  title="Partager le profil"
+                  onClick={async () => {
+                    const url = `${window.location.origin}/profil/${userId}`;
+                    try {
+                      if (navigator.share) await navigator.share({ title: `@${profile.username} sur Nexus`, url });
+                      else { await navigator.clipboard.writeText(url); toast.success("Lien du profil copié"); }
+                    } catch { /* annulé */ }
+                  }}
+                  style={{ background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}
+                  className="flex items-center justify-center w-9 h-9 rounded-xl transition-all active:scale-95 hover:opacity-80"
+                >
+                  <Share2 size={16} />
+                </button>
                 {!isOwnProfile && profile.crypto_wallet && (
                   <button
                     data-testid="tip-crypto"
@@ -577,6 +660,33 @@ export default function ProfilePage({ user, setUser }) {
       </div>
 
       <EditProfileModal open={showEditProfile} onClose={() => setShowEditProfile(false)} user={user} onUpdate={handleProfileUpdate} />
+
+      {/* Sélecteur de montant de pourboire */}
+      {showTip && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4" style={{ background: "rgba(2,6,20,0.8)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) setShowTip(false); }}>
+          <div className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5" style={{ background: "#171f33", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="material-symbols-outlined" style={{ color: "var(--nexus-accent)" }}>volunteer_activism</span>
+              <h3 className="font-bold text-white">Envoyer un pourboire à @{profile.username}</h3>
+            </div>
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {[1, 2, 5, 10].map((v) => (
+                <button key={v} onClick={() => sendTip(v)}
+                        className="py-3 rounded-xl font-black text-sm active:scale-95 transition-all"
+                        style={{ background: "#222a3d", color: "#dae2fd", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  {v} €
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-center" style={{ color: C.outline }}>
+              Paiement sécurisé via Stripe. Le créateur reçoit le montant après commission de la plateforme.
+            </p>
+            <button onClick={() => setShowTip(false)} className="w-full mt-3 py-2.5 rounded-xl text-sm font-bold" style={{ background: "#222a3d", color: C.onVariant }}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
 
       {followModal && (
         <FollowListModal

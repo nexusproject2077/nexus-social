@@ -14,10 +14,13 @@ import MessagesPage from "./pages/MessagesPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import SearchPage from "./pages/SearchPage";
 import PostDetailPage from "./pages/PostDetailPage";
+import PremiumPage from "./pages/PremiumPage";
+import SavedPage from "./pages/SavedPage";
 import SettingsPage from "./pages/SettingsPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import PrivacyCenter from './pages/PrivacyCenter';
 import ClipsPage from './pages/ClipsPage';
+import ClipsSearchPage from './pages/ClipsSearchPage';
 import LiveStream from './pages/LiveStream';
 
 // URL du backend (NE CHANGE PLUS JAMAIS)
@@ -36,28 +39,53 @@ axios.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Intercepteur de réponse pour gérer les 401 (session expirée)
+// Intercepteur de réponse : on ne déconnecte QUE sur un vrai 401 (token
+// invalide/expiré). Les erreurs réseau / 5xx (ex. cold start Render) n'ont pas
+// de `response` → on ne touche pas à la session, l'utilisateur reste connecté.
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
-      window.location.href = "/auth";
+      localStorage.removeItem("nexus_user");
+      // Évite une boucle de redirection si on est déjà sur /auth.
+      if (!window.location.pathname.startsWith("/auth")) {
+        window.location.href = "/auth";
+      }
     }
     return Promise.reject(error);
   }
 );
 
+// Utilisateur mis en cache (hydratation optimiste) : permet de rester sur la
+// page courante lors d'un refresh, même si /auth/me met du temps à répondre.
+const cachedUser = (() => {
+  try { return JSON.parse(localStorage.getItem("nexus_user") || "null"); } catch { return null; }
+})();
+
 function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUserState] = useState(cachedUser);
+  // On n'affiche le spinner plein écran QUE si on n'a aucun utilisateur en cache
+  // mais un token à vérifier (premier chargement). Sinon on rend tout de suite.
+  const [loading, setLoading] = useState(!cachedUser && !!localStorage.getItem("token"));
+
+  // setUser persistant : chaque mise à jour est mise en cache (et purgée à la
+  // déconnexion). Passé aux pages/enfants à la place de setUser brut.
+  const setUser = (u) => {
+    setUserState(u);
+    try {
+      if (u) localStorage.setItem("nexus_user", JSON.stringify(u));
+      else localStorage.removeItem("nexus_user");
+    } catch { /* quota */ }
+  };
 
   // ✅ Active le time tracking
   useTimeTracking(user);
 
-  const checkAuth = async () => {
+  const checkAuth = async (attempt = 0) => {
     const token = localStorage.getItem("token");
     if (!token) {
+      setUser(null);
       setLoading(false);
       return;
     }
@@ -65,16 +93,26 @@ function App() {
     try {
       const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
-      // La personnalisation enregistrée côté serveur prime : elle suit
-      // l'utilisateur sur tous ses appareils/navigateurs. Sinon, on garde
-      // la valeur locale (ou le défaut) déjà appliquée par initAccent().
       if (response.data?.accent_color) {
         applyAccent(response.data.accent_color);
       }
-    } catch (error) {
-      localStorage.removeItem("token");
-    } finally {
       setLoading(false);
+    } catch (error) {
+      const status = error?.response?.status;
+      if (status === 401 || status === 403) {
+        // Token réellement invalide → déconnexion.
+        localStorage.removeItem("token");
+        setUser(null);
+        setLoading(false);
+      } else if (attempt < 4) {
+        // Erreur transitoire (réseau, cold start Render…) : on retente sans
+        // déconnecter, pour ne PAS éjecter l'utilisateur de sa page.
+        setTimeout(() => checkAuth(attempt + 1), 1000 * (attempt + 1));
+      } else {
+        // Échecs répétés : on arrête le spinner mais on GARDE la session
+        // (utilisateur en cache s'il existe) → on reste sur la page courante.
+        setLoading(false);
+      }
     }
   };
 
@@ -100,11 +138,18 @@ function App() {
         <Routes>
           <Route
             path="/auth"
-            element={!user ? <AuthPage setUser={setUser} /> : <Navigate to="/" />}
+            element={!user ? <AuthPage setUser={setUser} /> : <Navigate to="/feed" />}
           />
+          {/* Accueil : l'URL canonique est /feed. "/" redirige vers /feed. */}
+          <Route path="/" element={<Navigate to="/feed" replace />} />
           <Route
-            path="/"
+            path="/feed"
             element={user ? <HomePage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          {/* Profil : /profil/:userId est l'URL partageable ; /profile/:userId reste un alias. */}
+          <Route
+            path="/profil/:userId"
+            element={user ? <ProfilePage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           <Route
             path="/profile/:userId"
@@ -134,6 +179,19 @@ function App() {
             path="/post/:postId"
             element={user ? <PostDetailPage user={user} /> : <Navigate to="/auth" />}
           />
+          {/* Page « Devenir Premium » — PUBLIQUE (visible sans connexion : les
+              produits/tarifs doivent être accessibles publiquement). */}
+          <Route path="/premium" element={<PremiumPage />} />
+          <Route path="/devenir-premium" element={<PremiumPage />} />
+          {/* Publications et clips enregistrés (bouton signet). */}
+          <Route
+            path="/enregistres"
+            element={user ? <SavedPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/saved"
+            element={user ? <SavedPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
           <Route 
             path="/analytics" 
            element={<AnalyticsDashboard user={user} setUser={setUser} />} 
@@ -141,6 +199,25 @@ function App() {
           <Route
             path="/privacy-center"
             element={user ? <PrivacyCenter user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          {/* Nexus Clips : /nexus-clips est l'URL canonique ; /nexus-clips/:clipId
+              ouvre (et permet de partager) une vidéo précise. /clips reste un alias. */}
+          {/* Recherche dédiée Nexus Clips (distincte de /search). */}
+          <Route
+            path="/nexus-clips/recherche"
+            element={user ? <ClipsSearchPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/clips/recherche"
+            element={user ? <ClipsSearchPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/nexus-clips"
+            element={user ? <ClipsPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/nexus-clips/:clipId"
+            element={user ? <ClipsPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           <Route
             path="/clips"
@@ -158,6 +235,8 @@ function App() {
             path="/live/:roomId"
             element={user ? <LiveStream user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
+          {/* Chemin inconnu → accueil (évite une page blanche). */}
+          <Route path="*" element={<Navigate to="/feed" replace />} />
         </Routes>
       </BrowserRouter>
     </div>

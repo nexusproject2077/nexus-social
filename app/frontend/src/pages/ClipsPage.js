@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
+import PullToRefresh from "@/components/PullToRefresh";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
+import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
 
 const C = {
   surface:   "#0b1326",
@@ -158,19 +160,36 @@ function CommentItem({ comment, currentUser, onDeleted }) {
 function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete }) {
   const navigate  = useNavigate();
   const videoRef  = useRef(null);
+  const sceneRef  = useRef(null);
   const [isLiked, setIsLiked]       = useState(post.is_liked || false);
   const [likes, setLikes]           = useState(post.likes_count || 0);
   const [comments, setComments]     = useState(post.comments_count || 0);
-  const [muted, setMuted]           = useState(true);
+  // Son ACTIVÉ par défaut. Si le navigateur bloque l'autoplay avec son (politique
+  // mobile), on retombe automatiquement en muet pour au moins lancer la lecture,
+  // puis un tap réactive le son. La préférence de l'utilisateur est mémorisée.
+  const [muted, setMuted] = useState(() => {
+    try { return localStorage.getItem("nexus_clips_muted") === "1"; } catch { return false; }
+  });
   const [paused, setPaused]         = useState(false);
-  const [saved, setSaved]           = useState(false);
+  const [saved, setSaved]           = useState(post.is_saved || false);
   const [progress, setProgress]     = useState(0);
+  const [duration, setDuration]     = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [scrubbing, setScrubbing]   = useState(false);
+  const barRef = useRef(null);
   const [heart, setHeart]           = useState(false);   // cœur animé (double-tap)
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [commentsList, setCommentsList] = useState([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const tapTimer = useRef(null);
+  // Vitesse 2x (appui long) + plein écran 16:9 + seek ±5s.
+  const [speeding, setSpeeding]     = useState(false);   // lecture 2x en cours
+  const [isLandscape, setIsLandscape] = useState(false); // vidéo publiée en 16:9 ?
+  const [isFs, setIsFs]             = useState(false);    // plein écran actif
+  const [seekFlash, setSeekFlash]   = useState(null);     // "+5" | "-5" (feedback)
+  const longPressTimer = useRef(null);
+  const longPressFired = useRef(false);
 
   // Enregistre l'élément vidéo auprès du parent (contrôle clavier : espace).
   useEffect(() => {
@@ -195,13 +214,29 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     const video = videoRef.current;
     if (!video) return;
     if (isActive) {
-      video.play().catch(() => {});
+      video.muted = muted;
+      // On tente la lecture AVEC le son ; si le navigateur la refuse (autoplay
+      // policy), on repasse en muet et on relance — au moins la vidéo démarre.
+      video.play().catch(() => {
+        if (!video.muted) {
+          video.muted = true;
+          setMuted(true);
+          video.play().catch(() => {});
+        }
+      });
       setPaused(false);
     } else {
       video.pause();
       video.currentTime = 0;
     }
   }, [isActive]);
+
+  // Mémorise la préférence son/muet et l'applique à la vidéo courante.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v) v.muted = muted;
+    try { localStorage.setItem("nexus_clips_muted", muted ? "1" : "0"); } catch { /* ignore */ }
+  }, [muted]);
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -221,30 +256,124 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
 
   const triggerHeart = () => { setHeart(true); setTimeout(() => setHeart(false), 800); };
 
+  // Barre de progression manipulable : on convertit la position X du doigt/souris
+  // en temps de lecture. Fonctionne au clic simple comme au glissement.
+  const seekToClientX = (clientX) => {
+    const el = barRef.current;
+    const v = videoRef.current;
+    if (!el || !v || !v.duration) return;
+    const rect = el.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    v.currentTime = frac * v.duration;
+    setProgress(frac * 100);
+    setCurrentTime(v.currentTime);
+  };
+  const onScrubDown = (e) => { e.stopPropagation(); setScrubbing(true); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ } seekToClientX(e.clientX); };
+  const onScrubMove = (e) => { if (scrubbing) { e.stopPropagation(); seekToClientX(e.clientX); } };
+  const onScrubUp   = (e) => { if (scrubbing) { e.stopPropagation(); setScrubbing(false); } };
+
+  const fmtTime = (s) => {
+    if (!s || !isFinite(s)) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  // Avance / recule de 5 s (double-tap en plein écran 16:9, façon YouTube).
+  const seekBy = (delta) => {
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + delta));
+    setSeekFlash(delta > 0 ? "+5" : "-5");
+    setTimeout(() => setSeekFlash(null), 500);
+  };
+
   // Tap simple = play/pause (retardé pour ne pas déclencher au double-tap).
-  // Double-tap = like + cœur animé (façon TikTok).
-  const handleTap = () => {
+  // Double-tap = like + cœur animé (façon TikTok) — SAUF en plein écran 16:9 où
+  // il sert à avancer (droite) / reculer (gauche) de 5 s.
+  const handleTap = (e) => {
+    // Un appui long (vitesse 2x) vient de se terminer → on ignore ce clic.
+    if (longPressFired.current) { longPressFired.current = false; return; }
+    const seekMode = isFs && isLandscape;
     if (tapTimer.current) {
       clearTimeout(tapTimer.current); tapTimer.current = null;
-      likeHeart(); triggerHeart();
+      if (seekMode) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = (e.clientX ?? rect.left + rect.width / 2) - rect.left;
+        seekBy(x > rect.width / 2 ? 5 : -5);
+      } else {
+        likeHeart(); triggerHeart();
+      }
     } else {
       tapTimer.current = setTimeout(() => { tapTimer.current = null; togglePlay(); }, 260);
     }
   };
 
+  // Appui long (mobile) sur la vidéo → lecture 2x ; relâchement → 1x.
+  const startSpeed = () => {
+    longPressFired.current = false;
+    longPressTimer.current = setTimeout(() => {
+      const v = videoRef.current;
+      if (v) { v.playbackRate = 2; setSpeeding(true); longPressFired.current = true; }
+    }, 350);
+  };
+  const endSpeed = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+    const v = videoRef.current;
+    if (v && v.playbackRate !== 1) v.playbackRate = 1;
+    if (speeding) setSpeeding(false);
+  };
+
+  // Plein écran 16:9 : bascule l'API Fullscreen + tente de forcer le paysage.
+  const toggleFullscreen = async (e) => {
+    e?.stopPropagation();
+    const el = sceneRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) {
+        await (el.requestFullscreen?.() || el.webkitRequestFullscreen?.());
+        // Best-effort : verrouille l'orientation paysage (mobiles compatibles).
+        try { await window.screen?.orientation?.lock?.("landscape"); } catch { /* refusé sur PC */ }
+      } else {
+        try { window.screen?.orientation?.unlock?.(); } catch { /* ignore */ }
+        await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());
+      }
+    } catch { /* Fullscreen refusé (contexte non autorisé) */ }
+  };
+
+  // Suit l'état réel du plein écran (bouton Échap, geste système…).
+  useEffect(() => {
+    const onFs = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange", onFs);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      document.removeEventListener("webkitfullscreenchange", onFs);
+    };
+  }, []);
+
   const handleShare = async (e) => {
     e.stopPropagation();
-    const url = `${window.location.origin}/post/${post.id}`;
+    // URL partageable du clip : /nexus-clips/:clipId ouvre directement la vidéo.
+    const url = `${window.location.origin}/nexus-clips/${post.id}`;
     try {
       if (navigator.share) await navigator.share({ title: "Nexus Clips", url });
       else { await navigator.clipboard.writeText(url); toast.success("Lien copié"); }
     } catch { /* annulé */ }
   };
 
-  const toggleSave = (e) => {
+  const toggleSave = async (e) => {
     e.stopPropagation();
-    setSaved((v) => !v);
-    toast.success(saved ? "Retiré des enregistrements" : "Clip enregistré");
+    const next = !saved;
+    setSaved(next); // optimiste
+    try {
+      const res = await axios.post(`${API}/posts/${post.id}/save`);
+      setSaved(res.data.saved);
+      toast.success(res.data.saved ? "Clip enregistré" : "Retiré des enregistrements");
+    } catch {
+      setSaved(!next);
+      toast.error("Erreur lors de l'enregistrement");
+    }
   };
 
   const handleLike = async (e) => {
@@ -282,19 +411,59 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   return (
     <div className="relative w-full h-full flex-shrink-0 overflow-hidden flex items-center justify-center" style={{ background: "#000" }}>
       {/* Scène : plein écran sur mobile ; colonne 9:16 centrée (letterbox, barres
-          noires sur les côtés) sur PC. */}
-      <div className="relative h-full w-full lg:w-auto lg:aspect-[9/16] overflow-hidden">
-      {/* Video (Nexus Clips = vidéos uniquement) */}
+          noires sur les côtés) sur PC. En plein écran 16:9, on occupe tout l'écran. */}
+      <div
+        ref={sceneRef}
+        className={`relative overflow-hidden ${isFs ? "h-screen w-screen bg-black flex items-center justify-center" : "h-full w-full lg:w-auto lg:aspect-[9/16]"}`}
+      >
+      {/* Video (Nexus Clips = vidéos uniquement).
+          En plein écran 16:9 on passe en object-contain pour respecter le format. */}
       <video
         ref={videoRef}
         src={post.media_url}
-        className="w-full h-full object-cover"
+        // Jamais de crop du contenu large : vidéos paysage/16:9 en `contain`
+        // (letterbox, entièrement visibles) ; vidéos verticales en `cover` (plein
+        // cadre, façon TikTok). Sur PC le conteneur est déjà en colonne 9:16.
+        className={`w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
         loop
         muted={muted}
         playsInline
         onClick={handleTap}
-        onTimeUpdate={(e) => { const v = e.target; if (v.duration) setProgress((v.currentTime / v.duration) * 100); }}
+        onPointerDown={startSpeed}
+        onPointerUp={endSpeed}
+        onPointerLeave={endSpeed}
+        onPointerCancel={endSpeed}
+        onContextMenu={(e) => e.preventDefault()}
+        onLoadedMetadata={(e) => {
+          const v = e.target;
+          if (v.videoWidth && v.videoHeight) setIsLandscape(v.videoWidth / v.videoHeight >= 1.4);
+          if (v.duration && isFinite(v.duration)) setDuration(v.duration);
+        }}
+        onTimeUpdate={(e) => {
+          const v = e.target;
+          if (scrubbing) return; // pendant le glissement, on ne suit pas la lecture
+          if (v.duration) setProgress((v.currentTime / v.duration) * 100);
+          setCurrentTime(v.currentTime);
+        }}
       />
+
+      {/* Indicateur vitesse 2x (appui long) */}
+      {speeding && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none flex items-center gap-1 px-3 py-1 rounded-full" style={{ background: "rgba(0,0,0,0.6)" }}>
+          <span className="material-symbols-outlined text-white text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>fast_forward</span>
+          <span className="text-white text-sm font-bold">2x</span>
+        </div>
+      )}
+
+      {/* Feedback ±5 s (double-tap en plein écran 16:9) */}
+      {seekFlash && (
+        <div className={`absolute top-1/2 -translate-y-1/2 ${seekFlash === "+5" ? "right-10" : "left-10"} pointer-events-none flex flex-col items-center`}>
+          <span className="material-symbols-outlined text-white text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+            {seekFlash === "+5" ? "forward_5" : "replay_5"}
+          </span>
+          <span className="text-white text-sm font-bold">{seekFlash} s</span>
+        </div>
+      )}
 
       {/* Gradient overlay */}
       <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 40%, rgba(0,0,0,0.2) 100%)" }} />
@@ -315,10 +484,60 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         </div>
       )}
 
-      {/* Barre de progression discrète (bas de la vidéo) */}
-      <div className="absolute bottom-0 left-0 right-0 h-[3px] pointer-events-none" style={{ background: "rgba(255,255,255,0.15)" }}>
-        <div className="h-full" style={{ width: `${progress}%`, background: C.cyan, transition: "width 0.1s linear" }} />
-      </div>
+      {/* Barre de progression MANIPULABLE + durée visible (au-dessus de la barre
+          de navigation). Glisser pour avancer/reculer ; touch-none évite que le
+          geste déclenche le défilement vertical des clips. Masquée en plein écran
+          (l'overlay 16:9 a sa propre barre). */}
+      {!isFs && (
+        <div className="absolute left-0 right-0 px-4 z-20" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)" }}>
+          <div className="flex items-center gap-2.5">
+            <div
+              ref={barRef}
+              onPointerDown={onScrubDown}
+              onPointerMove={onScrubMove}
+              onPointerUp={onScrubUp}
+              onPointerCancel={onScrubUp}
+              onClick={(e) => e.stopPropagation()}
+              className="relative flex-1 h-6 flex items-center cursor-pointer touch-none"
+            >
+              <div className="w-full rounded-full" style={{ height: scrubbing ? 6 : 4, background: "rgba(255,255,255,0.28)", transition: "height 0.1s" }}>
+                <div className="h-full rounded-full" style={{ width: `${progress}%`, background: C.cyan }} />
+              </div>
+              <div
+                className="absolute rounded-full bg-white shadow"
+                style={{ left: `${progress}%`, top: "50%", transform: "translate(-50%,-50%)", width: scrubbing ? 14 : 10, height: scrubbing ? 14 : 10, transition: "width 0.1s, height 0.1s" }}
+              />
+            </div>
+            <span className="text-white text-[11px] font-semibold tabular-nums flex-shrink-0" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>
+              {fmtTime(currentTime)} / {fmtTime(duration)}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay d'infos en plein écran 16:9 (progression + likes + commentaires),
+          comme la capture. Masqué en mode vertical normal. */}
+      {isFs && isLandscape && (
+        <div className="absolute bottom-0 left-0 right-0 px-5 pb-4 pt-10" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent)" }}>
+          <div className="flex items-center gap-4 mb-2 text-white">
+            <span className="flex items-center gap-1 text-sm font-bold">
+              <span className="material-symbols-outlined text-lg" style={{ color: "#f87171", fontVariationSettings: "'FILL' 1" }}>favorite</span>
+              {fmt(likes)}
+            </span>
+            <span className="flex items-center gap-1 text-sm font-bold">
+              <span className="material-symbols-outlined text-lg">chat_bubble</span>
+              {fmt(comments)}
+            </span>
+            <span className="ml-auto text-xs opacity-80">Double-tap : ±5 s · Appui long : 2x</span>
+            <button onClick={toggleFullscreen} className="flex items-center justify-center w-9 h-9 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} title="Quitter le plein écran">
+              <span className="material-symbols-outlined text-white text-xl">fullscreen_exit</span>
+            </button>
+          </div>
+          <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.25)" }}>
+            <div className="h-full" style={{ width: `${progress}%`, background: C.cyan }} />
+          </div>
+        </div>
+      )}
 
       {/* Right action bar */}
       <div className="absolute right-3 bottom-28 flex flex-col gap-4 items-center">
@@ -370,6 +589,16 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
           <span className="text-white text-xs font-bold">Partager</span>
         </button>
 
+        {/* Plein écran — uniquement pour les vidéos publiées en 16:9 (paysage) */}
+        {isLandscape && (
+          <button onClick={toggleFullscreen} className="flex flex-col items-center gap-1" data-testid="clip-fullscreen">
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+              <span className="material-symbols-outlined text-2xl text-white">{isFs ? "fullscreen_exit" : "fullscreen"}</span>
+            </div>
+            <span className="text-white text-xs font-bold">Plein écran</span>
+          </button>
+        )}
+
         {/* Mute */}
         {post.media_type === "video" && (
           <button onClick={(e) => { e.stopPropagation(); setMuted(p => !p); }} className="flex flex-col items-center gap-1">
@@ -394,10 +623,13 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         )}
       </div>
 
-      {/* Bottom info */}
-      <div className="absolute bottom-24 left-4 right-20">
-        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="font-bold text-white text-sm mb-1 hover:text-cyan-300 transition-colors">
+      {/* Bottom info (relevé pour laisser la place à la barre de progression) */}
+      <div className="absolute left-4 right-20" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 6.5rem)" }}>
+        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="font-bold text-white text-sm mb-1 hover:text-cyan-300 transition-colors inline-flex items-center gap-1">
           @{post.author_username}
+          {post.author_is_premium && (
+            <span className="material-symbols-outlined text-sm" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }} title="Membre Nexus Premium">workspace_premium</span>
+          )}
         </button>
         <p className="text-white/80 text-sm leading-snug line-clamp-2">{post.content}</p>
         <p className="text-white/40 text-xs mt-1 flex items-center gap-1.5">
@@ -473,7 +705,12 @@ export default function ClipsPage({ user, setUser }) {
   const viewedRef    = useRef(new Set());
   const videosRef    = useRef({});   // registre des <video> par index (contrôle clavier)
   const skipRef      = useRef(0);
+  const openedShareRef = useRef(false);
   const PAGE = 10;
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { clipId } = useParams();  // /nexus-clips/:clipId → clip partagé à ouvrir
 
   // Le parent enregistre chaque vidéo pour piloter la lecture au clavier.
   const registerVideo = useCallback((idx, el) => {
@@ -491,24 +728,74 @@ export default function ClipsPage({ user, setUser }) {
     fetchClips(true);
   }, []);
 
+  // Ouvre le clip partagé (/nexus-clips/:clipId) : place la vidéo en tête si elle
+  // n'est pas déjà chargée, puis défile dessus. Ne s'exécute qu'une fois.
+  useEffect(() => {
+    if (!clipId || loading || openedShareRef.current) return;
+    openedShareRef.current = true;
+    const idx = clips.findIndex((c) => c.id === clipId);
+    if (idx >= 0) { setTimeout(() => goTo(idx), 150); return; }
+    axios.get(`${API}/posts/${clipId}`).then((res) => {
+      const c = res.data;
+      if (c && c.media_type === "video" && c.media_url) {
+        setClips((prev) => (prev.some((x) => x.id === c.id) ? prev : [c, ...prev]));
+        setActiveIndex(0);
+      }
+    }).catch(() => {});
+  }, [clipId, loading, clips, goTo]);
+
+  // Garde la barre d'adresse synchronisée avec le clip affiché (URL partageable).
+  useEffect(() => {
+    if (loading || view !== "immersive") return;
+    const c = clips[activeIndex];
+    if (c && location.pathname.startsWith("/nexus-clips")) {
+      navigate(`/nexus-clips/${c.id}`, { replace: true });
+    }
+  }, [activeIndex, clips, loading, view]);
+
   // Raccourcis clavier : Espace = pause/play, Entrée/↓ = suivant, ↑ = précédent.
   useEffect(() => {
-    const onKey = (e) => {
+    // Barre d'espace : appui court = play/pause ; appui LONG = lecture 2x (relâché → 1x).
+    let spaceTimer = null;
+    let spaceSpeeding = false;
+    const onKeyDown = (e) => {
       if (view !== "immersive") return;
       const tag = (e.target?.tagName || "").toLowerCase();
       if (tag === "input" || tag === "textarea") return; // ne pas gêner la saisie
       if (e.key === " ") {
         e.preventDefault();
+        if (e.repeat) return; // ignore l'auto-répétition du clavier
         const v = videosRef.current[activeIndex];
-        if (v) { v.paused ? v.play().catch(() => {}) : v.pause(); }
+        if (!v) return;
+        spaceTimer = setTimeout(() => {
+          v.playbackRate = 2; spaceSpeeding = true; spaceTimer = null;
+        }, 350);
       } else if (e.key === "Enter" || e.key === "ArrowDown") {
         e.preventDefault(); goTo(activeIndex + 1);
       } else if (e.key === "ArrowUp") {
         e.preventDefault(); goTo(activeIndex - 1);
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const onKeyUp = (e) => {
+      if (e.key !== " ") return;
+      const v = videosRef.current[activeIndex];
+      if (spaceTimer) {
+        // Relâché avant le seuil → c'était un appui court = play/pause.
+        clearTimeout(spaceTimer); spaceTimer = null;
+        if (v) { v.paused ? v.play().catch(() => {}) : v.pause(); }
+      } else if (spaceSpeeding) {
+        // Fin de l'appui long → retour à la vitesse normale.
+        if (v) v.playbackRate = 1;
+        spaceSpeeding = false;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      if (spaceTimer) clearTimeout(spaceTimer);
+    };
   }, [activeIndex, view, goTo]);
 
   // Scroll infini : charge la page suivante en approchant de la fin.
@@ -599,29 +886,61 @@ export default function ClipsPage({ user, setUser }) {
       toast.error("Veuillez choisir un fichier vidéo");
       return;
     }
+    // Sans Firebase, on garde l'ancien chemin (base64 via le backend) qui
+    // impose des vidéos courtes/légères. Avec Firebase, on autorise le long.
+    const BACKEND_MAX_MB = 25;
+    if (!isFirebaseConfigured && file.size > BACKEND_MAX_MB * 1024 * 1024) {
+      toast.error(`Vidéo trop lourde (max ${BACKEND_MAX_MB} Mo sans stockage vidéo configuré)`);
+      return;
+    }
+
     const caption = window.prompt("Légende de votre clip (optionnel)") || "";
+    const euBlocked = window.confirm(
+      "Restreindre ce clip dans l'Union européenne ?\n\nOK = masqué aux visiteurs de l'UE • Annuler = visible partout"
+    );
     setUploading(true);
     setUploadProgress(0);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("caption", caption);
-      // axios ajoute le token via l'intercepteur + gère la limite multipart
-      await axios.post(`${API}/clips`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (evt) => {
-          if (evt.total) {
-            setUploadProgress(Math.round((evt.loaded * 100) / evt.total));
-          }
-        },
-      });
+      if (isFirebaseConfigured) {
+        // Upload direct navigateur → Firebase (reprise auto), puis on
+        // n'envoie que l'URL au backend : longues vidéos autorisées.
+        const url = await uploadVideoResumable(file, user?.id, setUploadProgress);
+        let duration = null;
+        try {
+          duration = await new Promise((resolve, reject) => {
+            const probe = document.createElement("video");
+            const obj = URL.createObjectURL(file);
+            probe.preload = "metadata";
+            probe.onloadedmetadata = () => { URL.revokeObjectURL(obj); resolve(probe.duration || null); };
+            probe.onerror = () => { URL.revokeObjectURL(obj); reject(new Error("probe")); };
+            probe.src = obj;
+          });
+        } catch { /* durée facultative */ }
+        await axios.post(`${API}/clips/external`, {
+          media_url: url,
+          caption,
+          eu_blocked: euBlocked,
+          duration,
+        });
+      } else {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("caption", caption);
+        form.append("eu_blocked", euBlocked ? "true" : "false");
+        await axios.post(`${API}/clips`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+          onUploadProgress: (evt) => {
+            if (evt.total) setUploadProgress(Math.round((evt.loaded * 100) / evt.total));
+          },
+        });
+      }
       toast.success("Clip publié !");
       setActiveIndex(0);
       skipRef.current = 0;
       await fetchClips(true);
     } catch (err) {
       console.error("Erreur upload clip:", err);
-      toast.error("Erreur lors de la publication du clip");
+      toast.error(err.response?.data?.detail || "Erreur lors de la publication du clip");
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -666,7 +985,7 @@ export default function ClipsPage({ user, setUser }) {
       onClick={() => setView((v) => (v === "immersive" ? "grid" : "immersive"))}
       data-testid="toggle-clips-view"
       title={view === "immersive" ? "Vue grille" : "Vue immersive"}
-      className="fixed z-50 top-16 left-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+      className="fixed z-50 top-4 left-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
       style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
     >
       <span className="material-symbols-outlined text-2xl">
@@ -675,9 +994,22 @@ export default function ClipsPage({ user, setUser }) {
     </button>
   );
 
+  // Bouton de recherche Clips (en haut à droite) → page de recherche dédiée.
+  const searchButton = (
+    <button
+      onClick={() => navigate("/nexus-clips/recherche")}
+      data-testid="clips-search"
+      title="Rechercher des clips"
+      className="fixed z-50 top-4 right-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+      style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
+    >
+      <span className="material-symbols-outlined text-2xl">search</span>
+    </button>
+  );
+
   if (loading) {
     return (
-      <Layout user={user} setUser={setUser} compact>
+      <Layout user={user} setUser={setUser} compact hideMobileHeader>
         <div className="flex items-center justify-center h-screen">
           <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
         </div>
@@ -687,7 +1019,7 @@ export default function ClipsPage({ user, setUser }) {
 
   if (clips.length === 0) {
     return (
-      <Layout user={user} setUser={setUser} compact>
+      <Layout user={user} setUser={setUser} compact hideMobileHeader>
         <div className="flex flex-col items-center justify-center h-screen gap-4">
           <span className="material-symbols-outlined text-6xl" style={{ color: C.outline, opacity: 0.4 }}>play_circle</span>
           <p className="text-sm font-bold uppercase tracking-widest" style={{ color: C.outline }}>Aucun clip disponible</p>
@@ -718,12 +1050,18 @@ export default function ClipsPage({ user, setUser }) {
   }
 
   return (
-    <Layout user={user} setUser={setUser} compact>
+    <Layout user={user} setUser={setUser} compact hideMobileHeader>
+      {/* Tirer vers le bas (sur le 1er clip) pour rafraîchir le fil. */}
+      <PullToRefresh
+        onRefresh={() => fetchClips(true)}
+        getScrollTop={() => containerRef.current?.scrollTop || 0}
+        enabled={view === "immersive"}
+      />
       {view === "immersive" ? (
         /* Full-screen vertical scroll snapping */
         <div
           ref={containerRef}
-          className="h-screen overflow-y-scroll select-none"
+          className="h-[100dvh] overflow-y-scroll select-none"
           style={{
             scrollSnapType: "y mandatory",
             scrollBehavior: "smooth",
@@ -737,7 +1075,7 @@ export default function ClipsPage({ user, setUser }) {
             [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
           `}</style>
           {clips.map((clip, idx) => (
-            <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100svh" }}>
+            <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100dvh" }}>
               <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex}
                 index={idx} registerVideo={registerVideo} onDelete={handleDeleteClip} />
             </div>
@@ -790,8 +1128,9 @@ export default function ClipsPage({ user, setUser }) {
         </div>
       )}
 
-      {/* Bascule grille / immersif */}
+      {/* Bascule grille / immersif + recherche */}
       {viewToggle}
+      {searchButton}
 
       {/* Nexus Clips branding overlay (top-left) */}
       <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none lg:top-4">

@@ -17,13 +17,23 @@ const adsAllowed = () =>
   typeof window !== "undefined" &&
   window.localStorage?.getItem("cookie_consent") === "accepted";
 
+// Avantage Premium RÉEL : les membres Premium ne voient aucune publicité.
+const isPremiumUser = () => {
+  try {
+    const u = JSON.parse(window.localStorage?.getItem("nexus_user") || "null");
+    return !!u?.is_premium;
+  } catch {
+    return false;
+  }
+};
+
 export default function AdSense({ slot, format = "auto" }) {
   const initialized = useRef(false);
   const { restricted } = useGeo();
 
   useEffect(() => {
-    // Aucune pub pour les visiteurs restreints (UE).
-    if (restricted || !ADSENSE_CLIENT || !slot || !adsAllowed() || initialized.current) return;
+    // Aucune pub pour les visiteurs restreints (UE) ni pour les membres Premium.
+    if (restricted || isPremiumUser() || !ADSENSE_CLIENT || !slot || !adsAllowed() || initialized.current) return;
     initialized.current = true;
 
     // Charge le script AdSense une seule fois, uniquement après consentement.
@@ -48,8 +58,8 @@ export default function AdSense({ slot, format = "auto" }) {
     }
   }, [slot, restricted]);
 
-  // Rien n'est rendu si restreint (UE), non configuré, ou non consenti.
-  if (restricted || !ADSENSE_CLIENT || !slot || !adsAllowed()) return null;
+  // Rien n'est rendu si restreint (UE), Premium, non configuré, ou non consenti.
+  if (restricted || isPremiumUser() || !ADSENSE_CLIENT || !slot || !adsAllowed()) return null;
 
   return (
     <ins

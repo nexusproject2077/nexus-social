@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import { formatDistanceToNow } from "date-fns";
@@ -18,11 +18,65 @@ const C = {
   onVariant:  "#bbc9cd",
 };
 
+/**
+ * Vidéo du fil d'accueil : lecture automatique (muette) dès qu'elle est visible
+ * à l'écran, mise en pause quand elle en sort (façon X / Instagram). Un bouton
+ * son permet de réactiver l'audio ; les contrôles natifs restent disponibles.
+ */
+function FeedVideo({ src }) {
+  const ref = useRef(null);
+  const [muted, setMuted] = useState(true);
+
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      },
+      { threshold: [0, 0.6, 1] }
+    );
+    io.observe(video);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <div className="relative rounded-xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <video
+        ref={ref}
+        src={src}
+        className="w-full max-h-[560px] bg-black"
+        muted={muted}
+        loop
+        playsInline
+        controls
+        preload="metadata"
+      />
+      {/* Bouton son (l'autoplay impose le mode muet au départ) */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }}
+        className="absolute bottom-3 right-3 w-9 h-9 rounded-full flex items-center justify-center"
+        style={{ background: "rgba(0,0,0,0.55)" }}
+        title={muted ? "Activer le son" : "Couper le son"}
+      >
+        <span className="material-symbols-outlined text-white text-lg">{muted ? "volume_off" : "volume_up"}</span>
+      </button>
+    </div>
+  );
+}
+
 export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
+  const navigate = useNavigate();
   const [isLiked, setIsLiked]         = useState(post.is_liked || false);
   const [likesCount, setLikesCount]   = useState(post.likes_count || 0);
   const [sharesCount, setSharesCount] = useState(post.shares_count || 0);
   const [commentsCount, setCommentsCount] = useState(post.comments_count || 0);
+  const [isSaved, setIsSaved]         = useState(post.is_saved || false);
   const [showComments, setShowComments]   = useState(false);
   const [reposted, setReposted]       = useState(
     post.is_reposted || (!!post.repost_of && post.author_id === currentUser?.id)
@@ -49,6 +103,73 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     } catch {
       toast.error("Erreur lors du like");
     }
+  };
+
+  const handleSave = async () => {
+    // Optimiste : on bascule tout de suite, on annule si l'API échoue.
+    const next = !isSaved;
+    setIsSaved(next);
+    try {
+      const res = await axios.post(`${API}/posts/${post.id}/save`);
+      setIsSaved(res.data.saved);
+      toast.success(res.data.saved ? "Enregistré" : "Retiré des enregistrements");
+    } catch {
+      setIsSaved(!next);
+      toast.error("Erreur lors de l'enregistrement");
+    }
+  };
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/post/${post.id}`;
+    const shareData = {
+      title: `${displayAuthorName} sur Nexus`,
+      text: post.content ? post.content.slice(0, 120) : "Découvre cette publication sur Nexus",
+      url,
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success("Lien copié dans le presse-papiers");
+      }
+    } catch (err) {
+      // L'utilisateur a annulé le partage natif → on ne fait rien.
+      if (err && err.name !== "AbortError") {
+        try { await navigator.clipboard.writeText(url); toast.success("Lien copié"); }
+        catch { toast.error("Impossible de partager"); }
+      }
+    }
+  };
+
+  const [pinned, setPinned] = useState(post.is_pinned || false);
+  const handlePin = async () => {
+    try {
+      const res = await axios.post(`${API}/posts/${post.id}/pin`);
+      setPinned(res.data.pinned);
+      toast.success(res.data.pinned ? "Publication épinglée en haut du profil" : "Publication désépinglée");
+      onUpdate?.({ ...post, is_pinned: res.data.pinned });
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Action impossible");
+    }
+  };
+
+  // Clic sur la carte (hors éléments interactifs) → page détail = fil de
+  // commentaires complet (lecture / réponse / identification), façon X.
+  const openThread = () => navigate(`/post/${post.id}`);
+
+  // Double-tap « like » sur la photo (façon Instagram) : cœur animé + like.
+  const lastTapRef = useRef(0);
+  const [heartBurst, setHeartBurst] = useState(false);
+  const doubleTapLike = () => {
+    if (!isLiked) handleLike();          // ne fait que liker (jamais unliker) au double-tap
+    setHeartBurst(true);
+    setTimeout(() => setHeartBurst(false), 700);
+  };
+  const onMediaTap = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) { doubleTapLike(); lastTapRef.current = 0; }
+    else lastTapRef.current = now;
   };
 
   const handleRepost = async () => {
@@ -121,6 +242,21 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const renderContent = (text) => {
     if (!text) return null;
     return text.split(/(\s+)/).map((part, i) => {
+      // Lien cliquable : couleur distincte, SANS soulignement.
+      if (/^https?:\/\/\S+$/i.test(part)) {
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{ color: "#60a5fa", textDecoration: "none" }}
+          >
+            {part}
+          </a>
+        );
+      }
       if (/^#[\p{L}0-9_]+$/u.test(part)) {
         return (
           <Link
@@ -183,9 +319,10 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                 {getInitials(displayAuthorName)}
               </div>
             )}
-            <div>
-              <p className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1" style={{ color: C.onSurface }}>
-                {displayAuthorName}
+            <div className="min-w-0">
+              {/* Nom + @username côte à côte (façon X) */}
+              <p className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1 flex-wrap" style={{ color: C.onSurface }}>
+                <span className="truncate">{displayAuthorName}</span>
                 {displayAuthorVerified && (
                   <span
                     className="material-symbols-outlined text-sm"
@@ -195,21 +332,59 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                     verified
                   </span>
                 )}
+                {post.author_is_premium && (
+                  <span
+                    className="material-symbols-outlined text-sm"
+                    style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}
+                    title="Membre Nexus Premium"
+                  >
+                    workspace_premium
+                  </span>
+                )}
+                <span className="font-normal truncate" style={{ color: C.outline }}>@{displayAuthorName}</span>
               </p>
-              <p className="text-xs" style={{ color: C.outline }}>{formatDate(post.created_at)}</p>
+              <p className="text-xs flex items-center gap-1" style={{ color: C.outline }}>
+                {post.is_pinned && (
+                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title="Publication épinglée">
+                    <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>push_pin</span>
+                    Épinglé ·
+                  </span>
+                )}
+                {formatDate(post.created_at)}
+              </p>
             </div>
           </Link>
           {isOwnPost && (
-            <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title="Supprimer">
-              <span className="material-symbols-outlined text-xl">delete</span>
-            </button>
+            <div className="flex items-center gap-1">
+              {/* Épingler (créateur Premium). Non affiché pour les reposts. */}
+              {!isRepost && (
+                <button
+                  onClick={handlePin}
+                  className="transition-colors hover:text-cyan-400"
+                  style={{ color: pinned ? C.cyan : C.outline }}
+                  title={pinned ? "Désépingler" : "Épingler en haut du profil (Premium)"}
+                >
+                  <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: pinned ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
+                </button>
+              )}
+              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title="Supprimer">
+                <span className="material-symbols-outlined text-xl">delete</span>
+              </button>
+            </div>
           )}
         </div>
 
-        {/* Content */}
-        <p className="leading-relaxed text-sm lg:text-base whitespace-pre-wrap" style={{ color: C.onVariant }}>
-          {renderContent(post.content)}
-        </p>
+        {/* Content — un clic ouvre le fil complet (façon X). Les liens/mentions
+            à l'intérieur stoppent la propagation, donc restent cliquables. */}
+        {post.content && (
+          <p
+            onClick={openThread}
+            className="leading-relaxed text-sm lg:text-base whitespace-pre-wrap cursor-pointer"
+            style={{ color: C.onVariant }}
+          >
+            {renderContent(post.content)}
+          </p>
+        )}
 
         {/* Poll / Sondage */}
         {poll && Array.isArray(poll.options) && poll.options.length > 0 && (
@@ -288,21 +463,42 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
         {/* Media */}
         {post.media_url && post.media_type === "image" && (
-          <div className="rounded-xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-            <img src={post.media_url} alt="Post media" className="w-full h-auto object-contain max-h-[560px]" loading="lazy" />
+          <div
+            className="relative rounded-xl overflow-hidden border select-none"
+            style={{ borderColor: "rgba(255,255,255,0.06)" }}
+            onClick={onMediaTap}
+            onDoubleClick={doubleTapLike}
+          >
+            <img src={post.media_url} alt="Post media" className="w-full h-auto object-contain max-h-[560px]" loading="lazy" draggable={false} />
+            {/* Cœur animé au double-tap */}
+            {heartBurst && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <span
+                  className="material-symbols-outlined"
+                  style={{
+                    fontSize: 110,
+                    color: "#fff",
+                    fontVariationSettings: "'FILL' 1",
+                    textShadow: "0 2px 16px rgba(0,0,0,0.45)",
+                    animation: "heartPop 0.7s ease-out",
+                  }}
+                >
+                  favorite
+                </span>
+              </div>
+            )}
           </div>
         )}
         {post.media_url && post.media_type === "video" && (
-          <div className="rounded-xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-            <video src={post.media_url} controls className="w-full max-h-[560px]" />
-          </div>
+          <FeedVideo src={post.media_url} />
         )}
 
-        {/* Action bar */}
-        <div className="flex items-center gap-5 pt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+        {/* Action bar — réparti (pas serré) : J'aime · Commentaire · Repost · Partage · Enregistrer */}
+        <div className="flex items-center justify-between pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
           {/* Like */}
           <button
             onClick={handleLike}
+            title="J'aime"
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: isLiked ? "#f87171" : C.outline }}
           >
@@ -312,9 +508,10 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             {likesCount > 0 && <span>{likesCount}</span>}
           </button>
 
-          {/* Comment */}
+          {/* Comment — ouvre le composeur / fil de commentaires */}
           <button
             onClick={() => setShowComments(!showComments)}
+            title="Commenter"
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: showComments ? C.cyan : C.outline }}
           >
@@ -325,7 +522,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           </button>
 
           {/* Repost */}
-          {!isOwnPost && (
+          {!isOwnPost ? (
             <button
               onClick={handleRepost}
               disabled={repostLoading}
@@ -340,7 +537,36 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               )}
               {sharesCount > 0 && <span>{sharesCount}</span>}
             </button>
+          ) : (
+            sharesCount > 0 && (
+              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.outline }} title="Republications">
+                <span className="material-symbols-outlined text-lg">repeat</span>
+                {sharesCount}
+              </span>
+            )
           )}
+
+          {/* Share */}
+          <button
+            onClick={handleShare}
+            title="Partager"
+            className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
+            style={{ color: C.outline }}
+          >
+            <span className="material-symbols-outlined text-lg">ios_share</span>
+          </button>
+
+          {/* Save / Enregistrer */}
+          <button
+            onClick={handleSave}
+            title={isSaved ? "Retirer des enregistrements" : "Enregistrer"}
+            className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
+            style={{ color: isSaved ? C.cyan : C.outline }}
+          >
+            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: isSaved ? "'FILL' 1" : "'FILL' 0" }}>
+              bookmark
+            </span>
+          </button>
         </div>
 
         {/* Comments */}

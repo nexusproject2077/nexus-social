@@ -76,6 +76,21 @@ except ImportError:
     except ImportError:
         send_brevo_email = None
 
+# Modération auto gratuite (toxic-bert + NudeNet) — optionnelle et fail-open :
+# si le module ou ses dépendances (transformers/torch, nudenet) manquent, rien
+# n'est filtré et l'application fonctionne normalement.
+try:
+    from backend import moderation
+except ImportError:
+    try:
+        from app.backend import moderation
+    except ImportError:
+        try:
+            import moderation
+        except ImportError:
+            moderation = None
+            print("⚠️ Module 'moderation' introuvable — modération auto désactivée")
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -154,40 +169,100 @@ EU_COUNTRIES = {
 # Chemins toujours accessibles, même depuis l'UE (obligations légales + santé)
 GEO_BLOCK_ALLOWED_PATHS = ("/privacy", "/gdpr", "/legal", "/healthz", "/docs", "/openapi.json")
 
+# Blocage GLOBAL de l'UE (HTTP 451 sur tout le site). Optionnel. On peut le
+# désactiver (EU_GEO_BLOCK_ENABLED=false) tout en gardant la géolocalisation
+# active, pour n'appliquer qu'un blocage granulaire (ex : Nexus Clips).
 EU_GEO_BLOCK_ENABLED = os.environ.get("EU_GEO_BLOCK_ENABLED", "true").lower() == "true"
+# Blocage PAR CLIP : les clips marqués eu_blocked sont masqués/refusés aux
+# visiteurs de l'UE (indépendant du blocage global). Nécessite une base GeoIP.
+CLIPS_EU_GEO_BLOCK = os.environ.get("CLIPS_EU_GEO_BLOCK", "true").lower() == "true"
 GEOIP_DB_PATH = os.environ.get("GEOIP_DB_PATH", str(ROOT_DIR / "GeoLite2-Country.mmdb"))
 
+# Téléchargement automatique de la base GeoLite2 (option pratique pour les dépôts
+# publics : ne pas commiter le .mmdb, le récupérer au démarrage). Si la base est
+# absente et qu'une clé de licence MaxMind (gratuite) est fournie via
+# MAXMIND_LICENSE_KEY, on la télécharge et on l'extrait vers GEOIP_DB_PATH.
+MAXMIND_LICENSE_KEY = os.environ.get("MAXMIND_LICENSE_KEY", "")
+MAXMIND_EDITION = os.environ.get("MAXMIND_EDITION", "GeoLite2-Country")
+
+
+def _download_geolite2_db(dest_path: str, license_key: str, edition: str = "GeoLite2-Country") -> bool:
+    """Télécharge l'archive GeoLite2 chez MaxMind et extrait le .mmdb vers dest_path.
+
+    Renvoie True en cas de succès. Best-effort : ne lève jamais (fail-open).
+    """
+    import urllib.request
+    import tarfile
+    import tempfile
+    import shutil
+    url = (
+        "https://download.maxmind.com/app/geoip_download"
+        f"?edition_id={edition}&license_key={license_key}&suffix=tar.gz"
+    )
+    tmp_archive = None
+    try:
+        print(f"⬇️ Téléchargement de la base GeoIP {edition} depuis MaxMind…")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as tmp:
+            tmp_archive = tmp.name
+            with urllib.request.urlopen(url, timeout=60) as resp:
+                shutil.copyfileobj(resp, tmp)
+        # L'archive contient .../GeoLite2-XXX_YYYYMMDD/GeoLite2-XXX.mmdb
+        with tarfile.open(tmp_archive, "r:gz") as tar:
+            member = next((m for m in tar.getmembers() if m.name.endswith(".mmdb")), None)
+            if member is None:
+                print("⚠️ Archive MaxMind sans fichier .mmdb — téléchargement ignoré")
+                return False
+            src = tar.extractfile(member)
+            if src is None:
+                return False
+            os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+            with open(dest_path, "wb") as out:
+                shutil.copyfileobj(src, out)
+        print(f"✅ Base GeoIP installée : {dest_path}")
+        return True
+    except Exception as e:
+        # Clé invalide, pas de réseau, quota MaxMind, etc. -> on continue sans geo-block.
+        print(f"⚠️ Téléchargement GeoIP échoué ({e}) — géolocalisation désactivée")
+        return False
+    finally:
+        if tmp_archive:
+            try:
+                os.remove(tmp_archive)
+            except Exception:
+                pass
+
+
+if geoip2 is not None and not os.path.exists(GEOIP_DB_PATH) and MAXMIND_LICENSE_KEY:
+    _download_geolite2_db(GEOIP_DB_PATH, MAXMIND_LICENSE_KEY, MAXMIND_EDITION)
+
+# La base GeoIP est ouverte dès qu'elle est disponible, indépendamment du blocage
+# global : elle sert aussi à la détection de langue et au geo-block par clip.
 _geoip_reader = None
-if EU_GEO_BLOCK_ENABLED and geoip2 is not None and os.path.exists(GEOIP_DB_PATH):
+if geoip2 is not None and os.path.exists(GEOIP_DB_PATH):
     try:
         _geoip_reader = geoip2.database.Reader(GEOIP_DB_PATH)
-        print(f"✅ EU geo-block actif (base GeoIP: {GEOIP_DB_PATH})")
+        print(f"✅ Géolocalisation GeoIP active (base: {GEOIP_DB_PATH})")
     except Exception as e:
-        print(f"⚠️ Impossible d'ouvrir la base GeoIP ({e}) — geo-block désactivé")
+        print(f"⚠️ Impossible d'ouvrir la base GeoIP ({e}) — géolocalisation désactivée")
         _geoip_reader = None
-elif EU_GEO_BLOCK_ENABLED:
-    print("⚠️ EU geo-block demandé mais base GeoLite2-Country.mmdb introuvable — les requêtes passent normalement")
+else:
+    print("⚠️ Base GeoLite2-Country.mmdb introuvable — géolocalisation désactivée (les requêtes passent normalement)")
+
+if _geoip_reader is not None:
+    print(f"   • blocage global UE : {'ON (451)' if EU_GEO_BLOCK_ENABLED else 'OFF'}")
+    print(f"   • blocage clips UE  : {'ON' if CLIPS_EU_GEO_BLOCK else 'OFF'}")
 
 
 @app.middleware("http")
 async def eu_geo_block(request, call_next):
     """Retourne 451 aux visiteurs de l'UE, sauf sur les pages légales."""
-    if _geoip_reader is not None:
+    if EU_GEO_BLOCK_ENABLED and _geoip_reader is not None:
         path = request.url.path
-        if not any(p in path for p in GEO_BLOCK_ALLOWED_PATHS):
-            client_host = request.client.host if request.client else ""
-            forwarded = request.headers.get("x-forwarded-for", client_host)
-            ip = forwarded.split(",")[0].strip() if forwarded else client_host
-            try:
-                iso_code = _geoip_reader.country(ip).country.iso_code
-                if iso_code in EU_COUNTRIES:
-                    return JSONResponse(
-                        status_code=451,
-                        content={"error": "EU restricted - VPN/Tor required"}
-                    )
-            except Exception:
-                # IP privée / introuvable dans la base → on laisse passer
-                pass
+        if not any(p in path for p in GEO_BLOCK_ALLOWED_PATHS) and is_eu_request(request):
+            return JSONResponse(
+                status_code=451,
+                content={"error": "EU restricted - VPN/Tor required"}
+            )
     return await call_next(request)
 
 # ==================== E2EE HELPER ====================
@@ -589,6 +664,8 @@ class UserProfile(BaseModel):
     following_count: int = 0
     is_following: bool = False
     is_verified: bool = False
+    is_premium: bool = False  # membre Nexus Premium (badge + avantages)
+    can_receive_tips: bool = False  # a un compte Stripe Connect → bouton Pourboire
     crypto_wallet: Optional[str] = None  # adresse de tips crypto (Solana/USDT…)
     created_at: str
 
@@ -620,6 +697,8 @@ class Post(BaseModel):
     author_username: str
     author_profile_pic: Optional[str] = None
     author_is_verified: bool = False
+    author_is_premium: bool = False  # badge Premium sur la publication (avantage réel)
+    is_pinned: bool = False          # post épinglé en haut du profil (créateur Premium)
     content: str
     media_type: Optional[str] = None
     media_url: Optional[str] = None
@@ -627,7 +706,9 @@ class Post(BaseModel):
     comments_count: int = 0
     shares_count: int = 0
     is_liked: bool = False
+    is_saved: bool = False  # l'utilisateur courant a-t-il enregistré ce post/clip ?
     views: int = 0
+    eu_blocked: bool = False  # clip restreint dans l'UE (geo-block Nexus Clips)
     affiliate_link: Optional[str] = None
     affiliate_clicks: int = 0
     poll: Optional[Poll] = None
@@ -681,6 +762,7 @@ class Message(BaseModel):
     media_type: Optional[str] = None
     reply_to_id: Optional[str] = None
     read: bool = False
+    reactions: List[dict] = []  # [{user_id, emoji, ...}] — sinon perdues au rechargement
     created_at: str
     expires_at: Optional[str] = None  # message éphémère : date d'auto-suppression
 
@@ -786,6 +868,88 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
         raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
     return current_user
 
+
+# ==================== MODÉRATION AUTOMATIQUE ====================
+# Filtrage gratuit du contenu (toxicité via toxic-bert, NSFW via NudeNet). La
+# logique lourde vit dans moderation.py ; ici on applique la politique métier :
+#   • verdict "block" -> HTTP 400 (le contenu n'est jamais enregistré)
+#   • verdict "flag"  -> le contenu est publié mais poussé en file de modération
+#                        (db.moderation_queue) pour une revue humaine.
+# Fail-open : si moderation est indisponible, on n'applique aucun filtre.
+
+async def flag_for_review(kind: str, ref_id: str, author_id: str, text, verdict: dict, media_kind=None):
+    """Ajoute un contenu signalé à la file de modération humaine."""
+    await db.moderation_queue.insert_one({
+        "id": str(uuid.uuid4()),
+        "kind": kind,               # "post" | "comment" | "clip"
+        "ref_id": ref_id,
+        "author_id": author_id,
+        "text": ((text or "")[:500]),
+        "category": verdict.get("category"),
+        "label": verdict.get("label"),
+        "score": verdict.get("score"),
+        "media_kind": media_kind,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+async def evaluate_content(text=None, media_url=None):
+    """Analyse texte + média et renvoie le verdict le plus sévère (ou None si la
+    modération est indisponible). NE lève JAMAIS — utilisé aussi pour scanner des
+    contenus déjà publiés."""
+    if moderation is None:
+        return None
+    verdicts = []
+    if text and text.strip():
+        verdicts.append(moderation.moderate_text(text))
+    if media_url:
+        verdicts.append(moderation.moderate_media(media_url))
+    if not verdicts:
+        return None
+    return moderation.worst_verdict(*verdicts)
+
+
+async def screen_content(text=None, media_url=None):
+    """Comme evaluate_content, mais lève HTTP 400 si le contenu doit être bloqué.
+
+    À appeler AVANT d'enregistrer le contenu ; si le verdict renvoyé vaut "flag",
+    l'appelant enregistre le contenu puis appelle flag_for_review()."""
+    worst = await evaluate_content(text=text, media_url=media_url)
+    if worst and worst["action"] == "block":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Contenu refusé par la modération ({worst['category']}: {worst['label']})",
+        )
+    return worst
+
+
+async def notify_content_removed(author_id: str, kind_label: str, verdict: dict):
+    """Avertit l'auteur (notification) que son contenu a été retiré par la modération."""
+    if not author_id:
+        return
+    cat = (verdict or {}).get("category", "nsfw")
+    reason = ("contenu à caractère sexuel ou explicite" if cat == "nsfw"
+              else "propos haineux ou toxiques" if cat == "toxicity"
+              else "non-respect de nos règles")
+    message = f"Votre {kind_label} a été supprimé(e) automatiquement : {reason}."
+    try:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": author_id,
+            "type": "moderation",
+            "from_user_id": author_id,          # système ; requis par le modèle
+            "from_username": "Modération Nexus",
+            "from_profile_pic": None,
+            "comment_content": message,
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+    # Notification temps réel (pastille + toast).
+    await push_realtime(author_id, {"type": "notification", "data": {"message": message}})
+
 # ==================== RATE LIMITING (anti brute-force) ====================
 # Limiteur en mémoire (cohérent car Render tourne en 1 worker). Fenêtre
 # glissante par clé (IP). Suffisant pour freiner le bruteforce de login.
@@ -807,6 +971,27 @@ def client_ip(request: Request) -> str:
     if fwd:
         return fwd.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+def country_for_request(request: Request) -> Optional[str]:
+    """Code pays ISO 3166-1 alpha-2 du visiteur (via GeoIP), ou None si indéterminé.
+
+    Best-effort : ne lève jamais. Fonctionne dès qu'une base GeoIP est chargée,
+    indépendamment du blocage global de l'UE (EU_GEO_BLOCK_ENABLED).
+    """
+    if _geoip_reader is None:
+        return None
+    try:
+        return _geoip_reader.country(client_ip(request)).country.iso_code
+    except Exception:
+        # IP privée / introuvable dans la base → indéterminé (on laisse passer)
+        return None
+
+
+def is_eu_request(request: Request) -> bool:
+    """True si le visiteur est géolocalisé dans un pays de l'UE (sinon False)."""
+    country = country_for_request(request)
+    return bool(country and country in EU_COUNTRIES)
 
 
 # ==================== GEO / LANGUE ====================
@@ -875,13 +1060,7 @@ async def detect_language(request: Request):
     Best-effort : si la base GeoIP est absente, renvoie 'en' et le frontend
     retombe sur la détection navigateur. Ne bloque jamais.
     """
-    ip = client_ip(request)
-    country = None
-    if _geoip_reader is not None:
-        try:
-            country = _geoip_reader.country(ip).country.iso_code
-        except Exception:
-            country = None
+    country = country_for_request(request)
     lang = lang_for_country(country)
     return {"country": country, "language": lang, "supported": sorted(SUPPORTED_UI_LANGS)}
 
@@ -894,13 +1073,7 @@ async def geo_status(request: Request):
     complet). Hors-UE : accès complet + bandeau cookies discret.
     Best-effort : si la base GeoIP est absente, on considère non-restreint.
     """
-    ip = client_ip(request)
-    country = None
-    if _geoip_reader is not None:
-        try:
-            country = _geoip_reader.country(ip).country.iso_code
-        except Exception:
-            country = None
+    country = country_for_request(request)
     restricted = bool(country and country in EU_COUNTRIES)
     return {"country": country, "restricted": restricted, "eu": restricted}
 
@@ -1031,6 +1204,25 @@ async def billing_status(current_user: dict = Depends(get_current_user)):
     }
 
 
+@api_router.get("/billing/plan")
+async def billing_plan():
+    """Infos publiques du plan Premium (prix réel Stripe) pour la page « Devenir
+    Premium ». Public : pas d'auth requise. Ne renvoie jamais de prix inventé —
+    si Stripe n'est pas branché, `enabled=false` et le prix est nul.
+    """
+    out = {"enabled": STRIPE_ENABLED, "amount": None, "currency": None, "interval": None}
+    if STRIPE_ENABLED:
+        try:
+            price = stripe.Price.retrieve(STRIPE_PRICE_ID)
+            out["amount"] = (price.get("unit_amount") or 0) / 100.0
+            out["currency"] = (price.get("currency") or "eur").upper()
+            rec = price.get("recurring") or {}
+            out["interval"] = rec.get("interval")  # "month" | "year"
+        except Exception as e:
+            print(f"⚠️ billing_plan: prix Stripe illisible ({e})")
+    return out
+
+
 @api_router.post("/billing/create-checkout-session")
 async def create_checkout_session(current_user: dict = Depends(get_current_user)):
     """Crée une session Stripe Checkout d'abonnement et renvoie l'URL de paiement."""
@@ -1117,6 +1309,71 @@ async def live_gift_checkout(data: dict = Body(...), current_user: dict = Depend
         if payment_intent_data:
             kwargs["payment_intent_data"] = payment_intent_data
         session = stripe.checkout.Session.create(**kwargs)
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
+
+
+@api_router.post("/users/{user_id}/tip-checkout")
+async def tip_checkout(user_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    """Crée une session Stripe Checkout (paiement unique) pour laisser un
+    POURBOIRE (Tip) à un créateur depuis son profil. Le montant est reversé au
+    créateur via Stripe Connect après commission de la plateforme.
+    """
+    if not STRIPE_ENABLED:
+        raise HTTPException(status_code=503, detail="Les paiements ne sont pas configurés")
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas vous envoyer un pourboire")
+    amount = int(data.get("amount_cents") or 0)
+    if amount < 100:
+        raise HTTPException(status_code=400, detail="Montant minimum : 1 €")
+
+    creator = await db.users.find_one({"id": user_id})
+    if not creator:
+        raise HTTPException(status_code=404, detail="Créateur introuvable")
+
+    # Le créateur doit avoir un compte Connect opérationnel pour recevoir le tip.
+    ready = False
+    if creator.get("stripe_account_id"):
+        if stripe_client:
+            try:
+                acct = stripe_client.v2.core.accounts.retrieve(
+                    creator["stripe_account_id"], params={"include": ["configuration.recipient"]}
+                )
+                ready = _v2_transfers_active(acct)
+            except Exception:
+                ready = bool(creator.get("stripe_charges_enabled"))
+        else:
+            ready = bool(creator.get("stripe_charges_enabled"))
+    if not ready:
+        raise HTTPException(status_code=400, detail="Ce créateur n'a pas encore activé les pourboires")
+
+    fee = round(amount * PLATFORM_FEE_PERCENT / 100)
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": f"Pourboire à @{creator.get('username')} sur Nexus"},
+                    "unit_amount": amount,
+                },
+                "quantity": 1,
+            }],
+            customer_email=current_user.get("email"),
+            client_reference_id=current_user["id"],
+            metadata={
+                "type": "tip",
+                "from_user_id": current_user["id"], "from_username": current_user["username"],
+                "creator_id": user_id,
+            },
+            payment_intent_data={
+                "application_fee_amount": fee,
+                "transfer_data": {"destination": creator["stripe_account_id"]},
+            },
+            success_url=f"{FRONTEND_URL}/profil/{user_id}?tip=success",
+            cancel_url=f"{FRONTEND_URL}/profil/{user_id}?tip=cancel",
+        )
         return {"url": session.url}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
@@ -1231,6 +1488,41 @@ async def stripe_webhook(request: Request):
                     await c.send_text(payload)
                 except Exception:
                     pass
+        return {"received": True}
+
+    # Pourboire (Tip) reçu depuis un profil : on l'enregistre et on notifie le créateur.
+    if etype == "checkout.session.completed" and meta.get("type") == "tip":
+        creator_id = meta.get("creator_id")
+        amount_total = obj.get("amount_total") or 0
+        try:
+            await db.tips.insert_one({
+                "id": str(uuid.uuid4()),
+                "creator_id": creator_id,
+                "from_user_id": meta.get("from_user_id"),
+                "from_username": meta.get("from_username"),
+                "amount_total": amount_total,
+                "currency": obj.get("currency"),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+        if creator_id:
+            try:
+                amount_eur = f"{(amount_total or 0) / 100:.2f} €"
+                notif_id = str(uuid.uuid4())
+                await db.notifications.insert_one({
+                    "id": notif_id,
+                    "user_id": creator_id,
+                    "type": "tip",
+                    "from_user_id": meta.get("from_user_id"),
+                    "from_username": meta.get("from_username"),
+                    "comment_content": f"vous a envoyé un pourboire de {amount_eur} 💸",
+                    "read": False,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+                await push_realtime(creator_id, {"type": "notification"})
+            except Exception:
+                pass
         return {"received": True}
 
     if etype == "checkout.session.completed":
@@ -1741,6 +2033,9 @@ async def resolve_mentions(content: str, exclude_id: str = None):
 @api_router.post("/posts", response_model=Post)
 async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
     """Créer un nouveau post"""
+    # Modération auto (toxicité + NSFW) : bloque le contenu interdit avant insertion.
+    verdict = await screen_content(text=post_data.content, media_url=post_data.media_url)
+
     post_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
@@ -1766,6 +2061,11 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
     }
 
     await db.posts.insert_one(post_to_insert)
+
+    # Contenu limite (verdict "flag") : publié mais soumis à revue humaine.
+    if verdict and verdict["action"] == "flag":
+        await flag_for_review("post", post_id, current_user["id"], post_data.content,
+                              verdict, media_kind=post_data.media_type)
 
     # Notifier les personnes mentionnées.
     for uid in mentioned_ids:
@@ -1859,14 +2159,49 @@ async def get_posts_feed(current_user: dict = Depends(get_current_user)):
     }).sort("created_at", -1).limit(50).to_list(length=50)
     
     posts = []
+    saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
+    premium_ids = await _premium_author_ids([p.get("author_id") for p in posts_raw])
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        post["is_saved"] = post["id"] in saved_ids
+        post["author_is_premium"] = post.get("author_id") in premium_ids
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
-    
+
     return posts
+
+# IMPORTANT : cette route doit être déclarée AVANT `/posts/{post_id}`, sinon
+# FastAPI interprète « saved » comme un post_id et renvoie 404.
+@api_router.get("/posts/saved", response_model=List[Post])
+async def get_saved_posts(current_user: dict = Depends(get_current_user)):
+    """Liste les publications et clips enregistrés par l'utilisateur (plus récents
+    d'abord), pour la page « Enregistrés »."""
+    saved = await db.saved_posts.find(
+        {"user_id": current_user["id"]}
+    ).sort("created_at", -1).limit(200).to_list(length=200)
+    order = [s.get("post_id") for s in saved]
+    if not order:
+        return []
+    raw = await db.posts.find({"id": {"$in": order}}).to_list(length=len(order))
+    by_id = {p.get("id"): p for p in raw}
+    liked = {l.get("post_id") for l in await db.likes.find(
+        {"post_id": {"$in": order}, "user_id": current_user["id"]}, {"post_id": 1}
+    ).to_list(length=len(order))}
+    premium_ids = await _premium_author_ids([p.get("author_id") for p in raw])
+    out = []
+    for pid in order:  # conserve l'ordre d'enregistrement (plus récent d'abord)
+        p_raw = by_id.get(pid)
+        if not p_raw:
+            continue  # post supprimé entre-temps → ignoré
+        p = convert_mongo_doc_to_dict(p_raw)
+        p["is_liked"] = pid in liked
+        p["is_saved"] = True
+        p["author_is_premium"] = p.get("author_id") in premium_ids
+        enrich_post_poll(p, current_user["id"])
+        out.append(Post(**p))
+    return out
 
 @api_router.get("/posts/{post_id}", response_model=Post)
 async def get_post(post_id: str, current_user: dict = Depends(get_current_user)):
@@ -1874,10 +2209,13 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
-    
+
     post = convert_mongo_doc_to_dict(post_raw)
     like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
     post["is_liked"] = bool(like_raw)
+    post["is_saved"] = bool(await db.saved_posts.find_one({"post_id": post["id"], "user_id": current_user["id"]}))
+    author = await db.users.find_one({"id": post.get("author_id")}, {"is_premium": 1})
+    post["author_is_premium"] = bool(author and author.get("is_premium"))
     enrich_post_poll(post, current_user["id"])
     return Post(**post)
 
@@ -2021,6 +2359,82 @@ async def like_post(post_id: str, current_user: dict = Depends(get_current_user)
         
         return {"liked": True}
 
+
+async def _saved_post_ids(user_id, post_ids):
+    """Ensemble des post_ids (parmi ceux fournis) enregistrés par l'utilisateur.
+
+    Batch en une requête pour enrichir une liste sans N+1.
+    """
+    if not post_ids:
+        return set()
+    rows = await db.saved_posts.find(
+        {"user_id": user_id, "post_id": {"$in": list(post_ids)}}, {"post_id": 1}
+    ).to_list(length=len(post_ids))
+    return {r.get("post_id") for r in rows}
+
+
+async def _premium_author_ids(author_ids):
+    """Sous-ensemble des author_ids qui sont membres Premium (badge sur les posts).
+
+    Batch en une requête (pas de N+1). Le statut Premium étant dynamique, on le
+    lit au moment de l'affichage plutôt que de le figer dans le post.
+    """
+    ids = [a for a in set(author_ids or []) if a]
+    if not ids:
+        return set()
+    rows = await db.users.find(
+        {"id": {"$in": ids}, "is_premium": True}, {"id": 1}
+    ).to_list(length=len(ids))
+    return {r.get("id") for r in rows}
+
+
+@api_router.post("/posts/{post_id}/save")
+async def save_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Enregistre / retire des enregistrements un post ou un clip (façon signet)."""
+    post_raw = await db.posts.find_one({"id": post_id}, {"id": 1})
+    if not post_raw:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    existing = await db.saved_posts.find_one({"post_id": post_id, "user_id": current_user["id"]})
+    if existing:
+        await db.saved_posts.delete_one({"post_id": post_id, "user_id": current_user["id"]})
+        return {"saved": False}
+
+    await db.saved_posts.insert_one({
+        "id": str(uuid.uuid4()),
+        "post_id": post_id,
+        "user_id": current_user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"saved": True}
+
+
+@api_router.post("/posts/{post_id}/pin")
+async def pin_post(post_id: str, current_user: dict = Depends(get_current_user)):
+    """Épingle / désépingle un de ses posts en haut du profil.
+
+    Avantage créateur Premium : réservé à l'auteur ET aux membres Premium. Un
+    seul post épinglé à la fois (épingler un nouveau désépingle l'ancien).
+    """
+    post = await db.posts.find_one({"id": post_id}, {"author_id": 1, "pinned": 1})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post introuvable")
+    if post.get("author_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Action réservée à l'auteur")
+    if not current_user.get("is_premium"):
+        raise HTTPException(status_code=403, detail="Épingler un post est réservé aux membres Premium")
+
+    if post.get("pinned"):
+        await db.posts.update_one({"id": post_id}, {"$set": {"pinned": False}})
+        return {"pinned": False}
+    # Un seul post épinglé : on retire l'épingle des autres posts de l'auteur.
+    await db.posts.update_many(
+        {"author_id": current_user["id"], "pinned": True}, {"$set": {"pinned": False}}
+    )
+    await db.posts.update_one({"id": post_id}, {"$set": {"pinned": True}})
+    return {"pinned": True}
+
+
 @api_router.get("/posts/{post_id}/comments", response_model=List[Comment])
 async def get_post_comments(post_id: str, current_user: dict = Depends(get_current_user)):
     """Récupère les commentaires d'un post"""
@@ -2048,7 +2462,10 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
     post_raw = await db.posts.find_one({"id": post_id})
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
-    
+
+    # Modération auto du texte du commentaire (toxicité).
+    verdict = await screen_content(text=comment_data.content)
+
     comment_id = str(uuid.uuid4())
     comment_to_insert = {
         "id": comment_id,
@@ -2063,7 +2480,11 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
     
     await db.comments.insert_one(comment_to_insert)
     await db.posts.update_one({"id": post_id}, {"$inc": {"comments_count": 1}})
-    
+
+    if verdict and verdict["action"] == "flag":
+        await flag_for_review("comment", comment_id, current_user["id"],
+                              comment_data.content, verdict)
+
     # Créer une notification
     post = convert_mongo_doc_to_dict(post_raw)
     if post["author_id"] != current_user["id"]:
@@ -2242,6 +2663,8 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         following_count=user.get("following_count", 0),
         is_following=is_following,
         is_verified=user.get("is_verified", False),
+        is_premium=user.get("is_premium", False),
+        can_receive_tips=bool(user.get("stripe_account_id")),
         crypto_wallet=user.get("crypto_wallet"),
         created_at=user["created_at"]
     )
@@ -2271,15 +2694,22 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
                 )
     
     # Publications originales uniquement (les reposts ont leur propre section).
+    # Post épinglé d'abord (créateur Premium), puis du plus récent au plus ancien.
     posts_raw = await db.posts.find(
         {"author_id": user_id, "repost_of": None}
-    ).sort("created_at", -1).to_list(length=50)
+    ).sort([("pinned", -1), ("created_at", -1)]).to_list(length=50)
+
+    # Statut Premium de l'auteur (badge sur ses posts) : une seule lecture.
+    author = await db.users.find_one({"id": user_id}, {"is_premium": 1})
+    author_premium = bool(author and author.get("is_premium"))
 
     posts = []
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        post["author_is_premium"] = author_premium
+        post["is_pinned"] = bool(post.get("pinned"))
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 
@@ -2771,10 +3201,13 @@ async def active_lives(current_user: dict = Depends(get_current_user)):
 
 # ==================== NOTIFICATIONS ROUTES ====================
 @api_router.get("/notifications", response_model=List[Notification])
-async def get_notifications(current_user: dict = Depends(get_current_user)):
-    """Récupère les notifications de l'utilisateur"""
-    notifications_raw = await db.notifications.find({"user_id": current_user["id"]}).sort("created_at", -1).limit(50).to_list(length=50)
-    
+async def get_notifications(skip: int = 0, limit: int = 30, current_user: dict = Depends(get_current_user)):
+    """Récupère les notifications de l'utilisateur (paginé pour le scroll infini)."""
+    limit = max(1, min(limit, 50))
+    notifications_raw = await db.notifications.find(
+        {"user_id": current_user["id"]}
+    ).sort("created_at", -1).skip(max(0, skip)).limit(limit).to_list(length=limit)
+
     notifications = []
     for notif_raw in notifications_raw:
         notif = convert_mongo_doc_to_dict(notif_raw)
@@ -3252,6 +3685,11 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     if not (message_data.content or "").strip() and not message_data.media_url:
         raise HTTPException(status_code=400, detail="Message vide")
 
+    # Modération NSFW du média envoyé (image). On ne scanne pas le texte privé
+    # des DM ; seul le média est vérifié (anti-nudes non sollicités).
+    if message_data.media_url:
+        await screen_content(media_url=message_data.media_url)
+
     recipient = convert_mongo_doc_to_dict(recipient_raw)
     message_id = str(uuid.uuid4())
 
@@ -3301,6 +3739,92 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     })
 
     return Message(**message)
+
+# Aperçu de lien (Open Graph) pour la messagerie.
+_LINK_PREVIEW_CACHE: Dict[str, dict] = {}
+
+
+def _host_is_public(host: str) -> bool:
+    """Anti-SSRF : refuse localhost / IP privées / lien-local / réservées."""
+    import ipaddress
+    import socket
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception:
+        return False
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+            return False
+    return True
+
+
+@api_router.get("/link-preview")
+async def link_preview(url: str, current_user: dict = Depends(get_current_user)):
+    """Aperçu Open Graph d'un lien (titre/description/image). Best-effort + anti-SSRF."""
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="URL invalide")
+    if url in _LINK_PREVIEW_CACHE:
+        return _LINK_PREVIEW_CACHE[url]
+
+    import asyncio
+    import urllib.request
+    import urllib.parse
+    from html import unescape as _unescape
+
+    result = {"url": url}
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if not parsed.hostname or not _host_is_public(parsed.hostname):
+            raise ValueError("hôte non public")
+
+        def _fetch():
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "Mozilla/5.0 (compatible; NexusBot/1.0)"}
+            )
+            with urllib.request.urlopen(req, timeout=6) as r:
+                if "text/html" not in (r.headers.get("Content-Type", "") or "").lower():
+                    return None
+                return r.read(400000).decode("utf-8", "ignore")
+
+        html = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+        if html:
+            def meta(*props):
+                for p in props:
+                    m = re.search(r'<meta[^>]+(?:property|name)=["\']' + re.escape(p)
+                                  + r'["\'][^>]*content=["\']([^"\']*)["\']', html, re.I) \
+                        or re.search(r'<meta[^>]+content=["\']([^"\']*)["\'][^>]*(?:property|name)=["\']'
+                                     + re.escape(p) + r'["\']', html, re.I)
+                    if m and m.group(1).strip():
+                        return _unescape(m.group(1).strip())
+                return None
+
+            title = meta("og:title", "twitter:title")
+            if not title:
+                mt = re.search(r"<title[^>]*>([^<]+)</title>", html, re.I)
+                title = _unescape(mt.group(1).strip()) if mt else None
+            image = meta("og:image", "twitter:image", "twitter:image:src")
+            if image and not image.lower().startswith(("http://", "https://")):
+                image = urllib.parse.urljoin(url, image)
+            result = {
+                "url": url,
+                "title": title,
+                "description": meta("og:description", "twitter:description", "description"),
+                "image": image,
+                "site_name": meta("og:site_name") or parsed.hostname,
+            }
+    except Exception:
+        pass
+
+    if len(_LINK_PREVIEW_CACHE) > 2000:
+        _LINK_PREVIEW_CACHE.clear()
+    _LINK_PREVIEW_CACHE[url] = result
+    return result
+
 
 # ==================== ENHANCED MESSAGES FEATURES ====================
 
@@ -3671,6 +4195,10 @@ async def send_group_message(
         # Un message doit avoir du texte OU un média.
         if not text.strip() and not media_urls:
             raise HTTPException(status_code=400, detail="Le contenu du message est requis")
+
+        # Modération NSFW des médias du groupe (fail-open si non configurée).
+        for _mu in media_urls:
+            await screen_content(media_url=_mu)
 
         # Vérifier membership
         group_raw = await db.group_chats.find_one({"id": group_id})
@@ -4161,8 +4689,10 @@ async def create_story(
     """Créer une nouvelle story - supporte upload de fichier OU URL"""
     story_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(hours=24)
-    
+    # Avantage Premium : stories valables 48 h au lieu de 24 h.
+    story_ttl_hours = 48 if current_user.get("is_premium") else 24
+    expires_at = now + timedelta(hours=story_ttl_hours)
+
     # CAS 1: Upload de fichier
     if file:
         content_type = file.content_type
@@ -4183,7 +4713,10 @@ async def create_story(
     
     else:
         raise HTTPException(status_code=400, detail="Fichier ou URL requis")
-    
+
+    # Modération NSFW du média (fail-open si non configurée).
+    _stverdict = await screen_content(media_url=media_url)
+
     story_to_insert = {
         "id": story_id,
         "author_id": current_user["id"],
@@ -4198,7 +4731,10 @@ async def create_story(
     }
     
     await db.stories.insert_one(story_to_insert)
-    
+
+    if _stverdict and _stverdict["action"] == "flag":
+        await flag_for_review("story", story_id, current_user["id"], "", _stverdict, media_kind=media_type)
+
     story = convert_mongo_doc_to_dict(story_to_insert)
     story["has_viewed"] = False
     return Story(**story)
@@ -5136,22 +5672,31 @@ async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
     return posts
 
 
-async def compute_trending_hashtags(limit: int = 10):
+async def compute_trending_hashtags(limit: int = 10, scope: str = "feed"):
     """
     Calcule les hashtags tendance EN DIRECT à partir des vraies publications.
     Fenêtre glissante 24h : seuls les posts des dernières 24h comptent, donc un
     hashtag sort automatiquement des tendances et est remplacé au-delà de 24h.
     Score = (#posts 24h * 3) + (likes * 0.1)
     Aucun cron requis : la tendance reflète toujours l'état réel de la base.
+
+    `scope` sépare les hashtags des Clips de ceux du fil :
+      - "feed"  : publications hors vidéo (les hashtags des Clips N'APPARAISSENT
+                  PAS dans les tendances générales) ;
+      - "clips" : uniquement les vidéos (tendances propres à Nexus Clips) ;
+      - "all"   : tout confondu.
     """
     now = datetime.now(timezone.utc)
     since_24h = (now - timedelta(hours=24)).isoformat()
 
     # Fenêtre glissante 24h : on ne considère QUE les posts des dernières 24h,
     # donc un hashtag sort automatiquement des tendances passé ce délai.
-    recent_posts = await db.posts.find(
-        {"created_at": {"$gte": since_24h}}
-    ).sort("created_at", -1).limit(3000).to_list(length=3000)
+    q = {"created_at": {"$gte": since_24h}}
+    if scope == "feed":
+        q["media_type"] = {"$ne": "video"}   # exclut les Clips du fil des tendances
+    elif scope == "clips":
+        q["media_type"] = "video"            # tendances propres aux Clips
+    recent_posts = await db.posts.find(q).sort("created_at", -1).limit(3000).to_list(length=3000)
 
     stats: Dict[str, dict] = {}
     for post in recent_posts:
@@ -5390,39 +5935,183 @@ async def analytics_my_hourly(
 
 
 @api_router.get("/clips", response_model=List[Post])
-async def get_clips_feed(skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
+async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
     """
     Fil Nexus Clips : publications vidéo de tout le monde, du plus récent au plus
     ancien, paginé (skip/limit) pour le scroll infini façon TikTok.
+
+    Geo-block : pour un visiteur de l'UE, les clips marqués eu_blocked sont retirés
+    du fil (l'auteur voit toujours les siens).
     """
     limit = max(1, min(limit, 40))
-    videos_raw = await db.posts.find(
-        {"media_type": "video", "media_url": {"$ne": None}}
-    ).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    query = {"media_type": "video", "media_url": {"$ne": None}}
+    if CLIPS_EU_GEO_BLOCK and is_eu_request(request):
+        query["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
+    videos_raw = await db.posts.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
 
     clips = []
+    saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in videos_raw])
+    premium_ids = await _premium_author_ids([p.get("author_id") for p in videos_raw])
     for post_raw in videos_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        post["is_saved"] = post["id"] in saved_ids
+        post["author_is_premium"] = post.get("author_id") in premium_ids
         clips.append(Post(**post))
     return clips
+
+
+async def _enrich_posts_for_user(raw, user_id):
+    """Enrichit une liste de posts bruts (is_liked / is_saved / author_is_premium)
+    en batch, puis renvoie une liste d'objets Post. Utilisé par la recherche."""
+    saved_ids = await _saved_post_ids(user_id, [p.get("id") for p in raw])
+    premium_ids = await _premium_author_ids([p.get("author_id") for p in raw])
+    liked = {l.get("post_id") for l in await db.likes.find(
+        {"post_id": {"$in": [p.get("id") for p in raw]}, "user_id": user_id}, {"post_id": 1}
+    ).to_list(length=len(raw) or 1)} if raw else set()
+    out = []
+    for p in raw:
+        p = convert_mongo_doc_to_dict(p)
+        p["is_liked"] = p["id"] in liked
+        p["is_saved"] = p["id"] in saved_ids
+        p["author_is_premium"] = p.get("author_id") in premium_ids
+        enrich_post_poll(p, user_id)
+        out.append(Post(**p))
+    return out
+
+
+@api_router.get("/clips/search/suggest")
+async def clips_search_suggest(q: str, current_user: dict = Depends(get_current_user)):
+    """Autocomplete temps réel de la recherche Clips : @usernames + #hashtags de
+    Clips. Léger (petites limites) pour répondre pendant la frappe."""
+    q = (q or "").strip()
+    if not q:
+        return {"suggestions": []}
+    term = q.lstrip("#@")
+    if not term:
+        return {"suggestions": []}
+    rx = {"$regex": re.escape(term), "$options": "i"}
+    suggestions = []
+    if not q.startswith("#"):
+        users = await db.users.find({"username": rx}, {"username": 1, "profile_pic": 1}).limit(5).to_list(length=5)
+        for u in users:
+            suggestions.append({"type": "user", "value": u.get("username"),
+                                "label": "@" + (u.get("username") or ""), "profile_pic": u.get("profile_pic")})
+    if not q.startswith("@"):
+        tags = await compute_trending_hashtags(80, scope="clips")
+        ql = term.lower()
+        for t in tags:
+            if ql in t["normalized"]:
+                suggestions.append({"type": "hashtag", "value": t["tag"],
+                                    "label": f'{t["tag"]} · {t["post_count"]} clips'})
+            if sum(1 for s in suggestions if s["type"] == "hashtag") >= 6:
+                break
+    return {"suggestions": suggestions[:10]}
+
+
+@api_router.get("/clips/search")
+async def clips_search(q: str, type: str = "top", skip: int = 0, limit: int = 20,
+                       current_user: dict = Depends(get_current_user)):
+    """Recherche Nexus Clips : onglets top / videos / users / posts / hashtags /
+    live, pagination (scroll infini). Le texte cherche légendes + hashtags."""
+    q = (q or "").strip()
+    if not q:
+        return {"videos": [], "users": [], "hashtags": [], "posts": [], "lives": []}
+    term = q.lstrip("#@")
+    rx = {"$regex": re.escape(term), "$options": "i"}
+    limit = max(1, min(limit, 40))
+
+    async def videos(sk, lm):
+        raw = await db.posts.find({"media_type": "video", "content": rx}) \
+            .sort([("likes_count", -1), ("created_at", -1)]).skip(sk).limit(lm).to_list(length=lm)
+        return await _enrich_posts_for_user(raw, current_user["id"])
+
+    async def posts(sk, lm):
+        raw = await db.posts.find({"media_type": {"$ne": "video"}, "content": rx}) \
+            .sort([("likes_count", -1), ("created_at", -1)]).skip(sk).limit(lm).to_list(length=lm)
+        return await _enrich_posts_for_user(raw, current_user["id"])
+
+    async def users(sk, lm):
+        raw = await db.users.find({"$or": [{"username": rx}, {"bio": rx}]}).skip(sk).limit(lm).to_list(length=lm)
+        out = []
+        for u in raw:
+            u = convert_mongo_doc_to_dict(u)
+            out.append(UserProfile(
+                id=u["id"], username=u["username"], bio=u.get("bio", ""),
+                profile_pic=u.get("profile_pic"), followers_count=u.get("followers_count", 0),
+                following_count=u.get("following_count", 0),
+                is_following=await check_is_following(current_user["id"], u["id"]),
+                is_verified=u.get("is_verified", False), is_premium=u.get("is_premium", False),
+                created_at=u["created_at"]))
+        return out
+
+    async def hashtags():
+        tr = await compute_trending_hashtags(80, scope="clips")
+        ql = term.lower()
+        return [t for t in tr if ql in t["normalized"]][:20]
+
+    async def lives():
+        out = []
+        async for s in db.live_sessions.find({"active": True}).limit(50):
+            uname = s.get("host_username") or ""
+            if re.search(re.escape(term), uname, re.I):
+                out.append({"host_id": s.get("host_id"), "host_username": uname,
+                            "host_profile_pic": s.get("host_profile_pic"),
+                            "room_id": s.get("room_id"), "started_at": s.get("started_at")})
+        return out
+
+    if type == "videos":
+        return {"videos": await videos(skip, limit)}
+    if type == "posts":
+        return {"posts": await posts(skip, limit)}
+    if type == "users":
+        return {"users": await users(skip, limit)}
+    if type == "hashtags":
+        return {"hashtags": await hashtags()}
+    if type == "live":
+        return {"lives": await lives()}
+    # top / all : un mélange pertinent (page 0)
+    return {
+        "videos": await videos(0, 8),
+        "users": await users(0, 5),
+        "hashtags": await hashtags(),
+        "posts": await posts(0, 4),
+        "lives": await lives(),
+    }
 
 
 @api_router.post("/clips", response_model=Post)
 async def create_clip(
     file: UploadFile = File(...),
     caption: str = Form(""),
+    eu_blocked: bool = Form(False),
     current_user: dict = Depends(get_current_user),
 ):
     """
     Créer un Clip / Reel : la vidéo uploadée est stockée comme publication vidéo,
     ce qui la fait apparaître dans le fil Nexus Clips (GET /api/clips) et le feed.
+
+    eu_blocked=true restreint le clip dans l'UE (masqué du fil / lecture refusée
+    pour les visiteurs européens).
     """
     if not (file.content_type or "").startswith("video/"):
         raise HTTPException(status_code=400, detail="Le fichier doit être une vidéo")
 
     contents = await file.read()
+
+    # Modération auto : texte (légende) + NSFW sur des images échantillonnées de la vidéo.
+    verdict = None
+    if moderation is not None:
+        cap_verdict = moderation.moderate_text(caption)
+        vid_verdict = moderation.moderate_video_bytes(contents, suffix=".mp4")
+        verdict = moderation.worst_verdict(cap_verdict, vid_verdict)
+        if verdict["action"] == "block":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Clip refusé par la modération ({verdict['category']}: {verdict['label']})",
+            )
+
     media_url = f"data:{file.content_type};base64," + base64.b64encode(contents).decode("utf-8")
 
     clip_id = str(uuid.uuid4())
@@ -5440,12 +6129,96 @@ async def create_clip(
         "comments_count": 0,
         "shares_count": 0,
         "views": 0,
+        "eu_blocked": bool(eu_blocked),
         "created_at": now.isoformat(),
     }
     await db.posts.insert_one(clip_to_insert)
 
+    if verdict and verdict["action"] == "flag":
+        await flag_for_review("clip", clip_id, current_user["id"], caption,
+                              verdict, media_kind="video")
+
     clip = convert_mongo_doc_to_dict(clip_to_insert)
     clip["is_liked"] = False
+    return Post(**clip)
+
+
+class ExternalClip(BaseModel):
+    media_url: str                 # URL https de la vidéo (Firebase Storage / CDN)
+    caption: str = ""
+    eu_blocked: bool = False
+    duration: Optional[float] = None  # durée en secondes (indicatif)
+
+
+# Hôtes de stockage autorisés pour un clip « externe » (upload direct navigateur).
+# On n'accepte pas n'importe quelle URL : uniquement Firebase Storage / GCS.
+_ALLOWED_CLIP_HOSTS = (
+    "firebasestorage.googleapis.com",
+    "storage.googleapis.com",
+    ".firebasestorage.app",
+    ".appspot.com",
+)
+
+
+@api_router.post("/clips/external", response_model=Post)
+async def create_clip_from_url(data: ExternalClip, current_user: dict = Depends(get_current_user)):
+    """Crée un Clip à partir d'une vidéo DÉJÀ téléversée sur Firebase Storage.
+
+    L'upload passe directement du navigateur à Firebase (il ne transite pas par
+    le backend) : cela lève la limite mémoire/taille et autorise les longues
+    vidéos (ex. un combat de 59 min). On ne stocke ici que l'URL.
+
+    Modération : seule la légende (texte) est filtrée ici — la vidéo n'étant pas
+    téléchargée côté serveur, l'analyse NSFW image par image n'est pas possible
+    sur ce chemin (elle reste active pour les uploads courts via /api/clips).
+    """
+    from urllib.parse import urlparse
+    url = (data.media_url or "").strip()
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="URL de vidéo invalide (https requis)")
+    host = parsed.hostname.lower()
+    if not any(host == h or host.endswith(h) for h in _ALLOWED_CLIP_HOSTS):
+        raise HTTPException(status_code=400, detail="Hôte de stockage non autorisé")
+
+    caption = data.caption or ""
+    # Modération du texte de la légende (fail-open).
+    verdict = None
+    if moderation is not None:
+        verdict = moderation.moderate_text(caption)
+        if verdict["action"] == "block":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Légende refusée par la modération ({verdict['category']}: {verdict['label']})",
+            )
+
+    clip_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    clip_to_insert = {
+        "id": clip_id,
+        "author_id": current_user["id"],
+        "author_username": current_user["username"],
+        "author_profile_pic": current_user.get("profile_pic"),
+        "author_is_verified": current_user.get("is_verified", False),
+        "content": caption,
+        "media_type": "video",
+        "media_url": url,
+        "media_duration": data.duration,
+        "likes_count": 0,
+        "comments_count": 0,
+        "shares_count": 0,
+        "views": 0,
+        "eu_blocked": bool(data.eu_blocked),
+        "created_at": now.isoformat(),
+    }
+    await db.posts.insert_one(clip_to_insert)
+
+    if verdict and verdict["action"] == "flag":
+        await flag_for_review("clip", clip_id, current_user["id"], caption, verdict, media_kind="video")
+
+    clip = convert_mongo_doc_to_dict(clip_to_insert)
+    clip["is_liked"] = False
+    clip["is_saved"] = False
     return Post(**clip)
 
 
@@ -5458,6 +6231,113 @@ async def get_adsense_config():
     }
 
 
+# ==================== MODÉRATION : FILE DE REVUE HUMAINE (ADMIN) ====================
+@api_router.get("/moderation/status")
+async def moderation_status(admin: dict = Depends(require_admin)):
+    """État de la modération auto + fournisseurs actifs + nombre en attente."""
+    pending = await db.moderation_queue.count_documents({"status": "pending"})
+    info = {}
+    if moderation is not None and hasattr(moderation, "provider_info"):
+        try:
+            info = moderation.provider_info()
+        except Exception:
+            info = {}
+    return {
+        "enabled": bool(moderation is not None and getattr(moderation, "MODERATION_ENABLED", False)),
+        "available": moderation is not None,
+        "pending": pending,
+        **info,
+    }
+
+
+@api_router.get("/moderation/queue")
+async def moderation_queue(status: str = "pending", skip: int = 0, limit: int = 50,
+                           admin: dict = Depends(require_admin)):
+    """Liste les contenus signalés par la modération auto (revue humaine)."""
+    limit = max(1, min(limit, 100))
+    query = {} if status in ("", "all") else {"status": status}
+    items = await db.moderation_queue.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    return [convert_mongo_doc_to_dict(i) for i in items]
+
+
+@api_router.post("/moderation/{item_id}/resolve")
+async def moderation_resolve(item_id: str, data: dict = Body(default={}),
+                             admin: dict = Depends(require_admin)):
+    """Résout un élément signalé. action="approve" (conserver) ou "remove" (supprimer)."""
+    item = await db.moderation_queue.find_one({"id": item_id})
+    if not item:
+        raise HTTPException(status_code=404, detail="Élément introuvable")
+    action = (data.get("action") or "approve").lower()
+    if action not in ("approve", "remove"):
+        raise HTTPException(status_code=400, detail="action doit valoir 'approve' ou 'remove'")
+
+    if action == "remove":
+        kind, ref_id = item.get("kind"), item.get("ref_id")
+        if kind in ("post", "clip"):
+            await db.posts.delete_one({"id": ref_id})
+        elif kind == "comment":
+            comment = await db.comments.find_one({"id": ref_id})
+            await db.comments.delete_one({"id": ref_id})
+            if comment and comment.get("post_id"):
+                await db.posts.update_one({"id": comment["post_id"]}, {"$inc": {"comments_count": -1}})
+        # Avertit l'auteur de la suppression.
+        kind_label = {"comment": "commentaire", "clip": "clip", "post": "publication"}.get(kind, "contenu")
+        await notify_content_removed(item.get("author_id"), kind_label,
+                                     {"category": item.get("category"), "label": item.get("label")})
+
+    await db.moderation_queue.update_one(
+        {"id": item_id},
+        {"$set": {"status": "removed" if action == "remove" else "approved",
+                  "resolved_by": admin["id"],
+                  "resolved_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"success": True, "action": action}
+
+
+@api_router.post("/moderation/scan")
+async def moderation_scan(limit: int = 40, delete: bool = False, admin: dict = Depends(require_admin)):
+    """Scanne les publications média récentes PAS ENCORE vérifiées et traite les
+    NSFW. Réservé admin. À lancer par lots : chaque image scannée consomme une
+    unité Google Vision.
+
+    Par sécurité, `delete` vaut FALSE par défaut : un verdict "block" est mis en
+    file de revue (comme un "flag") au lieu d'être supprimé. Passez explicitement
+    `?delete=true` seulement après avoir vérifié que le seuil de blocage est bien
+    réglé — sinon un mauvais réglage supprime en masse des contenus légitimes.
+    """
+    if moderation is None or not getattr(moderation, "MODERATION_ENABLED", False):
+        return {"scanned": 0, "removed": 0, "flagged": 0, "detail": "modération inactive"}
+    limit = max(1, min(limit, 200))
+    posts = await db.posts.find(
+        {"media_url": {"$ne": None}, "moderation_checked": {"$ne": True}}
+    ).sort("created_at", -1).limit(limit).to_list(length=limit)
+
+    scanned = removed = flagged = 0
+    for post in posts:
+        scanned += 1
+        verdict = None
+        try:
+            verdict = await evaluate_content(text=post.get("content"), media_url=post.get("media_url"))
+        except Exception:
+            verdict = None
+        # Marque comme vérifié pour ne pas re-scanner (et ne pas re-facturer).
+        await db.posts.update_one({"id": post["id"]}, {"$set": {"moderation_checked": True}})
+        if not verdict:
+            continue
+        kind_label = "clip" if post.get("media_type") == "video" else "publication"
+        if verdict["action"] == "block" and delete:
+            await db.posts.delete_one({"id": post["id"]})
+            await notify_content_removed(post.get("author_id"), kind_label, verdict)
+            removed += 1
+        elif verdict["action"] in ("block", "flag"):
+            await flag_for_review("clip" if post.get("media_type") == "video" else "post",
+                                  post["id"], post.get("author_id"), post.get("content", ""),
+                                  verdict, media_kind=post.get("media_type"))
+            flagged += 1
+    return {"scanned": scanned, "removed": removed, "flagged": flagged,
+            "remaining_hint": "relancez tant que scanned == limit"}
+
+
 # Cache mémoire des vues déjà comptées : { "user_id:clip_id": expiration_ts }.
 # Une « session » = fenêtre de 6 h : dans cet intervalle, les replays d'un même
 # utilisateur ne re-comptent pas (comme TikTok/YouTube). Render tourne en 1 worker
@@ -5466,9 +6346,32 @@ _clip_view_cache: Dict[str, float] = {}
 CLIP_VIEW_TTL = 6 * 3600
 
 
+@api_router.post("/clips/{clip_id}/geo-block")
+async def set_clip_geo_block(clip_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    """Restreint (ou lève la restriction d')un clip dans l'UE. Réservé à l'auteur.
+
+    Corps : {"eu_blocked": true|false} (true par défaut).
+    """
+    clip = await db.posts.find_one({"id": clip_id}, {"author_id": 1})
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip introuvable")
+    if clip.get("author_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Action réservée à l'auteur du clip")
+    eu_blocked = bool(data.get("eu_blocked", True))
+    await db.posts.update_one({"id": clip_id}, {"$set": {"eu_blocked": eu_blocked}})
+    return {"success": True, "eu_blocked": eu_blocked}
+
+
 @api_router.post("/clips/{clip_id}/view")
-async def register_clip_view(clip_id: str, current_user: dict = Depends(get_current_user)):
+async def register_clip_view(clip_id: str, request: Request, current_user: dict = Depends(get_current_user)):
     """Compte une vue UNIQUE par utilisateur et par session (pas à chaque replay)."""
+    # Geo-block par clip : un visiteur de l'UE ne peut pas visionner un clip
+    # restreint (sauf son auteur, pour la prévisualisation).
+    if CLIPS_EU_GEO_BLOCK and is_eu_request(request):
+        clip = await db.posts.find_one({"id": clip_id}, {"eu_blocked": 1, "author_id": 1})
+        if clip and clip.get("eu_blocked") and clip.get("author_id") != current_user["id"]:
+            raise HTTPException(status_code=451, detail="Ce clip n'est pas disponible dans votre région")
+
     key = f"{current_user['id']}:{clip_id}"
     now = time.time()
     exp = _clip_view_cache.get(key)
@@ -5518,6 +6421,11 @@ async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current
         if fid:
             followed_ids.append(fid)
 
+    # Auteurs Premium : petit bonus de visibilité dans « Pour toi » (avantage réel).
+    premium_authors = [u["id"] for u in await db.users.find(
+        {"is_premium": True}, {"id": 1}
+    ).to_list(length=5000)]
+
     pipeline = [
         {"$addFields": {
             "engagement_score": {
@@ -5527,6 +6435,8 @@ async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current
                     {"$multiply": [{"$ifNull": ["$shares_count", 0]}, 4]},
                     # Bonus de personnalisation : les comptes suivis remontent
                     {"$cond": [{"$in": ["$author_id", followed_ids]}, 15, 0]},
+                    # Bonus Premium : priorité dans le feed « Pour toi »
+                    {"$cond": [{"$in": ["$author_id", premium_authors]}, 8, 0]},
                 ]
             }
         }},
@@ -5537,10 +6447,14 @@ async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current
     posts_raw = await db.posts.aggregate(pipeline).to_list(length=limit)
 
     posts = []
+    saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
+    premium_set = set(premium_authors)
     for post_raw in posts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
+        post["is_saved"] = post["id"] in saved_ids
+        post["author_is_premium"] = post.get("author_id") in premium_set
         enrich_post_poll(post, current_user["id"])
         posts.append(Post(**post))
 
@@ -5565,7 +6479,13 @@ app.include_router(api_router)
 # Exemple d'intégration Stripe Connect (API V2) — monté sous /connect-sample.
 # Autonome : si le SDK/clé manquent, les pages affichent une erreur claire.
 try:
-    from stripe_connect_sample import router as connect_sample_router
+    try:
+        from backend.stripe_connect_sample import router as connect_sample_router
+    except ImportError:
+        try:
+            from app.backend.stripe_connect_sample import router as connect_sample_router
+        except ImportError:
+            from stripe_connect_sample import router as connect_sample_router
     app.include_router(connect_sample_router)
     print("✅ Stripe Connect sample (V2) monté sur /connect-sample")
 except Exception as _e:

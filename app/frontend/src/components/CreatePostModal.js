@@ -1,12 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -15,6 +10,7 @@ import { Image, Video, X } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CreatePostModal({ open, onClose, onPostCreated }) {
+  const navigate = useNavigate();
   const [content, setContent] = useState("");
   const [media, setMedia] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
@@ -163,16 +159,52 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     }
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="text-xl">
-            {mode === "story" ? "Créer une story" : mode === "poll" ? "Créer un sondage" : "Créer une publication"}
-          </DialogTitle>
-        </DialogHeader>
+  // Verrouille le scroll de l'arrière-plan + ferme sur Échap quand ouvert.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [open, onClose]);
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+  if (!open) return null;
+
+  const title = mode === "story" ? "Créer une story" : mode === "poll" ? "Créer un sondage" : "Quoi de neuf ?";
+  const canSubmit = mode === "story" ? !!mediaPreview : !!content.trim();
+
+  return (
+    // Plein écran sur mobile (vraie page), fenêtre centrée sur PC.
+    <div
+      className="fixed inset-0 z-[60] flex sm:items-center sm:justify-center sm:p-4"
+      style={{ background: "rgba(2,6,20,0.85)" }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+    >
+      <div
+        className="relative flex flex-col w-full bg-[#0b1326] text-white overflow-hidden
+                   h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-lg sm:rounded-2xl sm:border sm:border-slate-800"
+      >
+        {/* Barre supérieure : fermer · titre · Publier (façon X) */}
+        <div className="flex items-center gap-3 px-4 h-14 border-b border-slate-800 flex-shrink-0"
+             style={{ paddingTop: "env(safe-area-inset-top)" }}>
+          <button type="button" onClick={onClose} data-testid="cancel-post-button"
+                  className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full hover:bg-slate-800">
+            <X className="w-5 h-5" />
+          </button>
+          <h2 className="text-base font-bold flex-1 truncate">{title}</h2>
+          <Button
+            type="submit"
+            form="create-post-form"
+            disabled={loading || !canSubmit}
+            className="rounded-full px-5 h-9 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-900 font-bold disabled:opacity-50"
+            data-testid="submit-post-button"
+          >
+            {loading ? "…" : mode === "story" ? "Publier" : mode === "poll" ? "Publier" : "Publier"}
+          </Button>
+        </div>
+
+        <form id="create-post-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Mode selector : Post / Story / Sondage */}
           <div className="flex gap-2">
             {[
@@ -307,71 +339,46 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
             </div>
           )}
 
-          <div className="flex gap-2">
-            <div>
-              <Input
-                id="image-upload"
-                data-testid="upload-image-input"
-                type="file"
-                accept="image/*"
-                onChange={handleMediaChange}
-                className="hidden"
-              />
-              <Label
-                htmlFor="image-upload"
-                className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-md"
-              >
-                <Image className="w-4 h-4" />
-                Image
-              </Label>
-            </div>
-
-            <div>
-              <Input
-                id="video-upload"
-                data-testid="upload-video-input"
-                type="file"
-                accept="video/*"
-                onChange={handleMediaChange}
-                className="hidden"
-              />
-              <Label
-                htmlFor="video-upload"
-                className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-md"
-              >
-                <Video className="w-4 h-4" />
-                Vidéo
-              </Label>
-            </div>
-          </div>
-
-          <div className="flex gap-2 justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="border-slate-700"
-              data-testid="cancel-post-button"
-            >
-              Annuler
-            </Button>
-            <Button
-              type="submit"
-              disabled={loading || (mode === "story" ? !mediaPreview : !content.trim())}
-              className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
-              data-testid="submit-post-button"
-            >
-              {loading
-                ? "Publication..."
-                : mode === "story"
-                ? "Publier la story"
-                : mode === "poll"
-                ? "Publier le sondage"
-                : "Publier"}
-            </Button>
-          </div>
+          {/* Inputs fichiers cachés (déclenchés par la barre d'outils ci-dessous) */}
+          <Input id="image-upload" data-testid="upload-image-input" type="file" accept="image/*" onChange={handleMediaChange} className="hidden" />
+          <Input id="video-upload" data-testid="upload-video-input" type="file" accept="video/*" onChange={handleMediaChange} className="hidden" />
+          <Input id="gif-upload" data-testid="upload-gif-input" type="file" accept="image/gif" onChange={handleMediaChange} className="hidden" />
         </form>
-      </DialogContent>
-    </Dialog>
+
+        {/* Barre d'outils média (bas de page, façon « Quoi de neuf ? ») */}
+        <div
+          className="flex items-center gap-1 px-2 py-2 border-t border-slate-800 flex-shrink-0 overflow-x-auto no-scrollbar"
+          style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
+        >
+          <Label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
+            <Image className="w-5 h-5" />
+            <span className="text-[11px] font-medium">Photo</span>
+          </Label>
+          <Label htmlFor="video-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
+            <Video className="w-5 h-5" />
+            <span className="text-[11px] font-medium">Vidéo</span>
+          </Label>
+          <Label htmlFor="gif-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
+            <span className="material-symbols-outlined text-[22px] leading-none">gif_box</span>
+            <span className="text-[11px] font-medium">GIF</span>
+          </Label>
+          <button type="button" onClick={() => setMode("poll")}
+                  className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "poll" ? "text-cyan-300" : "text-cyan-400"}`}>
+            <span className="material-symbols-outlined text-[22px] leading-none">bar_chart</span>
+            <span className="text-[11px] font-medium">Sondage</span>
+          </button>
+          <button type="button" onClick={() => { onClose?.(); navigate("/live"); }}
+                  className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-rose-400">
+            <span className="material-symbols-outlined text-[22px] leading-none">sensors</span>
+            <span className="text-[11px] font-medium">Live</span>
+          </button>
+          <button type="button" onClick={() => setMode("story")}
+                  className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "story" ? "text-cyan-300" : "text-cyan-400"}`}>
+            <span className="material-symbols-outlined text-[22px] leading-none">auto_stories</span>
+            <span className="text-[11px] font-medium">Story</span>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
