@@ -665,6 +665,7 @@ class UserProfile(BaseModel):
     is_following: bool = False
     is_verified: bool = False
     is_premium: bool = False  # membre Nexus Premium (badge + avantages)
+    can_receive_tips: bool = False  # a un compte Stripe Connect → bouton Pourboire
     crypto_wallet: Optional[str] = None  # adresse de tips crypto (Solana/USDT…)
     created_at: str
 
@@ -1313,6 +1314,71 @@ async def live_gift_checkout(data: dict = Body(...), current_user: dict = Depend
         raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
 
 
+@api_router.post("/users/{user_id}/tip-checkout")
+async def tip_checkout(user_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    """Crée une session Stripe Checkout (paiement unique) pour laisser un
+    POURBOIRE (Tip) à un créateur depuis son profil. Le montant est reversé au
+    créateur via Stripe Connect après commission de la plateforme.
+    """
+    if not STRIPE_ENABLED:
+        raise HTTPException(status_code=503, detail="Les paiements ne sont pas configurés")
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas vous envoyer un pourboire")
+    amount = int(data.get("amount_cents") or 0)
+    if amount < 100:
+        raise HTTPException(status_code=400, detail="Montant minimum : 1 €")
+
+    creator = await db.users.find_one({"id": user_id})
+    if not creator:
+        raise HTTPException(status_code=404, detail="Créateur introuvable")
+
+    # Le créateur doit avoir un compte Connect opérationnel pour recevoir le tip.
+    ready = False
+    if creator.get("stripe_account_id"):
+        if stripe_client:
+            try:
+                acct = stripe_client.v2.core.accounts.retrieve(
+                    creator["stripe_account_id"], params={"include": ["configuration.recipient"]}
+                )
+                ready = _v2_transfers_active(acct)
+            except Exception:
+                ready = bool(creator.get("stripe_charges_enabled"))
+        else:
+            ready = bool(creator.get("stripe_charges_enabled"))
+    if not ready:
+        raise HTTPException(status_code=400, detail="Ce créateur n'a pas encore activé les pourboires")
+
+    fee = round(amount * PLATFORM_FEE_PERCENT / 100)
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": f"Pourboire à @{creator.get('username')} sur Nexus"},
+                    "unit_amount": amount,
+                },
+                "quantity": 1,
+            }],
+            customer_email=current_user.get("email"),
+            client_reference_id=current_user["id"],
+            metadata={
+                "type": "tip",
+                "from_user_id": current_user["id"], "from_username": current_user["username"],
+                "creator_id": user_id,
+            },
+            payment_intent_data={
+                "application_fee_amount": fee,
+                "transfer_data": {"destination": creator["stripe_account_id"]},
+            },
+            success_url=f"{FRONTEND_URL}/profil/{user_id}?tip=success",
+            cancel_url=f"{FRONTEND_URL}/profil/{user_id}?tip=cancel",
+        )
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
+
+
 # ── Stripe Connect (API V2) : reversement direct aux créateurs (payout TikTok) ──
 # Comptes connectés créés avec l'API V2 (dashboard Express, plateforme = fees/losses
 # collector, capacité stripe_transfers). Le statut est lu EN DIRECT via l'API.
@@ -1422,6 +1488,41 @@ async def stripe_webhook(request: Request):
                     await c.send_text(payload)
                 except Exception:
                     pass
+        return {"received": True}
+
+    # Pourboire (Tip) reçu depuis un profil : on l'enregistre et on notifie le créateur.
+    if etype == "checkout.session.completed" and meta.get("type") == "tip":
+        creator_id = meta.get("creator_id")
+        amount_total = obj.get("amount_total") or 0
+        try:
+            await db.tips.insert_one({
+                "id": str(uuid.uuid4()),
+                "creator_id": creator_id,
+                "from_user_id": meta.get("from_user_id"),
+                "from_username": meta.get("from_username"),
+                "amount_total": amount_total,
+                "currency": obj.get("currency"),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+        if creator_id:
+            try:
+                amount_eur = f"{(amount_total or 0) / 100:.2f} €"
+                notif_id = str(uuid.uuid4())
+                await db.notifications.insert_one({
+                    "id": notif_id,
+                    "user_id": creator_id,
+                    "type": "tip",
+                    "from_user_id": meta.get("from_user_id"),
+                    "from_username": meta.get("from_username"),
+                    "comment_content": f"vous a envoyé un pourboire de {amount_eur} 💸",
+                    "read": False,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+                await push_realtime(creator_id, {"type": "notification"})
+            except Exception:
+                pass
         return {"received": True}
 
     if etype == "checkout.session.completed":
@@ -2563,6 +2664,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         is_following=is_following,
         is_verified=user.get("is_verified", False),
         is_premium=user.get("is_premium", False),
+        can_receive_tips=bool(user.get("stripe_account_id")),
         crypto_wallet=user.get("crypto_wallet"),
         created_at=user["created_at"]
     )
