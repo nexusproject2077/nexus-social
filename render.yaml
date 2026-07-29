@@ -1,0 +1,25 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Site statique du frontend (React / CRA).
+#
+# ⚠️ La règle `rewrite` ci-dessous est INDISPENSABLE. Render n'interprète PAS
+# le fichier Netlify `public/_redirects` : sans cette route, tout accès direct
+# (ou rafraîchissement) à un lien profond du SPA — /premium, /nexus-clips,
+# /profil/…, /settings… — tombe sur la page 404 de Render au lieu de charger
+# l'application. La règle renvoie toutes les URL vers index.html, et
+# react-router prend ensuite le relais côté navigateur.
+#
+# Le backend (FastAPI/uvicorn) est un service séparé et n'est volontairement
+# pas décrit ici pour ne pas interférer avec sa configuration existante.
+services:
+  - type: web
+    name: nexus-social
+    runtime: static
+    rootDir: app/frontend
+    buildCommand: yarn install --frozen-lockfile && yarn build
+    staticPublishPath: build
+    pullRequestPreviewsEnabled: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
