@@ -42,14 +42,19 @@ axios.interceptors.request.use(
 // Intercepteur de réponse : on ne déconnecte QUE sur un vrai 401 (token
 // invalide/expiré). Les erreurs réseau / 5xx (ex. cold start Render) n'ont pas
 // de `response` → on ne touche pas à la session, l'utilisateur reste connecté.
+// Pages PUBLIQUES : accessibles sans connexion. Un 401 déclenché par un appel
+// en arrière-plan (suivi, badges…) ne doit JAMAIS éjecter le visiteur de ces
+// pages vers /auth — sinon /premium, /cgu… deviennent inaccessibles déconnecté.
+const PUBLIC_PATHS = ["/auth", "/premium", "/devenir-premium"];
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
       localStorage.removeItem("nexus_user");
-      // Évite une boucle de redirection si on est déjà sur /auth.
-      if (!window.location.pathname.startsWith("/auth")) {
+      const path = window.location.pathname;
+      // Pas de redirection si on est déjà sur une page publique.
+      if (!PUBLIC_PATHS.some((p) => path.startsWith(p))) {
         window.location.href = "/auth";
       }
     }
