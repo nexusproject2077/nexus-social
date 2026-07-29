@@ -149,11 +149,11 @@ export default function PremiumPage() {
           Résiliation possible à tout moment depuis les paramètres.
         </p>
 
-        {/* Liens légaux (les processeurs de paiement les demandent) */}
+        {/* Liens légaux officiels (pages existantes servies par le backend). */}
         <div className="flex items-center justify-center gap-4 mt-6 text-xs flex-wrap" style={{ color: "#8ea0c4" }}>
-          <button onClick={() => navigate("/cgu")} className="hover:underline">Conditions d'utilisation</button>
+          <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:underline">Conditions d'utilisation</a>
           <span>·</span>
-          <button onClick={() => navigate("/confidentialite")} className="hover:underline">Confidentialité</button>
+          <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:underline">Confidentialité</a>
           <span>·</span>
           <button onClick={() => navigate("/settings")} className="hover:underline">Gérer l'abonnement</button>
         </div>
