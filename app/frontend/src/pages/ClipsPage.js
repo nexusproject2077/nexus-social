@@ -173,6 +173,10 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const [paused, setPaused]         = useState(false);
   const [saved, setSaved]           = useState(post.is_saved || false);
   const [progress, setProgress]     = useState(0);
+  const [duration, setDuration]     = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [scrubbing, setScrubbing]   = useState(false);
+  const barRef = useRef(null);
   const [heart, setHeart]           = useState(false);   // cœur animé (double-tap)
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
@@ -251,6 +255,29 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   };
 
   const triggerHeart = () => { setHeart(true); setTimeout(() => setHeart(false), 800); };
+
+  // Barre de progression manipulable : on convertit la position X du doigt/souris
+  // en temps de lecture. Fonctionne au clic simple comme au glissement.
+  const seekToClientX = (clientX) => {
+    const el = barRef.current;
+    const v = videoRef.current;
+    if (!el || !v || !v.duration) return;
+    const rect = el.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    v.currentTime = frac * v.duration;
+    setProgress(frac * 100);
+    setCurrentTime(v.currentTime);
+  };
+  const onScrubDown = (e) => { e.stopPropagation(); setScrubbing(true); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ } seekToClientX(e.clientX); };
+  const onScrubMove = (e) => { if (scrubbing) { e.stopPropagation(); seekToClientX(e.clientX); } };
+  const onScrubUp   = (e) => { if (scrubbing) { e.stopPropagation(); setScrubbing(false); } };
+
+  const fmtTime = (s) => {
+    if (!s || !isFinite(s)) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
 
   // Avance / recule de 5 s (double-tap en plein écran 16:9, façon YouTube).
   const seekBy = (delta) => {
@@ -410,8 +437,14 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         onLoadedMetadata={(e) => {
           const v = e.target;
           if (v.videoWidth && v.videoHeight) setIsLandscape(v.videoWidth / v.videoHeight >= 1.4);
+          if (v.duration && isFinite(v.duration)) setDuration(v.duration);
         }}
-        onTimeUpdate={(e) => { const v = e.target; if (v.duration) setProgress((v.currentTime / v.duration) * 100); }}
+        onTimeUpdate={(e) => {
+          const v = e.target;
+          if (scrubbing) return; // pendant le glissement, on ne suit pas la lecture
+          if (v.duration) setProgress((v.currentTime / v.duration) * 100);
+          setCurrentTime(v.currentTime);
+        }}
       />
 
       {/* Indicateur vitesse 2x (appui long) */}
@@ -451,10 +484,36 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         </div>
       )}
 
-      {/* Barre de progression discrète (bas de la vidéo) */}
-      <div className="absolute bottom-0 left-0 right-0 h-[3px] pointer-events-none" style={{ background: "rgba(255,255,255,0.15)" }}>
-        <div className="h-full" style={{ width: `${progress}%`, background: C.cyan, transition: "width 0.1s linear" }} />
-      </div>
+      {/* Barre de progression MANIPULABLE + durée visible (au-dessus de la barre
+          de navigation). Glisser pour avancer/reculer ; touch-none évite que le
+          geste déclenche le défilement vertical des clips. Masquée en plein écran
+          (l'overlay 16:9 a sa propre barre). */}
+      {!isFs && (
+        <div className="absolute left-0 right-0 px-4 z-20" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)" }}>
+          <div className="flex items-center gap-2.5">
+            <div
+              ref={barRef}
+              onPointerDown={onScrubDown}
+              onPointerMove={onScrubMove}
+              onPointerUp={onScrubUp}
+              onPointerCancel={onScrubUp}
+              onClick={(e) => e.stopPropagation()}
+              className="relative flex-1 h-6 flex items-center cursor-pointer touch-none"
+            >
+              <div className="w-full rounded-full" style={{ height: scrubbing ? 6 : 4, background: "rgba(255,255,255,0.28)", transition: "height 0.1s" }}>
+                <div className="h-full rounded-full" style={{ width: `${progress}%`, background: C.cyan }} />
+              </div>
+              <div
+                className="absolute rounded-full bg-white shadow"
+                style={{ left: `${progress}%`, top: "50%", transform: "translate(-50%,-50%)", width: scrubbing ? 14 : 10, height: scrubbing ? 14 : 10, transition: "width 0.1s, height 0.1s" }}
+              />
+            </div>
+            <span className="text-white text-[11px] font-semibold tabular-nums flex-shrink-0" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>
+              {fmtTime(currentTime)} / {fmtTime(duration)}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Overlay d'infos en plein écran 16:9 (progression + likes + commentaires),
           comme la capture. Masqué en mode vertical normal. */}
@@ -564,8 +623,8 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         )}
       </div>
 
-      {/* Bottom info */}
-      <div className="absolute bottom-24 left-4 right-20">
+      {/* Bottom info (relevé pour laisser la place à la barre de progression) */}
+      <div className="absolute left-4 right-20" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 6.5rem)" }}>
         <button onClick={() => navigate(`/profile/${post.author_id}`)} className="font-bold text-white text-sm mb-1 hover:text-cyan-300 transition-colors inline-flex items-center gap-1">
           @{post.author_username}
           {post.author_is_premium && (
@@ -1002,7 +1061,7 @@ export default function ClipsPage({ user, setUser }) {
         /* Full-screen vertical scroll snapping */
         <div
           ref={containerRef}
-          className="h-screen overflow-y-scroll select-none"
+          className="h-[100dvh] overflow-y-scroll select-none"
           style={{
             scrollSnapType: "y mandatory",
             scrollBehavior: "smooth",
@@ -1016,7 +1075,7 @@ export default function ClipsPage({ user, setUser }) {
             [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
           `}</style>
           {clips.map((clip, idx) => (
-            <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100svh" }}>
+            <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100dvh" }}>
               <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex}
                 index={idx} registerVideo={registerVideo} onDelete={handleDeleteClip} />
             </div>
