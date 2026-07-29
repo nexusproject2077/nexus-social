@@ -325,6 +325,17 @@ export default function ProfilePage({ user, setUser }) {
                     verified
                   </span>
                 )}
+                {/* Badge Premium (avantage réel) */}
+                {profile.is_premium && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-black"
+                    style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}
+                    title="Membre Nexus Premium"
+                  >
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+                    Premium
+                  </span>
+                )}
                 {profile.is_private && <Lock size={18} color={C.outline} />}
                 <FollowButton />
                 {/* Partager le profil : copie l'URL /profil/:userId (ou partage natif). */}

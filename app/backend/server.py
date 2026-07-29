@@ -664,6 +664,7 @@ class UserProfile(BaseModel):
     following_count: int = 0
     is_following: bool = False
     is_verified: bool = False
+    is_premium: bool = False  # membre Nexus Premium (badge + avantages)
     crypto_wallet: Optional[str] = None  # adresse de tips crypto (Solana/USDT…)
     created_at: str
 
@@ -1198,6 +1199,25 @@ async def billing_status(current_user: dict = Depends(get_current_user)):
         "is_premium": bool(current_user.get("is_premium")),
         "subscription_status": current_user.get("subscription_status"),
     }
+
+
+@api_router.get("/billing/plan")
+async def billing_plan():
+    """Infos publiques du plan Premium (prix réel Stripe) pour la page « Devenir
+    Premium ». Public : pas d'auth requise. Ne renvoie jamais de prix inventé —
+    si Stripe n'est pas branché, `enabled=false` et le prix est nul.
+    """
+    out = {"enabled": STRIPE_ENABLED, "amount": None, "currency": None, "interval": None}
+    if STRIPE_ENABLED:
+        try:
+            price = stripe.Price.retrieve(STRIPE_PRICE_ID)
+            out["amount"] = (price.get("unit_amount") or 0) / 100.0
+            out["currency"] = (price.get("currency") or "eur").upper()
+            rec = price.get("recurring") or {}
+            out["interval"] = rec.get("interval")  # "month" | "year"
+        except Exception as e:
+            print(f"⚠️ billing_plan: prix Stripe illisible ({e})")
+    return out
 
 
 @api_router.post("/billing/create-checkout-session")
@@ -2493,6 +2513,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         following_count=user.get("following_count", 0),
         is_following=is_following,
         is_verified=user.get("is_verified", False),
+        is_premium=user.get("is_premium", False),
         crypto_wallet=user.get("crypto_wallet"),
         created_at=user["created_at"]
     )

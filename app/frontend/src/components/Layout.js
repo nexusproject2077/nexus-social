@@ -250,6 +250,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
     { icon: "mail",           label: t("messages"),      path: "/messages",             testId: "nav-messages" },
     { icon: "account_circle", label: t("profile"),       path: `/profil/${user.id}`,    testId: "nav-profile" },
     { icon: "bookmark",       label: "Enregistrés",      path: "/enregistres",          testId: "nav-saved" },
+    { icon: "workspace_premium", label: "Premium",       path: "/premium",              testId: "nav-premium" },
     { icon: "settings",       label: t("settings.title"),      path: "/settings",             testId: "nav-settings" },
   ];
 

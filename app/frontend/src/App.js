@@ -14,6 +14,7 @@ import MessagesPage from "./pages/MessagesPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import SearchPage from "./pages/SearchPage";
 import PostDetailPage from "./pages/PostDetailPage";
+import PremiumPage from "./pages/PremiumPage";
 import SavedPage from "./pages/SavedPage";
 import SettingsPage from "./pages/SettingsPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
@@ -177,6 +178,10 @@ function App() {
             path="/post/:postId"
             element={user ? <PostDetailPage user={user} /> : <Navigate to="/auth" />}
           />
+          {/* Page « Devenir Premium » — PUBLIQUE (visible sans connexion : les
+              produits/tarifs doivent être accessibles publiquement). */}
+          <Route path="/premium" element={<PremiumPage />} />
+          <Route path="/devenir-premium" element={<PremiumPage />} />
           {/* Publications et clips enregistrés (bouton signet). */}
           <Route
             path="/enregistres"
