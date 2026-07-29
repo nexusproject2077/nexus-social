@@ -20,6 +20,7 @@ import SettingsPage from "./pages/SettingsPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import PrivacyCenter from './pages/PrivacyCenter';
 import ClipsPage from './pages/ClipsPage';
+import ClipsSearchPage from './pages/ClipsSearchPage';
 import LiveStream from './pages/LiveStream';
 
 // URL du backend (NE CHANGE PLUS JAMAIS)
@@ -201,6 +202,15 @@ function App() {
           />
           {/* Nexus Clips : /nexus-clips est l'URL canonique ; /nexus-clips/:clipId
               ouvre (et permet de partager) une vidéo précise. /clips reste un alias. */}
+          {/* Recherche dédiée Nexus Clips (distincte de /search). */}
+          <Route
+            path="/nexus-clips/recherche"
+            element={user ? <ClipsSearchPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/clips/recherche"
+            element={user ? <ClipsSearchPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
           <Route
             path="/nexus-clips"
             element={user ? <ClipsPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}

@@ -5570,22 +5570,31 @@ async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
     return posts
 
 
-async def compute_trending_hashtags(limit: int = 10):
+async def compute_trending_hashtags(limit: int = 10, scope: str = "feed"):
     """
     Calcule les hashtags tendance EN DIRECT à partir des vraies publications.
     Fenêtre glissante 24h : seuls les posts des dernières 24h comptent, donc un
     hashtag sort automatiquement des tendances et est remplacé au-delà de 24h.
     Score = (#posts 24h * 3) + (likes * 0.1)
     Aucun cron requis : la tendance reflète toujours l'état réel de la base.
+
+    `scope` sépare les hashtags des Clips de ceux du fil :
+      - "feed"  : publications hors vidéo (les hashtags des Clips N'APPARAISSENT
+                  PAS dans les tendances générales) ;
+      - "clips" : uniquement les vidéos (tendances propres à Nexus Clips) ;
+      - "all"   : tout confondu.
     """
     now = datetime.now(timezone.utc)
     since_24h = (now - timedelta(hours=24)).isoformat()
 
     # Fenêtre glissante 24h : on ne considère QUE les posts des dernières 24h,
     # donc un hashtag sort automatiquement des tendances passé ce délai.
-    recent_posts = await db.posts.find(
-        {"created_at": {"$gte": since_24h}}
-    ).sort("created_at", -1).limit(3000).to_list(length=3000)
+    q = {"created_at": {"$gte": since_24h}}
+    if scope == "feed":
+        q["media_type"] = {"$ne": "video"}   # exclut les Clips du fil des tendances
+    elif scope == "clips":
+        q["media_type"] = "video"            # tendances propres aux Clips
+    recent_posts = await db.posts.find(q).sort("created_at", -1).limit(3000).to_list(length=3000)
 
     stats: Dict[str, dict] = {}
     for post in recent_posts:
@@ -5849,6 +5858,125 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
         post["author_is_premium"] = post.get("author_id") in premium_ids
         clips.append(Post(**post))
     return clips
+
+
+async def _enrich_posts_for_user(raw, user_id):
+    """Enrichit une liste de posts bruts (is_liked / is_saved / author_is_premium)
+    en batch, puis renvoie une liste d'objets Post. Utilisé par la recherche."""
+    saved_ids = await _saved_post_ids(user_id, [p.get("id") for p in raw])
+    premium_ids = await _premium_author_ids([p.get("author_id") for p in raw])
+    liked = {l.get("post_id") for l in await db.likes.find(
+        {"post_id": {"$in": [p.get("id") for p in raw]}, "user_id": user_id}, {"post_id": 1}
+    ).to_list(length=len(raw) or 1)} if raw else set()
+    out = []
+    for p in raw:
+        p = convert_mongo_doc_to_dict(p)
+        p["is_liked"] = p["id"] in liked
+        p["is_saved"] = p["id"] in saved_ids
+        p["author_is_premium"] = p.get("author_id") in premium_ids
+        enrich_post_poll(p, user_id)
+        out.append(Post(**p))
+    return out
+
+
+@api_router.get("/clips/search/suggest")
+async def clips_search_suggest(q: str, current_user: dict = Depends(get_current_user)):
+    """Autocomplete temps réel de la recherche Clips : @usernames + #hashtags de
+    Clips. Léger (petites limites) pour répondre pendant la frappe."""
+    q = (q or "").strip()
+    if not q:
+        return {"suggestions": []}
+    term = q.lstrip("#@")
+    if not term:
+        return {"suggestions": []}
+    rx = {"$regex": re.escape(term), "$options": "i"}
+    suggestions = []
+    if not q.startswith("#"):
+        users = await db.users.find({"username": rx}, {"username": 1, "profile_pic": 1}).limit(5).to_list(length=5)
+        for u in users:
+            suggestions.append({"type": "user", "value": u.get("username"),
+                                "label": "@" + (u.get("username") or ""), "profile_pic": u.get("profile_pic")})
+    if not q.startswith("@"):
+        tags = await compute_trending_hashtags(80, scope="clips")
+        ql = term.lower()
+        for t in tags:
+            if ql in t["normalized"]:
+                suggestions.append({"type": "hashtag", "value": t["tag"],
+                                    "label": f'{t["tag"]} · {t["post_count"]} clips'})
+            if sum(1 for s in suggestions if s["type"] == "hashtag") >= 6:
+                break
+    return {"suggestions": suggestions[:10]}
+
+
+@api_router.get("/clips/search")
+async def clips_search(q: str, type: str = "top", skip: int = 0, limit: int = 20,
+                       current_user: dict = Depends(get_current_user)):
+    """Recherche Nexus Clips : onglets top / videos / users / posts / hashtags /
+    live, pagination (scroll infini). Le texte cherche légendes + hashtags."""
+    q = (q or "").strip()
+    if not q:
+        return {"videos": [], "users": [], "hashtags": [], "posts": [], "lives": []}
+    term = q.lstrip("#@")
+    rx = {"$regex": re.escape(term), "$options": "i"}
+    limit = max(1, min(limit, 40))
+
+    async def videos(sk, lm):
+        raw = await db.posts.find({"media_type": "video", "content": rx}) \
+            .sort([("likes_count", -1), ("created_at", -1)]).skip(sk).limit(lm).to_list(length=lm)
+        return await _enrich_posts_for_user(raw, current_user["id"])
+
+    async def posts(sk, lm):
+        raw = await db.posts.find({"media_type": {"$ne": "video"}, "content": rx}) \
+            .sort([("likes_count", -1), ("created_at", -1)]).skip(sk).limit(lm).to_list(length=lm)
+        return await _enrich_posts_for_user(raw, current_user["id"])
+
+    async def users(sk, lm):
+        raw = await db.users.find({"$or": [{"username": rx}, {"bio": rx}]}).skip(sk).limit(lm).to_list(length=lm)
+        out = []
+        for u in raw:
+            u = convert_mongo_doc_to_dict(u)
+            out.append(UserProfile(
+                id=u["id"], username=u["username"], bio=u.get("bio", ""),
+                profile_pic=u.get("profile_pic"), followers_count=u.get("followers_count", 0),
+                following_count=u.get("following_count", 0),
+                is_following=await check_is_following(current_user["id"], u["id"]),
+                is_verified=u.get("is_verified", False), is_premium=u.get("is_premium", False),
+                created_at=u["created_at"]))
+        return out
+
+    async def hashtags():
+        tr = await compute_trending_hashtags(80, scope="clips")
+        ql = term.lower()
+        return [t for t in tr if ql in t["normalized"]][:20]
+
+    async def lives():
+        out = []
+        async for s in db.live_sessions.find({"active": True}).limit(50):
+            uname = s.get("host_username") or ""
+            if re.search(re.escape(term), uname, re.I):
+                out.append({"host_id": s.get("host_id"), "host_username": uname,
+                            "host_profile_pic": s.get("host_profile_pic"),
+                            "room_id": s.get("room_id"), "started_at": s.get("started_at")})
+        return out
+
+    if type == "videos":
+        return {"videos": await videos(skip, limit)}
+    if type == "posts":
+        return {"posts": await posts(skip, limit)}
+    if type == "users":
+        return {"users": await users(skip, limit)}
+    if type == "hashtags":
+        return {"hashtags": await hashtags()}
+    if type == "live":
+        return {"lives": await lives()}
+    # top / all : un mélange pertinent (page 0)
+    return {
+        "videos": await videos(0, 8),
+        "users": await users(0, 5),
+        "hashtags": await hashtags(),
+        "posts": await posts(0, 4),
+        "lives": await lives(),
+    }
 
 
 @api_router.post("/clips", response_model=Post)

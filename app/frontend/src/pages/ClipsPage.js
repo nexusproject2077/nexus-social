@@ -935,6 +935,19 @@ export default function ClipsPage({ user, setUser }) {
     </button>
   );
 
+  // Bouton de recherche Clips (en haut à droite) → page de recherche dédiée.
+  const searchButton = (
+    <button
+      onClick={() => navigate("/nexus-clips/recherche")}
+      data-testid="clips-search"
+      title="Rechercher des clips"
+      className="fixed z-50 top-4 right-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+      style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
+    >
+      <span className="material-symbols-outlined text-2xl">search</span>
+    </button>
+  );
+
   if (loading) {
     return (
       <Layout user={user} setUser={setUser} compact hideMobileHeader>
@@ -1056,8 +1069,9 @@ export default function ClipsPage({ user, setUser }) {
         </div>
       )}
 
-      {/* Bascule grille / immersif */}
+      {/* Bascule grille / immersif + recherche */}
       {viewToggle}
+      {searchButton}
 
       {/* Nexus Clips branding overlay (top-left) */}
       <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none lg:top-4">
