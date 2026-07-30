@@ -52,11 +52,12 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
   const pipStreamRef = useRef(null);
   const lastTapRef = useRef(0);
 
+  const pendingPhotoRef = useRef(null);   // photo capturée en attente (audience manuelle vide)
+
   const [facing, setFacing] = useState("environment");
   const [dual, setDual] = useState(false);
   const [torch, setTorch] = useState(false);
   const [flashPulse, setFlashPulse] = useState(false);
-  const [photo, setPhoto] = useState(null);
   const [caption, setCaption] = useState("");
   const [audience, setAudience] = useState("mutuals");
   const [manual, setManual] = useState([]);        // [{id,username,profile_pic}]
@@ -69,20 +70,59 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
     ref.current = null;
   };
 
+  // Choisit le BON capteur. Sur les téléphones à plusieurs objectifs
+  // (iPhone Pro, Android multi-capteurs), `facingMode:environment` sélectionne
+  // parfois l'ultra grand-angle (ou le téléobjectif). On force l'objectif
+  // principal « normal » : on privilégie la caméra dite « Back Camera »
+  // (l'équivalent de l'app photo native) et on évite explicitement les labels
+  // « ultra », « téléobjectif », « depth ». Les labels ne sont lisibles
+  // QU'APRÈS avoir obtenu la permission caméra.
+  const preferredDeviceId = async (f) => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter((d) => d.kind === "videoinput");
+      if (cams.length <= 1) return null;
+      const backRe = /back|rear|arri[eè]re|environ/i;
+      const frontRe = /front|avant|face|selfie/i;
+      const avoidRe = /ultra|t[ée]l[ée]|tele|zoom|depth|truedepth|profondeur|macro/i;
+      const exactRe = /^(back|front) camera$|^cam[ée]ra (arri[eè]re|avant)$/i;
+      let pool = cams.filter((c) => (f === "user" ? frontRe : backRe).test(c.label || ""));
+      if (!pool.length) pool = cams.filter((c) => c.label);       // labels dispo mais pas de match
+      if (!pool.length) return null;                               // aucun label → laisse facingMode décider
+      // 1) l'objectif principal exact (« Back Camera » / « Caméra arrière »)
+      const exact = pool.find((c) => exactRe.test(c.label));
+      if (exact) return exact.deviceId;
+      // 2) sinon, le premier qui n'est ni ultra ni télé ni depth
+      const normal = pool.find((c) => !avoidRe.test(c.label));
+      return (normal || pool[0]).deviceId || null;
+    } catch { return null; }
+  };
+
   const startMain = useCallback(async (f) => {
     stopStream(streamRef);
     setTorch(false);
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: f }, audio: false });
-      streamRef.current = s;
-      if (videoRef.current) { videoRef.current.srcObject = s; await videoRef.current.play().catch(() => {}); }
+      // 1) permission + flux initial (donne accès aux labels des caméras)
+      let stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: false });
+      // 2) rebascule sur le bon capteur si nécessaire (évite l'ultra grand-angle)
+      const devId = await preferredDeviceId(f);
+      const cur = stream.getVideoTracks?.()[0]?.getSettings?.().deviceId;
+      if (devId && devId !== cur) {
+        try {
+          const better = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: devId } }, audio: false });
+          stream.getTracks().forEach((t) => t.stop());
+          stream = better;
+        } catch { /* garde le flux initial */ }
+      }
+      streamRef.current = stream;
+      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play().catch(() => {}); }
     } catch {
       toast.error("Caméra inaccessible — autorise l'accès à l'appareil photo.");
     }
   }, []);
 
-  // Démarre / arrête la caméra selon l'orientation choisie.
-  useEffect(() => { if (!photo) startMain(facing); }, [facing, photo, startMain]);
+  // Démarre la caméra selon l'orientation choisie.
+  useEffect(() => { startMain(facing); }, [facing, startMain]);
 
   // Nettoyage : libère les caméras à la fermeture.
   useEffect(() => () => { stopStream(streamRef); stopStream(pipStreamRef); }, []);
@@ -134,7 +174,35 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
     ctx.closePath();
   };
 
+  // Envoi. Peut recevoir l'audience/liste explicitement (utile depuis le
+  // sélecteur, où l'état n'est pas encore à jour).
+  const doSend = async (media, aud = audience, list = manual) => {
+    if (aud === "manual" && (!list || list.length === 0)) {
+      // Pas encore de destinataires : on garde la photo et on ouvre le sélecteur.
+      pendingPhotoRef.current = media;
+      toast("Choisis les destinataires pour envoyer.");
+      setSheet(true);
+      return;
+    }
+    setSending(true);
+    try {
+      const { data } = await axios.post(`${API}/instants`, {
+        media,
+        caption: caption.trim(),
+        audience: aud,
+        recipient_ids: aud === "manual" ? list.map((u) => u.id) : [],
+      });
+      pendingPhotoRef.current = null;
+      onSent(data.instant, data.recipients);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Envoi impossible.");
+      setSending(false);
+    }
+  };
+
+  // Capture → ENVOI DIRECT (pas d'étape « reprendre / envoyer »).
   const capture = () => {
+    if (sending) return;
     const v = videoRef.current;
     if (!v || !v.videoWidth) { toast.error("Caméra pas encore prête."); return; }
     if (torch) { setFlashPulse(true); setTimeout(() => setFlashPulse(false), 220); }
@@ -159,28 +227,9 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       ctx.lineWidth = Math.max(4, w * 0.006); ctx.strokeStyle = "rgba(255,255,255,0.9)";
       roundRect(ctx, x, y, pw, ph, pw * 0.14); ctx.stroke();
     }
-    setPhoto(canvas.toDataURL("image/jpeg", 0.85));
+    const media = canvas.toDataURL("image/jpeg", 0.85);
     stopStream(streamRef); stopStream(pipStreamRef); setDual(false);
-  };
-
-  const retake = () => { setPhoto(null); };
-
-  const send = async () => {
-    if (audience === "manual" && manual.length === 0) { toast.error("Choisis au moins un·e destinataire."); setSheet(true); return; }
-    setSending(true);
-    try {
-      const { data } = await axios.post(`${API}/instants`, {
-        media: photo,
-        caption: caption.trim(),
-        audience,
-        recipient_ids: audience === "manual" ? manual.map((u) => u.id) : [],
-      });
-      onSent(data.instant, data.recipients);
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Envoi impossible.");
-    } finally {
-      setSending(false);
-    }
+    doSend(media);
   };
 
   const audienceLabel = { mutuals: "Mutuels", close_friends: "Ami·e·s proches", manual: manual.length ? `Sélection (${manual.length})` : "Sélection" }[audience];
@@ -202,94 +251,77 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       <div className="flex-1 flex items-center justify-center px-4 min-h-0">
         <div className="relative w-full" style={{ maxWidth: 460 }}>
           <div className="relative overflow-hidden rounded-[36px] bg-black" style={{ aspectRatio: "3 / 4" }} onClick={onPreviewTap}>
-            {photo ? (
-              <img src={photo} alt="Aperçu" className="w-full h-full object-cover" />
-            ) : (
-              <video ref={videoRef} muted playsInline autoPlay
-                className="w-full h-full object-cover"
-                style={{ transform: facing === "user" ? "scaleX(-1)" : "none" }} />
-            )}
+            <video ref={videoRef} muted playsInline autoPlay
+              className="w-full h-full object-cover"
+              style={{ transform: facing === "user" ? "scaleX(-1)" : "none" }} />
             {/* Médaillon double caméra (frontale) */}
             <video ref={pipRef} muted playsInline autoPlay
               className="absolute top-3 left-3 rounded-2xl object-cover border-2 border-white/90 shadow-lg"
-              style={{ width: "30%", aspectRatio: "3 / 4", transform: "scaleX(-1)", display: dual && !photo ? "block" : "none" }} />
+              style={{ width: "30%", aspectRatio: "3 / 4", transform: "scaleX(-1)", display: dual ? "block" : "none" }} />
             {flashPulse && <div className="absolute inset-0 bg-white" style={{ opacity: 0.85 }} />}
-            {!photo && (
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] px-3 py-1 rounded-full text-white/80"
-                style={{ background: "rgba(0,0,0,0.4)" }}>
-                Double-appui : {dual ? "désactiver" : "activer"} la double caméra
+            {sending && (
+              <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.55)" }}>
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: C.accent }} />
               </div>
             )}
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] px-3 py-1 rounded-full text-white/80"
+              style={{ background: "rgba(0,0,0,0.4)" }}>
+              Double-appui : {dual ? "désactiver" : "activer"} la double caméra
+            </div>
           </div>
 
-          {/* Légende (avant la prise, si pas encore de photo) */}
-          {!photo && (
-            <input
-              value={caption}
-              onChange={(e) => setCaption(e.target.value.slice(0, 200))}
-              placeholder="Ajouter une légende…"
-              className="mt-4 w-full text-center text-sm px-4 py-2.5 rounded-full border-none outline-none placeholder:text-white/40"
-              style={{ background: "rgba(255,255,255,0.08)", color: "#fff" }}
-            />
-          )}
-          {photo && caption.trim() && (
-            <p className="mt-3 text-center text-sm text-white/90">{caption.trim()}</p>
-          )}
+          {/* Légende (avant la prise). L'envoi est immédiat à la capture. */}
+          <input
+            value={caption}
+            onChange={(e) => setCaption(e.target.value.slice(0, 200))}
+            placeholder="Ajouter une légende…"
+            className="mt-4 w-full text-center text-sm px-4 py-2.5 rounded-full border-none outline-none placeholder:text-white/40"
+            style={{ background: "rgba(255,255,255,0.08)", color: "#fff" }}
+          />
         </div>
       </div>
 
-      {/* Commandes du bas */}
-      {!photo ? (
-        <div className="px-6 pb-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
-          <div className="flex items-center justify-between">
-            <button onClick={toggleTorch} className="w-14 h-14 rounded-full flex items-center justify-center"
-              style={{ background: "rgba(255,255,255,0.1)" }} aria-label="Flash">
-              <span className="material-symbols-outlined" style={{ color: torch ? C.accent : "#fff" }}>
-                {torch ? "flash_on" : "flash_off"}
-              </span>
-            </button>
-
-            <button onClick={capture} className="relative w-[76px] h-[76px] rounded-full active:scale-95 transition-transform" aria-label="Prendre la photo">
-              <span className="absolute inset-0 rounded-full border-4 border-white/70" />
-              <span className="absolute inset-[6px] rounded-full bg-white" />
-            </button>
-
-            <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
-              className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.1)" }} aria-label="Changer de caméra">
-              <span className="material-symbols-outlined" style={{ color: "#fff" }}>cameraswitch</span>
-            </button>
-          </div>
-
-          {/* Pilule audience */}
-          <div className="flex justify-center mt-5">
-            <button onClick={() => setSheet(true)} className="flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-sm"
-              style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}>
-              <span className="material-symbols-outlined text-lg" style={{ color: C.accent }}>group</span>
-              {audienceLabel}
-              <span className="material-symbols-outlined text-lg">expand_more</span>
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="px-6 pb-3 flex items-center justify-between gap-4" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
-          <button onClick={retake} className="flex items-center gap-2 px-5 py-3 rounded-full font-semibold" style={{ background: "rgba(255,255,255,0.12)", color: "#fff" }}>
-            <span className="material-symbols-outlined">replay</span> Reprendre
+      {/* Commandes du bas — la capture ENVOIE directement (pas de reprendre/envoyer). */}
+      <div className="px-6 pb-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
+        <div className="flex items-center justify-between">
+          <button onClick={toggleTorch} className="w-14 h-14 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,0.1)" }} aria-label="Flash">
+            <span className="material-symbols-outlined" style={{ color: torch ? C.accent : "#fff" }}>
+              {torch ? "flash_on" : "flash_off"}
+            </span>
           </button>
-          <button onClick={() => setSheet(true)} className="flex items-center gap-2 px-4 py-3 rounded-full text-sm font-semibold" style={{ background: "rgba(255,255,255,0.08)", color: "#fff" }}>
-            <span className="material-symbols-outlined text-lg" style={{ color: C.accent }}>group</span>{audienceLabel}
+
+          <button onClick={capture} disabled={sending} className="relative w-[76px] h-[76px] rounded-full active:scale-95 transition-transform disabled:opacity-50" aria-label="Prendre et envoyer">
+            <span className="absolute inset-0 rounded-full border-4 border-white/70" />
+            <span className="absolute inset-[6px] rounded-full bg-white" />
           </button>
-          <button onClick={send} disabled={sending} className="flex items-center gap-2 px-6 py-3 rounded-full font-black disabled:opacity-60"
-            style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>
-            {sending ? "Envoi…" : "Envoyer"} <span className="material-symbols-outlined">send</span>
+
+          <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
+            className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.1)" }} aria-label="Changer de caméra">
+            <span className="material-symbols-outlined" style={{ color: "#fff" }}>cameraswitch</span>
           </button>
         </div>
-      )}
+
+        {/* Pilule audience */}
+        <div className="flex justify-center mt-5">
+          <button onClick={() => setSheet(true)} className="flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-sm"
+            style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}>
+            <span className="material-symbols-outlined text-lg" style={{ color: C.accent }}>group</span>
+            {audienceLabel}
+            <span className="material-symbols-outlined text-lg">expand_more</span>
+          </button>
+        </div>
+      </div>
 
       {sheet && (
         <AudienceSheet
           user={user} audience={audience} manual={manual}
-          onClose={() => setSheet(false)}
-          onPick={(a, list) => { setAudience(a); if (list) setManual(list); setSheet(false); }}
+          onClose={() => { setSheet(false); pendingPhotoRef.current = null; }}
+          onPick={(a, list) => {
+            setAudience(a); if (list) setManual(list); setSheet(false);
+            // Si une photo attend des destinataires (capture en audience manuelle vide), on l'envoie.
+            if (pendingPhotoRef.current) doSend(pendingPhotoRef.current, a, list || manual);
+          }}
         />
       )}
 
