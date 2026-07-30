@@ -113,6 +113,10 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   const [emojiPicker, setEmojiPicker] = useState(false);
   const [stickerForm, setStickerForm] = useState(null); // "poll" | "question" | "music"
   const [stage, setStage] = useState({ w: 0, h: 0 });
+  const resizeRef = useRef(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [eraser, setEraser] = useState(false);
+  const [textEditor, setTextEditor] = useState(null); // {id?, text, color}
 
   const filterCss = FILTERS.find((f) => f.key === filter)?.css || "none";
   const curFit = cur?.fit || (cur?.type === "image" ? "cover" : "contain");
@@ -267,7 +271,10 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     drawingActiveRef.current = true;
     try { c.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
     const ctx = c.getContext("2d"); const r = c.getBoundingClientRect();
-    ctx.strokeStyle = drawColor; ctx.lineWidth = Math.max(4, c.width * 0.012); ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.globalCompositeOperation = eraser ? "destination-out" : "source-over";
+    ctx.strokeStyle = eraser ? "rgba(0,0,0,1)" : drawColor;
+    ctx.lineWidth = eraser ? Math.max(18, c.width * 0.035) : Math.max(4, c.width * 0.012);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
     ctx.beginPath(); ctx.moveTo((e.clientX - r.left) * (c.width / r.width), (e.clientY - r.top) * (c.height / r.height));
   };
   const drawMove = (e) => {
@@ -283,16 +290,31 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     e.stopPropagation(); dragRef.current = id;
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
   };
+  const resizeStart = (e, o) => {
+    e.stopPropagation();
+    const r = stageRef.current?.getBoundingClientRect(); if (!r) return;
+    const cx = r.left + o.x * r.width, cy = r.top + o.y * r.height;
+    const d = Math.hypot(e.clientX - cx, e.clientY - cy) || 1;
+    resizeRef.current = { id: o.id, startDist: d, startScale: o.scale || 1, cx, cy };
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
+  };
   const stageMove = (e) => {
+    if (resizeRef.current) {
+      const rr = resizeRef.current;
+      const d = Math.hypot(e.clientX - rr.cx, e.clientY - rr.cy) || 1;
+      const scale = Math.min(5, Math.max(0.4, rr.startScale * (d / rr.startDist)));
+      setOverlays((ov) => ov.map((o) => (o.id === rr.id ? { ...o, scale } : o)));
+      return;
+    }
     if (dragRef.current == null) return;
     const r = stageRef.current?.getBoundingClientRect(); if (!r) return;
     const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
     const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
     setOverlays((ov) => ov.map((o) => (o.id === dragRef.current ? { ...o, x, y } : o)));
   };
-  const stageUp = () => { dragRef.current = null; };
+  const stageUp = () => { dragRef.current = null; resizeRef.current = null; };
 
-  const addOverlay = (o) => { setOverlays((ov) => [...ov, { id: uid(), x: 0.5, y: 0.42, ...o }]); setStickerMenu(false); setEmojiPicker(false); setStickerForm(null); };
+  const addOverlay = (o) => { setOverlays((ov) => [...ov, { id: uid(), x: 0.5, y: 0.42, scale: 1, ...o }]); setStickerMenu(false); setEmojiPicker(false); setStickerForm(null); };
   const removeOverlay = (id) => setOverlays((ov) => ov.filter((o) => o.id !== id));
 
   const wrap = (ctx, t, maxW) => {
@@ -324,42 +346,51 @@ export default function StoryComposer({ user, onClose, onPublished }) {
 
   const paintOverlay = (ctx, o, W, H) => {
     const px = o.x * W, py = o.y * H;
+    const S = W * (o.scale || 1);   // base d'échelle (positions inchangées, tailles × scale)
     ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    if (o.type === "emoji") {
-      ctx.font = `${Math.round(W * 0.13)}px "Apple Color Emoji","Segoe UI Emoji",serif`;
+    if (o.type === "text") {
+      const size = Math.round(S * 0.06);
+      ctx.font = `800 ${size}px sans-serif`;
+      const lines = wrap(ctx, o.text, S * 0.86);
+      const lh = size * 1.2;
+      ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = size * 0.15; ctx.shadowOffsetY = size * 0.06;
+      ctx.fillStyle = o.color || "#fff";
+      lines.forEach((ln, i) => ctx.fillText(ln, px, py - ((lines.length - 1) * lh) / 2 + i * lh));
+    } else if (o.type === "emoji") {
+      ctx.font = `${Math.round(S * 0.13)}px "Apple Color Emoji","Segoe UI Emoji",serif`;
       ctx.fillText(o.emoji, px, py);
     } else if (o.type === "music") {
-      ctx.font = `600 ${Math.round(W * 0.042)}px sans-serif`;
+      ctx.font = `600 ${Math.round(S * 0.042)}px sans-serif`;
       const label = `♫  ${o.title}`;
-      const w = Math.min(W * 0.82, ctx.measureText(label).width + W * 0.09), h = W * 0.1;
+      const w = Math.min(S * 0.82, ctx.measureText(label).width + S * 0.09), h = S * 0.1;
       ctx.fillStyle = "#fff"; roundRect(ctx, px - w / 2, py - h / 2, w, h, h / 2); ctx.fill();
       ctx.fillStyle = "#111"; ctx.fillText(label, px, py);
     } else if (o.type === "question") {
-      const w = W * 0.7, pad = W * 0.04;
-      ctx.font = `700 ${Math.round(W * 0.045)}px sans-serif`;
+      const w = S * 0.7, pad = S * 0.04;
+      ctx.font = `700 ${Math.round(S * 0.045)}px sans-serif`;
       const lines = wrap(ctx, o.q, w - pad * 2);
-      const lh = W * 0.06, h = lh * lines.length + pad * 2 + W * 0.075;
-      ctx.fillStyle = "#fff"; roundRect(ctx, px - w / 2, py - h / 2, w, h, W * 0.03); ctx.fill();
+      const lh = S * 0.06, h = lh * lines.length + pad * 2 + S * 0.075;
+      ctx.fillStyle = "#fff"; roundRect(ctx, px - w / 2, py - h / 2, w, h, S * 0.03); ctx.fill();
       ctx.fillStyle = "#111";
       lines.forEach((ln, i) => ctx.fillText(ln, px, py - h / 2 + pad + lh / 2 + i * lh));
-      ctx.font = `500 ${Math.round(W * 0.034)}px sans-serif`; ctx.fillStyle = "#9aa";
-      ctx.fillText("Répondre…", px, py + h / 2 - W * 0.05);
+      ctx.font = `500 ${Math.round(S * 0.034)}px sans-serif`; ctx.fillStyle = "#9aa";
+      ctx.fillText("Répondre…", px, py + h / 2 - S * 0.05);
     } else if (o.type === "poll") {
-      const w = W * 0.72, pad = W * 0.035;
-      ctx.font = `700 ${Math.round(W * 0.045)}px sans-serif`;
+      const w = S * 0.72, pad = S * 0.035;
+      ctx.font = `700 ${Math.round(S * 0.045)}px sans-serif`;
       const qLines = wrap(ctx, o.q, w - pad * 2);
-      const lh = W * 0.06, optH = W * 0.11;
+      const lh = S * 0.06, optH = S * 0.11;
       const h = pad + lh * qLines.length + pad + optH + pad;
-      ctx.fillStyle = "rgba(255,255,255,0.96)"; roundRect(ctx, px - w / 2, py - h / 2, w, h, W * 0.035); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.96)"; roundRect(ctx, px - w / 2, py - h / 2, w, h, S * 0.035); ctx.fill();
       ctx.fillStyle = "#111";
       qLines.forEach((ln, i) => ctx.fillText(ln, px, py - h / 2 + pad + lh / 2 + i * lh));
       const oy = py - h / 2 + pad + lh * qLines.length + pad + optH / 2;
       const half = (w - pad * 3) / 2;
-      ctx.font = `700 ${Math.round(W * 0.04)}px sans-serif`;
+      ctx.font = `700 ${Math.round(S * 0.04)}px sans-serif`;
       [["a", -1], ["b", 1]].forEach(([k, dir]) => {
         const cx = px + dir * (half / 2 + pad / 2);
         ctx.fillStyle = k === "a" ? "#22d3ee" : "#3b82f6";
-        roundRect(ctx, cx - half / 2, oy - optH / 2, half, optH, W * 0.02); ctx.fill();
+        roundRect(ctx, cx - half / 2, oy - optH / 2, half, optH, S * 0.02); ctx.fill();
         ctx.fillStyle = "#00363e"; ctx.fillText(o[k], cx, oy);
       });
     }
@@ -504,7 +535,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   return (
     <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000" }}>
       {/* Scène : média (filtré) + dessin + stickers (draggables) */}
-      <div ref={stageRef} className="absolute inset-0" onPointerMove={stageMove} onPointerUp={stageUp} onPointerLeave={stageUp}>
+      <div ref={stageRef} className="absolute inset-0" onPointerDown={() => setSelectedId(null)} onPointerMove={stageMove} onPointerUp={stageUp} onPointerLeave={stageUp}>
         {cur?.type === "video"
           ? <video src={cur.media} className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} autoPlay playsInline muted loop />
           : <img src={cur?.media} alt="" className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} />}
@@ -517,12 +548,15 @@ export default function StoryComposer({ user, onClose, onPublished }) {
             onPointerDown={drawStart} onPointerMove={drawMove} onPointerUp={drawEnd} onPointerCancel={drawEnd} />
         )}
 
-        {/* Stickers */}
+        {/* Stickers & textes (déplaçables, redimensionnables) */}
         {overlays.map((o) => (
-          <div key={o.id} onPointerDown={(e) => dragStart(e, o.id)}
-            className="absolute -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, touchAction: "none", cursor: "move" }}>
-            <OverlayView o={o} onRemove={() => removeOverlay(o.id)} />
+          <div key={o.id} onPointerDown={(e) => { setSelectedId(o.id); dragStart(e, o.id); }}
+            className="absolute"
+            style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, transform: `translate(-50%,-50%) scale(${o.scale || 1})`, touchAction: "none", cursor: "move" }}>
+            <OverlayView o={o} selected={selectedId === o.id}
+              onRemove={() => { removeOverlay(o.id); setSelectedId(null); }}
+              onEdit={o.type === "text" ? () => setTextEditor({ id: o.id, text: o.text, color: o.color }) : undefined}
+              onResizeStart={(e) => resizeStart(e, o)} />
           </div>
         ))}
 
@@ -537,14 +571,26 @@ export default function StoryComposer({ user, onClose, onPublished }) {
 
       {/* Barre de DESSIN (couleurs) */}
       {drawMode ? (
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between gap-2 px-3 pt-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
-          <button onClick={clearDraw} className="text-white text-sm font-bold px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: "rgba(0,0,0,0.4)" }}>Effacer</button>
-          <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-            {["#ffffff", "#000000", "#ef4444", "#22d3ee", "#3b82f6", "#22c55e", "#eab308", "#ec4899"].map((c) => (
-              <button key={c} onClick={() => setDrawColor(c)} className="w-7 h-7 rounded-full flex-shrink-0" style={{ background: c, border: drawColor === c ? "3px solid #fff" : "2px solid rgba(255,255,255,0.5)" }} />
-            ))}
+        <div className="absolute top-0 left-0 right-0 flex flex-col gap-2 px-3 pt-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={() => setEraser(false)} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: !eraser ? C.accent : "rgba(0,0,0,0.4)" }} aria-label="Crayon">
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: !eraser ? C.onPrimary : "#fff" }}>edit</span>
+              </button>
+              <button onClick={() => setEraser(true)} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: eraser ? C.accent : "rgba(0,0,0,0.4)" }} aria-label="Gomme">
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: eraser ? C.onPrimary : "#fff" }}>ink_eraser</span>
+              </button>
+              <button onClick={clearDraw} className="text-white text-sm font-bold px-3 py-1.5 rounded-full" style={{ background: "rgba(0,0,0,0.4)" }}>Tout effacer</button>
+            </div>
+            <button onClick={() => { setDrawMode(false); setEraser(false); }} className="text-sm font-black px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: C.accent, color: C.onPrimary }}>Terminé</button>
           </div>
-          <button onClick={() => setDrawMode(false)} className="text-sm font-black px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: C.accent, color: C.onPrimary }}>Terminé</button>
+          {!eraser && (
+            <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+              {["#ffffff", "#000000", "#ef4444", "#22d3ee", "#3b82f6", "#22c55e", "#eab308", "#ec4899", "#a855f7"].map((c) => (
+                <button key={c} onClick={() => setDrawColor(c)} className="w-7 h-7 rounded-full flex-shrink-0" style={{ background: c, border: drawColor === c ? "3px solid #fff" : "2px solid rgba(255,255,255,0.5)" }} />
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -557,7 +603,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
           {/* Rail d'outils (haut droite) */}
           <div className="absolute top-0 right-0 px-4 pt-3 flex flex-col gap-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
             {[
-              { txt: "Aa", label: "Texte", on: () => document.getElementById("story-caption")?.focus() },
+              { txt: "Aa", label: "Texte", on: () => (canEdit ? setTextEditor({ text: "", color: "#ffffff" }) : toast("Texte sur les photos ; pour la vidéo, utilise la légende en bas.")) },
               { icon: "sentiment_satisfied", label: "Stickers", on: () => (canEdit ? setStickerMenu(true) : toast("Disponible sur les photos.")) },
               { icon: "music_note", label: "Musique", on: () => (canEdit ? setStickerForm("music") : toast("Disponible sur les photos.")) },
               { icon: "auto_awesome", label: "Effets", on: () => setShowFilters((s) => !s) },
@@ -661,6 +707,17 @@ export default function StoryComposer({ user, onClose, onPublished }) {
       {/* Formulaire sticker (sondage / questions / musique) */}
       {stickerForm && (
         <StickerForm type={stickerForm} onCancel={() => setStickerForm(null)} onAdd={addOverlay} />
+      )}
+
+      {/* Éditeur de texte (élément déplaçable, distinct de la légende) */}
+      {textEditor && (
+        <TextEditor value={textEditor} onCancel={() => setTextEditor(null)}
+          onSave={(t, color) => {
+            if (!t.trim()) { setTextEditor(null); return; }
+            if (textEditor.id) setOverlays((ov) => ov.map((o) => (o.id === textEditor.id ? { ...o, text: t, color } : o)));
+            else addOverlay({ type: "text", text: t, color });
+            setTextEditor(null);
+          }} />
       )}
 
       {sheet && (
@@ -782,48 +839,95 @@ function VisibilitySheet({ user, visibility, customList, onClose, onPick }) {
 }
 
 // ── Rendu DOM d'un sticker (miroir du rendu « cuit » sur canvas) ─────────────
-function OverlayView({ o, onRemove }) {
-  const stop = (e) => { e.stopPropagation(); onRemove(); };
-  const RemoveBtn = () => (
-    <button onPointerDown={(e) => e.stopPropagation()} onClick={stop}
-      className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
-      <span className="material-symbols-outlined text-white" style={{ fontSize: 13 }}>close</span>
-    </button>
-  );
+function OverlayView({ o, selected, onRemove, onEdit, onResizeStart }) {
+  const Controls = () => selected ? (
+    <>
+      <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        className="absolute -top-3 -left-3 w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.65)" }}>
+        <span className="material-symbols-outlined text-white" style={{ fontSize: 14 }}>close</span>
+      </button>
+      {onEdit && (
+        <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}
+          className="absolute -top-3 -right-3 w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.65)" }}>
+          <span className="material-symbols-outlined text-white" style={{ fontSize: 14 }}>edit</span>
+        </button>
+      )}
+      <div onPointerDown={onResizeStart}
+        className="absolute -bottom-3 -right-3 w-6 h-6 rounded-full flex items-center justify-center"
+        style={{ background: "#22d3ee", touchAction: "none", cursor: "nwse-resize" }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 14, color: "#00363e" }}>open_in_full</span>
+      </div>
+    </>
+  ) : null;
+  const ring = selected ? "0 0 0 2px rgba(34,211,238,0.9)" : "none";
+
+  if (o.type === "text") {
+    return (
+      <div className="relative" style={{ boxShadow: ring, borderRadius: 8 }}>
+        <span style={{ color: o.color || "#fff", fontWeight: 800, fontSize: 30, lineHeight: 1.15, textShadow: "0 2px 6px rgba(0,0,0,0.5)", whiteSpace: "pre-wrap", display: "inline-block", textAlign: "center", maxWidth: 260, padding: "2px 6px" }}>{o.text}</span>
+        <Controls />
+      </div>
+    );
+  }
   if (o.type === "emoji") {
-    return <div className="relative"><span style={{ fontSize: 52 }}>{o.emoji}</span><RemoveBtn /></div>;
+    return <div className="relative" style={{ boxShadow: ring, borderRadius: 12 }}><span style={{ fontSize: 52 }}>{o.emoji}</span><Controls /></div>;
   }
   if (o.type === "music") {
     return (
-      <div className="relative flex items-center gap-2 px-4 py-2 rounded-full" style={{ background: "#fff", color: "#111", maxWidth: 260 }}>
+      <div className="relative flex items-center gap-2 px-4 py-2 rounded-full" style={{ background: "#fff", color: "#111", maxWidth: 260, boxShadow: ring }}>
         <span className="material-symbols-outlined" style={{ fontSize: 18 }}>music_note</span>
         <span className="font-semibold text-sm truncate">{o.title}</span>
-        <RemoveBtn />
+        <Controls />
       </div>
     );
   }
   if (o.type === "question") {
     return (
-      <div className="relative px-4 py-3 rounded-2xl text-center" style={{ background: "#fff", color: "#111", width: 230 }}>
+      <div className="relative px-4 py-3 rounded-2xl text-center" style={{ background: "#fff", color: "#111", width: 230, boxShadow: ring }}>
         <p className="font-bold text-sm mb-2 leading-snug">{o.q}</p>
         <div className="text-xs rounded-lg py-1.5" style={{ background: "#eef1f6", color: "#8894a8" }}>Répondre…</div>
-        <RemoveBtn />
+        <Controls />
       </div>
     );
   }
   if (o.type === "poll") {
     return (
-      <div className="relative px-3 py-3 rounded-2xl text-center" style={{ background: "rgba(255,255,255,0.96)", color: "#111", width: 240 }}>
+      <div className="relative px-3 py-3 rounded-2xl text-center" style={{ background: "rgba(255,255,255,0.96)", color: "#111", width: 240, boxShadow: ring }}>
         <p className="font-bold text-sm mb-2 leading-snug">{o.q}</p>
         <div className="flex gap-2">
           <div className="flex-1 py-2 rounded-lg font-bold text-sm" style={{ background: "#22d3ee", color: "#00363e" }}>{o.a}</div>
           <div className="flex-1 py-2 rounded-lg font-bold text-sm" style={{ background: "#3b82f6", color: "#00363e" }}>{o.b}</div>
         </div>
-        <RemoveBtn />
+        <Controls />
       </div>
     );
   }
   return null;
+}
+
+// ── Éditeur de texte (élément déplaçable) ────────────────────────────────────
+function TextEditor({ value, onCancel, onSave }) {
+  const [t, setT] = useState(value.text || "");
+  const [color, setColor] = useState(value.color || "#ffffff");
+  const COLORS = ["#ffffff", "#000000", "#ef4444", "#22d3ee", "#3b82f6", "#22c55e", "#eab308", "#ec4899", "#a855f7"];
+  return (
+    <div className="fixed inset-0 z-[95] flex flex-col" style={{ background: "rgba(0,0,0,0.75)" }} onClick={onCancel}>
+      <div className="flex justify-end px-4 pt-4" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
+        <button onClick={() => onSave(t, color)} className="font-black px-4 py-2 rounded-full" style={{ background: C.accent, color: C.onPrimary }}>OK</button>
+      </div>
+      <div className="flex-1 flex items-center justify-center px-6" onClick={(e) => e.stopPropagation()}>
+        <textarea autoFocus value={t} onChange={(e) => setT(e.target.value.slice(0, 200))}
+          placeholder="Ton texte…" rows={3}
+          className="w-full bg-transparent border-none outline-none text-center resize-none"
+          style={{ color, fontWeight: 800, fontSize: 30, textShadow: "0 2px 6px rgba(0,0,0,0.5)", WebkitUserSelect: "text", userSelect: "text" }} />
+      </div>
+      <div className="flex justify-center gap-2 pb-8 px-4 flex-wrap" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: "max(env(safe-area-inset-bottom), 24px)" }}>
+        {COLORS.map((c) => (
+          <button key={c} onClick={() => setColor(c)} className="w-8 h-8 rounded-full" style={{ background: c, border: color === c ? "3px solid #fff" : "2px solid rgba(255,255,255,0.5)" }} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ── Formulaire de sticker (sondage / questions / musique) ────────────────────

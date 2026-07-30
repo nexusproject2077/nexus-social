@@ -55,6 +55,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   const currentStory = currentGroup?.stories[currentStoryIndex];
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUsername, setCurrentUsername] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [reacted, setReacted] = useState<string | null>(null);
@@ -108,6 +109,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
       const stored = localStorage.getItem('nexus_user') || localStorage.getItem('user');
       if (stored) {
         const u = JSON.parse(stored);
+        if (u?.username) setCurrentUsername(String(u.username));
         if (u?.id) { setCurrentUserId(String(u.id)); return; }
       }
       // Fallback: décoder le JWT
@@ -312,9 +314,10 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   }
 
   const isAuthor =
-    currentUserId !== null &&
-    (String(currentStory.author_id) === currentUserId ||
-      String(currentGroup.user_id) === currentUserId);
+    (currentUserId !== null &&
+      (String(currentStory.author_id) === currentUserId ||
+        String(currentGroup.user_id) === currentUserId)) ||
+    (currentUsername !== null && currentGroup.username === currentUsername);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center select-none"
