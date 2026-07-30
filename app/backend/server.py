@@ -4901,6 +4901,348 @@ async def get_story_viewers(story_id: str, current_user: dict = Depends(get_curr
     
     return viewers
 
+# ==================== INSTANTANÉS (photos éphémères façon Instagram) ====================
+# Un « instantané » est une photo prise EN DIRECT (pas d'import galerie, pas de
+# retouche), envoyée à une audience choisie : ami·e·s proches / mutuels /
+# sélection manuelle. Il n'est visible qu'UNE SEULE FOIS par destinataire, puis
+# disparaît (ou au bout de 24 h). L'auteur garde une archive privée 1 an max.
+# On réutilise les mêmes briques que les stories/messages (base64, follows,
+# notifications, push temps réel, chiffrement des DM).
+
+INSTANT_TTL_HOURS = 24
+INSTANT_ARCHIVE_DAYS = 365
+MAX_INSTANT_CAPTION = 200
+
+
+async def _mutual_follow_ids(user_id: str) -> set:
+    """Ids des utilisateurs en relation MUTUELLE (se suivent réciproquement).
+
+    Compatible ancien format (following_id) et nouveau (followed_id).
+    """
+    following = set()
+    async for f in db.follows.find({"follower_id": user_id, "status": "following"}):
+        fid = f.get("followed_id") or f.get("following_id")
+        if fid:
+            following.add(fid)
+    followers = set()
+    async for f in db.follows.find(
+        {"$or": [{"followed_id": user_id}, {"following_id": user_id}], "status": "following"}
+    ):
+        fid = f.get("follower_id")
+        if fid:
+            followers.add(fid)
+    return following & followers
+
+
+def _instant_is_active(doc: dict, now_iso: str) -> bool:
+    return (not doc.get("canceled")) and doc.get("expires_at", "") > now_iso
+
+
+class InstantCreate(BaseModel):
+    media: str                              # data URL image (photo prise en direct)
+    caption: Optional[str] = ""
+    audience: str = "mutuals"               # close_friends | mutuals | manual
+    recipient_ids: List[str] = []           # requis pour audience=manual
+
+
+class InstantReact(BaseModel):
+    emoji: str
+
+
+class InstantReply(BaseModel):
+    content: str
+
+
+class CloseFriends(BaseModel):
+    ids: List[str]
+
+
+@api_router.get("/instants/inbox")
+async def instants_inbox(current_user: dict = Depends(get_current_user)):
+    """Instantanés reçus, non encore vus et non expirés (aperçu SANS la photo :
+    le média n'est révélé qu'à l'ouverture, une seule fois)."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    seen = await db.instant_views.find(
+        {"user_id": current_user["id"]}, {"instant_id": 1}
+    ).to_list(5000)
+    seen_ids = {convert_mongo_doc_to_dict(v)["instant_id"] for v in seen}
+    raw = await db.instants.find({
+        "recipient_ids": current_user["id"],
+        "canceled": {"$ne": True},
+        "expires_at": {"$gt": now_iso},
+    }).sort("created_at", -1).to_list(500)
+    out = []
+    for r in raw:
+        d = convert_mongo_doc_to_dict(r)
+        if d["id"] in seen_ids:
+            continue
+        out.append({
+            "id": d["id"],
+            "author_id": d["author_id"],
+            "author_username": d["author_username"],
+            "author_avatar": d.get("author_avatar"),
+            "created_at": d["created_at"],
+        })
+    return out
+
+
+@api_router.get("/instants/archive")
+async def instants_archive(current_user: dict = Depends(get_current_user)):
+    """Archive privée de l'auteur (instantanés envoyés, < 1 an)."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    raw = await db.instants.find({
+        "author_id": current_user["id"],
+        "archive_expires_at": {"$gt": now_iso},
+    }).sort("created_at", -1).to_list(500)
+    out = []
+    for r in raw:
+        d = convert_mongo_doc_to_dict(r)
+        views = await db.instant_views.find({"instant_id": d["id"]}).to_list(3000)
+        vd = [convert_mongo_doc_to_dict(v) for v in views]
+        out.append({
+            "id": d["id"],
+            "media_url": d["media_url"],
+            "caption": d.get("caption", ""),
+            "audience": d.get("audience"),
+            "created_at": d["created_at"],
+            "expires_at": d["expires_at"],
+            "canceled": bool(d.get("canceled")),
+            "recipients": len(d.get("recipient_ids") or []),
+            "seen": len(vd),
+            "reactions": [
+                {"user_id": v["user_id"], "emoji": v.get("reaction")}
+                for v in vd if v.get("reaction")
+            ],
+            "active": _instant_is_active(d, now_iso),
+        })
+    return out
+
+
+@api_router.get("/instants/close-friends")
+async def get_close_friends(current_user: dict = Depends(get_current_user)):
+    """Liste « Ami·e·s proches » de l'utilisateur."""
+    me = await db.users.find_one({"id": current_user["id"]}, {"close_friends": 1})
+    ids = ((me or {}).get("close_friends")) or []
+    if not ids:
+        return []
+    users = await db.users.find(
+        {"id": {"$in": ids}}, {"id": 1, "username": 1, "profile_pic": 1}
+    ).to_list(2000)
+    return [
+        {"id": u["id"], "username": u["username"], "profile_pic": u.get("profile_pic")}
+        for u in [convert_mongo_doc_to_dict(x) for x in users]
+    ]
+
+
+@api_router.put("/instants/close-friends")
+async def set_close_friends(data: CloseFriends, current_user: dict = Depends(get_current_user)):
+    """Met à jour la liste « Ami·e·s proches »."""
+    ids = list(dict.fromkeys(
+        [i for i in (data.ids or []) if i and i != current_user["id"]]
+    ))[:500]
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"close_friends": ids}})
+    return {"success": True, "count": len(ids)}
+
+
+@api_router.post("/instants")
+async def create_instant(data: InstantCreate, current_user: dict = Depends(get_current_user)):
+    """Envoie un instantané (photo prise en direct) à l'audience choisie."""
+    if not rate_limit(f"instant:{current_user['id']}", max_attempts=20, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Trop d'instantanés envoyés. Réessayez plus tard.")
+
+    media = (data.media or "").strip()
+    if not media.startswith("data:image"):
+        raise HTTPException(status_code=400, detail="Photo requise (prise en direct).")
+    if len(media) > 8_000_000:
+        raise HTTPException(status_code=413, detail="Photo trop lourde.")
+
+    # Modération NSFW du média (comme pour les DM).
+    await screen_content(media_url=media)
+
+    audience = data.audience if data.audience in ("close_friends", "mutuals", "manual") else "mutuals"
+    if audience == "manual":
+        recipients = [r for r in (data.recipient_ids or []) if r and r != current_user["id"]]
+    elif audience == "mutuals":
+        recipients = list(await _mutual_follow_ids(current_user["id"]))
+    else:  # close_friends
+        me = await db.users.find_one({"id": current_user["id"]}, {"close_friends": 1})
+        recipients = [r for r in ((me or {}).get("close_friends") or []) if r != current_user["id"]]
+
+    recipients = list(dict.fromkeys(recipients))
+    if not recipients:
+        raise HTTPException(status_code=400, detail="Aucun destinataire pour cette audience.")
+
+    # Ne garde que des utilisateurs existants.
+    valid_raw = await db.users.find({"id": {"$in": recipients}}, {"id": 1}).to_list(3000)
+    valid_ids = {convert_mongo_doc_to_dict(u)["id"] for u in valid_raw}
+    recipients = [r for r in recipients if r in valid_ids]
+    if not recipients:
+        raise HTTPException(status_code=400, detail="Aucun destinataire valide.")
+
+    now = datetime.now(timezone.utc)
+    caption = (data.caption or "").strip()[:MAX_INSTANT_CAPTION]
+    doc = {
+        "id": str(uuid.uuid4()),
+        "author_id": current_user["id"],
+        "author_username": current_user["username"],
+        "author_avatar": current_user.get("profile_pic"),
+        "media_url": media,
+        "caption": caption,
+        "audience": audience,
+        "recipient_ids": recipients,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(hours=INSTANT_TTL_HOURS)).isoformat(),
+        "archive_expires_at": (now + timedelta(days=INSTANT_ARCHIVE_DAYS)).isoformat(),
+        "canceled": False,
+    }
+    await db.instants.insert_one(dict(doc))
+
+    for rid in recipients:
+        await create_notification(rid, "instant", current_user)
+        await push_realtime(rid, {"type": "instant", "data": {
+            "id": doc["id"],
+            "author_id": current_user["id"],
+            "author_username": current_user["username"],
+            "author_avatar": current_user.get("profile_pic"),
+        }})
+
+    return {
+        "success": True,
+        "instant": {
+            "id": doc["id"],
+            "caption": caption,
+            "audience": audience,
+            "created_at": doc["created_at"],
+            "expires_at": doc["expires_at"],
+        },
+        "recipients": len(recipients),
+    }
+
+
+@api_router.post("/instants/{instant_id}/view")
+async def view_instant(instant_id: str, current_user: dict = Depends(get_current_user)):
+    """Consomme un instantané : révèle la photo UNE seule fois pour ce destinataire."""
+    now = datetime.now(timezone.utc)
+    raw = await db.instants.find_one({"id": instant_id})
+    if not raw:
+        raise HTTPException(status_code=404, detail="Instantané introuvable.")
+    d = convert_mongo_doc_to_dict(raw)
+    if current_user["id"] not in (d.get("recipient_ids") or []):
+        raise HTTPException(status_code=403, detail="Non autorisé.")
+    if d.get("canceled") or d.get("expires_at", "") <= now.isoformat():
+        raise HTTPException(status_code=410, detail="Cet instantané a disparu.")
+    existing = await db.instant_views.find_one(
+        {"instant_id": instant_id, "user_id": current_user["id"]}
+    )
+    if existing:
+        raise HTTPException(status_code=410, detail="Déjà vu — un instantané n'est visible qu'une fois.")
+    await db.instant_views.insert_one({
+        "id": str(uuid.uuid4()),
+        "instant_id": instant_id,
+        "user_id": current_user["id"],
+        "viewed_at": now.isoformat(),
+        "reaction": None,
+    })
+    await push_realtime(d["author_id"], {"type": "instant_seen", "data": {
+        "instant_id": instant_id, "by": current_user["id"], "by_username": current_user["username"],
+    }})
+    return {
+        "id": d["id"],
+        "media_url": d["media_url"],
+        "caption": d.get("caption", ""),
+        "author_id": d["author_id"],
+        "author_username": d["author_username"],
+        "author_avatar": d.get("author_avatar"),
+        "created_at": d["created_at"],
+    }
+
+
+@api_router.post("/instants/{instant_id}/react")
+async def react_instant(instant_id: str, data: InstantReact, current_user: dict = Depends(get_current_user)):
+    """Réagit à un instantané avec un emoji (notifie l'auteur)."""
+    emoji = (data.emoji or "").strip()[:8]
+    if not emoji:
+        raise HTTPException(status_code=400, detail="Emoji requis.")
+    view = await db.instant_views.find_one(
+        {"instant_id": instant_id, "user_id": current_user["id"]}
+    )
+    if not view:
+        raise HTTPException(status_code=403, detail="Vous devez d'abord voir l'instantané.")
+    await db.instant_views.update_one(
+        {"instant_id": instant_id, "user_id": current_user["id"]},
+        {"$set": {"reaction": emoji, "reacted_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    raw = await db.instants.find_one({"id": instant_id}, {"author_id": 1})
+    if raw:
+        author_id = convert_mongo_doc_to_dict(raw)["author_id"]
+        await push_realtime(author_id, {"type": "instant_reaction", "data": {
+            "instant_id": instant_id, "by": current_user["id"],
+            "by_username": current_user["username"], "emoji": emoji,
+        }})
+        await create_notification(author_id, "instant_reaction", current_user)
+    return {"success": True, "emoji": emoji}
+
+
+@api_router.post("/instants/{instant_id}/reply")
+async def reply_instant(instant_id: str, data: InstantReply, current_user: dict = Depends(get_current_user)):
+    """Répond à un instantané : la réponse arrive en MESSAGE PRIVÉ à l'auteur."""
+    content = (data.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Message vide.")
+    raw = await db.instants.find_one({"id": instant_id})
+    if not raw:
+        raise HTTPException(status_code=404, detail="Instantané introuvable.")
+    d = convert_mongo_doc_to_dict(raw)
+    if current_user["id"] not in (d.get("recipient_ids") or []):
+        raise HTTPException(status_code=403, detail="Non autorisé.")
+    author = convert_mongo_doc_to_dict(await db.users.find_one({"id": d["author_id"]}) or {})
+    now = datetime.now(timezone.utc)
+    mid = str(uuid.uuid4())
+    msg = {
+        "id": mid,
+        "sender_id": current_user["id"],
+        "sender_username": current_user["username"],
+        "sender_profile_pic": current_user.get("profile_pic"),
+        "recipient_id": d["author_id"],
+        "recipient_username": author.get("username", ""),
+        "content": encrypt_message(content),
+        "media_url": None,
+        "media_type": None,
+        "reply_to_id": None,
+        "instant_id": instant_id,
+        "expires_at": None,
+        "read": False,
+        "created_at": now.isoformat(),
+    }
+    await db.messages.insert_one(msg)
+    await push_realtime(d["author_id"], {"type": "new_message", "data": {
+        "id": mid,
+        "sender_id": current_user["id"],
+        "sender_username": current_user["username"],
+        "sender_profile_pic": current_user.get("profile_pic"),
+        "recipient_id": d["author_id"],
+        "content": content,
+        "instant_id": instant_id,
+        "created_at": now.isoformat(),
+    }})
+    return {"success": True}
+
+
+@api_router.delete("/instants/{instant_id}")
+async def cancel_instant(instant_id: str, current_user: dict = Depends(get_current_user)):
+    """« Annuler » : l'auteur retire son instantané (juste après l'envoi ou plus tard)."""
+    raw = await db.instants.find_one({"id": instant_id})
+    if not raw:
+        raise HTTPException(status_code=404, detail="Instantané introuvable.")
+    d = convert_mongo_doc_to_dict(raw)
+    if d["author_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Non autorisé.")
+    await db.instants.update_one({"id": instant_id}, {"$set": {"canceled": True}})
+    for rid in (d.get("recipient_ids") or []):
+        await push_realtime(rid, {"type": "instant_canceled", "data": {"instant_id": instant_id}})
+    return {"success": True}
+
+
 # ==================== GDPR COMPLIANCE ROUTES ====================
 
 # Models GDPR

@@ -8,6 +8,7 @@ import { Check, CheckCheck } from "lucide-react";
 import { compressImage, dataUrlBytes } from "@/lib/compressImage";
 import { linkify, extractFirstUrl } from "@/lib/linkify";
 import LinkPreview from "@/components/LinkPreview";
+import InstantsEntry from "@/components/instants/InstantsEntry";
 
 const C = {
   bg:         "#020617",
@@ -1413,6 +1414,12 @@ export default function MessagesPage({ user }) {
           style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>
           {user?.username || "Messages"}
         </h2>
+        {/* Instantané (photo éphémère façon Instagram). */}
+        <button onClick={() => window.dispatchEvent(new CustomEvent("nexus:instant-open"))} title="Nouvel instantané"
+          className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
+          style={{ background: `${C.cyan}18`, color: C.cyan }}>
+          <span className="material-symbols-outlined text-lg">photo_camera</span>
+        </button>
         {/* Un seul bouton « Nouveau message » (façon Insta : DM ou groupe). */}
         <button onClick={openNewMessageModal} title="Nouveau message"
           className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
@@ -2177,6 +2184,11 @@ export default function MessagesPage({ user }) {
           </div>
         )}
       </div>
+
+      {/* Instantanés (photos éphémères façon Instagram) : FAB + reçus + caméra.
+          Monté au niveau stable de la page (jamais remonté avec les panneaux).
+          Masqué quand une conversation est ouverte sur mobile. */}
+      <InstantsEntry user={user} hidden={hasSelection} />
 
       {/* ── Menu appui long conversation (mobile) : façon Instagram ── */}
       {convMenu && (
