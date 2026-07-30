@@ -51,6 +51,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
   const streamRef = useRef(null);
   const pipStreamRef = useRef(null);
   const lastTapRef = useRef(0);
+  const triedFallbackRef = useRef(false);   // repli facingMode déjà tenté ?
 
   const pendingPhotoRef = useRef(null);   // photo capturée en attente (audience manuelle vide)
 
@@ -64,6 +65,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
   const [sheet, setSheet] = useState(false);        // sélecteur d'audience ouvert
   const [promo, setPromo] = useState(false);        // modale double caméra
   const [sending, setSending] = useState(false);
+  const [ready, setReady] = useState(false);        // flux vidéo prêt (dimensions connues)
   const [showHint, setShowHint] = useState(true);   // indice « double-appui » (transitoire)
 
   // L'indice « double-appui » n'apparaît que quelques secondes (au démarrage
@@ -107,28 +109,61 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
     } catch { return null; }
   };
 
+  // Attache un flux au <video> et signale « prêt » dès que les dimensions
+  // sont connues (loadedmetadata / playing).
+  const attach = useCallback((stream) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.srcObject = stream;
+    const mark = () => { if (v.videoWidth > 0) setReady(true); };
+    v.onloadedmetadata = () => { v.play?.().catch(() => {}); mark(); };
+    v.onplaying = mark;
+    v.play?.().then(mark).catch(() => {});
+    if (v.readyState >= 1) mark();
+  }, []);
+
   const startMain = useCallback(async (f) => {
     stopStream(streamRef);
     setTorch(false);
+    setReady(false);
+    triedFallbackRef.current = false;
+    // UN SEUL accès caméra (iOS n'autorise qu'une caméra à la fois ; deux
+    // getUserMedia d'affilée renvoyaient une image noire). Si les labels sont
+    // déjà connus (permission accordée), on cible directement le bon objectif ;
+    // sinon on laisse facingMode décider pour cette 1re ouverture.
+    let stream = null;
     try {
-      // 1) permission + flux initial (donne accès aux labels des caméras)
-      let stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: false });
-      // 2) rebascule sur le bon capteur si nécessaire (évite l'ultra grand-angle)
       const devId = await preferredDeviceId(f);
-      const cur = stream.getVideoTracks?.()[0]?.getSettings?.().deviceId;
-      if (devId && devId !== cur) {
-        try {
-          const better = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: devId } }, audio: false });
-          stream.getTracks().forEach((t) => t.stop());
-          stream = better;
-        } catch { /* garde le flux initial */ }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(
+          devId ? { video: { deviceId: { exact: devId } }, audio: false }
+                : { video: { facingMode: { ideal: f } }, audio: false }
+        );
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: f }, audio: false });
       }
-      streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play().catch(() => {}); }
     } catch {
       toast.error("Caméra inaccessible — autorise l'accès à l'appareil photo.");
+      return;
     }
-  }, []);
+    streamRef.current = stream;
+    attach(stream);
+
+    // Filet de sécurité : si aucune image après 2,5 s (capteur qui renvoie du
+    // noir), on retombe UNE fois sur facingMode simple.
+    setTimeout(async () => {
+      if (streamRef.current !== stream) return;                 // déjà remplacé
+      if (videoRef.current && videoRef.current.videoWidth > 0) return; // ok
+      if (triedFallbackRef.current) return;
+      triedFallbackRef.current = true;
+      try {
+        stopStream(streamRef);
+        const fb = await navigator.mediaDevices.getUserMedia({ video: { facingMode: f }, audio: false });
+        streamRef.current = fb;
+        attach(fb);
+      } catch { /* noop */ }
+    }, 2500);
+  }, [attach]);
 
   // Démarre la caméra selon l'orientation choisie.
   useEffect(() => { startMain(facing); }, [facing, startMain]);
@@ -271,6 +306,12 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
               className="absolute top-3 left-3 rounded-2xl object-cover border-2 border-white/90 shadow-lg"
               style={{ width: "30%", aspectRatio: "3 / 4", transform: "scaleX(-1)", display: dual ? "block" : "none" }} />
             {flashPulse && <div className="absolute inset-0 bg-white" style={{ opacity: 0.85 }} />}
+            {!ready && !sending && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ background: "rgba(0,0,0,0.35)" }}>
+                <div className="animate-spin rounded-full h-9 w-9 border-b-2" style={{ borderColor: C.accent }} />
+                <span className="text-[12px] text-white/70">Initialisation de la caméra…</span>
+              </div>
+            )}
             {sending && (
               <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.55)" }}>
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: C.accent }} />
@@ -305,7 +346,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
             </span>
           </button>
 
-          <button onClick={capture} disabled={sending} className="relative w-[76px] h-[76px] rounded-full active:scale-95 transition-transform disabled:opacity-50" aria-label="Prendre et envoyer">
+          <button onClick={capture} disabled={sending || !ready} className="relative w-[76px] h-[76px] rounded-full active:scale-95 transition-transform disabled:opacity-40" aria-label="Prendre et envoyer">
             <span className="absolute inset-0 rounded-full border-4 border-white/70" />
             <span className="absolute inset-[6px] rounded-full bg-white" />
           </button>
