@@ -5051,13 +5051,16 @@ async def create_instant(data: InstantCreate, current_user: dict = Depends(get_c
         raise HTTPException(status_code=429, detail="Trop d'instantanés envoyés. Réessayez plus tard.")
 
     media = (data.media or "").strip()
-    if not media.startswith("data:image"):
-        raise HTTPException(status_code=400, detail="Photo requise (prise en direct).")
-    if len(media) > 8_000_000:
-        raise HTTPException(status_code=413, detail="Photo trop lourde.")
+    is_image = media.startswith("data:image")
+    is_video = media.startswith("data:video")
+    if not (is_image or is_video):
+        raise HTTPException(status_code=400, detail="Média invalide (photo ou vidéo prise en direct).")
+    if len(media) > 12_000_000:
+        raise HTTPException(status_code=413, detail="Média trop lourd.")
 
-    # Modération NSFW du média (comme pour les DM).
-    await screen_content(media_url=media)
+    # Modération NSFW : uniquement l'image (le service ne traite pas la vidéo).
+    if is_image:
+        await screen_content(media_url=media)
 
     audience = data.audience if data.audience in ("close_friends", "mutuals", "manual") else "mutuals"
     if audience == "manual":

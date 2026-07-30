@@ -24,6 +24,9 @@ const C = {
 const REACT_EMOJIS = ["❤️", "😂", "😮", "😍", "🔥", "👏", "😢", "🙏"];
 const DUAL_PROMO_KEY = "nexus_instant_dual_promo_seen";
 
+const isVideoMedia = (u) =>
+  typeof u === "string" && (u.startsWith("data:video") || /\.(mp4|webm|mov)(\?|$)/i.test(u));
+
 // iOS/Safari : la sélection d'objectif par deviceId renvoie un flux « vivant »
 // mais NOIR (bug WebKit). Sur iOS on s'en tient donc à facingMode (rendu
 // fiable) ; la sélection fine par deviceId reste réservée aux autres plateformes
@@ -31,6 +34,17 @@ const DUAL_PROMO_KEY = "nexus_instant_dual_promo_seen";
 const IS_IOS = typeof navigator !== "undefined" &&
   (/iP(hone|ad|od)/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1));
+
+// Forme « squircle » (superellipse) appliquée en masque CSS au viseur.
+const SQUIRCLE_PATH = "M100.00,50.00 L99.88,65.65 L99.52,72.08 L98.91,76.94 L98.06,80.93 L96.96,84.33 L95.59,87.27 L93.96,89.82 L92.04,92.04 L89.82,93.96 L87.27,95.59 L84.33,96.96 L80.93,98.06 L76.94,98.91 L72.08,99.52 L65.65,99.88 L50.00,100.00 L34.35,99.88 L27.92,99.52 L23.06,98.91 L19.07,98.06 L15.67,96.96 L12.73,95.59 L10.18,93.96 L7.96,92.04 L6.04,89.82 L4.41,87.27 L3.04,84.33 L1.94,80.93 L1.09,76.94 L0.48,72.08 L0.12,65.65 L0.00,50.00 L0.12,34.35 L0.48,27.92 L1.09,23.06 L1.94,19.07 L3.04,15.67 L4.41,12.73 L6.04,10.18 L7.96,7.96 L10.18,6.04 L12.73,4.41 L15.67,3.04 L19.07,1.94 L23.06,1.09 L27.92,0.48 L34.35,0.12 L50.00,0.00 L65.65,0.12 L72.08,0.48 L76.94,1.09 L80.93,1.94 L84.33,3.04 L87.27,4.41 L89.82,6.04 L92.04,7.96 L93.96,10.18 L95.59,12.73 L96.96,15.67 L98.06,19.07 L98.91,23.06 L99.52,27.92 L99.88,34.35 Z";
+const SQUIRCLE_MASK = `url("data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'><path d='${SQUIRCLE_PATH}' fill='black'/></svg>`
+)}")`;
+const squircleStyle = {
+  WebkitMaskImage: SQUIRCLE_MASK, maskImage: SQUIRCLE_MASK,
+  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+  WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
+};
 
 function Avatar({ username, pic, size = 40, ring = false }) {
   const s = `${size}px`;
@@ -62,6 +76,12 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
   const triedFallbackRef = useRef(false);   // repli facingMode déjà tenté ?
 
   const pendingPhotoRef = useRef(null);   // photo capturée en attente (audience manuelle vide)
+  const recorderRef = useRef(null);       // MediaRecorder (vidéo appui long)
+  const chunksRef = useRef([]);
+  const recordingRef = useRef(false);     // état d'enregistrement (synchrone)
+  const pressRef = useRef({ timer: null, longPress: false });
+  const progressRef = useRef(null);
+  const maxRef = useRef(null);
 
   const [facing, setFacing] = useState("environment");
   const [dual, setDual] = useState(false);
@@ -73,9 +93,10 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
   const [sheet, setSheet] = useState(false);        // sélecteur d'audience ouvert
   const [sheetMode, setSheetMode] = useState(null); // "manual" pour ouvrir direct sur la sélection
   const [promo, setPromo] = useState(false);        // modale double caméra
-  const [sending, setSending] = useState(false);
   const [ready, setReady] = useState(false);        // flux vidéo prêt (dimensions connues)
   const [showHint, setShowHint] = useState(true);   // indice « double-appui » (transitoire)
+  const [recording, setRecording] = useState(false);
+  const [recordPct, setRecordPct] = useState(0);    // progression vidéo 0..100 (max 6 s)
 
   // L'indice « double-appui » n'apparaît que quelques secondes (au démarrage
   // et à chaque changement d'état de la double caméra).
@@ -179,8 +200,13 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
   // Démarre la caméra selon l'orientation choisie.
   useEffect(() => { startMain(facing); }, [facing, startMain]);
 
-  // Nettoyage : libère les caméras à la fermeture.
-  useEffect(() => () => { stopStream(streamRef); stopStream(pipStreamRef); }, []);
+  // Nettoyage : libère les caméras + stoppe l'enregistrement à la fermeture.
+  useEffect(() => () => {
+    stopStream(streamRef); stopStream(pipStreamRef);
+    clearTimeout(maxRef.current); clearInterval(progressRef.current); clearTimeout(pressRef.current.timer);
+    const rec = recorderRef.current;
+    if (rec && rec.state !== "inactive") { try { rec.stop(); } catch { /* noop */ } }
+  }, []);
 
   const enableDual = async () => {
     try {
@@ -237,28 +263,22 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
 
   // Envoi. Peut recevoir l'audience/liste explicitement (utile depuis le
   // sélecteur, où l'état n'est pas encore à jour).
-  // Envoi/publication direct. L'audience peut être vide : on publie quand même
-  // (pas de mise en attente). Peut recevoir l'audience/liste explicitement.
-  const doSend = async (media, aud = audience, list = manual) => {
-    setSending(true);
-    try {
-      const { data } = await axios.post(`${API}/instants`, {
-        media,
-        caption: caption.trim(),
-        audience: aud,
-        recipient_ids: aud === "manual" ? list.map((u) => u.id) : [],
-      });
-      pendingPhotoRef.current = null;
-      onSent(data.instant, data.recipients);
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Envoi impossible.");
-      setSending(false);
-    }
+  // Envoi/publication EN ARRIÈRE-PLAN : pas de blocage ni de chargement, la
+  // caméra reste utilisable et l'écran NE se ferme PAS. Média = photo OU vidéo.
+  const doSend = (media, aud = audience, list = manual) => {
+    axios.post(`${API}/instants`, {
+      media,
+      caption: caption.trim(),
+      audience: aud,
+      recipient_ids: aud === "manual" ? list.map((u) => u.id) : [],
+    })
+      .then(({ data }) => onSent(data.instant, data.recipients))
+      .catch((e) => toast.error(e.response?.data?.detail || "Envoi impossible."));
+    setCaption("");
   };
 
-  // Capture → ENVOI DIRECT (pas d'étape « reprendre / envoyer »).
+  // Capture PHOTO (appui court) → envoi direct immédiat.
   const capture = () => {
-    if (sending) return;
     const v = videoRef.current;
     if (!v || !v.videoWidth) { toast.error("Caméra pas encore prête."); return; }
     if (torch) { setFlashPulse(true); setTimeout(() => setFlashPulse(false), 220); }
@@ -284,10 +304,70 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       roundRect(ctx, x, y, pw, ph, pw * 0.14); ctx.stroke();
     }
     const media = canvas.toDataURL("image/jpeg", 0.85);
-    // IMPORTANT : on garde la caméra ALLUMÉE. Si on coupait le flux ici,
-    // l'aperçu resterait noir dès que l'envoi échoue (ex. audience sans
-    // destinataire). Les flux sont libérés à la fermeture de l'écran.
+    // IMPORTANT : on garde la caméra ALLUMÉE (aperçu conservé, écran non fermé).
     doSend(media);
+  };
+
+  // Enregistrement VIDÉO (appui long sur le déclencheur), max 6 secondes.
+  const stopRecording = () => {
+    clearTimeout(maxRef.current);
+    clearInterval(progressRef.current);
+    const rec = recorderRef.current;
+    if (rec && rec.state !== "inactive") { try { rec.stop(); } catch { /* noop */ } }
+  };
+
+  const startRecording = () => {
+    const stream = streamRef.current;
+    if (!stream || typeof MediaRecorder === "undefined") {
+      toast.error("Vidéo non prise en charge sur cet appareil.");
+      return;
+    }
+    let mime = "";
+    for (const m of ["video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]) {
+      if (MediaRecorder.isTypeSupported?.(m)) { mime = m; break; }
+    }
+    let rec;
+    try {
+      rec = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 2_500_000 });
+    } catch {
+      toast.error("Vidéo non prise en charge sur cet appareil.");
+      return;
+    }
+    chunksRef.current = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
+    rec.onstop = () => {
+      recordingRef.current = false; setRecording(false); setRecordPct(0);
+      const blob = new Blob(chunksRef.current, { type: rec.mimeType || mime || "video/webm" });
+      chunksRef.current = [];
+      if (blob.size > 0) {
+        const reader = new FileReader();
+        reader.onload = () => doSend(reader.result);   // data:video/...
+        reader.readAsDataURL(blob);
+      }
+    };
+    recorderRef.current = rec;
+    recordingRef.current = true; setRecording(true); setRecordPct(0);
+    try { rec.start(); } catch { recordingRef.current = false; setRecording(false); return; }
+    const t0 = Date.now();
+    progressRef.current = setInterval(() => setRecordPct(Math.min(100, ((Date.now() - t0) / 6000) * 100)), 80);
+    maxRef.current = setTimeout(stopRecording, 6000);   // arrêt automatique à 6 s
+  };
+
+  // Déclencheur : appui court = photo, appui long = vidéo (max 6 s).
+  const onShutterDown = (e) => {
+    if (!ready) return;
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
+    pressRef.current.longPress = false;
+    clearTimeout(pressRef.current.timer);
+    pressRef.current.timer = setTimeout(() => {
+      pressRef.current.longPress = true;
+      startRecording();
+    }, 260);
+  };
+  const onShutterUp = () => {
+    clearTimeout(pressRef.current.timer);
+    if (recordingRef.current) { stopRecording(); return; }
+    if (!pressRef.current.longPress) capture();
   };
 
   const audienceLabel = { mutuals: "Mutuels", close_friends: "Ami·e·s proches", manual: manual.length ? `Sélection (${manual.length})` : "Sélection" }[audience];
@@ -309,7 +389,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       {/* Zone viseur / aperçu */}
       <div className="flex-1 flex items-center justify-center px-4 min-h-0">
         <div className="relative w-full" style={{ maxWidth: 460 }}>
-          <div className="relative overflow-hidden rounded-[36px] bg-black" style={{ aspectRatio: "3 / 4" }} onClick={onPreviewTap}>
+          <div className="relative overflow-hidden bg-black" style={{ aspectRatio: "3 / 4", ...squircleStyle }} onClick={onPreviewTap}>
             <video ref={videoRef} muted playsInline autoPlay
               className="w-full h-full object-cover"
               style={{ transform: facing === "user" ? "scaleX(-1)" : "none" }} />
@@ -318,15 +398,17 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
               className="absolute top-3 left-3 rounded-2xl object-cover border-2 border-white/90 shadow-lg"
               style={{ width: "30%", aspectRatio: "3 / 4", transform: "scaleX(-1)", display: dual ? "block" : "none" }} />
             {flashPulse && <div className="absolute inset-0 bg-white" style={{ opacity: 0.85 }} />}
-            {!ready && !sending && (
+            {!ready && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ background: "rgba(0,0,0,0.35)" }}>
                 <div className="animate-spin rounded-full h-9 w-9 border-b-2" style={{ borderColor: C.accent }} />
                 <span className="text-[12px] text-white/70">Initialisation de la caméra…</span>
               </div>
             )}
-            {sending && (
-              <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.55)" }}>
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: C.accent }} />
+            {recording && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-bold text-white"
+                style={{ background: "rgba(239,68,68,0.9)" }}>
+                <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                {Math.min(6, Math.ceil((recordPct / 100) * 6))}s / 6s
               </div>
             )}
             {showHint && !IS_IOS && (
@@ -358,9 +440,26 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
             </span>
           </button>
 
-          <button onClick={capture} disabled={sending || !ready} className="relative w-[76px] h-[76px] rounded-full active:scale-95 transition-transform disabled:opacity-40" aria-label="Prendre et envoyer">
-            <span className="absolute inset-0 rounded-full border-4 border-white/70" />
-            <span className="absolute inset-[6px] rounded-full bg-white" />
+          <button
+            onPointerDown={onShutterDown}
+            onPointerUp={onShutterUp}
+            onPointerCancel={onShutterUp}
+            onContextMenu={(e) => e.preventDefault()}
+            disabled={!ready}
+            style={{ touchAction: "none" }}
+            className="relative w-[76px] h-[76px] rounded-full active:scale-95 transition-transform disabled:opacity-40"
+            aria-label="Appui court : photo · Appui long : vidéo (max 6 s)">
+            <span className="absolute inset-0 rounded-full border-4" style={{ borderColor: recording ? "#ef4444" : "rgba(255,255,255,0.7)" }} />
+            {recording
+              ? <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md bg-red-500" style={{ width: 28, height: 28 }} />
+              : <span className="absolute inset-[6px] rounded-full bg-white" />}
+            {recording && (
+              <svg className="absolute inset-0 -rotate-90" viewBox="0 0 76 76" style={{ pointerEvents: "none" }}>
+                <circle cx="38" cy="38" r="35" fill="none" stroke="#ef4444" strokeWidth="4" strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 35}
+                  strokeDashoffset={(1 - recordPct / 100) * 2 * Math.PI * 35} />
+              </svg>
+            )}
           </button>
 
           <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
@@ -588,7 +687,9 @@ function InstantViewer({ item, onClose, onConsumed }) {
           </div>
         ) : data ? (
           <div className="relative w-full h-full flex items-center justify-center">
-            <img src={data.media_url} alt="Instantané" className="max-w-full max-h-full object-contain rounded-2xl" />
+            {isVideoMedia(data.media_url)
+              ? <video src={data.media_url} className="max-w-full max-h-full object-contain rounded-2xl" autoPlay playsInline muted loop />
+              : <img src={data.media_url} alt="Instantané" className="max-w-full max-h-full object-contain rounded-2xl" />}
             {data.caption && (
               <p className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[90%] text-center text-white text-sm px-4 py-2 rounded-2xl"
                 style={{ background: "rgba(0,0,0,0.45)" }}>{data.caption}</p>
@@ -671,7 +772,12 @@ function InstantsArchive({ onClose, onChanged }) {
           <div className="grid grid-cols-3 gap-2">
             {items.map((it) => (
               <button key={it.id} onClick={() => setOpen(it)} className="relative rounded-xl overflow-hidden" style={{ aspectRatio: "3 / 4", background: C.container }}>
-                <img src={it.media_url} alt="" className="w-full h-full object-cover" style={{ opacity: it.canceled ? 0.35 : 1 }} />
+                {isVideoMedia(it.media_url)
+                  ? <video src={it.media_url} className="w-full h-full object-cover" muted playsInline preload="metadata" style={{ opacity: it.canceled ? 0.35 : 1 }} />
+                  : <img src={it.media_url} alt="" className="w-full h-full object-cover" style={{ opacity: it.canceled ? 0.35 : 1 }} />}
+                {isVideoMedia(it.media_url) && (
+                  <span className="material-symbols-outlined absolute top-1 right-1 text-white text-[16px]" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>videocam</span>
+                )}
                 <div className="absolute bottom-0 inset-x-0 px-1.5 py-1 flex items-center justify-between text-[10px] font-bold text-white"
                   style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent)" }}>
                   <span className="flex items-center gap-0.5"><span className="material-symbols-outlined text-[13px]">visibility</span>{it.seen}/{it.recipients}</span>
@@ -689,7 +795,9 @@ function InstantsArchive({ onClose, onChanged }) {
             <button className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10"><span className="material-symbols-outlined text-white">close</span></button>
           </div>
           <div className="flex-1 flex items-center justify-center min-h-0 px-3" onClick={(e) => e.stopPropagation()}>
-            <img src={open.media_url} alt="" className="max-w-full max-h-full object-contain rounded-2xl" />
+            {isVideoMedia(open.media_url)
+              ? <video src={open.media_url} className="max-w-full max-h-full object-contain rounded-2xl" autoPlay playsInline muted loop controls />
+              : <img src={open.media_url} alt="" className="max-w-full max-h-full object-contain rounded-2xl" />}
           </div>
           <div className="px-4 pb-6 pt-3" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}>
             {open.caption && <p className="text-center text-white/90 text-sm mb-2">{open.caption}</p>}
@@ -752,7 +860,7 @@ export default function InstantsEntry({ user, hidden = false }) {
   }, [user, isMobile, loadInbox]);
 
   const onSent = (instant, recipients) => {
-    setScreen(null);
+    // On NE ferme PAS la caméra : l'utilisateur reste pour enchaîner.
     toast.success(recipients > 0
       ? `Instantané envoyé à ${recipients} destinataire${recipients > 1 ? "s" : ""}`
       : "Instantané publié");
@@ -813,8 +921,8 @@ export default function InstantsEntry({ user, hidden = false }) {
 
       {/* Snackbar « Annuler » juste après l'envoi */}
       {undo && (
-        <div className="fixed z-[70] left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl"
-          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 90px)", background: C.high, color: C.onSurface }}>
+        <div className="fixed z-[95] left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl"
+          style={{ top: "calc(env(safe-area-inset-top, 0px) + 60px)", background: C.high, color: C.onSurface }}>
           <span className="text-sm font-semibold">Instantané envoyé</span>
           <button onClick={doUndo} className="text-sm font-black" style={{ color: C.accent }}>Annuler</button>
         </div>
