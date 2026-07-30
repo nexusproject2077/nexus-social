@@ -100,14 +100,15 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
     } catch { setViewers([]); }
   };
 
-  // Récupérer l'ID de l'utilisateur connecté depuis le localStorage
+  // Récupérer l'ID de l'utilisateur connecté depuis le localStorage.
+  // L'app stocke l'utilisateur sous « nexus_user » (pas « user ») : sans ça,
+  // l'auteur n'était pas reconnu → impossible de supprimer ses propres stories.
   useEffect(() => {
     try {
-      const stored = localStorage.getItem('user');
+      const stored = localStorage.getItem('nexus_user') || localStorage.getItem('user');
       if (stored) {
-        const user = JSON.parse(stored);
-        setCurrentUserId(String(user.id));
-        return;
+        const u = JSON.parse(stored);
+        if (u?.id) { setCurrentUserId(String(u.id)); return; }
       }
       // Fallback: décoder le JWT
       const token = localStorage.getItem('token');
