@@ -813,6 +813,7 @@ class Story(BaseModel):
     created_at: str
     expires_at: str
     has_viewed: bool = False
+    is_mine: bool = False                 # story de l'utilisateur courant (autorité serveur)
 
 class StoryGroup(BaseModel):
     user_id: str
@@ -4820,7 +4821,8 @@ async def get_stories_feed(current_user: dict = Depends(get_current_user)):
             "user_id": current_user["id"]
         })
         story["has_viewed"] = bool(view_raw)
-        
+        story["is_mine"] = (author_id == current_user["id"])
+
         if author_id not in stories_by_user:
             stories_by_user[author_id] = {
                 "user_id": author_id,

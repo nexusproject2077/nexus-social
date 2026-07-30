@@ -95,6 +95,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   const pressRef = useRef({ timer: null, longPress: false });
   const progressRef = useRef(null);
   const maxRef = useRef(null);
+  const rafRef = useRef(null);
 
   const [facing, setFacing] = useState("user");
   const [ready, setReady] = useState(false);
@@ -185,13 +186,15 @@ export default function StoryComposer({ user, onClose, onPublished }) {
 
   const startCam = useCallback(async (f) => {
     stopStream(); setReady(false); setTorch(false);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: false });
-      streamRef.current = stream;
-      attach(stream);
-    } catch {
-      toast.error("Caméra inaccessible — tu peux importer depuis la galerie.");
+    // audio: true → les vidéos auront du SON (aperçu vidéo resté muet).
+    let stream = null;
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: true }); }
+    catch {
+      try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: false }); }
+      catch { toast.error("Caméra inaccessible — tu peux importer depuis la galerie."); return; }
     }
+    streamRef.current = stream;
+    attach(stream);
   }, [attach]);
 
   useEffect(() => { if (mode === "camera") startCam(facing); else stopStream(); }, [facing, mode, startCam]);
@@ -204,6 +207,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   useEffect(() => () => {
     stopStream();
     clearTimeout(maxRef.current); clearInterval(progressRef.current); clearTimeout(pressRef.current.timer);
+    cancelAnimationFrame(rafRef.current);
     const r = recorderRef.current; if (r && r.state !== "inactive") { try { r.stop(); } catch { /* noop */ } }
     try { audioRef.current?.pause(); } catch { /* noop */ }
   }, []);
@@ -248,24 +252,52 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     const r = recorderRef.current;
     if (r && r.state !== "inactive") { try { r.stop(); } catch { /* noop */ } }
   };
+  // Enregistrement via un canvas 9:16 : recadrage vertical (plus de bandes
+  // noires), miroir pour la caméra frontale (comme l'aperçu), + piste audio.
   const startRec = () => {
-    const stream = streamRef.current;
-    if (!stream || typeof MediaRecorder === "undefined") { toast.error("Vidéo non prise en charge."); return; }
+    const src = streamRef.current;
+    const v = videoRef.current;
+    if (!src || !v || typeof MediaRecorder === "undefined") { toast.error("Vidéo non prise en charge."); return; }
+    const W = 720, H = 1280;
+    const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    const draw = () => {
+      if (v.videoWidth) {
+        const vw = v.videoWidth, vh = v.videoHeight, sR = W / H, iR = vw / vh;
+        let dw, dh; if (iR > sR) { dh = H; dw = H * iR; } else { dw = W; dh = W / iR; }
+        ctx.save();
+        if (facing === "user") { ctx.translate(W, 0); ctx.scale(-1, 1); }
+        ctx.drawImage(v, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        ctx.restore();
+      }
+      rafRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+
+    let stream;
+    if (typeof canvas.captureStream === "function") {
+      stream = canvas.captureStream(30);
+      src.getAudioTracks().forEach((t) => { try { stream.addTrack(t); } catch { /* noop */ } });
+    } else {
+      cancelAnimationFrame(rafRef.current);  // repli : flux brut
+      stream = src;
+    }
     let mime = "";
-    for (const m of ["video/mp4", "video/webm;codecs=vp9", "video/webm"]) { if (MediaRecorder.isTypeSupported?.(m)) { mime = m; break; } }
+    for (const m of ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]) { if (MediaRecorder.isTypeSupported?.(m)) { mime = m; break; } }
     let r;
-    try { r = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 2_500_000 }); }
-    catch { toast.error("Vidéo non prise en charge."); return; }
+    try { r = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 3_000_000 }); }
+    catch { cancelAnimationFrame(rafRef.current); toast.error("Vidéo non prise en charge."); return; }
     chunksRef.current = [];
     r.ondataavailable = (e) => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
     r.onstop = () => {
+      cancelAnimationFrame(rafRef.current);
       recordingRef.current = false; setRecording(false); setRecordPct(0);
       const blob = new Blob(chunksRef.current, { type: r.mimeType || mime || "video/webm" });
       chunksRef.current = [];
-      if (blob.size > 0) { const fr = new FileReader(); fr.onload = () => toEdit(fr.result, "video"); fr.readAsDataURL(blob); }
+      if (blob.size > 0) { const fr = new FileReader(); fr.onload = () => toEdit(fr.result, "video", "cover"); fr.readAsDataURL(blob); }
     };
     recorderRef.current = r; recordingRef.current = true; setRecording(true); setRecordPct(0);
-    try { r.start(); } catch { recordingRef.current = false; setRecording(false); return; }
+    try { r.start(); } catch { cancelAnimationFrame(rafRef.current); recordingRef.current = false; setRecording(false); return; }
     const t0 = Date.now();
     progressRef.current = setInterval(() => setRecordPct(Math.min(100, ((Date.now() - t0) / MAX_VIDEO_MS) * 100)), 80);
     maxRef.current = setTimeout(stopRec, MAX_VIDEO_MS);
@@ -427,9 +459,15 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   const drawEnd = () => { drawingActiveRef.current = false; };
   const clearDraw = () => { const c = drawCanvasRef.current; if (c) c.getContext("2d")?.clearRect(0, 0, c.width, c.height); };
 
-  const dragStart = (e, id) => {
+  const dragStart = (e, o) => {
     if (drawMode) return;
-    e.stopPropagation(); e.preventDefault?.(); dragRef.current = id;
+    e.stopPropagation(); e.preventDefault?.();
+    const r = stageRef.current?.getBoundingClientRect();
+    const pfx = r ? (e.clientX - r.left) / r.width : o.x;
+    const pfy = r ? (e.clientY - r.top) / r.height : o.y;
+    // On mémorise l'écart entre le doigt et le centre → déplacement fluide,
+    // sans « saut » au moment où on attrape l'élément.
+    dragRef.current = { id: o.id, ox: pfx - o.x, oy: pfy - o.y };
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
   };
   const resizeStart = (e, o) => {
@@ -448,11 +486,12 @@ export default function StoryComposer({ user, onClose, onPublished }) {
       setOverlays((ov) => ov.map((o) => (o.id === rr.id ? { ...o, scale } : o)));
       return;
     }
-    if (dragRef.current == null) return;
+    if (!dragRef.current) return;
     const r = stageRef.current?.getBoundingClientRect(); if (!r) return;
-    const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
-    setOverlays((ov) => ov.map((o) => (o.id === dragRef.current ? { ...o, x, y } : o)));
+    const d = dragRef.current;
+    const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width - d.ox));
+    const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height - d.oy));
+    setOverlays((ov) => ov.map((o) => (o.id === d.id ? { ...o, x, y } : o)));
   };
   const stageUp = () => { dragRef.current = null; resizeRef.current = null; };
 
@@ -500,6 +539,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     const px = o.x * W, py = o.y * H;
     const S = W * (o.scale || 1);   // base d'échelle (positions inchangées, tailles × scale)
     ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = S * 0.03; ctx.shadowOffsetY = S * 0.012;
     if (o.type === "text") {
       const size = Math.round(S * 0.06);
       ctx.font = `800 ${size}px sans-serif`;
@@ -770,9 +810,9 @@ export default function StoryComposer({ user, onClose, onPublished }) {
 
         {/* Stickers & textes (déplaçables, redimensionnables) */}
         {overlays.map((o) => (
-          <div key={o.id} onPointerDown={(e) => { setSelectedId(o.id); dragStart(e, o.id); }}
+          <div key={o.id} onPointerDown={(e) => { setSelectedId(o.id); dragStart(e, o); }}
             className="absolute"
-            style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, transform: `translate(-50%,-50%) scale(${o.scale || 1})`, touchAction: "none", cursor: "move" }}>
+            style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, transform: `translate(-50%,-50%) scale(${o.scale || 1})`, touchAction: "none", cursor: "move", filter: "drop-shadow(0 3px 8px rgba(0,0,0,0.45))" }}>
             <OverlayView o={o} selected={selectedId === o.id}
               onRemove={() => { removeOverlay(o.id); setSelectedId(null); }}
               onEdit={o.type === "text" ? () => setTextEditor({ id: o.id, text: o.text, color: o.color }) : undefined}

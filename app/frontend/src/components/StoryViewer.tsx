@@ -314,6 +314,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   }
 
   const isAuthor =
+    (currentStory as any).is_mine === true ||   // autorité serveur (fiable)
     (currentUserId !== null &&
       (String(currentStory.author_id) === currentUserId ||
         String(currentGroup.user_id) === currentUserId)) ||
@@ -431,7 +432,13 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
           {/* Musique de fond (extrait 30 s, à partir du passage choisi) */}
           {(currentStory as any).music_url && (
             <audio key={currentStory.id} src={(currentStory as any).music_url} autoPlay loop
-              onLoadedMetadata={(e) => { const s = (currentStory as any).music_start || 0; if (s > 0) { try { (e.currentTarget as HTMLAudioElement).currentTime = s; } catch {} } }} />
+              onLoadedMetadata={(e) => {
+                const el = e.currentTarget as HTMLAudioElement;
+                const s = (currentStory as any).music_start || 0;
+                if (s > 0) { try { el.currentTime = s; } catch {} }
+                el.play().catch(() => {});
+              }}
+              onCanPlay={(e) => { (e.currentTarget as HTMLAudioElement).play().catch(() => {}); }} />
           )}
 
           {/* Bandeau musique */}
