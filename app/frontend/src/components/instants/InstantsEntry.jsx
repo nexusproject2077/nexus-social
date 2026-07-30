@@ -24,6 +24,14 @@ const C = {
 const REACT_EMOJIS = ["❤️", "😂", "😮", "😍", "🔥", "👏", "😢", "🙏"];
 const DUAL_PROMO_KEY = "nexus_instant_dual_promo_seen";
 
+// iOS/Safari : la sélection d'objectif par deviceId renvoie un flux « vivant »
+// mais NOIR (bug WebKit). Sur iOS on s'en tient donc à facingMode (rendu
+// fiable) ; la sélection fine par deviceId reste réservée aux autres plateformes
+// (Android), où elle évite l'ultra grand-angle sans casser l'affichage.
+const IS_IOS = typeof navigator !== "undefined" &&
+  (/iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1));
+
 function Avatar({ username, pic, size = 40, ring = false }) {
   const s = `${size}px`;
   const inner = pic ? (
@@ -133,7 +141,9 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
     // sinon on laisse facingMode décider pour cette 1re ouverture.
     let stream = null;
     try {
-      const devId = await preferredDeviceId(f);
+      // Sur iOS : facingMode uniquement (le deviceId rend du noir). Ailleurs :
+      // on cible le bon objectif si les labels sont connus.
+      const devId = IS_IOS ? null : await preferredDeviceId(f);
       try {
         stream = await navigator.mediaDevices.getUserMedia(
           devId ? { video: { deviceId: { exact: devId } }, audio: false }
