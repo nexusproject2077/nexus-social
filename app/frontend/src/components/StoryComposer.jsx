@@ -37,6 +37,7 @@ const MODES = [
   { key: "create", label: "Créer", txt: "Aa" },
   { key: "boomerang", label: "Boomerang", icon: "all_inclusive" },
   { key: "layout", label: "Layout", icon: "grid_view" },
+  { key: "hands", label: "Mains libres", icon: "back_hand" },
 ];
 
 // Fonds pour le mode « Créer ».
@@ -140,13 +141,16 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   const layoutFileRef = useRef(null);
   const layoutTargetRef = useRef(0);
 
-  const pickMusic = (track) => {
-    setMusic({ url: track.preview_url, title: track.title, artist: track.artist });
+  // Applique une musique : passage de départ (start) + style d'affichage
+  // ("title" = sticker titre, "cover" = pochette+titre, "none" = son seul).
+  const applyMusic = (track, start, style) => {
+    setMusic({ url: track.preview_url, title: track.title, artist: track.artist, artwork: track.artwork, start: start || 0 });
+    setOverlays((ov) => {
+      const without = ov.filter((o) => o.type !== "music");
+      if (style === "none") return without;
+      return [...without, { id: uid(), x: 0.5, y: 0.78, scale: 1, type: "music", title: track.title, artwork: style === "cover" ? track.artwork : null }];
+    });
     setMusicOpen(false);
-    setOverlays((ov) => ov.some((o) => o.type === "music")
-      ? ov.map((o) => (o.type === "music" ? { ...o, title: track.title } : o))
-      : [...ov, { id: uid(), x: 0.5, y: 0.78, scale: 1, type: "music", title: track.title }]);
-    try { const a = audioRef.current; if (a) { a.src = track.preview_url; a.currentTime = 0; a.play().catch(() => {}); } } catch { /* noop */ }
   };
   const stopMusicPreview = () => { try { audioRef.current?.pause(); } catch { /* noop */ } };
 
@@ -268,7 +272,8 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   };
 
   const onShutterDown = (e) => {
-    if (!ready || camMode === "boomerang") return;   // boomerang : déclenché au relâchement
+    // Boomerang & Mains libres : déclenchés au relâchement (pas de maintien).
+    if (!ready || camMode === "boomerang" || camMode === "hands") return;
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
     pressRef.current.longPress = false;
     clearTimeout(pressRef.current.timer);
@@ -276,6 +281,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   };
   const onShutterUp = () => {
     if (camMode === "boomerang") { if (ready) recordBoomerang(); return; }
+    if (camMode === "hands") { if (recordingRef.current) stopRec(); else if (ready) startRec(); return; }
     clearTimeout(pressRef.current.timer);
     if (recordingRef.current) { stopRec(); return; }
     if (!pressRef.current.longPress) capturePhoto();
@@ -296,6 +302,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     if (m === "create") { toEdit(null, "background", "cover", { bg: BACKGROUNDS[0] }); return; }
     if (m === "boomerang") { setCamMode("boomerang"); toast("Appuie pour un Boomerang (≈1,5 s)"); }
     else if (m === "layout") { setCamMode("layout"); setLayoutN(null); setLayoutCells([]); }
+    else if (m === "hands") { setCamMode("hands"); toast("Appuie une fois pour démarrer, une fois pour arrêter"); }
     setTimeout(() => setShowLabels(false), 3500);
   };
 
@@ -422,7 +429,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
 
   const dragStart = (e, id) => {
     if (drawMode) return;
-    e.stopPropagation(); dragRef.current = id;
+    e.stopPropagation(); e.preventDefault?.(); dragRef.current = id;
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
   };
   const resizeStart = (e, o) => {
@@ -571,7 +578,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
         fd.append("media_type", s.type);
         fd.append("audience", vis);
         fd.append("text", s.text || "");
-        if (s.music) { fd.append("music_url", s.music.url || ""); fd.append("music_title", s.music.title || ""); fd.append("music_artist", s.music.artist || ""); }
+        if (s.music) { fd.append("music_url", s.music.url || ""); fd.append("music_title", s.music.title || ""); fd.append("music_artist", s.music.artist || ""); fd.append("music_start", String(s.music.start || 0)); }
         if (vis === "custom") fd.append("recipient_ids", (list || []).map((u) => u.id).join(","));
         await axios.post(`${API}/stories/`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       }
@@ -588,7 +595,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   // ══════════════════════════════════════ CAMÉRA ══════════════════════════════
   if (mode === "camera") {
     return (
-      <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000" }}>
+      <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
         <video ref={videoRef} muted playsInline autoPlay className="absolute inset-0 w-full h-full object-cover"
           style={{ transform: facing === "user" ? "scaleX(-1)" : "none" }} />
         {!ready && (
@@ -705,11 +712,12 @@ export default function StoryComposer({ user, onClose, onPublished }) {
                   style={{ touchAction: "none" }}
                   className="relative w-[80px] h-[80px] rounded-full active:scale-95 transition-transform disabled:opacity-40"
                   aria-label={camMode === "boomerang" ? "Boomerang" : "Photo (appui court) ou vidéo (appui long)"}>
-                  <span className="absolute inset-0 rounded-full border-[5px]" style={{ borderColor: recording ? "#ef4444" : camMode === "boomerang" ? C.accent : "#fff" }} />
+                  <span className="absolute inset-0 rounded-full border-[5px]" style={{ borderColor: recording ? "#ef4444" : (camMode === "boomerang" || camMode === "hands") ? C.accent : "#fff" }} />
                   {recording
                     ? <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md bg-red-500" style={{ width: 30, height: 30 }} />
                     : <span className="absolute inset-[7px] rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.9)" }}>
                         {camMode === "boomerang" && <span className="material-symbols-outlined" style={{ color: C.accent, fontSize: 30 }}>all_inclusive</span>}
+                        {camMode === "hands" && <span className="material-symbols-outlined" style={{ color: C.accent, fontSize: 26 }}>back_hand</span>}
                       </span>}
                   {recording && (
                     <svg className="absolute inset-0 -rotate-90" viewBox="0 0 80 80" style={{ pointerEvents: "none" }}>
@@ -724,8 +732,10 @@ export default function StoryComposer({ user, onClose, onPublished }) {
                   <span className="material-symbols-outlined text-white">cameraswitch</span>
                 </button>
               </div>
-              <p className="text-center text-white/90 font-bold text-sm mt-4 tracking-wide">{camMode === "boomerang" ? "BOOMERANG" : "STORY"}</p>
-              {camMode === "boomerang" && <button onClick={() => setCamMode("normal")} className="block mx-auto text-white/60 text-xs mt-1">Mode normal</button>}
+              <p className="text-center text-white/90 font-bold text-sm mt-4 tracking-wide">{camMode === "boomerang" ? "BOOMERANG" : camMode === "hands" ? "MAINS LIBRES" : "STORY"}</p>
+              {(camMode === "boomerang" || camMode === "hands") && (
+                <button onClick={() => { if (recordingRef.current) stopRec(); setCamMode("normal"); }} className="block mx-auto text-white/60 text-xs mt-1">Mode normal</button>
+              )}
             </>
           )}
         </div>
@@ -741,7 +751,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
 
   // ══════════════════════════════════════ ÉDITION ═════════════════════════════
   return (
-    <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000" }}>
+    <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
       {/* Scène : média (filtré) + dessin + stickers (draggables) */}
       <div ref={stageRef} className="absolute inset-0" onPointerDown={() => setSelectedId(null)} onPointerMove={stageMove} onPointerUp={stageUp} onPointerLeave={stageUp}>
         {cur?.type === "background"
@@ -936,7 +946,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
 
       {/* Recherche de musique (extraits gratuits iTunes) */}
       {musicOpen && (
-        <MusicSearch onClose={() => setMusicOpen(false)} onPick={pickMusic}
+        <MusicSearch onClose={() => setMusicOpen(false)} onAdd={applyMusic}
           current={music} onRemove={() => { setMusic(null); stopMusicPreview(); setOverlays((ov) => ov.filter((o) => o.type !== "music")); setMusicOpen(false); }} />
       )}
 
@@ -1105,8 +1115,8 @@ function OverlayView({ o, selected, onRemove, onEdit, onResizeStart }) {
   }
   if (o.type === "music") {
     return (
-      <div className="relative flex items-center gap-2 px-4 py-2 rounded-full" style={{ background: "#fff", color: "#111", maxWidth: 260, boxShadow: ring }}>
-        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>music_note</span>
+      <div className="relative flex items-center gap-2 px-3 py-2 rounded-full" style={{ background: "#fff", color: "#111", maxWidth: 260, boxShadow: ring }}>
+        {o.artwork ? <img src={o.artwork} alt="" className="w-6 h-6 rounded object-cover" /> : <span className="material-symbols-outlined" style={{ fontSize: 18 }}>music_note</span>}
         <span className="font-semibold text-sm truncate">{o.title}</span>
         <Controls />
       </div>
@@ -1198,11 +1208,16 @@ function StickerForm({ type, onCancel, onAdd }) {
   );
 }
 
-// ── Recherche de musique (extraits gratuits iTunes, proxifiés par le backend) ─
-function MusicSearch({ onClose, onPick, current, onRemove }) {
+// ── Recherche + configuration de la musique (extraits gratuits iTunes) ────────
+function MusicSearch({ onClose, onAdd, current, onRemove }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [sel, setSel] = useState(null);      // piste choisie (étape config)
+  const [start, setStart] = useState(0);
+  const [style, setStyle] = useState("title"); // title | cover | none
+  const audioRef = useRef(null);
+
   useEffect(() => {
     if (!q.trim()) { setResults([]); return; }
     const t = setTimeout(async () => {
@@ -1213,6 +1228,45 @@ function MusicSearch({ onClose, onPick, current, onRemove }) {
     }, 350);
     return () => clearTimeout(t);
   }, [q]);
+  useEffect(() => () => { try { audioRef.current?.pause(); } catch { /* noop */ } }, []);
+
+  const choose = (t) => {
+    setSel(t); setStart(0); setStyle("title");
+    try { const a = audioRef.current; if (a) { a.src = t.preview_url; a.currentTime = 0; a.play().catch(() => {}); } } catch { /* noop */ }
+  };
+  const onSlide = (v) => { setStart(v); try { if (audioRef.current) audioRef.current.currentTime = v; } catch { /* noop */ } };
+
+  // Étape 2 : configuration de la piste choisie.
+  if (sel) {
+    return (
+      <div className="fixed inset-0 z-[95] flex flex-col" style={{ background: "rgba(0,0,0,0.92)" }}>
+        <audio ref={audioRef} loop />
+        <div className="flex items-center justify-between px-4 pt-4" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
+          <button onClick={() => { setSel(null); try { audioRef.current?.pause(); } catch { /* noop */ } }} className="text-white text-sm font-bold">Retour</button>
+          <button onClick={() => { try { audioRef.current?.pause(); } catch { /* noop */ } onAdd(sel, start, style); }} className="font-black px-4 py-2 rounded-full" style={{ background: C.accent, color: C.onPrimary }}>Ajouter</button>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-8 gap-4">
+          {sel.artwork && <img src={sel.artwork} alt="" className="w-40 h-40 rounded-2xl object-cover shadow-2xl" />}
+          <div className="text-center">
+            <p className="text-white font-bold text-lg">{sel.title}</p>
+            <p className="text-sm" style={{ color: C.outline }}>{sel.artist}</p>
+          </div>
+          <div className="w-full max-w-sm mt-2">
+            <p className="text-white/70 text-xs mb-1">Passage : à partir de {Math.round(start)} s</p>
+            <input type="range" min={0} max={25} step={1} value={start} onChange={(e) => onSlide(Number(e.target.value))} className="w-full" style={{ accentColor: C.accent }} />
+          </div>
+          <div className="flex gap-2 mt-2">
+            {[["title", "Titre"], ["cover", "Pochette"], ["none", "Son seul"]].map(([k, lbl]) => (
+              <button key={k} onClick={() => setStyle(k)} className="px-4 py-2 rounded-full text-sm font-bold"
+                style={{ background: style === k ? C.accent : "rgba(255,255,255,0.12)", color: style === k ? C.onPrimary : "#fff" }}>{lbl}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Étape 1 : recherche.
   return (
     <div className="fixed inset-0 z-[95] flex flex-col" style={{ background: "rgba(0,0,0,0.9)" }}>
       <div className="flex items-center gap-2 px-3 pt-4 pb-2" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
@@ -1230,7 +1284,7 @@ function MusicSearch({ onClose, onPick, current, onRemove }) {
       <div className="flex-1 overflow-y-auto px-3" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         {loading && <div className="flex justify-center pt-8"><div className="animate-spin rounded-full h-7 w-7 border-b-2" style={{ borderColor: C.accent }} /></div>}
         {results.map((t) => (
-          <button key={t.id} onClick={() => onPick(t)} className="w-full flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-white/5 text-left">
+          <button key={t.id} onClick={() => choose(t)} className="w-full flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-white/5 text-left">
             {t.artwork
               ? <img src={t.artwork} alt="" className="w-11 h-11 rounded-lg object-cover" />
               : <div className="w-11 h-11 rounded-lg flex items-center justify-center" style={{ background: C.high }}><span className="material-symbols-outlined text-white">music_note</span></div>}

@@ -808,6 +808,7 @@ class Story(BaseModel):
     music_url: Optional[str] = None       # extrait audio (preview iTunes, 30 s)
     music_title: Optional[str] = None
     music_artist: Optional[str] = None
+    music_start: float = 0.0              # passage de départ (secondes)
     views_count: int = 0
     created_at: str
     expires_at: str
@@ -4695,6 +4696,7 @@ async def create_story(
     music_url: str = Form(""),               # extrait audio (preview iTunes)
     music_title: str = Form(""),
     music_artist: str = Form(""),
+    music_start: str = Form("0"),            # passage de départ (secondes)
     current_user: dict = Depends(get_current_user)
 ):
     """Créer une nouvelle story - supporte upload de fichier OU URL"""
@@ -4750,6 +4752,7 @@ async def create_story(
         "music_url": (music_url or "").strip()[:500] or None,
         "music_title": (music_title or "").strip()[:200] or None,
         "music_artist": (music_artist or "").strip()[:200] or None,
+        "music_start": (lambda s: (float(s) if s.replace(".", "", 1).isdigit() else 0.0))((music_start or "0").strip()),
         "views_count": 0,
         "created_at": now.isoformat(),
         "expires_at": expires_at.isoformat()

@@ -262,7 +262,16 @@ export default function StoriesFeed() {
           allStories={stories}
           initialGroupIndex={selectedGroupIndex}
           onClose={closeStoryViewer}
-          onDeleteStory={fetchStories}
+          onDeleteStory={(storyId?: string) => {
+            // Retrait optimiste immédiat (les deux côtés : le backend a supprimé
+            // en base) puis rafraîchissement serveur.
+            if (storyId) {
+              setStories((prev) => prev
+                .map((g) => ({ ...g, stories: g.stories.filter((s) => s.id !== storyId) }))
+                .filter((g) => g.stories.length > 0));
+            }
+            fetchStories();
+          }}
         />
       )}
 

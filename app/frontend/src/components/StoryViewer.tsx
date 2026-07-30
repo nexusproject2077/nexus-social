@@ -25,7 +25,7 @@ interface StoryViewerProps {
   allStories: StoryGroup[];
   initialGroupIndex: number;
   onClose: () => void;
-  onDeleteStory: () => void;
+  onDeleteStory: (storyId?: string) => void;
 }
 
 const STORY_IMAGE_DURATION = 15000; // 15 secondes pour les images
@@ -272,14 +272,14 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
         }
       });
 
-      if (response.ok) {
+      if (response.ok || response.status === 404) {
+        // 404 = déjà supprimée : on la retire quand même localement.
         toast.success("Story supprimée !");
         setShowConfirmModal(false);
         setShowOptions(false);
-        onDeleteStory();
+        onDeleteStory(currentStory.id);   // retrait optimiste immédiat + refetch
         onClose();
       } else {
-        const errorText = await response.text();
         toast.error(`Erreur: ${response.status}`);
       }
     } catch (err) {
@@ -428,9 +428,10 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
             />
           )}
 
-          {/* Musique de fond (extrait 30 s) : remonte à chaque story */}
+          {/* Musique de fond (extrait 30 s, à partir du passage choisi) */}
           {(currentStory as any).music_url && (
-            <audio key={currentStory.id} src={(currentStory as any).music_url} autoPlay loop />
+            <audio key={currentStory.id} src={(currentStory as any).music_url} autoPlay loop
+              onLoadedMetadata={(e) => { const s = (currentStory as any).music_start || 0; if (s > 0) { try { (e.currentTarget as HTMLAudioElement).currentTime = s; } catch {} } }} />
           )}
 
           {/* Bandeau musique */}
