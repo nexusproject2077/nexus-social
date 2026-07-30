@@ -71,6 +71,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
   const [audience, setAudience] = useState("mutuals");
   const [manual, setManual] = useState([]);        // [{id,username,profile_pic}]
   const [sheet, setSheet] = useState(false);        // sélecteur d'audience ouvert
+  const [sheetMode, setSheetMode] = useState(null); // "manual" pour ouvrir direct sur la sélection
   const [promo, setPromo] = useState(false);        // modale double caméra
   const [sending, setSending] = useState(false);
   const [ready, setReady] = useState(false);        // flux vidéo prêt (dimensions connues)
@@ -236,12 +237,19 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
 
   // Envoi. Peut recevoir l'audience/liste explicitement (utile depuis le
   // sélecteur, où l'état n'est pas encore à jour).
+  // Ouvre le sélecteur en gardant la photo en attente (envoyée dès qu'on a des
+  // destinataires). Utilisé quand l'audience est vide.
+  const promptRecipients = (media, msg) => {
+    pendingPhotoRef.current = media;
+    setSending(false);
+    setSheetMode("manual");
+    setSheet(true);
+    if (msg) toast(msg);
+  };
+
   const doSend = async (media, aud = audience, list = manual) => {
     if (aud === "manual" && (!list || list.length === 0)) {
-      // Pas encore de destinataires : on garde la photo et on ouvre le sélecteur.
-      pendingPhotoRef.current = media;
-      toast("Choisis les destinataires pour envoyer.");
-      setSheet(true);
+      promptRecipients(media, "Choisis les destinataires pour envoyer.");
       return;
     }
     setSending(true);
@@ -255,7 +263,15 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       pendingPhotoRef.current = null;
       onSent(data.instant, data.recipients);
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Envoi impossible.");
+      const detail = e.response?.data?.detail || "";
+      // Audience vide (aucun mutuel / aucun·e ami·e proche) : au lieu de bloquer,
+      // on ouvre la Sélection avec la photo en attente pour choisir des destinataires.
+      if (e.response?.status === 400 && /destinataire/i.test(detail) && aud !== "manual") {
+        const nom = aud === "mutuals" ? "Mutuels" : "Ami·e·s proches";
+        promptRecipients(media, `Aucun destinataire dans « ${nom} ». Choisis qui recevra l'instantané.`);
+        return;
+      }
+      toast.error(detail || "Envoi impossible.");
       setSending(false);
     }
   };
@@ -375,7 +391,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
 
         {/* Pilule audience */}
         <div className="flex justify-center mt-5">
-          <button onClick={() => setSheet(true)} className="flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-sm"
+          <button onClick={() => { setSheetMode(null); setSheet(true); }} className="flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-sm"
             style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}>
             <span className="material-symbols-outlined text-lg" style={{ color: C.accent }}>group</span>
             {audienceLabel}
@@ -386,11 +402,11 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
 
       {sheet && (
         <AudienceSheet
-          user={user} audience={audience} manual={manual}
+          user={user} audience={audience} manual={manual} initialMode={sheetMode}
           onClose={() => { setSheet(false); pendingPhotoRef.current = null; }}
           onPick={(a, list) => {
             setAudience(a); if (list) setManual(list); setSheet(false);
-            // Si une photo attend des destinataires (capture en audience manuelle vide), on l'envoie.
+            // Si une photo attend des destinataires (capture en audience vide), on l'envoie.
             if (pendingPhotoRef.current) doSend(pendingPhotoRef.current, a, list || manual);
           }}
         />
@@ -417,8 +433,8 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
 // ──────────────────────────────────────────────────────────────────────────
 // Sélecteur d'audience (+ édition Ami·e·s proches / Sélection manuelle)
 // ──────────────────────────────────────────────────────────────────────────
-function AudienceSheet({ user, audience, manual, onClose, onPick }) {
-  const [mode, setMode] = useState(null);              // null | "manual" | "close"
+function AudienceSheet({ user, audience, manual, onClose, onPick, initialMode = null }) {
+  const [mode, setMode] = useState(initialMode);       // null | "manual" | "close"
   const [selected, setSelected] = useState(manual || []);
   const [q, setQ] = useState("");
   const [results, setResults] = useState([]);
