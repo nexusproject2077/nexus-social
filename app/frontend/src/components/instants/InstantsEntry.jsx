@@ -64,6 +64,15 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
   const [sheet, setSheet] = useState(false);        // sélecteur d'audience ouvert
   const [promo, setPromo] = useState(false);        // modale double caméra
   const [sending, setSending] = useState(false);
+  const [showHint, setShowHint] = useState(true);   // indice « double-appui » (transitoire)
+
+  // L'indice « double-appui » n'apparaît que quelques secondes (au démarrage
+  // et à chaque changement d'état de la double caméra).
+  useEffect(() => {
+    setShowHint(true);
+    const t = setTimeout(() => setShowHint(false), 4000);
+    return () => clearTimeout(t);
+  }, [dual]);
 
   const stopStream = (ref) => {
     try { ref.current?.getTracks?.().forEach((t) => t.stop()); } catch { /* noop */ }
@@ -228,14 +237,17 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       roundRect(ctx, x, y, pw, ph, pw * 0.14); ctx.stroke();
     }
     const media = canvas.toDataURL("image/jpeg", 0.85);
-    stopStream(streamRef); stopStream(pipStreamRef); setDual(false);
+    // IMPORTANT : on garde la caméra ALLUMÉE. Si on coupait le flux ici,
+    // l'aperçu resterait noir dès que l'envoi échoue (ex. audience sans
+    // destinataire). Les flux sont libérés à la fermeture de l'écran.
     doSend(media);
   };
 
   const audienceLabel = { mutuals: "Mutuels", close_friends: "Ami·e·s proches", manual: manual.length ? `Sélection (${manual.length})` : "Sélection" }[audience];
 
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col" style={{ background: C.bg }}>
+    <div className="fixed inset-0 z-[80] flex flex-col select-none"
+      style={{ background: C.bg, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
       {/* Barre supérieure */}
       <div className="flex items-center justify-between px-4 pt-3 pb-2" style={{ paddingTop: "max(env(safe-area-inset-top), 12px)" }}>
         <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10" aria-label="Fermer">
@@ -264,10 +276,12 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: C.accent }} />
               </div>
             )}
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] px-3 py-1 rounded-full text-white/80"
-              style={{ background: "rgba(0,0,0,0.4)" }}>
-              Double-appui : {dual ? "désactiver" : "activer"} la double caméra
-            </div>
+            {showHint && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] px-3 py-1 rounded-full text-white/80 transition-opacity"
+                style={{ background: "rgba(0,0,0,0.4)" }}>
+                Double-appui : {dual ? "désactiver" : "activer"} la double caméra
+              </div>
+            )}
           </div>
 
           {/* Légende (avant la prise). L'envoi est immédiat à la capture. */}
@@ -276,7 +290,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
             onChange={(e) => setCaption(e.target.value.slice(0, 200))}
             placeholder="Ajouter une légende…"
             className="mt-4 w-full text-center text-sm px-4 py-2.5 rounded-full border-none outline-none placeholder:text-white/40"
-            style={{ background: "rgba(255,255,255,0.08)", color: "#fff" }}
+            style={{ background: "rgba(255,255,255,0.08)", color: "#fff", WebkitUserSelect: "text", userSelect: "text" }}
           />
         </div>
       </div>
@@ -423,7 +437,7 @@ function AudienceSheet({ user, audience, manual, onClose, onPick }) {
             </div>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un·e utilisateur·rice…"
               className="w-full text-sm px-4 py-2.5 rounded-xl border-none outline-none mb-3 placeholder:text-slate-500"
-              style={{ background: C.high, color: C.onSurface }} />
+              style={{ background: C.high, color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }} />
             {selected.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-3">
                 {selected.map((u) => (
@@ -503,7 +517,8 @@ function InstantViewer({ item, onClose, onConsumed }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[85] flex flex-col" style={{ background: "#000" }}>
+    <div className="fixed inset-0 z-[85] flex flex-col select-none"
+      style={{ background: "#000", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
       <div className="flex items-center gap-3 px-4 pt-3 pb-2" style={{ paddingTop: "max(env(safe-area-inset-top), 12px)" }}>
         <Avatar username={item.author_username} pic={item.author_avatar} size={36} ring />
         <span className="font-bold text-white flex-1">@{item.author_username}</span>
@@ -544,7 +559,7 @@ function InstantViewer({ item, onClose, onConsumed }) {
               onKeyDown={(e) => { if (e.key === "Enter") sendReply(); }}
               placeholder="Répondre en privé…"
               className="flex-1 text-sm px-4 py-3 rounded-full border-none outline-none placeholder:text-white/40"
-              style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }} />
+              style={{ background: "rgba(255,255,255,0.1)", color: "#fff", WebkitUserSelect: "text", userSelect: "text" }} />
             <button onClick={sendReply} disabled={busy || !reply.trim()} className="w-11 h-11 rounded-full flex items-center justify-center disabled:opacity-40"
               style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>
               <span className="material-symbols-outlined">send</span>
@@ -579,7 +594,8 @@ function InstantsArchive({ onClose, onChanged }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[85] flex flex-col" style={{ background: C.bg }}>
+    <div className="fixed inset-0 z-[85] flex flex-col select-none"
+      style={{ background: C.bg, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
       <div className="flex items-center gap-3 px-4 pt-3 pb-3 border-b" style={{ borderColor: "rgba(255,255,255,0.06)", paddingTop: "max(env(safe-area-inset-top), 12px)" }}>
         <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10">
           <span className="material-symbols-outlined text-white">arrow_back</span>
@@ -650,12 +666,22 @@ export default function InstantsEntry({ user, hidden = false }) {
   const [undo, setUndo] = useState(null);        // {id} instantané envoyé (annulable)
   const undoTimer = useRef(null);
 
+  // Instantanés = MOBILE uniquement (désactivé sur PC).
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 1023px)").matches : true);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const on = () => setIsMobile(mq.matches);
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, []);
+
   const loadInbox = useCallback(() => {
     axios.get(`${API}/instants/inbox`).then((r) => setInbox(r.data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isMobile) return;
     loadInbox();
     const poll = setInterval(loadInbox, 25000);
     const onRealtime = (e) => {
@@ -670,7 +696,7 @@ export default function InstantsEntry({ user, hidden = false }) {
       window.removeEventListener("nexus:realtime", onRealtime);
       window.removeEventListener("nexus:instant-open", onOpen);
     };
-  }, [user, loadInbox]);
+  }, [user, isMobile, loadInbox]);
 
   const onSent = (instant, recipients) => {
     setScreen(null);
@@ -691,7 +717,7 @@ export default function InstantsEntry({ user, hidden = false }) {
 
   const consume = (id) => setInbox((prev) => prev.filter((i) => i.id !== id));
 
-  if (!user) return null;
+  if (!user || !isMobile) return null;   // mobile uniquement
 
   return (
     <>
