@@ -282,13 +282,18 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
     const v = videoRef.current;
     if (!v || !v.videoWidth) { toast.error("Caméra pas encore prête."); return; }
     if (torch) { setFlashPulse(true); setTimeout(() => setFlashPulse(false), 220); }
-    const w = v.videoWidth, h = v.videoHeight;
+    // Recadrage CARRÉ centré (le viseur est carré) → la photo correspond à ce
+    // qui est affiché.
+    const vw = v.videoWidth, vh = v.videoHeight;
+    const side = Math.min(vw, vh);
+    const sx = (vw - side) / 2, sy = (vh - side) / 2;
+    const w = side, h = side;
     const canvas = document.createElement("canvas");
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext("2d");
     // Caméra frontale : miroir naturel (comme le viseur).
     if (facing === "user") { ctx.translate(w, 0); ctx.scale(-1, 1); }
-    ctx.drawImage(v, 0, 0, w, h);
+    ctx.drawImage(v, sx, sy, side, side, 0, 0, w, h);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     // Double caméra : incruste la frontale en médaillon (haut gauche).
     const pv = pipRef.current;
@@ -388,8 +393,8 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
 
       {/* Zone viseur / aperçu */}
       <div className="flex-1 flex items-center justify-center px-4 min-h-0">
-        <div className="relative w-full" style={{ maxWidth: 460 }}>
-          <div className="relative overflow-hidden bg-black" style={{ aspectRatio: "3 / 4", ...squircleStyle }} onClick={onPreviewTap}>
+        <div className="relative w-full" style={{ maxWidth: 400 }}>
+          <div className="relative overflow-hidden bg-black" style={{ aspectRatio: "1 / 1", ...squircleStyle }} onClick={onPreviewTap}>
             <video ref={videoRef} muted playsInline autoPlay
               className="w-full h-full object-cover"
               style={{ transform: facing === "user" ? "scaleX(-1)" : "none" }} />
