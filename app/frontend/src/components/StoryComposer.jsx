@@ -225,12 +225,13 @@ export default function StoryComposer({ user, onClose, onPublished }) {
         </button>
       </div>
 
-      {/* Zone média */}
+      {/* Zone média — cadre 9:16 (le média est en object-contain : les zones
+          vides restent sans fond, juste le fond de l'app). */}
       <div className="flex-1 flex items-center justify-center px-3 min-h-0">
-        <div className="relative w-full h-full flex items-center justify-center">
+        <div className="relative h-full rounded-3xl overflow-hidden" style={{ aspectRatio: "9 / 16", maxHeight: "100%", maxWidth: "100%" }}>
           {mode === "camera" ? (
-            <div className="relative w-full h-full flex items-center justify-center">
-              <video ref={videoRef} muted playsInline autoPlay className="max-w-full max-h-full rounded-3xl object-contain"
+            <>
+              <video ref={videoRef} muted playsInline autoPlay className="absolute inset-0 w-full h-full object-contain"
                 style={{ transform: facing === "user" ? "scaleX(-1)" : "none" }} />
               {!ready && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
@@ -245,19 +246,19 @@ export default function StoryComposer({ user, onClose, onPublished }) {
                   {Math.min(15, Math.ceil((recordPct / 100) * 15))}s / 15s
                 </div>
               )}
-            </div>
+            </>
           ) : (
-            <div className="relative w-full h-full flex items-center justify-center">
+            <>
               {cur?.type === "video"
-                ? <video src={cur.media} className="max-w-full max-h-full rounded-3xl object-contain" autoPlay playsInline muted loop />
-                : <img src={cur?.media} alt="" className="max-w-full max-h-full rounded-3xl object-contain" />}
+                ? <video src={cur.media} className="absolute inset-0 w-full h-full object-contain" autoPlay playsInline muted loop />
+                : <img src={cur?.media} alt="" className="absolute inset-0 w-full h-full object-contain" />}
               {text.trim() && (
                 <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-center px-6 pointer-events-none">
                   <span className="text-center text-white text-2xl font-black leading-snug px-3 py-1 rounded-lg"
                     style={{ background: "rgba(0,0,0,0.35)", textShadow: "0 2px 6px rgba(0,0,0,0.5)" }}>{text.trim()}</span>
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </div>

@@ -55,6 +55,50 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   const currentStory = currentGroup?.stories[currentStoryIndex];
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  const [reacted, setReacted] = useState<string | null>(null);
+  const [showViewers, setShowViewers] = useState(false);
+  const [viewers, setViewers] = useState<any[]>([]);
+
+  const authHeaders = () => ({
+    "Authorization": `Bearer ${localStorage.getItem("token")}`,
+    "Content-Type": "application/json",
+  });
+
+  const reactToStory = async (emoji: string) => {
+    if (!currentStory) return;
+    setReacted(emoji);
+    try {
+      await fetch(`${API}/stories/${currentStory.id}/react`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({ emoji }),
+      });
+      toast("Réaction envoyée");
+    } catch { toast.error("Impossible de réagir."); }
+  };
+
+  const sendReply = async () => {
+    if (!currentStory || !replyText.trim()) return;
+    setSendingReply(true);
+    try {
+      const res = await fetch(`${API}/stories/${currentStory.id}/reply`, {
+        method: "POST", headers: authHeaders(), body: JSON.stringify({ content: replyText.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      setReplyText("");
+      toast.success("Réponse envoyée en message privé");
+    } catch { toast.error("Réponse impossible."); }
+    finally { setSendingReply(false); }
+  };
+
+  const openViewers = async () => {
+    if (!currentStory) return;
+    setShowViewers(true); setIsPaused(true);
+    try {
+      const res = await fetch(`${API}/stories/${currentStory.id}/viewers`, { headers: authHeaders() });
+      setViewers(res.ok ? await res.json() : []);
+    } catch { setViewers([]); }
+  };
 
   // Récupérer l'ID de l'utilisateur connecté depuis le localStorage
   useEffect(() => {
@@ -151,6 +195,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   useEffect(() => {
     if (currentStory?.id) {
       markStoryAsViewed(currentStory.id);
+      setReacted(null);
     }
   }, [currentStory?.id]);
 
@@ -416,6 +461,78 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
           />
         </div>
       </div>
+
+      {/* Pied : réponse + réactions (spectateur) OU « vu par » (auteur) */}
+      <div
+        className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-5 pt-3"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)", background: "linear-gradient(to top, rgba(0,0,0,0.6), transparent)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {isAuthor ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); openViewers(); }}
+            className="flex items-center gap-2 text-white/90 text-sm font-semibold mx-auto"
+          >
+            <span className="material-symbols-outlined text-[20px]">visibility</span>
+            Vu par {(currentStory as any).views_count ?? 0}
+          </button>
+        ) : (
+          <>
+            <div className="flex justify-center gap-2 mb-3">
+              {["❤️", "😂", "😮", "😍", "🔥", "👏", "😢", "🙏"].map((e) => (
+                <button key={e} onClick={(ev) => { ev.stopPropagation(); reactToStory(e); }}
+                  className="text-2xl active:scale-125 transition-transform"
+                  style={{ opacity: reacted && reacted !== e ? 0.4 : 1 }}>{e}</button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                onFocus={() => setIsPaused(true)}
+                onBlur={() => setIsPaused(false)}
+                onKeyDown={(e) => { if (e.key === "Enter") sendReply(); }}
+                placeholder={`Répondre à ${currentGroup.username}…`}
+                className="flex-1 text-sm px-4 py-3 rounded-full border-none outline-none placeholder:text-white/50 text-white"
+                style={{ background: "rgba(255,255,255,0.15)" }}
+              />
+              <button onClick={(e) => { e.stopPropagation(); sendReply(); }} disabled={sendingReply || !replyText.trim()}
+                className="w-11 h-11 rounded-full flex items-center justify-center disabled:opacity-40"
+                style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}>
+                <span className="material-symbols-outlined">send</span>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Liste des vues (auteur) */}
+      {showViewers && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.6)" }}
+          onClick={(e) => { e.stopPropagation(); setShowViewers(false); setIsPaused(false); }}>
+          <div className="w-full max-w-md rounded-t-3xl p-4 pb-6 max-h-[70vh] overflow-y-auto"
+            style={{ background: "#0b1326", paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1.5 rounded-full mx-auto mb-4 bg-slate-700" />
+            <h3 className="font-black text-lg mb-3 px-1 text-white flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px]">visibility</span>
+              {viewers.length} vue{viewers.length > 1 ? "s" : ""}
+            </h3>
+            {viewers.length === 0 ? (
+              <p className="text-slate-400 text-sm text-center py-8">Personne n'a encore vu cette story.</p>
+            ) : (
+              <div className="space-y-1">
+                {viewers.map((v) => (
+                  <div key={v.user_id} className="flex items-center gap-3 px-2 py-2">
+                    <img src={v.profile_pic || "https://placehold.co/80"} alt={v.username} className="w-9 h-9 rounded-full object-cover" />
+                    <span className="text-sm font-medium text-white flex-1">@{v.username}</span>
+                    {v.reaction && <span className="text-lg">{v.reaction}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Modale de confirmation de suppression */}
       {showConfirmModal && (

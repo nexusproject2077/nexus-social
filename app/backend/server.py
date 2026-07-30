@@ -4928,10 +4928,91 @@ async def get_story_viewers(story_id: str, current_user: dict = Depends(get_curr
                 "user_id": user["id"],
                 "username": user["username"],
                 "profile_pic": user.get("profile_pic"),
-                "viewed_at": view["viewed_at"]
+                "viewed_at": view["viewed_at"],
+                "reaction": view.get("reaction"),
             })
-    
+
+    # Les plus récents d'abord.
+    viewers.sort(key=lambda v: v.get("viewed_at", ""), reverse=True)
     return viewers
+
+
+class StoryReact(BaseModel):
+    emoji: str
+
+
+@api_router.post("/stories/{story_id}/react")
+async def react_story(story_id: str, data: StoryReact, current_user: dict = Depends(get_current_user)):
+    """Réagit à une story avec un emoji (notifie l'auteur)."""
+    emoji = (data.emoji or "").strip()[:8]
+    if not emoji:
+        raise HTTPException(status_code=400, detail="Emoji requis.")
+    story_raw = await db.stories.find_one({"id": story_id})
+    if not story_raw:
+        raise HTTPException(status_code=404, detail="Story introuvable.")
+    story = convert_mongo_doc_to_dict(story_raw)
+    now = datetime.now(timezone.utc).isoformat()
+    # Upsert la vue avec la réaction (réagir implique avoir vu).
+    await db.story_views.update_one(
+        {"story_id": story_id, "user_id": current_user["id"]},
+        {"$set": {"reaction": emoji, "reacted_at": now},
+         "$setOnInsert": {"id": str(uuid.uuid4()), "story_id": story_id,
+                          "user_id": current_user["id"], "viewed_at": now}},
+        upsert=True,
+    )
+    author_id = story["author_id"]
+    if author_id != current_user["id"]:
+        await create_notification(author_id, "story_reaction", current_user)
+        await push_realtime(author_id, {"type": "story_reaction", "data": {
+            "story_id": story_id, "by": current_user["id"],
+            "by_username": current_user["username"], "emoji": emoji,
+        }})
+    return {"success": True, "emoji": emoji}
+
+
+class StoryReply(BaseModel):
+    content: str
+
+
+@api_router.post("/stories/{story_id}/reply")
+async def reply_to_story_dm(story_id: str, data: StoryReply, current_user: dict = Depends(get_current_user)):
+    """Répond à une story : la réponse arrive en MESSAGE PRIVÉ à l'auteur."""
+    content = (data.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Message vide.")
+    story_raw = await db.stories.find_one({"id": story_id})
+    if not story_raw:
+        raise HTTPException(status_code=404, detail="Story introuvable.")
+    story = convert_mongo_doc_to_dict(story_raw)
+    if story["author_id"] == current_user["id"]:
+        raise HTTPException(status_code=400, detail="C'est votre propre story.")
+    author = convert_mongo_doc_to_dict(await db.users.find_one({"id": story["author_id"]}) or {})
+    now = datetime.now(timezone.utc)
+    mid = str(uuid.uuid4())
+    msg = {
+        "id": mid,
+        "sender_id": current_user["id"],
+        "sender_username": current_user["username"],
+        "sender_profile_pic": current_user.get("profile_pic"),
+        "recipient_id": story["author_id"],
+        "recipient_username": author.get("username", ""),
+        "content": encrypt_message(content),
+        "media_url": None,
+        "media_type": None,
+        "reply_to_id": None,
+        "story_id": story_id,
+        "expires_at": None,
+        "read": False,
+        "created_at": now.isoformat(),
+    }
+    await db.messages.insert_one(msg)
+    await push_realtime(story["author_id"], {"type": "new_message", "data": {
+        "id": mid, "sender_id": current_user["id"], "sender_username": current_user["username"],
+        "sender_profile_pic": current_user.get("profile_pic"), "recipient_id": story["author_id"],
+        "content": content, "story_id": story_id, "created_at": now.isoformat(),
+    }})
+    return {"success": True}
+
 
 # ==================== INSTANTANÉS (photos éphémères façon Instagram) ====================
 # Un « instantané » est une photo prise EN DIRECT (pas d'import galerie, pas de
