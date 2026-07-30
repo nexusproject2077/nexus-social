@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import StoryViewer from "./StoryViewer";
-import AddStoryModal from "./AddStoryModal";
+import StoryComposer from "./StoryComposer";
 import { API } from "../App";
 import { toast } from "sonner";
 
@@ -267,9 +267,10 @@ export default function StoriesFeed() {
       )}
 
       {showAddStory && (
-        <AddStoryModal
+        <StoryComposer
+          user={(() => { try { return JSON.parse(localStorage.getItem("nexus_user") || "null"); } catch { return null; } })()}
           onClose={() => setShowAddStory(false)}
-          onSuccess={handleStoryAdded}
+          onPublished={handleStoryAdded}
         />
       )}
     </>

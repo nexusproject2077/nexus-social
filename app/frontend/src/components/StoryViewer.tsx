@@ -378,6 +378,16 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
             />
           )}
 
+          {/* Texte incrusté (légende de publication) */}
+          {(currentStory as any).text && (
+            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-center px-6 pointer-events-none">
+              <span className="text-center text-white text-2xl font-black leading-snug px-3 py-1 rounded-lg"
+                style={{ background: "rgba(0,0,0,0.35)", textShadow: "0 2px 6px rgba(0,0,0,0.5)" }}>
+                {(currentStory as any).text}
+              </span>
+            </div>
+          )}
+
           {/* Indicateur pause */}
           {isPaused && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

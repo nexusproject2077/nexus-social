@@ -803,6 +803,8 @@ class Story(BaseModel):
     author_profile_pic: Optional[str] = None
     media_type: str
     media_url: str
+    text: Optional[str] = None            # légende / texte incrusté
+    audience: str = "everyone"           # everyone | close_friends | custom
     views_count: int = 0
     created_at: str
     expires_at: str
@@ -4684,6 +4686,9 @@ async def create_story(
     file: UploadFile = File(None),
     media_type: str = Form(None),
     media_url: str = Form(None),
+    audience: str = Form("everyone"),        # everyone | close_friends | custom
+    recipient_ids: str = Form(""),           # ids séparés par des virgules (custom)
+    text: str = Form(""),                    # texte incrusté / légende
     current_user: dict = Depends(get_current_user)
 ):
     """Créer une nouvelle story - supporte upload de fichier OU URL"""
@@ -4717,6 +4722,14 @@ async def create_story(
     # Modération NSFW du média (fail-open si non configurée).
     _stverdict = await screen_content(media_url=media_url)
 
+    # Visibilité de la story.
+    audience = audience if audience in ("everyone", "close_friends", "custom") else "everyone"
+    custom_ids = []
+    if audience == "custom":
+        custom_ids = list(dict.fromkeys(
+            [i.strip() for i in (recipient_ids or "").split(",") if i.strip() and i.strip() != current_user["id"]]
+        ))
+
     story_to_insert = {
         "id": story_id,
         "author_id": current_user["id"],
@@ -4725,6 +4738,9 @@ async def create_story(
         "author_is_verified": current_user.get("is_verified", False),
         "media_type": media_type,
         "media_url": media_url,
+        "text": (text or "").strip()[:500] or None,
+        "audience": audience,
+        "recipient_ids": custom_ids,
         "views_count": 0,
         "created_at": now.isoformat(),
         "expires_at": expires_at.isoformat()
@@ -4766,10 +4782,26 @@ async def get_stories_feed(current_user: dict = Depends(get_current_user)):
     
     # Groupe les stories par auteur
     stories_by_user = {}
+    close_friends_cache = {}
     for story_raw in stories_raw:
         story = convert_mongo_doc_to_dict(story_raw)
         author_id = story["author_id"]
-        
+
+        # Visibilité : masque les stories non destinées à ce spectateur.
+        aud = story.get("audience", "everyone")
+        if author_id != current_user["id"] and aud != "everyone":
+            if aud == "custom":
+                if current_user["id"] not in (story.get("recipient_ids") or []):
+                    continue
+            elif aud == "close_friends":
+                cf = close_friends_cache.get(author_id)
+                if cf is None:
+                    author_doc = await db.users.find_one({"id": author_id}, {"close_friends": 1})
+                    cf = set((author_doc or {}).get("close_friends") or [])
+                    close_friends_cache[author_id] = cf
+                if current_user["id"] not in cf:
+                    continue
+
         # Vérifie si l'utilisateur a vu cette story
         view_raw = await db.story_views.find_one({
             "story_id": story["id"],
