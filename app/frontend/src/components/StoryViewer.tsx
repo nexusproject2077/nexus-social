@@ -422,9 +422,26 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
               className="max-w-full max-h-full object-contain"
               onEnded={handleNextStory}
               controls={false}
+              muted={!!(currentStory as any).music_url}
               playsInline
               preload="auto"
             />
+          )}
+
+          {/* Musique de fond (extrait 30 s) : remonte à chaque story */}
+          {(currentStory as any).music_url && (
+            <audio key={currentStory.id} src={(currentStory as any).music_url} autoPlay loop />
+          )}
+
+          {/* Bandeau musique */}
+          {(currentStory as any).music_title && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1 rounded-full pointer-events-none"
+              style={{ background: "rgba(0,0,0,0.45)" }}>
+              <span className="material-symbols-outlined text-white" style={{ fontSize: 15 }}>music_note</span>
+              <span className="text-white text-xs font-semibold truncate" style={{ maxWidth: 200 }}>
+                {(currentStory as any).music_title}{(currentStory as any).music_artist ? ` · ${(currentStory as any).music_artist}` : ""}
+              </span>
+            </div>
           )}
 
           {/* Texte incrusté (légende de publication) */}

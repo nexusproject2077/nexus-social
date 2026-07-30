@@ -805,6 +805,9 @@ class Story(BaseModel):
     media_url: str
     text: Optional[str] = None            # légende / texte incrusté
     audience: str = "everyone"           # everyone | close_friends | custom
+    music_url: Optional[str] = None       # extrait audio (preview iTunes, 30 s)
+    music_title: Optional[str] = None
+    music_artist: Optional[str] = None
     views_count: int = 0
     created_at: str
     expires_at: str
@@ -4689,6 +4692,9 @@ async def create_story(
     audience: str = Form("everyone"),        # everyone | close_friends | custom
     recipient_ids: str = Form(""),           # ids séparés par des virgules (custom)
     text: str = Form(""),                    # texte incrusté / légende
+    music_url: str = Form(""),               # extrait audio (preview iTunes)
+    music_title: str = Form(""),
+    music_artist: str = Form(""),
     current_user: dict = Depends(get_current_user)
 ):
     """Créer une nouvelle story - supporte upload de fichier OU URL"""
@@ -4741,6 +4747,9 @@ async def create_story(
         "text": (text or "").strip()[:500] or None,
         "audience": audience,
         "recipient_ids": custom_ids,
+        "music_url": (music_url or "").strip()[:500] or None,
+        "music_title": (music_title or "").strip()[:200] or None,
+        "music_artist": (music_artist or "").strip()[:200] or None,
         "views_count": 0,
         "created_at": now.isoformat(),
         "expires_at": expires_at.isoformat()
@@ -5012,6 +5021,55 @@ async def reply_to_story_dm(story_id: str, data: StoryReply, current_user: dict 
         "content": content, "story_id": story_id, "created_at": now.isoformat(),
     }})
     return {"success": True}
+
+
+_MUSIC_CACHE: Dict[str, list] = {}
+
+
+@api_router.get("/stories/music/search")
+async def stories_music_search(q: str = Query(...), current_user: dict = Depends(get_current_user)):
+    """Recherche de musique via l'API publique iTunes Search → extraits 30 s
+    gratuits (previewUrl). Proxifié par le backend (l'API iTunes n'envoie pas
+    d'en-têtes CORS, donc l'appel direct navigateur échouerait)."""
+    q = (q or "").strip()
+    if len(q) < 2:
+        return []
+    if q in _MUSIC_CACHE:
+        return _MUSIC_CACHE[q]
+
+    import asyncio
+    import urllib.request
+    import urllib.parse
+
+    def _fetch():
+        params = urllib.parse.urlencode({"term": q, "media": "music", "entity": "song", "limit": 25})
+        url = f"https://itunes.apple.com/search?{params}"
+        req = urllib.request.Request(url, headers={"User-Agent": "NexusBot/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            return json.loads(r.read(600000).decode("utf-8", "ignore"))
+
+    try:
+        data = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Recherche musique indisponible.")
+
+    out = []
+    for t in (data.get("results") or []):
+        preview = t.get("previewUrl")
+        if not preview:
+            continue
+        art = (t.get("artworkUrl100") or "").replace("100x100bb", "200x200bb")
+        out.append({
+            "id": t.get("trackId"),
+            "title": t.get("trackName"),
+            "artist": t.get("artistName"),
+            "artwork": art,
+            "preview_url": preview,
+        })
+    _MUSIC_CACHE[q] = out
+    if len(_MUSIC_CACHE) > 500:
+        _MUSIC_CACHE.clear()
+    return out
 
 
 # ==================== INSTANTANÉS (photos éphémères façon Instagram) ====================

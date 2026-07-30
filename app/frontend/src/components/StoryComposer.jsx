@@ -32,14 +32,27 @@ const FILTERS = [
   { key: "vif", label: "Vif", css: "saturate(1.6) contrast(1.12)" },
 ];
 
-// Modes du rail gauche (visuels façon Instagram). « Créer » à venir, les autres
-// annoncés « bientôt ».
+// Modes du rail gauche (façon Instagram).
 const MODES = [
   { key: "create", label: "Créer", txt: "Aa" },
   { key: "boomerang", label: "Boomerang", icon: "all_inclusive" },
   { key: "layout", label: "Layout", icon: "grid_view" },
-  { key: "hands", label: "Mains libres", icon: "radio_button_checked" },
 ];
+
+// Fonds pour le mode « Créer ».
+const BACKGROUNDS = [
+  { id: "g1", css: "linear-gradient(135deg,#22d3ee,#3b82f6)", colors: ["#22d3ee", "#3b82f6"] },
+  { id: "g2", css: "linear-gradient(135deg,#ec4899,#f59e0b)", colors: ["#ec4899", "#f59e0b"] },
+  { id: "g3", css: "linear-gradient(135deg,#8b5cf6,#ec4899)", colors: ["#8b5cf6", "#ec4899"] },
+  { id: "g4", css: "linear-gradient(135deg,#22c55e,#14b8a6)", colors: ["#22c55e", "#14b8a6"] },
+  { id: "g5", css: "linear-gradient(135deg,#f43f5e,#8b5cf6)", colors: ["#f43f5e", "#8b5cf6"] },
+  { id: "d1", css: "#0b1326", colors: ["#0b1326"] },
+  { id: "d2", css: "#000000", colors: ["#000000"] },
+  { id: "w1", css: "#ffffff", colors: ["#ffffff"] },
+  { id: "r1", css: "#ef4444", colors: ["#ef4444"] },
+  { id: "b1", css: "#3b82f6", colors: ["#3b82f6"] },
+];
+const LAYOUTS = [2, 3, 4, 6];
 
 function Avatar({ username, pic, size = 32 }) {
   const s = `${size}px`;
@@ -117,10 +130,29 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   const [selectedId, setSelectedId] = useState(null);
   const [eraser, setEraser] = useState(false);
   const [textEditor, setTextEditor] = useState(null); // {id?, text, color}
+  const audioRef = useRef(null);
+  const [music, setMusic] = useState(null);           // {url,title,artist}
+  const [musicOpen, setMusicOpen] = useState(false);
+  const [camMode, setCamMode] = useState("normal");   // normal | boomerang | layout
+  const [makingBoomerang, setMakingBoomerang] = useState(false);
+  const [layoutN, setLayoutN] = useState(null);        // 2 | 3 | 4 | 6
+  const [layoutCells, setLayoutCells] = useState([]);  // dataURL | null
+  const layoutFileRef = useRef(null);
+  const layoutTargetRef = useRef(0);
+
+  const pickMusic = (track) => {
+    setMusic({ url: track.preview_url, title: track.title, artist: track.artist });
+    setMusicOpen(false);
+    setOverlays((ov) => ov.some((o) => o.type === "music")
+      ? ov.map((o) => (o.type === "music" ? { ...o, title: track.title } : o))
+      : [...ov, { id: uid(), x: 0.5, y: 0.78, scale: 1, type: "music", title: track.title }]);
+    try { const a = audioRef.current; if (a) { a.src = track.preview_url; a.currentTime = 0; a.play().catch(() => {}); } } catch { /* noop */ }
+  };
+  const stopMusicPreview = () => { try { audioRef.current?.pause(); } catch { /* noop */ } };
 
   const filterCss = FILTERS.find((f) => f.key === filter)?.css || "none";
   const curFit = cur?.fit || (cur?.type === "image" ? "cover" : "contain");
-  const canEdit = cur?.type === "image";  // stickers/dessin cuits → photos uniquement
+  const canEdit = cur?.type === "image" || cur?.type === "background"; // texte/stickers/dessin (cuits)
 
   // Mesure la scène d'édition (pour cuire stickers/dessin aux bonnes positions).
   useEffect(() => {
@@ -169,6 +201,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     stopStream();
     clearTimeout(maxRef.current); clearInterval(progressRef.current); clearTimeout(pressRef.current.timer);
     const r = recorderRef.current; if (r && r.state !== "inactive") { try { r.stop(); } catch { /* noop */ } }
+    try { audioRef.current?.pause(); } catch { /* noop */ }
   }, []);
 
   const toggleTorch = async () => {
@@ -181,10 +214,11 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   };
 
   // ── Capture ───────────────────────────────────────────────────────────────
-  const toEdit = (media, type, fit = "contain") => {
-    setCur({ media, type, fit });
+  const toEdit = (media, type, fit = "contain", extra = {}) => {
+    setCur({ media, type, fit, ...extra });
     setText(""); setFilter("none"); setShowFilters(false);
     setOverlays([]); setDrawMode(false); setStickerMenu(false); setEmojiPicker(false); setStickerForm(null);
+    setMusic(null); stopMusicPreview(); setSelectedId(null);
     if (drawCanvasRef.current) { const c = drawCanvasRef.current; c.getContext("2d")?.clearRect(0, 0, c.width, c.height); }
     setMode("edit");
   };
@@ -234,13 +268,14 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   };
 
   const onShutterDown = (e) => {
-    if (!ready) return;
+    if (!ready || camMode === "boomerang") return;   // boomerang : déclenché au relâchement
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
     pressRef.current.longPress = false;
     clearTimeout(pressRef.current.timer);
     pressRef.current.timer = setTimeout(() => { pressRef.current.longPress = true; startRec(); }, 280);
   };
   const onShutterUp = () => {
+    if (camMode === "boomerang") { if (ready) recordBoomerang(); return; }
     clearTimeout(pressRef.current.timer);
     if (recordingRef.current) { stopRec(); return; }
     if (!pressRef.current.longPress) capturePhoto();
@@ -257,11 +292,111 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   };
 
   const onModeTap = (m) => {
-    setShowLabels(true);
-    clearTimeout(maxRef.current);
-    if (m === "create") toast("Mode « Créer » : bientôt.");
-    else toast(`« ${MODES.find((x) => x.key === m)?.label} » : bientôt.`);
+    setShowLabels(true); clearTimeout(maxRef.current);
+    if (m === "create") { toEdit(null, "background", "cover", { bg: BACKGROUNDS[0] }); return; }
+    if (m === "boomerang") { setCamMode("boomerang"); toast("Appuie pour un Boomerang (≈1,5 s)"); }
+    else if (m === "layout") { setCamMode("layout"); setLayoutN(null); setLayoutCells([]); }
     setTimeout(() => setShowLabels(false), 3500);
+  };
+
+  // ── Boomerang : capture courte → boucle aller-retour ré-encodée ────────────
+  const recordBoomerang = async () => {
+    const v = videoRef.current;
+    if (!v || !v.videoWidth || makingBoomerang) return;
+    setMakingBoomerang(true);
+    try {
+      const W = 480, H = Math.round((W * 16) / 9);
+      const grab = document.createElement("canvas"); grab.width = W; grab.height = H;
+      const gctx = grab.getContext("2d");
+      const frames = [];
+      const drawFrame = () => {
+        const vw = v.videoWidth, vh = v.videoHeight, tR = 9 / 16;
+        let cw = vw, ch = Math.round(vw / tR);
+        if (ch > vh) { ch = vh; cw = Math.round(vh * tR); }
+        const sx = (vw - cw) / 2, sy = (vh - ch) / 2;
+        gctx.save();
+        if (facing === "user") { gctx.translate(W, 0); gctx.scale(-1, 1); }
+        gctx.drawImage(v, sx, sy, cw, ch, 0, 0, W, H);
+        gctx.restore();
+        const c = document.createElement("canvas"); c.width = W; c.height = H;
+        c.getContext("2d").drawImage(grab, 0, 0);
+        frames.push(c);
+      };
+      for (let i = 0; i < 26; i++) { drawFrame(); await new Promise((r) => setTimeout(r, 55)); }
+      const seq = frames.concat(frames.slice(1, -1).reverse());
+
+      const out = document.createElement("canvas"); out.width = W; out.height = H;
+      const octx = out.getContext("2d");
+      if (typeof out.captureStream !== "function") {
+        // iOS/Safari sans captureStream : repli → court clip vidéo (bouclé).
+        setMakingBoomerang(false);
+        toast("Boomerang non pris en charge ici — clip court à la place.");
+        startRec(); setTimeout(stopRec, 1400);
+        return;
+      }
+      const stream = out.captureStream(24);
+      let mime = "";
+      for (const mm of ["video/mp4", "video/webm;codecs=vp9", "video/webm"]) if (MediaRecorder.isTypeSupported?.(mm)) { mime = mm; break; }
+      const rec = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 3_000_000 });
+      const chunks = [];
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      const done = new Promise((resolve) => { rec.onstop = () => resolve(new Blob(chunks, { type: rec.mimeType || mime || "video/webm" })); });
+      rec.start();
+      const frameMs = 1000 / 24;
+      for (let pass = 0; pass < 2; pass++) { for (const fr of seq) { octx.drawImage(fr, 0, 0); await new Promise((r) => setTimeout(r, frameMs)); } }
+      rec.stop();
+      const blob = await done;
+      const reader = new FileReader();
+      reader.onload = () => { setMakingBoomerang(false); setCamMode("normal"); toEdit(reader.result, "video", "cover"); };
+      reader.readAsDataURL(blob);
+    } catch {
+      setMakingBoomerang(false);
+      toast.error("Boomerang impossible sur cet appareil.");
+    }
+  };
+
+  // ── Layout : grille collage 2–6 photos → une image ─────────────────────────
+  const layoutNextEmpty = () => layoutCells.findIndex((c) => !c);
+  const captureLayoutCell = () => {
+    const i = layoutNextEmpty(); if (i < 0) return;
+    const v = videoRef.current; if (!v || !v.videoWidth) return;
+    const s = Math.min(v.videoWidth, v.videoHeight);
+    const sx = (v.videoWidth - s) / 2, sy = (v.videoHeight - s) / 2;
+    const c = document.createElement("canvas"); c.width = 640; c.height = 640;
+    const ctx = c.getContext("2d");
+    if (facing === "user") { ctx.translate(640, 0); ctx.scale(-1, 1); }
+    ctx.drawImage(v, sx, sy, s, s, 0, 0, 640, 640);
+    setLayoutCells((cells) => cells.map((x, j) => (j === i ? c.toDataURL("image/jpeg", 0.85) : x)));
+  };
+  const importLayoutCell = (e) => {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f || !f.type.startsWith("image/")) return;
+    const i = layoutTargetRef.current;
+    const fr = new FileReader();
+    fr.onload = () => setLayoutCells((cells) => cells.map((x, j) => (j === i ? fr.result : x)));
+    fr.readAsDataURL(f);
+  };
+  const finishLayout = async () => {
+    if (layoutCells.some((c) => !c)) { toast.error("Remplis toutes les cases."); return; }
+    const grid = { 2: [1, 2], 3: [1, 3], 4: [2, 2], 6: [2, 3] }[layoutN];
+    const [cols, rows] = grid;
+    const W = 1080, H = 1920;
+    const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d"); ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+    const cw = W / cols, ch = H / rows;
+    for (let i = 0; i < layoutN; i++) {
+      try {
+        const img = await loadImg(layoutCells[i]);
+        const cx = (i % cols) * cw, cy = Math.floor(i / cols) * ch;
+        const iR = img.naturalWidth / img.naturalHeight, cR = cw / ch;
+        let dw, dh; if (iR > cR) { dh = ch; dw = ch * iR; } else { dw = cw; dh = cw / iR; }
+        ctx.save(); ctx.beginPath(); ctx.rect(cx, cy, cw, ch); ctx.clip();
+        ctx.drawImage(img, cx + (cw - dw) / 2, cy + (ch - dh) / 2, dw, dh); ctx.restore();
+        ctx.strokeStyle = "#000"; ctx.lineWidth = 8; ctx.strokeRect(cx, cy, cw, ch);
+      } catch { /* skip */ }
+    }
+    setCamMode("normal"); setLayoutN(null); setLayoutCells([]);
+    toEdit(canvas.toDataURL("image/jpeg", 0.9), "image", "cover");
   };
 
   // ── Édition riche : dessin, drag des stickers ─────────────────────────────
@@ -330,14 +465,24 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
-    try {
-      const img = await loadImg(cur.media);
-      const iR = img.naturalWidth / img.naturalHeight, sR = W / H;
-      let dw, dh;
-      if (curFit === "cover") { if (iR > sR) { dh = H; dw = H * iR; } else { dw = W; dh = W / iR; } }
-      else { if (iR > sR) { dw = W; dh = W / iR; } else { dh = H; dw = H * iR; } }
-      ctx.save(); ctx.filter = filterCss; ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh); ctx.restore();
-    } catch { /* fond noir */ }
+    if (cur.type === "background") {
+      const bg = cur.bg;
+      if (bg?.colors?.length > 1) {
+        const g = ctx.createLinearGradient(0, 0, W, H);
+        g.addColorStop(0, bg.colors[0]); g.addColorStop(1, bg.colors[1]);
+        ctx.fillStyle = g;
+      } else { ctx.fillStyle = bg?.colors?.[0] || "#0b1326"; }
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      try {
+        const img = await loadImg(cur.media);
+        const iR = img.naturalWidth / img.naturalHeight, sR = W / H;
+        let dw, dh;
+        if (curFit === "cover") { if (iR > sR) { dh = H; dw = H * iR; } else { dw = W; dh = W / iR; } }
+        else { if (iR > sR) { dw = W; dh = W / iR; } else { dh = H; dw = H * iR; } }
+        ctx.save(); ctx.filter = filterCss; ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh); ctx.restore();
+      } catch { /* fond noir */ }
+    }
     const dc = drawCanvasRef.current;
     if (dc && dc.width) { try { ctx.drawImage(dc, 0, 0, W, H); } catch { /* noop */ } }
     for (const o of overlays) paintOverlay(ctx, o, W, H);
@@ -401,8 +546,8 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   // Cuit la photo courante (filtre + dessin + stickers) ; la vidéo reste brute.
   const packCurrentBaked = async () => {
     if (!cur) return null;
-    if (cur.type === "image") return { media: await composeImage(), type: "image", text: text.trim() };
-    return { media: cur.media, type: cur.type, text: text.trim() };
+    if (cur.type === "image" || cur.type === "background") return { media: await composeImage(), type: "image", text: text.trim(), music };
+    return { media: cur.media, type: cur.type, text: text.trim(), music };
   };
 
   const addMore = async () => {
@@ -426,6 +571,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
         fd.append("media_type", s.type);
         fd.append("audience", vis);
         fd.append("text", s.text || "");
+        if (s.music) { fd.append("music_url", s.music.url || ""); fd.append("music_title", s.music.title || ""); fd.append("music_artist", s.music.artist || ""); }
         if (vis === "custom") fd.append("recipient_ids", (list || []).map((u) => u.id).join(","));
         await axios.post(`${API}/stories/`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       }
@@ -489,37 +635,99 @@ export default function StoryComposer({ user, onClose, onPublished }) {
           </div>
         )}
 
-        {/* Barre du bas : galerie · déclencheur · flip */}
-        <div className="absolute bottom-0 left-0 right-0 px-8 pb-6" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 24px)" }}>
-          <div className="flex items-center justify-between">
-            <button onClick={() => fileRef.current?.click()} className="w-11 h-11 rounded-lg overflow-hidden flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label="Galerie">
-              <span className="material-symbols-outlined text-white">photo_library</span>
-            </button>
-            <input ref={fileRef} type="file" accept="image/*,video/*" onChange={onImport} className="hidden" />
-
-            <button onPointerDown={onShutterDown} onPointerUp={onShutterUp} onPointerCancel={onShutterUp}
-              onContextMenu={(e) => e.preventDefault()} disabled={!ready}
-              style={{ touchAction: "none" }}
-              className="relative w-[80px] h-[80px] rounded-full active:scale-95 transition-transform disabled:opacity-40"
-              aria-label="Photo (appui court) ou vidéo (appui long, max 15 s)">
-              <span className="absolute inset-0 rounded-full border-[5px]" style={{ borderColor: recording ? "#ef4444" : "#fff" }} />
-              {recording
-                ? <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md bg-red-500" style={{ width: 30, height: 30 }} />
-                : <span className="absolute inset-[7px] rounded-full" style={{ background: "rgba(255,255,255,0.9)" }} />}
-              {recording && (
-                <svg className="absolute inset-0 -rotate-90" viewBox="0 0 80 80" style={{ pointerEvents: "none" }}>
-                  <circle cx="40" cy="40" r="37" fill="none" stroke="#ef4444" strokeWidth="5" strokeLinecap="round"
-                    strokeDasharray={2 * Math.PI * 37} strokeDashoffset={(1 - recordPct / 100) * 2 * Math.PI * 37} />
-                </svg>
-              )}
-            </button>
-
-            <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
-              className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label="Changer de caméra">
-              <span className="material-symbols-outlined text-white">cameraswitch</span>
-            </button>
+        {/* Boomerang en cours de génération */}
+        {makingBoomerang && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ background: "rgba(0,0,0,0.55)" }}>
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: C.accent }} />
+            <span className="text-white/85 text-sm">Création du Boomerang…</span>
           </div>
-          <p className="text-center text-white/90 font-bold text-sm mt-4 tracking-wide">STORY</p>
+        )}
+
+        {/* Grille Layout (par-dessus la caméra) */}
+        {camMode === "layout" && layoutN && (
+          <div className="absolute inset-x-0 top-24 bottom-40 px-6 flex items-center">
+            <div className="w-full grid gap-1" style={{ gridTemplateColumns: `repeat(${{ 2: 1, 3: 1, 4: 2, 6: 2 }[layoutN]}, 1fr)`, aspectRatio: "9/16" }}>
+              {layoutCells.map((cell, i) => (
+                <button key={i} onClick={() => cell && setLayoutCells((c) => c.map((x, j) => (j === i ? null : x)))}
+                  className="relative overflow-hidden rounded-md flex items-center justify-center"
+                  style={{ background: "rgba(255,255,255,0.12)", border: layoutNextEmpty() === i ? `2px solid ${C.accent}` : "2px solid rgba(255,255,255,0.25)" }}>
+                  {cell ? <img src={cell} alt="" className="w-full h-full object-cover" /> : <span className="material-symbols-outlined text-white/60">add</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Barre du bas */}
+        <div className="absolute bottom-0 left-0 right-0 px-8 pb-6" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 24px)" }}>
+          {camMode === "layout" ? (
+            !layoutN ? (
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-white font-semibold text-sm">Choisis une grille</p>
+                <div className="flex gap-3">
+                  {LAYOUTS.map((n) => (
+                    <button key={n} onClick={() => { setLayoutN(n); setLayoutCells(Array(n).fill(null)); }}
+                      className="w-14 h-14 rounded-xl flex items-center justify-center font-black text-lg" style={{ background: "rgba(255,255,255,0.15)", color: "#fff" }}>{n}</button>
+                  ))}
+                </div>
+                <button onClick={() => setCamMode("normal")} className="text-white/70 text-sm mt-1">Annuler</button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <button onClick={() => { const i = layoutNextEmpty(); layoutTargetRef.current = i < 0 ? 0 : i; layoutFileRef.current?.click(); }} disabled={layoutNextEmpty() < 0}
+                  className="w-11 h-11 rounded-lg flex items-center justify-center disabled:opacity-40" style={{ background: "rgba(255,255,255,0.15)" }} aria-label="Importer">
+                  <span className="material-symbols-outlined text-white">photo_library</span>
+                </button>
+                <input ref={layoutFileRef} type="file" accept="image/*" onChange={importLayoutCell} className="hidden" />
+                {layoutNextEmpty() >= 0 ? (
+                  <button onClick={captureLayoutCell} disabled={!ready} className="relative w-[76px] h-[76px] rounded-full active:scale-95 disabled:opacity-40" aria-label="Remplir la case">
+                    <span className="absolute inset-0 rounded-full border-[5px] border-white" />
+                    <span className="absolute inset-[7px] rounded-full" style={{ background: "rgba(255,255,255,0.9)" }} />
+                  </button>
+                ) : (
+                  <button onClick={finishLayout} className="px-6 h-12 rounded-full font-black" style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>Terminé</button>
+                )}
+                <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label="Changer de caméra">
+                  <span className="material-symbols-outlined text-white">cameraswitch</span>
+                </button>
+              </div>
+            )
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <button onClick={() => fileRef.current?.click()} className="w-11 h-11 rounded-lg overflow-hidden flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label="Galerie">
+                  <span className="material-symbols-outlined text-white">photo_library</span>
+                </button>
+                <input ref={fileRef} type="file" accept="image/*,video/*" onChange={onImport} className="hidden" />
+
+                <button onPointerDown={onShutterDown} onPointerUp={onShutterUp} onPointerCancel={onShutterUp}
+                  onContextMenu={(e) => e.preventDefault()} disabled={!ready || makingBoomerang}
+                  style={{ touchAction: "none" }}
+                  className="relative w-[80px] h-[80px] rounded-full active:scale-95 transition-transform disabled:opacity-40"
+                  aria-label={camMode === "boomerang" ? "Boomerang" : "Photo (appui court) ou vidéo (appui long)"}>
+                  <span className="absolute inset-0 rounded-full border-[5px]" style={{ borderColor: recording ? "#ef4444" : camMode === "boomerang" ? C.accent : "#fff" }} />
+                  {recording
+                    ? <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md bg-red-500" style={{ width: 30, height: 30 }} />
+                    : <span className="absolute inset-[7px] rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.9)" }}>
+                        {camMode === "boomerang" && <span className="material-symbols-outlined" style={{ color: C.accent, fontSize: 30 }}>all_inclusive</span>}
+                      </span>}
+                  {recording && (
+                    <svg className="absolute inset-0 -rotate-90" viewBox="0 0 80 80" style={{ pointerEvents: "none" }}>
+                      <circle cx="40" cy="40" r="37" fill="none" stroke="#ef4444" strokeWidth="5" strokeLinecap="round"
+                        strokeDasharray={2 * Math.PI * 37} strokeDashoffset={(1 - recordPct / 100) * 2 * Math.PI * 37} />
+                    </svg>
+                  )}
+                </button>
+
+                <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
+                  className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label="Changer de caméra">
+                  <span className="material-symbols-outlined text-white">cameraswitch</span>
+                </button>
+              </div>
+              <p className="text-center text-white/90 font-bold text-sm mt-4 tracking-wide">{camMode === "boomerang" ? "BOOMERANG" : "STORY"}</p>
+              {camMode === "boomerang" && <button onClick={() => setCamMode("normal")} className="block mx-auto text-white/60 text-xs mt-1">Mode normal</button>}
+            </>
+          )}
         </div>
 
         {sheet && (
@@ -536,9 +744,11 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000" }}>
       {/* Scène : média (filtré) + dessin + stickers (draggables) */}
       <div ref={stageRef} className="absolute inset-0" onPointerDown={() => setSelectedId(null)} onPointerMove={stageMove} onPointerUp={stageUp} onPointerLeave={stageUp}>
-        {cur?.type === "video"
-          ? <video src={cur.media} className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} autoPlay playsInline muted loop />
-          : <img src={cur?.media} alt="" className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} />}
+        {cur?.type === "background"
+          ? <div className="absolute inset-0" style={{ background: cur.bg?.css }} />
+          : cur?.type === "video"
+            ? <video src={cur.media} className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} autoPlay playsInline muted loop />
+            : <img src={cur?.media} alt="" className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} />}
 
         {/* Calque de dessin (photos) */}
         {canEdit && stage.w > 0 && (
@@ -605,8 +815,8 @@ export default function StoryComposer({ user, onClose, onPublished }) {
             {[
               { txt: "Aa", label: "Texte", on: () => (canEdit ? setTextEditor({ text: "", color: "#ffffff" }) : toast("Texte sur les photos ; pour la vidéo, utilise la légende en bas.")) },
               { icon: "sentiment_satisfied", label: "Stickers", on: () => (canEdit ? setStickerMenu(true) : toast("Disponible sur les photos.")) },
-              { icon: "music_note", label: "Musique", on: () => (canEdit ? setStickerForm("music") : toast("Disponible sur les photos.")) },
-              { icon: "auto_awesome", label: "Effets", on: () => setShowFilters((s) => !s) },
+              { icon: "music_note", label: "Musique", on: () => setMusicOpen(true) },
+              { icon: "auto_awesome", label: "Effets", on: () => (cur?.type === "background" ? toast("Filtres : sur photo/vidéo.") : setShowFilters((s) => !s)) },
               { icon: "draw", label: "Dessin", on: () => (canEdit ? setDrawMode(true) : toast("Disponible sur les photos.")) },
             ].map((t, i) => (
               <button key={i} onClick={t.on} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }} aria-label={t.label}>
@@ -616,6 +826,18 @@ export default function StoryComposer({ user, onClose, onPublished }) {
             ))}
           </div>
         </>
+      )}
+
+      {/* Fonds (mode Créer) */}
+      {!drawMode && cur?.type === "background" && (
+        <div className="absolute left-0 right-0 bottom-32 px-3 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+          <div className="flex gap-2">
+            {BACKGROUNDS.map((bg) => (
+              <button key={bg.id} onClick={() => setCur((c) => ({ ...c, bg }))} className="w-10 h-10 rounded-full flex-shrink-0"
+                style={{ background: bg.css, border: cur.bg?.id === bg.id ? "3px solid #fff" : "2px solid rgba(255,255,255,0.4)" }} />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Sélecteur de filtres (si Effets actif, images uniquement) */}
@@ -678,7 +900,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
                 { k: "emoji", icon: "mood", label: "Emoji", on: () => { setStickerMenu(false); setEmojiPicker(true); } },
                 { k: "poll", icon: "bar_chart", label: "Sondage", on: () => { setStickerMenu(false); setStickerForm("poll"); } },
                 { k: "question", icon: "help", label: "Questions", on: () => { setStickerMenu(false); setStickerForm("question"); } },
-                { k: "music", icon: "music_note", label: "Musique", on: () => { setStickerMenu(false); setStickerForm("music"); } },
+                { k: "music", icon: "music_note", label: "Musique", on: () => { setStickerMenu(false); setMusicOpen(true); } },
               ].map((s) => (
                 <button key={s.k} onClick={s.on} className="flex items-center gap-3 px-4 py-4 rounded-2xl" style={{ background: C.container }}>
                   <span className="material-symbols-outlined" style={{ color: C.accent }}>{s.icon}</span>
@@ -707,6 +929,15 @@ export default function StoryComposer({ user, onClose, onPublished }) {
       {/* Formulaire sticker (sondage / questions / musique) */}
       {stickerForm && (
         <StickerForm type={stickerForm} onCancel={() => setStickerForm(null)} onAdd={addOverlay} />
+      )}
+
+      {/* Audio d'aperçu de la musique */}
+      <audio ref={audioRef} loop />
+
+      {/* Recherche de musique (extraits gratuits iTunes) */}
+      {musicOpen && (
+        <MusicSearch onClose={() => setMusicOpen(false)} onPick={pickMusic}
+          current={music} onRemove={() => { setMusic(null); stopMusicPreview(); setOverlays((ov) => ov.filter((o) => o.type !== "music")); setMusicOpen(false); }} />
       )}
 
       {/* Éditeur de texte (élément déplaçable, distinct de la légende) */}
@@ -962,6 +1193,53 @@ function StickerForm({ type, onCancel, onAdd }) {
           <button onClick={onCancel} className="flex-1 py-3 rounded-2xl font-bold" style={{ background: C.high, color: C.onSurface }}>Annuler</button>
           <button onClick={submit} className="flex-1 py-3 rounded-2xl font-black" style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>Ajouter</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Recherche de musique (extraits gratuits iTunes, proxifiés par le backend) ─
+function MusicSearch({ onClose, onPick, current, onRemove }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!q.trim()) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setLoading(true);
+      try { const r = await axios.get(`${API}/stories/music/search?q=${encodeURIComponent(q.trim())}`); setResults(r.data || []); }
+      catch { setResults([]); }
+      setLoading(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
+  return (
+    <div className="fixed inset-0 z-[95] flex flex-col" style={{ background: "rgba(0,0,0,0.9)" }}>
+      <div className="flex items-center gap-2 px-3 pt-4 pb-2" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
+        <button onClick={onClose} className="w-10 h-10 flex items-center justify-center"><span className="material-symbols-outlined text-white">arrow_back</span></button>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher une musique…"
+          className="flex-1 text-sm px-4 py-2.5 rounded-xl border-none outline-none" style={{ background: C.high, color: C.onSurface }} />
+      </div>
+      {current && (
+        <div className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: C.container }}>
+          <span className="material-symbols-outlined" style={{ color: C.accent }}>music_note</span>
+          <span className="flex-1 text-sm text-white truncate">{current.title} · {current.artist}</span>
+          <button onClick={onRemove} className="text-xs text-red-400 font-bold">Retirer</button>
+        </div>
+      )}
+      <div className="flex-1 overflow-y-auto px-3" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        {loading && <div className="flex justify-center pt-8"><div className="animate-spin rounded-full h-7 w-7 border-b-2" style={{ borderColor: C.accent }} /></div>}
+        {results.map((t) => (
+          <button key={t.id} onClick={() => onPick(t)} className="w-full flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-white/5 text-left">
+            {t.artwork
+              ? <img src={t.artwork} alt="" className="w-11 h-11 rounded-lg object-cover" />
+              : <div className="w-11 h-11 rounded-lg flex items-center justify-center" style={{ background: C.high }}><span className="material-symbols-outlined text-white">music_note</span></div>}
+            <div className="flex-1 min-w-0"><p className="text-sm font-semibold text-white truncate">{t.title}</p><p className="text-xs truncate" style={{ color: C.outline }}>{t.artist}</p></div>
+            <span className="material-symbols-outlined" style={{ color: C.accent }}>play_circle</span>
+          </button>
+        ))}
+        {!loading && q.trim() && results.length === 0 && <p className="text-center text-sm pt-8" style={{ color: C.outline }}>Aucun résultat.</p>}
+        {!q.trim() && <p className="text-center text-sm pt-8" style={{ color: C.outline }}>Tape le titre d'une chanson ou un artiste.</p>}
       </div>
     </div>
   );
