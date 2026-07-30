@@ -237,21 +237,9 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
 
   // Envoi. Peut recevoir l'audience/liste explicitement (utile depuis le
   // sélecteur, où l'état n'est pas encore à jour).
-  // Ouvre le sélecteur en gardant la photo en attente (envoyée dès qu'on a des
-  // destinataires). Utilisé quand l'audience est vide.
-  const promptRecipients = (media, msg) => {
-    pendingPhotoRef.current = media;
-    setSending(false);
-    setSheetMode("manual");
-    setSheet(true);
-    if (msg) toast(msg);
-  };
-
+  // Envoi/publication direct. L'audience peut être vide : on publie quand même
+  // (pas de mise en attente). Peut recevoir l'audience/liste explicitement.
   const doSend = async (media, aud = audience, list = manual) => {
-    if (aud === "manual" && (!list || list.length === 0)) {
-      promptRecipients(media, "Choisis les destinataires pour envoyer.");
-      return;
-    }
     setSending(true);
     try {
       const { data } = await axios.post(`${API}/instants`, {
@@ -263,15 +251,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       pendingPhotoRef.current = null;
       onSent(data.instant, data.recipients);
     } catch (e) {
-      const detail = e.response?.data?.detail || "";
-      // Audience vide (aucun mutuel / aucun·e ami·e proche) : au lieu de bloquer,
-      // on ouvre la Sélection avec la photo en attente pour choisir des destinataires.
-      if (e.response?.status === 400 && /destinataire/i.test(detail) && aud !== "manual") {
-        const nom = aud === "mutuals" ? "Mutuels" : "Ami·e·s proches";
-        promptRecipients(media, `Aucun destinataire dans « ${nom} ». Choisis qui recevra l'instantané.`);
-        return;
-      }
-      toast.error(detail || "Envoi impossible.");
+      toast.error(e.response?.data?.detail || "Envoi impossible.");
       setSending(false);
     }
   };
@@ -773,7 +753,9 @@ export default function InstantsEntry({ user, hidden = false }) {
 
   const onSent = (instant, recipients) => {
     setScreen(null);
-    toast.success(`Instantané envoyé à ${recipients} destinataire${recipients > 1 ? "s" : ""}`);
+    toast.success(recipients > 0
+      ? `Instantané envoyé à ${recipients} destinataire${recipients > 1 ? "s" : ""}`
+      : "Instantané publié");
     // Fenêtre d'annulation ~6 s.
     setUndo({ id: instant.id });
     clearTimeout(undoTimer.current);

@@ -5069,15 +5069,13 @@ async def create_instant(data: InstantCreate, current_user: dict = Depends(get_c
         recipients = [r for r in ((me or {}).get("close_friends") or []) if r != current_user["id"]]
 
     recipients = list(dict.fromkeys(recipients))
-    if not recipients:
-        raise HTTPException(status_code=400, detail="Aucun destinataire pour cette audience.")
-
-    # Ne garde que des utilisateurs existants.
-    valid_raw = await db.users.find({"id": {"$in": recipients}}, {"id": 1}).to_list(3000)
-    valid_ids = {convert_mongo_doc_to_dict(u)["id"] for u in valid_raw}
-    recipients = [r for r in recipients if r in valid_ids]
-    if not recipients:
-        raise HTTPException(status_code=400, detail="Aucun destinataire valide.")
+    # Ne garde que des utilisateurs existants. L'audience peut être VIDE : on
+    # autorise la publication même sans destinataire (l'instantané existe et
+    # reste dans l'archive de l'auteur).
+    if recipients:
+        valid_raw = await db.users.find({"id": {"$in": recipients}}, {"id": 1}).to_list(3000)
+        valid_ids = {convert_mongo_doc_to_dict(u)["id"] for u in valid_raw}
+        recipients = [r for r in recipients if r in valid_ids]
 
     now = datetime.now(timezone.utc)
     caption = (data.caption or "").strip()[:MAX_INSTANT_CAPTION]
