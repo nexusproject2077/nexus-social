@@ -190,11 +190,17 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
     } catch {
       toast.error("Double caméra non prise en charge sur cet appareil.");
       setDual(false);
+      // L'accès secondaire a pu perturber la caméra principale : on la relance.
+      startMain(facing);
     }
   };
 
   const toggleDual = async () => {
     if (dual) { stopStream(pipStreamRef); setDual(false); return; }
+    // iOS/Safari n'autorise qu'UNE caméra à la fois : ouvrir un 2e flux couperait
+    // la caméra principale (aperçu noir). La double caméra simultanée n'existe
+    // pas en web sur iPhone → on l'annonce sans toucher au flux principal.
+    if (IS_IOS) { toast("Double caméra indisponible sur iPhone (limite de Safari)."); return; }
     if (!localStorage.getItem(DUAL_PROMO_KEY)) { setPromo(true); return; }
     await enableDual();
   };
@@ -327,7 +333,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: C.accent }} />
               </div>
             )}
-            {showHint && (
+            {showHint && !IS_IOS && (
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] px-3 py-1 rounded-full text-white/80 transition-opacity"
                 style={{ background: "rgba(0,0,0,0.4)" }}>
                 Double-appui : {dual ? "désactiver" : "activer"} la double caméra
