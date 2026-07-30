@@ -6,8 +6,9 @@
 //    effets/filtres), « Ajoutez une légende… », pastilles de publication
 //    (Votre story / Ami·e·s proches) + flèche.
 //  • Enchaîner plusieurs médias (segments). Visibilité everyone/close/custom.
-//  • Filtres (presets CSS) appliqués et « cuits » dans la photo à la publication.
-// (Stickers sondage/questions/musique et dessin : passes suivantes.)
+//  • Édition riche (photos) : filtres (presets CSS), dessin à main levée, et
+//    stickers déplaçables (emoji, sondage, questions, musique) — le tout
+//    « cuit » dans l'image à la publication.
 import { useEffect, useRef, useState, useCallback } from "react";
 import axios from "axios";
 import { API } from "../App";
@@ -52,24 +53,23 @@ function Avatar({ username, pic, size = 32 }) {
   );
 }
 
-// Applique (cuit) un filtre CSS dans une photo → nouvelle data URL.
-function bakePhoto(dataUrl, cssFilter) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext("2d");
-        ctx.filter = cssFilter || "none";
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/jpeg", 0.85));
-      } catch { resolve(dataUrl); }
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
+const uid = () => Math.random().toString(36).slice(2);
+const loadImg = (src) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = reject;
+  img.src = src;
+});
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
+const EMOJIS = ["❤️", "😂", "😍", "🔥", "😮", "👏", "🙏", "😢", "🎉", "✨", "💯", "😎", "🥳", "👍", "😭", "🤔", "💀", "👀", "🙌", "🍀", "⭐", "🌈", "☀️", "🥰"];
 
 export default function StoryComposer({ user, onClose, onPublished }) {
   const videoRef = useRef(null);
@@ -101,7 +101,32 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   const [sheet, setSheet] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
+  // ── Édition riche (stickers / dessin) ──
+  const stageRef = useRef(null);
+  const drawCanvasRef = useRef(null);
+  const drawingActiveRef = useRef(false);
+  const dragRef = useRef(null);
+  const [overlays, setOverlays] = useState([]);        // {id,type,x,y,...}
+  const [drawMode, setDrawMode] = useState(false);
+  const [drawColor, setDrawColor] = useState("#ffffff");
+  const [stickerMenu, setStickerMenu] = useState(false);
+  const [emojiPicker, setEmojiPicker] = useState(false);
+  const [stickerForm, setStickerForm] = useState(null); // "poll" | "question" | "music"
+  const [stage, setStage] = useState({ w: 0, h: 0 });
+
   const filterCss = FILTERS.find((f) => f.key === filter)?.css || "none";
+  const curFit = cur?.fit || (cur?.type === "image" ? "cover" : "contain");
+  const canEdit = cur?.type === "image";  // stickers/dessin cuits → photos uniquement
+
+  // Mesure la scène d'édition (pour cuire stickers/dessin aux bonnes positions).
+  useEffect(() => {
+    if (mode !== "edit") return;
+    const measure = () => { const r = stageRef.current?.getBoundingClientRect(); if (r) setStage({ w: r.width, h: r.height }); };
+    measure();
+    const t = setTimeout(measure, 60);
+    window.addEventListener("resize", measure);
+    return () => { clearTimeout(t); window.removeEventListener("resize", measure); };
+  }, [mode, cur]);
 
   const stopStream = () => {
     try { streamRef.current?.getTracks?.().forEach((t) => t.stop()); } catch { /* noop */ }
@@ -152,7 +177,13 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   };
 
   // ── Capture ───────────────────────────────────────────────────────────────
-  const toEdit = (media, type) => { setCur({ media, type }); setText(""); setFilter("none"); setShowFilters(false); setMode("edit"); };
+  const toEdit = (media, type, fit = "contain") => {
+    setCur({ media, type, fit });
+    setText(""); setFilter("none"); setShowFilters(false);
+    setOverlays([]); setDrawMode(false); setStickerMenu(false); setEmojiPicker(false); setStickerForm(null);
+    if (drawCanvasRef.current) { const c = drawCanvasRef.current; c.getContext("2d")?.clearRect(0, 0, c.width, c.height); }
+    setMode("edit");
+  };
 
   const capturePhoto = () => {
     const v = videoRef.current;
@@ -167,7 +198,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     const ctx = canvas.getContext("2d");
     if (facing === "user") { ctx.translate(cw, 0); ctx.scale(-1, 1); }
     ctx.drawImage(v, sx, sy, cw, ch, 0, 0, cw, ch);
-    toEdit(canvas.toDataURL("image/jpeg", 0.85), "image");
+    toEdit(canvas.toDataURL("image/jpeg", 0.85), "image", "cover");
   };
 
   const stopRec = () => {
@@ -229,29 +260,138 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     setTimeout(() => setShowLabels(false), 3500);
   };
 
-  // ── Segments & publication ───────────────────────────────────────────────
-  const packedCurrent = () => (cur ? { media: cur.media, type: cur.type, text: text.trim(), filter } : null);
+  // ── Édition riche : dessin, drag des stickers ─────────────────────────────
+  const drawStart = (e) => {
+    if (!drawMode) return;
+    const c = drawCanvasRef.current; if (!c) return;
+    drawingActiveRef.current = true;
+    try { c.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
+    const ctx = c.getContext("2d"); const r = c.getBoundingClientRect();
+    ctx.strokeStyle = drawColor; ctx.lineWidth = Math.max(4, c.width * 0.012); ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo((e.clientX - r.left) * (c.width / r.width), (e.clientY - r.top) * (c.height / r.height));
+  };
+  const drawMove = (e) => {
+    if (!drawMode || !drawingActiveRef.current) return;
+    const c = drawCanvasRef.current; const ctx = c.getContext("2d"); const r = c.getBoundingClientRect();
+    ctx.lineTo((e.clientX - r.left) * (c.width / r.width), (e.clientY - r.top) * (c.height / r.height)); ctx.stroke();
+  };
+  const drawEnd = () => { drawingActiveRef.current = false; };
+  const clearDraw = () => { const c = drawCanvasRef.current; if (c) c.getContext("2d")?.clearRect(0, 0, c.width, c.height); };
 
-  const addMore = () => {
-    const seg = packedCurrent();
+  const dragStart = (e, id) => {
+    if (drawMode) return;
+    e.stopPropagation(); dragRef.current = id;
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
+  };
+  const stageMove = (e) => {
+    if (dragRef.current == null) return;
+    const r = stageRef.current?.getBoundingClientRect(); if (!r) return;
+    const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    setOverlays((ov) => ov.map((o) => (o.id === dragRef.current ? { ...o, x, y } : o)));
+  };
+  const stageUp = () => { dragRef.current = null; };
+
+  const addOverlay = (o) => { setOverlays((ov) => [...ov, { id: uid(), x: 0.5, y: 0.42, ...o }]); setStickerMenu(false); setEmojiPicker(false); setStickerForm(null); };
+  const removeOverlay = (id) => setOverlays((ov) => ov.filter((o) => o.id !== id));
+
+  const wrap = (ctx, t, maxW) => {
+    const words = String(t || "").split(" "); const lines = []; let line = "";
+    for (const wd of words) { const s = line ? line + " " + wd : wd; if (ctx.measureText(s).width > maxW && line) { lines.push(line); line = wd; } else line = s; }
+    if (line) lines.push(line); return lines.slice(0, 4);
+  };
+  // Cuisson : média (filtré) + dessin + stickers → une seule image JPEG.
+  const composeImage = async () => {
+    const st = stage.w ? stage : { w: stageRef.current?.clientWidth || 1080, h: stageRef.current?.clientHeight || 1920 };
+    const scale = Math.min(2, 1080 / Math.max(1, st.w));
+    const W = Math.round(st.w * scale), H = Math.round(st.h * scale);
+    const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+    try {
+      const img = await loadImg(cur.media);
+      const iR = img.naturalWidth / img.naturalHeight, sR = W / H;
+      let dw, dh;
+      if (curFit === "cover") { if (iR > sR) { dh = H; dw = H * iR; } else { dw = W; dh = W / iR; } }
+      else { if (iR > sR) { dw = W; dh = W / iR; } else { dh = H; dw = H * iR; } }
+      ctx.save(); ctx.filter = filterCss; ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh); ctx.restore();
+    } catch { /* fond noir */ }
+    const dc = drawCanvasRef.current;
+    if (dc && dc.width) { try { ctx.drawImage(dc, 0, 0, W, H); } catch { /* noop */ } }
+    for (const o of overlays) paintOverlay(ctx, o, W, H);
+    return canvas.toDataURL("image/jpeg", 0.9);
+  };
+
+  const paintOverlay = (ctx, o, W, H) => {
+    const px = o.x * W, py = o.y * H;
+    ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    if (o.type === "emoji") {
+      ctx.font = `${Math.round(W * 0.13)}px "Apple Color Emoji","Segoe UI Emoji",serif`;
+      ctx.fillText(o.emoji, px, py);
+    } else if (o.type === "music") {
+      ctx.font = `600 ${Math.round(W * 0.042)}px sans-serif`;
+      const label = `♫  ${o.title}`;
+      const w = Math.min(W * 0.82, ctx.measureText(label).width + W * 0.09), h = W * 0.1;
+      ctx.fillStyle = "#fff"; roundRect(ctx, px - w / 2, py - h / 2, w, h, h / 2); ctx.fill();
+      ctx.fillStyle = "#111"; ctx.fillText(label, px, py);
+    } else if (o.type === "question") {
+      const w = W * 0.7, pad = W * 0.04;
+      ctx.font = `700 ${Math.round(W * 0.045)}px sans-serif`;
+      const lines = wrap(ctx, o.q, w - pad * 2);
+      const lh = W * 0.06, h = lh * lines.length + pad * 2 + W * 0.075;
+      ctx.fillStyle = "#fff"; roundRect(ctx, px - w / 2, py - h / 2, w, h, W * 0.03); ctx.fill();
+      ctx.fillStyle = "#111";
+      lines.forEach((ln, i) => ctx.fillText(ln, px, py - h / 2 + pad + lh / 2 + i * lh));
+      ctx.font = `500 ${Math.round(W * 0.034)}px sans-serif`; ctx.fillStyle = "#9aa";
+      ctx.fillText("Répondre…", px, py + h / 2 - W * 0.05);
+    } else if (o.type === "poll") {
+      const w = W * 0.72, pad = W * 0.035;
+      ctx.font = `700 ${Math.round(W * 0.045)}px sans-serif`;
+      const qLines = wrap(ctx, o.q, w - pad * 2);
+      const lh = W * 0.06, optH = W * 0.11;
+      const h = pad + lh * qLines.length + pad + optH + pad;
+      ctx.fillStyle = "rgba(255,255,255,0.96)"; roundRect(ctx, px - w / 2, py - h / 2, w, h, W * 0.035); ctx.fill();
+      ctx.fillStyle = "#111";
+      qLines.forEach((ln, i) => ctx.fillText(ln, px, py - h / 2 + pad + lh / 2 + i * lh));
+      const oy = py - h / 2 + pad + lh * qLines.length + pad + optH / 2;
+      const half = (w - pad * 3) / 2;
+      ctx.font = `700 ${Math.round(W * 0.04)}px sans-serif`;
+      [["a", -1], ["b", 1]].forEach(([k, dir]) => {
+        const cx = px + dir * (half / 2 + pad / 2);
+        ctx.fillStyle = k === "a" ? "#22d3ee" : "#3b82f6";
+        roundRect(ctx, cx - half / 2, oy - optH / 2, half, optH, W * 0.02); ctx.fill();
+        ctx.fillStyle = "#00363e"; ctx.fillText(o[k], cx, oy);
+      });
+    }
+    ctx.restore();
+  };
+
+  // ── Segments & publication ───────────────────────────────────────────────
+  // Cuit la photo courante (filtre + dessin + stickers) ; la vidéo reste brute.
+  const packCurrentBaked = async () => {
+    if (!cur) return null;
+    if (cur.type === "image") return { media: await composeImage(), type: "image", text: text.trim() };
+    return { media: cur.media, type: cur.type, text: text.trim() };
+  };
+
+  const addMore = async () => {
+    const seg = await packCurrentBaked();
     if (seg) setSegments((s) => [...s, seg]);
-    setCur(null); setText(""); setFilter("none"); setShowFilters(false); setMode("camera");
+    setCur(null); setText(""); setFilter("none"); setShowFilters(false);
+    setOverlays([]); setDrawMode(false); clearDraw();
+    setMode("camera");
   };
 
   const publish = async (vis, list) => {
-    const all = [...segments];
-    const seg = packedCurrent();
-    if (seg) all.push(seg);
-    if (all.length === 0) { toast.error("Ajoute au moins un média."); return; }
     if (vis === "custom" && (!list || list.length === 0)) { setSheet(true); return; }
     setPublishing(true);
     try {
+      const curSeg = await packCurrentBaked();
+      const all = [...segments]; if (curSeg) all.push(curSeg);
+      if (all.length === 0) { toast.error("Ajoute au moins un média."); setPublishing(false); return; }
       for (const s of all) {
-        let media = s.media;
-        const css = FILTERS.find((f) => f.key === s.filter)?.css;
-        if (s.type === "image" && css && css !== "none") media = await bakePhoto(s.media, css);
         const fd = new FormData();
-        fd.append("media_url", media);
+        fd.append("media_url", s.media);
         fd.append("media_type", s.type);
         fd.append("audience", vis);
         fd.append("text", s.text || "");
@@ -363,43 +503,77 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   // ══════════════════════════════════════ ÉDITION ═════════════════════════════
   return (
     <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000" }}>
-      {/* Média plein écran (object-contain : imports non 9:16 letterboxés sans fond) */}
-      {cur?.type === "video"
-        ? <video src={cur.media} className="absolute inset-0 w-full h-full object-contain" style={{ filter: filterCss }} autoPlay playsInline muted loop />
-        : <img src={cur?.media} alt="" className="absolute inset-0 w-full h-full object-contain" style={{ filter: filterCss }} />}
+      {/* Scène : média (filtré) + dessin + stickers (draggables) */}
+      <div ref={stageRef} className="absolute inset-0" onPointerMove={stageMove} onPointerUp={stageUp} onPointerLeave={stageUp}>
+        {cur?.type === "video"
+          ? <video src={cur.media} className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} autoPlay playsInline muted loop />
+          : <img src={cur?.media} alt="" className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} />}
 
-      {/* Texte incrusté (aperçu) */}
-      {text.trim() && (
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-center px-6 pointer-events-none">
-          <span className="text-center text-white text-2xl font-black leading-snug px-3 py-1 rounded-lg"
-            style={{ background: "rgba(0,0,0,0.35)", textShadow: "0 2px 6px rgba(0,0,0,0.5)" }}>{text.trim()}</span>
+        {/* Calque de dessin (photos) */}
+        {canEdit && stage.w > 0 && (
+          <canvas ref={drawCanvasRef} width={Math.round(stage.w * 2)} height={Math.round(stage.h * 2)}
+            className="absolute inset-0 w-full h-full"
+            style={{ touchAction: "none", pointerEvents: drawMode ? "auto" : "none" }}
+            onPointerDown={drawStart} onPointerMove={drawMove} onPointerUp={drawEnd} onPointerCancel={drawEnd} />
+        )}
+
+        {/* Stickers */}
+        {overlays.map((o) => (
+          <div key={o.id} onPointerDown={(e) => dragStart(e, o.id)}
+            className="absolute -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, touchAction: "none", cursor: "move" }}>
+            <OverlayView o={o} onRemove={() => removeOverlay(o.id)} />
+          </div>
+        ))}
+
+        {/* Légende incrustée (aperçu) */}
+        {text.trim() && (
+          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-center px-6 pointer-events-none">
+            <span className="text-center text-white text-2xl font-black leading-snug px-3 py-1 rounded-lg"
+              style={{ background: "rgba(0,0,0,0.35)", textShadow: "0 2px 6px rgba(0,0,0,0.5)" }}>{text.trim()}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Barre de DESSIN (couleurs) */}
+      {drawMode ? (
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between gap-2 px-3 pt-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
+          <button onClick={clearDraw} className="text-white text-sm font-bold px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: "rgba(0,0,0,0.4)" }}>Effacer</button>
+          <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+            {["#ffffff", "#000000", "#ef4444", "#22d3ee", "#3b82f6", "#22c55e", "#eab308", "#ec4899"].map((c) => (
+              <button key={c} onClick={() => setDrawColor(c)} className="w-7 h-7 rounded-full flex-shrink-0" style={{ background: c, border: drawColor === c ? "3px solid #fff" : "2px solid rgba(255,255,255,0.5)" }} />
+            ))}
+          </div>
+          <button onClick={() => setDrawMode(false)} className="text-sm font-black px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: C.accent, color: C.onPrimary }}>Terminé</button>
         </div>
+      ) : (
+        <>
+          {/* X (haut gauche) */}
+          <div className="absolute top-0 left-0 px-4 pt-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
+            <button onClick={() => { setCur(null); setText(""); setMode("camera"); }} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+              <span className="material-symbols-outlined text-white">close</span>
+            </button>
+          </div>
+          {/* Rail d'outils (haut droite) */}
+          <div className="absolute top-0 right-0 px-4 pt-3 flex flex-col gap-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
+            {[
+              { txt: "Aa", label: "Texte", on: () => document.getElementById("story-caption")?.focus() },
+              { icon: "sentiment_satisfied", label: "Stickers", on: () => (canEdit ? setStickerMenu(true) : toast("Disponible sur les photos.")) },
+              { icon: "music_note", label: "Musique", on: () => (canEdit ? setStickerForm("music") : toast("Disponible sur les photos.")) },
+              { icon: "auto_awesome", label: "Effets", on: () => setShowFilters((s) => !s) },
+              { icon: "draw", label: "Dessin", on: () => (canEdit ? setDrawMode(true) : toast("Disponible sur les photos.")) },
+            ].map((t, i) => (
+              <button key={i} onClick={t.on} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }} aria-label={t.label}>
+                {t.txt ? <span className="text-white font-black text-lg" style={{ fontFamily: "Georgia, serif" }}>{t.txt}</span>
+                  : <span className="material-symbols-outlined text-white" style={{ fontSize: 22 }}>{t.icon}</span>}
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
-      {/* X (haut gauche) */}
-      <div className="absolute top-0 left-0 px-4 pt-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
-        <button onClick={() => { setCur(null); setText(""); setMode("camera"); }} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-          <span className="material-symbols-outlined text-white">close</span>
-        </button>
-      </div>
-
-      {/* Rail d'outils (haut droite) */}
-      <div className="absolute top-0 right-0 px-4 pt-3 flex flex-col gap-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
-        {[
-          { icon: null, txt: "Aa", label: "Texte", on: () => document.getElementById("story-caption")?.focus() },
-          { icon: "sentiment_satisfied", label: "Stickers", on: () => toast("Stickers (sondage/questions) : bientôt.") },
-          { icon: "music_note", label: "Musique", on: () => toast("Musique : bientôt.") },
-          { icon: "auto_awesome", label: "Effets", on: () => setShowFilters((s) => !s) },
-        ].map((t, i) => (
-          <button key={i} onClick={t.on} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }} aria-label={t.label}>
-            {t.txt ? <span className="text-white font-black text-lg" style={{ fontFamily: "Georgia, serif" }}>{t.txt}</span>
-              : <span className="material-symbols-outlined text-white" style={{ fontSize: 22 }}>{t.icon}</span>}
-          </button>
-        ))}
-      </div>
-
       {/* Sélecteur de filtres (si Effets actif, images uniquement) */}
-      {showFilters && cur?.type === "image" && (
+      {!drawMode && showFilters && cur?.type === "image" && (
         <div className="absolute left-0 right-0 bottom-32 px-3 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
           <div className="flex gap-3">
             {FILTERS.map((f) => (
@@ -414,37 +588,80 @@ export default function StoryComposer({ user, onClose, onPublished }) {
         </div>
       )}
 
-      {/* Bas : légende + pastilles de publication */}
-      <div className="absolute bottom-0 left-0 right-0 px-4 pb-5 pt-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 18px)", background: "linear-gradient(to top, rgba(0,0,0,0.55), transparent)" }}>
-        <input id="story-caption" value={text} onChange={(e) => setText(e.target.value.slice(0, 500))}
-          placeholder="Ajoutez une légende…"
-          className="w-full text-sm px-1 py-2 bg-transparent border-none outline-none placeholder:text-white/70 text-white mb-2"
-          style={{ WebkitUserSelect: "text", userSelect: "text" }} />
-        <div className="flex items-center gap-2">
-          <button onClick={() => publish("everyone")} disabled={publishing}
-            className="flex items-center gap-2 pl-1 pr-4 h-11 rounded-full font-bold text-sm disabled:opacity-60" style={{ background: C.high, color: "#fff" }}>
-            <Avatar username={user?.username} pic={user?.profile_pic} size={30} />
-            Votre story
-          </button>
-          <button onClick={() => publish("close_friends")} disabled={publishing}
-            className="flex items-center gap-2 pl-1 pr-4 h-11 rounded-full font-bold text-sm disabled:opacity-60" style={{ background: C.high, color: "#fff" }}>
-            <span className="w-[30px] h-[30px] rounded-full flex items-center justify-center" style={{ background: "#22c55e" }}>
-              <span className="material-symbols-outlined text-white" style={{ fontSize: 18, fontVariationSettings: "'FILL' 1" }}>star</span>
-            </span>
-            Ami·e·s proches
-          </button>
-          <button onClick={addMore} disabled={publishing} className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: C.high }} aria-label="Ajouter un média">
-            <span className="material-symbols-outlined text-white">add</span>
-          </button>
-          <button onClick={() => setSheet(true)} disabled={publishing} className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }} aria-label="Publier">
-            <span className="material-symbols-outlined">arrow_forward</span>
-          </button>
+      {/* Bas : légende + pastilles de publication (masqué en mode dessin) */}
+      {!drawMode && (
+        <div className="absolute bottom-0 left-0 right-0 px-4 pb-5 pt-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 18px)", background: "linear-gradient(to top, rgba(0,0,0,0.55), transparent)" }}>
+          <input id="story-caption" value={text} onChange={(e) => setText(e.target.value.slice(0, 500))}
+            placeholder="Ajoutez une légende…"
+            className="w-full text-sm px-1 py-2 bg-transparent border-none outline-none placeholder:text-white/70 text-white mb-2"
+            style={{ WebkitUserSelect: "text", userSelect: "text" }} />
+          <div className="flex items-center gap-2">
+            <button onClick={() => publish("everyone")} disabled={publishing}
+              className="flex items-center gap-2 pl-1 pr-4 h-11 rounded-full font-bold text-sm disabled:opacity-60" style={{ background: C.high, color: "#fff" }}>
+              <Avatar username={user?.username} pic={user?.profile_pic} size={30} />
+              Votre story
+            </button>
+            <button onClick={() => publish("close_friends")} disabled={publishing}
+              className="flex items-center gap-2 pl-1 pr-4 h-11 rounded-full font-bold text-sm disabled:opacity-60" style={{ background: C.high, color: "#fff" }}>
+              <span className="w-[30px] h-[30px] rounded-full flex items-center justify-center" style={{ background: "#22c55e" }}>
+                <span className="material-symbols-outlined text-white" style={{ fontSize: 18, fontVariationSettings: "'FILL' 1" }}>star</span>
+              </span>
+              Ami·e·s proches
+            </button>
+            <button onClick={addMore} disabled={publishing} className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: C.high }} aria-label="Ajouter un média">
+              <span className="material-symbols-outlined text-white">add</span>
+            </button>
+            <button onClick={() => setSheet(true)} disabled={publishing} className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }} aria-label="Publier">
+              <span className="material-symbols-outlined">arrow_forward</span>
+            </button>
+          </div>
+          {segments.length > 0 && (
+            <p className="text-center text-[11px] mt-2 text-white/60">{segments.length} média{segments.length > 1 ? "s" : ""} ajouté{segments.length > 1 ? "s" : ""} — « Votre story » publie tout</p>
+          )}
         </div>
-        {segments.length > 0 && (
-          <p className="text-center text-[11px] mt-2 text-white/60">{segments.length} média{segments.length > 1 ? "s" : ""} ajouté{segments.length > 1 ? "s" : ""} — « Votre story » publie tout</p>
-        )}
-      </div>
+      )}
+
+      {/* Menu stickers */}
+      {stickerMenu && (
+        <div className="fixed inset-0 z-[90] flex items-end" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setStickerMenu(false)}>
+          <div className="w-full rounded-t-3xl p-4 pb-8" style={{ background: C.surface, paddingBottom: "max(env(safe-area-inset-bottom), 24px)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1.5 rounded-full mx-auto mb-4" style={{ background: C.high }} />
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { k: "emoji", icon: "mood", label: "Emoji", on: () => { setStickerMenu(false); setEmojiPicker(true); } },
+                { k: "poll", icon: "bar_chart", label: "Sondage", on: () => { setStickerMenu(false); setStickerForm("poll"); } },
+                { k: "question", icon: "help", label: "Questions", on: () => { setStickerMenu(false); setStickerForm("question"); } },
+                { k: "music", icon: "music_note", label: "Musique", on: () => { setStickerMenu(false); setStickerForm("music"); } },
+              ].map((s) => (
+                <button key={s.k} onClick={s.on} className="flex items-center gap-3 px-4 py-4 rounded-2xl" style={{ background: C.container }}>
+                  <span className="material-symbols-outlined" style={{ color: C.accent }}>{s.icon}</span>
+                  <span className="font-bold" style={{ color: C.onSurface }}>{s.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sélecteur d'emoji */}
+      {emojiPicker && (
+        <div className="fixed inset-0 z-[90] flex items-end" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setEmojiPicker(false)}>
+          <div className="w-full rounded-t-3xl p-4 pb-8" style={{ background: C.surface, paddingBottom: "max(env(safe-area-inset-bottom), 24px)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1.5 rounded-full mx-auto mb-4" style={{ background: C.high }} />
+            <div className="grid grid-cols-6 gap-2">
+              {EMOJIS.map((e) => (
+                <button key={e} onClick={() => addOverlay({ type: "emoji", emoji: e })} className="text-3xl py-1 active:scale-110 transition-transform">{e}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Formulaire sticker (sondage / questions / musique) */}
+      {stickerForm && (
+        <StickerForm type={stickerForm} onCancel={() => setStickerForm(null)} onAdd={addOverlay} />
+      )}
 
       {sheet && (
         <VisibilitySheet user={user} visibility={visibility} customList={customList}
@@ -559,6 +776,88 @@ function VisibilitySheet({ user, visibility, customList, onClose, onPick }) {
             </button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Rendu DOM d'un sticker (miroir du rendu « cuit » sur canvas) ─────────────
+function OverlayView({ o, onRemove }) {
+  const stop = (e) => { e.stopPropagation(); onRemove(); };
+  const RemoveBtn = () => (
+    <button onPointerDown={(e) => e.stopPropagation()} onClick={stop}
+      className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
+      <span className="material-symbols-outlined text-white" style={{ fontSize: 13 }}>close</span>
+    </button>
+  );
+  if (o.type === "emoji") {
+    return <div className="relative"><span style={{ fontSize: 52 }}>{o.emoji}</span><RemoveBtn /></div>;
+  }
+  if (o.type === "music") {
+    return (
+      <div className="relative flex items-center gap-2 px-4 py-2 rounded-full" style={{ background: "#fff", color: "#111", maxWidth: 260 }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>music_note</span>
+        <span className="font-semibold text-sm truncate">{o.title}</span>
+        <RemoveBtn />
+      </div>
+    );
+  }
+  if (o.type === "question") {
+    return (
+      <div className="relative px-4 py-3 rounded-2xl text-center" style={{ background: "#fff", color: "#111", width: 230 }}>
+        <p className="font-bold text-sm mb-2 leading-snug">{o.q}</p>
+        <div className="text-xs rounded-lg py-1.5" style={{ background: "#eef1f6", color: "#8894a8" }}>Répondre…</div>
+        <RemoveBtn />
+      </div>
+    );
+  }
+  if (o.type === "poll") {
+    return (
+      <div className="relative px-3 py-3 rounded-2xl text-center" style={{ background: "rgba(255,255,255,0.96)", color: "#111", width: 240 }}>
+        <p className="font-bold text-sm mb-2 leading-snug">{o.q}</p>
+        <div className="flex gap-2">
+          <div className="flex-1 py-2 rounded-lg font-bold text-sm" style={{ background: "#22d3ee", color: "#00363e" }}>{o.a}</div>
+          <div className="flex-1 py-2 rounded-lg font-bold text-sm" style={{ background: "#3b82f6", color: "#00363e" }}>{o.b}</div>
+        </div>
+        <RemoveBtn />
+      </div>
+    );
+  }
+  return null;
+}
+
+// ── Formulaire de sticker (sondage / questions / musique) ────────────────────
+function StickerForm({ type, onCancel, onAdd }) {
+  const [q, setQ] = useState("");
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
+  const title = { poll: "Sondage", question: "Questions", music: "Musique" }[type];
+  const submit = () => {
+    if (type === "poll") onAdd({ type: "poll", q: q.trim() || "Sondage", a: a.trim() || "Oui", b: b.trim() || "Non" });
+    else if (type === "question") onAdd({ type: "question", q: q.trim() || "Posez-moi une question" });
+    else onAdd({ type: "music", title: q.trim() || "Ma musique" });
+  };
+  const input = "w-full text-sm px-4 py-3 rounded-xl border-none outline-none mb-3 placeholder:text-slate-500";
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.7)" }} onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-3xl p-5" style={{ background: C.surface }} onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-black text-lg mb-4" style={{ color: C.onSurface }}>{title}</h3>
+        {type === "music" ? (
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value.slice(0, 60))} placeholder="Titre / artiste…" className={input} style={{ background: C.high, color: C.onSurface }} />
+        ) : (
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value.slice(0, 120))}
+            placeholder={type === "poll" ? "Ta question…" : "Pose une question…"} className={input} style={{ background: C.high, color: C.onSurface }} />
+        )}
+        {type === "poll" && (
+          <div className="flex gap-2">
+            <input value={a} onChange={(e) => setA(e.target.value.slice(0, 24))} placeholder="Option 1" className={input} style={{ background: C.high, color: C.onSurface }} />
+            <input value={b} onChange={(e) => setB(e.target.value.slice(0, 24))} placeholder="Option 2" className={input} style={{ background: C.high, color: C.onSurface }} />
+          </div>
+        )}
+        <div className="flex gap-2 mt-1">
+          <button onClick={onCancel} className="flex-1 py-3 rounded-2xl font-bold" style={{ background: C.high, color: C.onSurface }}>Annuler</button>
+          <button onClick={submit} className="flex-1 py-3 rounded-2xl font-black" style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>Ajouter</button>
+        </div>
       </div>
     </div>
   );
