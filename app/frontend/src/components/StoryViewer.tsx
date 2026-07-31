@@ -421,6 +421,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
               ref={videoRef}
               src={currentStory.media_url}
               className="max-w-full max-h-full object-contain"
+              style={{ transform: (currentStory as any).mirror ? "scaleX(-1)" : "none" }}
               onEnded={handleNextStory}
               controls={false}
               muted={!!(currentStory as any).music_url}

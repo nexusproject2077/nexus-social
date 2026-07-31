@@ -809,6 +809,7 @@ class Story(BaseModel):
     music_title: Optional[str] = None
     music_artist: Optional[str] = None
     music_start: float = 0.0              # passage de départ (secondes)
+    mirror: bool = False                  # vidéo frontale à remettre « à l'endroit »
     views_count: int = 0
     created_at: str
     expires_at: str
@@ -4698,6 +4699,7 @@ async def create_story(
     music_title: str = Form(""),
     music_artist: str = Form(""),
     music_start: str = Form("0"),            # passage de départ (secondes)
+    mirror: str = Form(""),                  # vidéo caméra frontale à remettre à l'endroit
     current_user: dict = Depends(get_current_user)
 ):
     """Créer une nouvelle story - supporte upload de fichier OU URL"""
@@ -4754,6 +4756,7 @@ async def create_story(
         "music_title": (music_title or "").strip()[:200] or None,
         "music_artist": (music_artist or "").strip()[:200] or None,
         "music_start": (lambda s: (float(s) if s.replace(".", "", 1).isdigit() else 0.0))((music_start or "0").strip()),
+        "mirror": (mirror in ("1", "true", "True")),
         "views_count": 0,
         "created_at": now.isoformat(),
         "expires_at": expires_at.isoformat()

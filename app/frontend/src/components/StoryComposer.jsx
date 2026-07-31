@@ -152,6 +152,8 @@ export default function StoryComposer({ user, onClose, onPublished }) {
       return [...without, { id: uid(), x: 0.5, y: 0.78, scale: 1, type: "music", title: track.title, artwork: style === "cover" ? track.artwork : null }];
     });
     setMusicOpen(false);
+    // Joue la musique dans l'éditeur pour l'écouter/tester.
+    try { const a = audioRef.current; if (a) { a.src = track.preview_url; a.currentTime = start || 0; a.play().catch(() => {}); } } catch { /* noop */ }
   };
   const stopMusicPreview = () => { try { audioRef.current?.pause(); } catch { /* noop */ } };
 
@@ -188,7 +190,8 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     stopStream(); setReady(false); setTorch(false);
     // audio: true → les vidéos auront du SON (aperçu vidéo resté muet).
     let stream = null;
-    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: true }); }
+    const vc = { facingMode: { ideal: f }, width: { ideal: 1080 }, height: { ideal: 1920 } }; // portrait 9:16
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: vc, audio: true }); }
     catch {
       try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: false }); }
       catch { toast.error("Caméra inaccessible — tu peux importer depuis la galerie."); return; }
@@ -252,52 +255,28 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     const r = recorderRef.current;
     if (r && r.state !== "inactive") { try { r.stop(); } catch { /* noop */ } }
   };
-  // Enregistrement via un canvas 9:16 : recadrage vertical (plus de bandes
-  // noires), miroir pour la caméra frontale (comme l'aperçu), + piste audio.
+  // Enregistrement du FLUX CAMÉRA brut (fiable partout, y compris iOS où le
+  // captureStream d'un canvas renvoie du noir). Le son est inclus (audio:true).
+  // La caméra frontale sera remise « à l'endroit » via un flag « mirror ».
   const startRec = () => {
     const src = streamRef.current;
-    const v = videoRef.current;
-    if (!src || !v || typeof MediaRecorder === "undefined") { toast.error("Vidéo non prise en charge."); return; }
-    const W = 720, H = 1280;
-    const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H;
-    const ctx = canvas.getContext("2d");
-    const draw = () => {
-      if (v.videoWidth) {
-        const vw = v.videoWidth, vh = v.videoHeight, sR = W / H, iR = vw / vh;
-        let dw, dh; if (iR > sR) { dh = H; dw = H * iR; } else { dw = W; dh = W / iR; }
-        ctx.save();
-        if (facing === "user") { ctx.translate(W, 0); ctx.scale(-1, 1); }
-        ctx.drawImage(v, (W - dw) / 2, (H - dh) / 2, dw, dh);
-        ctx.restore();
-      }
-      rafRef.current = requestAnimationFrame(draw);
-    };
-    draw();
-
-    let stream;
-    if (typeof canvas.captureStream === "function") {
-      stream = canvas.captureStream(30);
-      src.getAudioTracks().forEach((t) => { try { stream.addTrack(t); } catch { /* noop */ } });
-    } else {
-      cancelAnimationFrame(rafRef.current);  // repli : flux brut
-      stream = src;
-    }
+    if (!src || typeof MediaRecorder === "undefined") { toast.error("Vidéo non prise en charge."); return; }
     let mime = "";
     for (const m of ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]) { if (MediaRecorder.isTypeSupported?.(m)) { mime = m; break; } }
     let r;
-    try { r = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 3_000_000 }); }
-    catch { cancelAnimationFrame(rafRef.current); toast.error("Vidéo non prise en charge."); return; }
+    try { r = new MediaRecorder(src, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 3_000_000 }); }
+    catch { toast.error("Vidéo non prise en charge."); return; }
+    const mir = facing === "user";
     chunksRef.current = [];
     r.ondataavailable = (e) => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
     r.onstop = () => {
-      cancelAnimationFrame(rafRef.current);
       recordingRef.current = false; setRecording(false); setRecordPct(0);
       const blob = new Blob(chunksRef.current, { type: r.mimeType || mime || "video/webm" });
       chunksRef.current = [];
-      if (blob.size > 0) { const fr = new FileReader(); fr.onload = () => toEdit(fr.result, "video", "cover"); fr.readAsDataURL(blob); }
+      if (blob.size > 0) { const fr = new FileReader(); fr.onload = () => toEdit(fr.result, "video", "cover", { mirror: mir }); fr.readAsDataURL(blob); }
     };
     recorderRef.current = r; recordingRef.current = true; setRecording(true); setRecordPct(0);
-    try { r.start(); } catch { cancelAnimationFrame(rafRef.current); recordingRef.current = false; setRecording(false); return; }
+    try { r.start(); } catch { recordingRef.current = false; setRecording(false); return; }
     const t0 = Date.now();
     progressRef.current = setInterval(() => setRecordPct(Math.min(100, ((Date.now() - t0) / MAX_VIDEO_MS) * 100)), 80);
     maxRef.current = setTimeout(stopRec, MAX_VIDEO_MS);
@@ -594,7 +573,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   const packCurrentBaked = async () => {
     if (!cur) return null;
     if (cur.type === "image" || cur.type === "background") return { media: await composeImage(), type: "image", text: text.trim(), music };
-    return { media: cur.media, type: cur.type, text: text.trim(), music };
+    return { media: cur.media, type: cur.type, text: text.trim(), music, mirror: cur.mirror };
   };
 
   const addMore = async () => {
@@ -619,6 +598,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
         fd.append("audience", vis);
         fd.append("text", s.text || "");
         if (s.music) { fd.append("music_url", s.music.url || ""); fd.append("music_title", s.music.title || ""); fd.append("music_artist", s.music.artist || ""); fd.append("music_start", String(s.music.start || 0)); }
+        if (s.mirror) fd.append("mirror", "1");
         if (vis === "custom") fd.append("recipient_ids", (list || []).map((u) => u.id).join(","));
         await axios.post(`${API}/stories/`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       }
@@ -797,7 +777,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
         {cur?.type === "background"
           ? <div className="absolute inset-0" style={{ background: cur.bg?.css }} />
           : cur?.type === "video"
-            ? <video src={cur.media} className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} autoPlay playsInline muted loop />
+            ? <video src={cur.media} className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit, transform: cur.mirror ? "scaleX(-1)" : "none" }} autoPlay playsInline muted loop />
             : <img src={cur?.media} alt="" className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} />}
 
         {/* Calque de dessin (photos) */}
@@ -1269,11 +1249,14 @@ function MusicSearch({ onClose, onAdd, current, onRemove }) {
     return () => clearTimeout(t);
   }, [q]);
   useEffect(() => () => { try { audioRef.current?.pause(); } catch { /* noop */ } }, []);
+  // Lance l'aperçu audio une fois l'élément <audio> monté (étape config).
+  useEffect(() => {
+    if (!sel) return;
+    const a = audioRef.current;
+    if (a) { try { a.src = sel.preview_url; a.currentTime = 0; a.play().catch(() => {}); } catch { /* noop */ } }
+  }, [sel]);
 
-  const choose = (t) => {
-    setSel(t); setStart(0); setStyle("title");
-    try { const a = audioRef.current; if (a) { a.src = t.preview_url; a.currentTime = 0; a.play().catch(() => {}); } } catch { /* noop */ }
-  };
+  const choose = (t) => { setSel(t); setStart(0); setStyle("title"); };
   const onSlide = (v) => { setStart(v); try { if (audioRef.current) audioRef.current.currentTime = v; } catch { /* noop */ } };
 
   // Étape 2 : configuration de la piste choisie.
