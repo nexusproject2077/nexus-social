@@ -3882,6 +3882,11 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         },
     })
 
+    # Push navigateur (app fermée). On n'ajoute PAS d'entrée au fil de
+    # notifications : les messages ont déjà leur propre pastille.
+    _mt, _mb, _mu = _push_content_for("message", current_user)
+    await send_web_push(message_data.recipient_id, _mt, _mb, _mu, tag="message")
+
     return Message(**message)
 
 # Aperçu de lien (Open Graph) pour la messagerie.
@@ -4380,6 +4385,21 @@ async def send_group_message(
 
         response_message = convert_mongo_doc_to_dict(message)
         response_message["content"] = text  # clair pour l'expéditeur
+
+        # Prévient les autres membres : temps réel (app ouverte) + push (app
+        # fermée). Pas d'entrée dans le fil (pastille messages dédiée).
+        _gt, _gb, _gu = _push_content_for("group_message", current_user, post_id=group_id)
+        for _mid in group.get("member_ids", []):
+            if _mid == current_user["id"]:
+                continue
+            await push_realtime(_mid, {"type": "new_message", "data": {
+                "group_id": group_id,
+                "sender_id": current_user["id"],
+                "sender_username": current_user["username"],
+                "content": text,
+            }})
+            await send_web_push(_mid, _gt, _gb, _gu, tag="group_message")
+
         return {
             "success": True,
             "message": response_message
