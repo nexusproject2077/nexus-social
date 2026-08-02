@@ -68,6 +68,12 @@ function Avatar({ username, pic, size = 32 }) {
 }
 
 const uid = () => Math.random().toString(36).slice(2);
+const blobToDataURL = (blob) => new Promise((resolve, reject) => {
+  const fr = new FileReader();
+  fr.onload = () => resolve(fr.result);
+  fr.onerror = reject;
+  fr.readAsDataURL(blob);
+});
 const loadImg = (src) => new Promise((resolve, reject) => {
   const img = new Image();
   img.onload = () => resolve(img);
@@ -190,8 +196,9 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     stopStream(); setReady(false); setTorch(false);
     // audio: true → les vidéos auront du SON (aperçu vidéo resté muet).
     let stream = null;
-    const vc = { facingMode: { ideal: f }, width: { ideal: 1080 }, height: { ideal: 1920 } }; // portrait 9:16
-    try { stream = await navigator.mediaDevices.getUserMedia({ video: vc, audio: true }); }
+    // Caméra STANDARD : pas de contrainte de résolution (forcer 9:16 recadrait
+    // le capteur sur iPhone → effet « zoom »). On garde le champ de vision natif.
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: true }); }
     catch {
       try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: false }); }
       catch { toast.error("Caméra inaccessible — tu peux importer depuis la galerie."); return; }
@@ -273,7 +280,8 @@ export default function StoryComposer({ user, onClose, onPublished }) {
       recordingRef.current = false; setRecording(false); setRecordPct(0);
       const blob = new Blob(chunksRef.current, { type: r.mimeType || mime || "video/webm" });
       chunksRef.current = [];
-      if (blob.size > 0) { const fr = new FileReader(); fr.onload = () => toEdit(fr.result, "video", "cover", { mirror: mir }); fr.readAsDataURL(blob); }
+      // Aperçu via blob URL (iOS lit mal les vidéos data:) ; base64 à la publication.
+      if (blob.size > 0) toEdit(URL.createObjectURL(blob), "video", "cover", { mirror: mir, blob });
     };
     recorderRef.current = r; recordingRef.current = true; setRecording(true); setRecordPct(0);
     try { r.start(); } catch { recordingRef.current = false; setRecording(false); return; }
@@ -303,9 +311,14 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     if (!f) return;
     if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) { toast.error("Image ou vidéo uniquement."); return; }
     if (f.size > MAX_IMPORT) { toast.error("Fichier trop lourd (max 10 Mo)."); return; }
-    const fr = new FileReader();
-    fr.onload = () => toEdit(fr.result, f.type.startsWith("video/") ? "video" : "image");
-    fr.readAsDataURL(f);
+    if (f.type.startsWith("video/")) {
+      // Vidéo : aperçu via blob URL (fiable iOS), base64 à la publication.
+      toEdit(URL.createObjectURL(f), "video", "cover", { blob: f });
+    } else {
+      const fr = new FileReader();
+      fr.onload = () => toEdit(fr.result, "image", "contain");
+      fr.readAsDataURL(f);
+    }
   };
 
   const onModeTap = (m) => {
@@ -364,9 +377,8 @@ export default function StoryComposer({ user, onClose, onPublished }) {
       for (let pass = 0; pass < 2; pass++) { for (const fr of seq) { octx.drawImage(fr, 0, 0); await new Promise((r) => setTimeout(r, frameMs)); } }
       rec.stop();
       const blob = await done;
-      const reader = new FileReader();
-      reader.onload = () => { setMakingBoomerang(false); setCamMode("normal"); toEdit(reader.result, "video", "cover"); };
-      reader.readAsDataURL(blob);
+      setMakingBoomerang(false); setCamMode("normal");
+      toEdit(URL.createObjectURL(blob), "video", "cover", { blob });
     } catch {
       setMakingBoomerang(false);
       toast.error("Boomerang impossible sur cet appareil.");
@@ -573,7 +585,9 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   const packCurrentBaked = async () => {
     if (!cur) return null;
     if (cur.type === "image" || cur.type === "background") return { media: await composeImage(), type: "image", text: text.trim(), music };
-    return { media: cur.media, type: cur.type, text: text.trim(), music, mirror: cur.mirror };
+    // Vidéo : le média stocké côté serveur est en base64 → on convertit le blob.
+    const media = cur.blob ? await blobToDataURL(cur.blob) : cur.media;
+    return { media, type: cur.type, text: text.trim(), music, mirror: cur.mirror };
   };
 
   const addMore = async () => {
