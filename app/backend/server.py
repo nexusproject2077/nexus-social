@@ -6377,7 +6377,19 @@ async def register_clip_view(clip_id: str, request: Request, current_user: dict 
     exp = _clip_view_cache.get(key)
 
     if exp and exp > now:
-        # Déjà comptée dans cette session → on ne ré-incrémente pas.
+        # Fast-path : déjà comptée récemment (cache mémoire) → pas de ré-incrément.
+        post = await db.posts.find_one({"id": clip_id}, {"views": 1})
+        if not post:
+            raise HTTPException(status_code=404, detail="Clip introuvable")
+        return {"success": True, "views": post.get("views", 0), "counted": False}
+
+    # Source de vérité PERSISTANTE : une vue unique par (clip, utilisateur).
+    # Le cache mémoire seul ne suffit pas — il est vidé à chaque redémarrage
+    # (cold start Render), ce qui re-comptait les vues et gonflait le compteur.
+    # Un enregistrement en base garantit « une vue par personne », durablement.
+    _clip_view_cache[key] = now + CLIP_VIEW_TTL
+    already = await db.clip_views.find_one({"clip_id": clip_id, "user_id": current_user["id"]})
+    if already:
         post = await db.posts.find_one({"id": clip_id}, {"views": 1})
         if not post:
             raise HTTPException(status_code=404, detail="Clip introuvable")
@@ -6389,10 +6401,21 @@ async def register_clip_view(clip_id: str, request: Request, current_user: dict 
             if v <= now:
                 _clip_view_cache.pop(k, None)
 
-    _clip_view_cache[key] = now + CLIP_VIEW_TTL
+    try:
+        await db.clip_views.insert_one({
+            "clip_id": clip_id,
+            "user_id": current_user["id"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        # Collision (index unique) = vue déjà enregistrée → ne pas ré-incrémenter.
+        post = await db.posts.find_one({"id": clip_id}, {"views": 1})
+        return {"success": True, "views": (post or {}).get("views", 0), "counted": False}
+
     result = await db.posts.update_one({"id": clip_id}, {"$inc": {"views": 1}})
     if result.matched_count == 0:
         _clip_view_cache.pop(key, None)
+        await db.clip_views.delete_one({"clip_id": clip_id, "user_id": current_user["id"]})
         raise HTTPException(status_code=404, detail="Clip introuvable")
     post = await db.posts.find_one({"id": clip_id}, {"views": 1})
     return {"success": True, "views": (post or {}).get("views", 0), "counted": True}
@@ -6566,6 +6589,14 @@ async def startup_db_client():
     except Exception as e:
         logger.error(f"❌ MongoDB connection failed: {e}")
         raise
+    # Index unique pour les vues de clips : garantit « une vue par (clip, user) »
+    # même en cas de course, et rend la vérification de doublon instantanée.
+    try:
+        await db.clip_views.create_index(
+            [("clip_id", 1), ("user_id", 1)], unique=True, name="uniq_clip_user"
+        )
+    except Exception as e:
+        logger.warning(f"Index clip_views non créé (peut déjà exister): {e}")
     # Lance la boucle de notifications « tendance » en tâche de fond.
     try:
         asyncio.create_task(trending_notifier_loop())

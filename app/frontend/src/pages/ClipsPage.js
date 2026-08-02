@@ -328,12 +328,22 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const toggleFullscreen = async (e) => {
     e?.stopPropagation();
     const el = sceneRef.current;
+    const video = videoRef.current;
     if (!el) return;
+    // iOS (Safari/Chrome) n'expose PAS le plein écran d'élément : seul
+    // <video>.webkitEnterFullscreen() fonctionne. Sans ce repli, le bouton
+    // « plein écran » ne faisait strictement rien sur iPhone.
+    const canElementFs = !!(el.requestFullscreen || el.webkitRequestFullscreen);
     try {
-      if (!document.fullscreenElement) {
-        await (el.requestFullscreen?.() || el.webkitRequestFullscreen?.());
-        // Best-effort : verrouille l'orientation paysage (mobiles compatibles).
-        try { await window.screen?.orientation?.lock?.("landscape"); } catch { /* refusé sur PC */ }
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        if (canElementFs) {
+          await (el.requestFullscreen?.() || el.webkitRequestFullscreen?.());
+          // Best-effort : verrouille l'orientation paysage (mobiles compatibles).
+          try { await window.screen?.orientation?.lock?.("landscape"); } catch { /* refusé sur PC */ }
+        } else if (video?.webkitEnterFullscreen) {
+          // iPhone : plein écran natif de la vidéo (contrôles système inclus).
+          video.webkitEnterFullscreen();
+        }
       } else {
         try { window.screen?.orientation?.unlock?.(); } catch { /* ignore */ }
         await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());

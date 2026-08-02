@@ -56,20 +56,27 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // Récupérer l'ID de l'utilisateur connecté depuis le localStorage
+  // Récupérer l'ID de l'utilisateur connecté depuis le localStorage.
+  // ⚠️ L'app stocke l'utilisateur sous la clé `nexus_user` (voir App.js) : lire
+  // `user` échouait toujours et retombait sur un décodage JWT fragile
+  // (`atob` casse sur les caractères base64url `-`/`_`), laissant `currentUserId`
+  // à null → le bouton « Supprimer » (réservé à l'auteur) ne s'affichait jamais.
   useEffect(() => {
     try {
-      const stored = localStorage.getItem('user');
+      const stored =
+        localStorage.getItem('nexus_user') || localStorage.getItem('user');
       if (stored) {
         const user = JSON.parse(stored);
-        setCurrentUserId(String(user.id));
-        return;
+        if (user?.id) { setCurrentUserId(String(user.id)); return; }
       }
-      // Fallback: décoder le JWT
+      // Filet de sécurité : décodage JWT robuste (base64url → base64 + padding).
       const token = localStorage.getItem('token');
       if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        setCurrentUserId(String(payload.sub));
+        const part = token.split('.')[1] || '';
+        const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+          .padEnd(part.length + (4 - (part.length % 4)) % 4, '=');
+        const payload = JSON.parse(atob(b64));
+        if (payload?.sub) setCurrentUserId(String(payload.sub));
       }
     } catch (e) {
       console.error("Failed to get current user:", e);
