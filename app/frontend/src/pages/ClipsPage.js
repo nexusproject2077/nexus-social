@@ -8,14 +8,17 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
+import { SURFACE, TEXT, ACCENT } from "@/lib/theme";
 
+// Tokens dérivés de la source unique (@/lib/theme) : cohérence avec Messages /
+// Stories / Profil.
 const C = {
-  surface:   "#0b1326",
-  high:      "#222a3d",
-  cyan:      (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
-  onPrimary: "#00363e",
-  outline:   "#859397",
-  onSurface: "#dae2fd",
+  surface:   SURFACE.base,
+  high:      SURFACE.high,
+  cyan:      ACCENT,
+  onPrimary: TEXT.onAccent,
+  outline:   TEXT.muted,
+  onSurface: TEXT.primary,
 };
 
 const fmtNum = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);

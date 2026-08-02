@@ -8,23 +8,26 @@ import { Check, CheckCheck } from "lucide-react";
 import { compressImage, dataUrlBytes } from "@/lib/compressImage";
 import { linkify, extractFirstUrl } from "@/lib/linkify";
 import LinkPreview from "@/components/LinkPreview";
+import { SURFACE, TEXT, OUTLINE, ACCENT, glass as sharedGlass } from "@/lib/theme";
 
+// Tokens de la page dérivés de la source unique (@/lib/theme) : mêmes valeurs
+// que Clips / Stories / Profil pour une identité visuelle cohérente.
 const C = {
-  bg:         "#020617",
-  surface:    "#0b1326",
-  low:        "#131b2e",
-  container:  "#171f33",
-  high:       "#222a3d",
-  bright:     "#31394d",
-  cyan:       (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
-  onPrimary:  "#00363e",
-  outline:    "#859397",
-  outlineVar: "#3c494c",
-  onSurface:  "#dae2fd",
-  onVariant:  "#bbc9cd",
+  bg:         SURFACE.deep,
+  surface:    SURFACE.base,
+  low:        SURFACE.low,
+  container:  SURFACE.container,
+  high:       SURFACE.high,
+  bright:     SURFACE.bright,
+  cyan:       ACCENT,
+  onPrimary:  TEXT.onAccent,
+  outline:    TEXT.muted,
+  outlineVar: OUTLINE,
+  onSurface:  TEXT.primary,
+  onVariant:  TEXT.variant,
 };
 
-const glass = { background: "rgba(19,27,46,0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", border: "1px solid rgba(34,211,238,0.08)" };
+const glass = sharedGlass;
 
 function UserAvatar({ username, pic, size = 10 }) {
   const s = `${size * 4}px`;
