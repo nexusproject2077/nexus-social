@@ -102,6 +102,7 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   const progressRef = useRef(null);
   const maxRef = useRef(null);
   const rafRef = useRef(null);
+  const editVideoRef = useRef(null);   // aperçu vidéo de l'éditeur (avec son)
 
   const [facing, setFacing] = useState("user");
   const [ready, setReady] = useState(false);
@@ -787,11 +788,16 @@ export default function StoryComposer({ user, onClose, onPublished }) {
   return (
     <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
       {/* Scène : média (filtré) + dessin + stickers (draggables) */}
-      <div ref={stageRef} className="absolute inset-0" onPointerDown={() => setSelectedId(null)} onPointerMove={stageMove} onPointerUp={stageUp} onPointerLeave={stageUp}>
+      <div ref={stageRef} className="absolute inset-0"
+        onPointerDown={() => { setSelectedId(null); try { editVideoRef.current?.play?.().catch(() => {}); } catch { /* noop */ } }}
+        onPointerMove={stageMove} onPointerUp={stageUp} onPointerLeave={stageUp}>
         {cur?.type === "background"
           ? <div className="absolute inset-0" style={{ background: cur.bg?.css }} />
           : cur?.type === "video"
-            ? <video src={cur.media} className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit, transform: cur.mirror ? "scaleX(-1)" : "none" }} autoPlay playsInline muted loop />
+            ? <video ref={editVideoRef} src={cur.media} className="absolute inset-0 w-full h-full"
+                style={{ filter: filterCss, objectFit: curFit, transform: cur.mirror ? "scaleX(-1)" : "none" }}
+                autoPlay playsInline loop muted={!!music}
+                onCanPlay={(e) => e.currentTarget.play().catch(() => {})} />
             : <img src={cur?.media} alt="" className="absolute inset-0 w-full h-full" style={{ filter: filterCss, objectFit: curFit }} />}
 
         {/* Calque de dessin (photos) */}
