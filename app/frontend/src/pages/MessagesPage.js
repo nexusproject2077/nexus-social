@@ -126,11 +126,58 @@ function MsgImage({ src, onOpen, onLoaded }) {
   );
 }
 
+// Vidéo de message : lecteur natif compact, repli propre si source illisible.
+function MsgVideo({ src, onLoaded }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="rounded-xl mb-1 flex items-center gap-2 px-3 py-2 text-xs"
+        style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>
+        <span className="material-symbols-outlined text-sm">videocam_off</span>
+        Vidéo indisponible
+      </div>
+    );
+  }
+  return (
+    <video
+      src={src}
+      className="rounded-xl max-w-full mb-1 block"
+      style={{ maxHeight: 320 }}
+      controls
+      playsInline
+      preload="metadata"
+      onLoadedData={() => onLoaded?.()}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 // True si le message est un vocal (media_type audio, ou data URL audio).
+// Scanne aussi `media_urls` (groupes), où le vocal arrive dans le tableau.
 const audioSrcFrom = (msg) => {
   if (!msg) return null;
   if (msg.media_type === "audio" && msg.media_url) return msg.media_url;
   if (typeof msg.media_url === "string" && msg.media_url.startsWith("data:audio")) return msg.media_url;
+  if (Array.isArray(msg.media_urls)) {
+    const a = msg.media_urls.find((u) => typeof u === "string" && u.startsWith("data:audio"));
+    if (a) return a;
+  }
+  return null;
+};
+
+// True si la source est une vidéo en data URL.
+const isVideoDataUrl = (s) => typeof s === "string" && s.startsWith("data:video");
+
+// Renvoie la source vidéo d'un message (DM via media_url/media_type, ou groupe
+// via media_urls), sinon null.
+const videoSrcFrom = (msg) => {
+  if (!msg) return null;
+  if (msg.media_type === "video" && msg.media_url) return msg.media_url;
+  if (isVideoDataUrl(msg.media_url)) return msg.media_url;
+  if (Array.isArray(msg.media_urls)) {
+    const v = msg.media_urls.find(isVideoDataUrl);
+    if (v) return v;
+  }
   return null;
 };
 
@@ -420,19 +467,37 @@ export default function MessagesPage({ user }) {
   const audioChunksRef   = useRef([]);
   const MAX_RECORD_SECS = 120;
 
-  const handlePickImage = async (e) => {
+  // Cap vidéo : les médias sont stockés en data URL (base64, +33 %) dans un
+  // document Mongo (limite 16 Mo). 8 Mo bruts → ~10,7 Mo encodés, marge sûre.
+  const MAX_VIDEO_BYTES = 8_000_000;
+
+  const handlePickMedia = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // permet de re-sélectionner le même fichier
     if (!file) return;
-    if (!file.type.startsWith("image/")) { toast.error("Sélectionnez une image"); return; }
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+    if (!isImage && !isVideo) { toast.error("Sélectionnez une image ou une vidéo"); return; }
     try {
       setCompressing(true);
-      const dataUrl = await compressImage(file);
+      let dataUrl;
+      if (isVideo) {
+        if (file.size > MAX_VIDEO_BYTES) { toast.error("Vidéo trop lourde (max 8 Mo)"); return; }
+        dataUrl = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onloadend = () => resolve(r.result);
+          r.onerror = reject;
+          r.readAsDataURL(file);
+        });
+      } else {
+        dataUrl = await compressImage(file);
+      }
+      setPendingAudio(null);
       setPendingImage(dataUrl);
       const kb = Math.max(1, Math.round(dataUrlBytes(dataUrl) / 1024));
-      toast.success(`Image prête (~${kb} Ko)`);
+      toast.success(`${isVideo ? "Vidéo" : "Image"} prête (~${kb} Ko)`);
     } catch {
-      toast.error("Impossible de traiter cette image");
+      toast.error("Impossible de traiter ce média");
     } finally {
       setCompressing(false);
     }
@@ -995,9 +1060,13 @@ export default function MessagesPage({ user }) {
     if (!text && !pendingImage && !pendingAudio) return;
     try {
       if (isGroup && selectedGroupId) {
-        if (pendingImage || pendingAudio) { toast.error("Médias non disponibles dans les groupes"); return; }
+        // Groupes : images, vidéos et vocaux transitent via `media_urls`
+        // (le backend les stocke tel quel et les renvoie dans le message).
+        const media = pendingAudio || pendingImage;
         const res = await axios.post(`${API}/messages/groups/${selectedGroupId}/messages`, {
-          content: text, reply_to_id: replyingTo?.id
+          content: text,
+          media_urls: media ? [media] : [],
+          reply_to_id: replyingTo?.id,
         });
         if (res.data?.message) setMessages(p => [...p, res.data.message]);
       } else if (selectedUserId) {
@@ -1005,7 +1074,9 @@ export default function MessagesPage({ user }) {
           recipient_id: selectedUserId,
           content: text,
           media_url: pendingAudio || pendingImage || null,
-          media_type: pendingAudio ? "audio" : (pendingImage ? "image" : null),
+          media_type: pendingAudio
+            ? "audio"
+            : (pendingImage ? (isVideoDataUrl(pendingImage) ? "video" : "image") : null),
           reply_to_id: replyingTo?.id,
         });
         if (res.data) setMessages(p => [...p, res.data]);
@@ -1724,11 +1795,17 @@ export default function MessagesPage({ user }) {
                           )}
                           {/* Message vocal */}
                           {audioSrcFrom(msg) && <VoiceMessage src={audioSrcFrom(msg)} own={isOwn} />}
+                          {/* Vidéo (DM ou groupe) */}
+                          {videoSrcFrom(msg) && (
+                            <MsgVideo src={cleanImageSrc(videoSrcFrom(msg))} onLoaded={() => scrollToBottom()} />
+                          )}
                           {/* Images : média du message, médias de groupe, ou image collée en texte
-                              (on exclut le media_url si c'est en fait un audio). */}
+                              (on exclut le media_url si c'est en fait un audio/vidéo). */}
                           {[
-                            audioSrcFrom(msg) ? null : msg.media_url,
-                            ...(Array.isArray(msg.media_urls) ? msg.media_urls : []),
+                            (audioSrcFrom(msg) || videoSrcFrom(msg)) ? null : msg.media_url,
+                            ...(Array.isArray(msg.media_urls)
+                              ? msg.media_urls.filter((u) => !(typeof u === "string" && (u.startsWith("data:audio") || u.startsWith("data:video"))))
+                              : []),
                             imageSrcFromContent(msg.content),
                           ].filter(Boolean).map((src, i) => (
                             <MsgImage key={i} src={cleanImageSrc(src)} onOpen={setLightbox} onLoaded={() => scrollToBottom()} />
@@ -1851,7 +1928,11 @@ export default function MessagesPage({ user }) {
             {/* Aperçu de l'image en attente */}
             {pendingImage && (
               <div className="mb-2 relative inline-block">
-                <img src={pendingImage} alt="aperçu" className="h-20 rounded-xl object-cover" />
+                {isVideoDataUrl(pendingImage) ? (
+                  <video src={pendingImage} className="h-20 rounded-xl object-cover" muted playsInline />
+                ) : (
+                  <img src={pendingImage} alt="aperçu" className="h-20 rounded-xl object-cover" />
+                )}
                 <button
                   type="button"
                   onClick={() => setPendingImage(null)}
@@ -1903,23 +1984,21 @@ export default function MessagesPage({ user }) {
                 <input
                   ref={imageInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/*"
                   className="hidden"
-                  onChange={handlePickImage}
+                  onChange={handlePickMedia}
                 />
-                {!isGroup && (
-                  <button
-                    type="button"
-                    onClick={() => imageInputRef.current?.click()}
-                    disabled={compressing}
-                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-50"
-                    style={{ background: C.high, color: C.cyan }}
-                    title="Envoyer une image"
-                  >
-                    <span className="material-symbols-outlined text-sm">{compressing ? "hourglass_top" : "image"}</span>
-                  </button>
-                )}
-                {!isGroup && !pendingAudio && (
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={compressing}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-50"
+                  style={{ background: C.high, color: C.cyan }}
+                  title="Envoyer une image ou une vidéo"
+                >
+                  <span className="material-symbols-outlined text-sm">{compressing ? "hourglass_top" : "image"}</span>
+                </button>
+                {!pendingAudio && (
                   <button
                     type="button"
                     onClick={startRecording}
