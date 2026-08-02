@@ -4,8 +4,9 @@ import { API } from "@/App";
 import Layout from "@/components/Layout";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, UserPlus, Repeat, AtSign, TrendingUp, Trash2, Radio, Reply, Check } from "lucide-react";
+import { Heart, MessageCircle, UserPlus, Repeat, AtSign, TrendingUp, Trash2, Radio, Reply, Check, X, BellRing } from "lucide-react";
 import { toast } from "sonner";
+import { enablePush } from "@/lib/push";
 
 // Onglets façon X/Instagram.
 const TABS = [
@@ -49,9 +50,30 @@ export default function NotificationsPage({ user }) {
   const [hasMore, setHasMore] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
   const [followedBack, setFollowedBack] = useState(() => new Set());
+  const [showPushBanner, setShowPushBanner] = useState(false);
 
   const skipRef = useRef(0);
   const sentinelRef = useRef(null);
+
+  // Propose d'activer les notifications push si le navigateur le supporte et que
+  // la permission n'a pas encore été demandée (ni refusée). Opt-in sur geste.
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window &&
+        "PushManager" in window && Notification.permission === "default") {
+      setShowPushBanner(true);
+    }
+  }, []);
+
+  const handleEnablePush = async () => {
+    const ok = await enablePush({ interactive: true });
+    if (ok) { toast.success("Notifications push activées"); setShowPushBanner(false); }
+    else if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+      toast.error("Notifications bloquées dans les réglages du navigateur");
+      setShowPushBanner(false);
+    } else {
+      toast("Notifications push indisponibles pour le moment");
+    }
+  };
 
   const fetchNotifications = async (reset = false) => {
     const skip = reset ? 0 : skipRef.current;
@@ -251,6 +273,26 @@ export default function NotificationsPage({ user }) {
             </div>
           </div>
         </div>
+
+        {/* Bandeau opt-in push (notifications même app fermée). */}
+        {showPushBanner && (
+          <div className="mx-3 mt-3 flex items-center gap-3 px-4 py-3 rounded-2xl"
+            style={{ background: "#171f33", border: "1px solid #3c494c" }}>
+            <BellRing className="w-5 h-5 flex-shrink-0" style={{ color: accent }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold" style={{ color: "#dae2fd" }}>Activer les notifications push</p>
+              <p className="text-xs" style={{ color: "#859397" }}>Être prévenu même quand l'app est fermée.</p>
+            </div>
+            <button onClick={handleEnablePush}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 flex-shrink-0"
+              style={{ background: accent, color: "#00363e" }}>
+              Activer
+            </button>
+            <button onClick={() => setShowPushBanner(false)} className="p-1 flex-shrink-0" style={{ color: "#859397" }} title="Plus tard">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-16">

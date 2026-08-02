@@ -6,6 +6,7 @@ import { Toaster } from "./components/ui/sonner";
 import CookieConsent from "./components/CookieConsent";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
 import { initAccent, applyAccent } from "@/lib/accent";
+import { enablePush } from "@/lib/push";
 import { GeoProvider } from "@/context/GeoContext";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
@@ -86,6 +87,14 @@ function App() {
 
   // ✅ Active le time tracking
   useTimeTracking(user);
+
+  // Ré-abonnement push silencieux : si l'utilisateur est connecté et a déjà
+  // autorisé les notifications, on (re)synchronise l'abonnement côté serveur
+  // (l'abonnement navigateur peut expirer/changer). Ne demande jamais la
+  // permission ici — c'est fait sur action explicite (cloche/paramètres).
+  useEffect(() => {
+    if (user?.id) enablePush({ interactive: false });
+  }, [user?.id]);
 
   const checkAuth = async (attempt = 0) => {
     const token = localStorage.getItem("token");

@@ -425,6 +425,110 @@ async def push_realtime(user_id: str, payload: dict):
         pass
 
 
+# ==================== WEB PUSH (notifications app fermée) ====================
+# Clés VAPID lues dans l'environnement (à définir sur Render pour la prod).
+# En leur absence, l'envoi push est un no-op propre : l'in-app + le temps réel
+# WebSocket continuent de fonctionner normalement.
+VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "").strip()
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
+VAPID_SUBJECT     = os.environ.get("VAPID_SUBJECT", "mailto:contact@nexus-social.app").strip()
+
+try:
+    from pywebpush import webpush, WebPushException  # type: ignore
+    _WEBPUSH_LIB = True
+except Exception:
+    _WEBPUSH_LIB = False
+
+def _web_push_enabled() -> bool:
+    return _WEBPUSH_LIB and bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
+
+
+def _push_content_for(notif_type, from_user, post_id=None, comment_content=None):
+    """Titre / corps / URL cliquable d'une notification push, par type."""
+    u = from_user.get("username", "Quelqu'un")
+    uid = from_user.get("id", "")
+    body = {
+        "follow":          f"@{u} vous suit maintenant",
+        "follow_request":  f"@{u} souhaite vous suivre",
+        "follow_accepted": f"@{u} a accepté votre demande d'abonnement",
+        "like":            f"@{u} a aimé votre publication",
+        "like_clip":       f"@{u} a aimé votre clip",
+        "like_story":      f"@{u} a aimé votre story",
+        "comment":         f"@{u} a commenté" + (f" : {comment_content}" if comment_content else ""),
+        "comment_reply":   f"@{u} a répondu à votre commentaire",
+        "mention":         f"@{u} vous a mentionné",
+        "tag":             f"@{u} vous a identifié",
+        "live":            f"@{u} est en direct 🔴",
+        "clip":            f"@{u} a publié un nouveau clip",
+        "story":           f"@{u} a publié une nouvelle story",
+        "story_reply":     f"@{u} a répondu à votre story",
+        "story_reaction":  f"@{u} a réagi à votre story",
+        "message":         f"Nouveau message de @{u}",
+        "group_message":   f"@{u} a écrit dans un groupe",
+        "message_request": f"@{u} veut vous envoyer un message",
+        "trending":        "Votre publication est dans les tendances 🔥",
+        "security":        "Connexion inhabituelle détectée sur votre compte",
+    }.get(notif_type, f"@{u}")
+
+    if notif_type in ("like", "like_clip", "like_story", "comment", "comment_reply",
+                      "mention", "tag", "trending") and post_id:
+        url = f"/post/{post_id}"
+    elif notif_type == "clip":
+        url = f"/nexus-clips/{post_id}" if post_id else "/nexus-clips"
+    elif notif_type == "live":
+        url = f"/live/{post_id}" if post_id else "/live"
+    elif notif_type == "group_message":
+        url = f"/messages/group/{post_id}" if post_id else "/messages"
+    elif notif_type in ("message", "message_request"):
+        url = f"/messages/{uid}" if uid else "/messages"
+    elif notif_type in ("story", "story_reply", "story_reaction"):
+        url = "/notifications"
+    elif notif_type in ("follow", "follow_request", "follow_accepted"):
+        url = f"/profil/{uid}" if uid else "/notifications"
+    elif notif_type == "security":
+        url = "/settings"
+    else:
+        url = "/notifications"
+    return ("Nexus Social", body, url)
+
+
+async def send_web_push(user_id: str, title: str, body: str, url: str = "/", tag: str = "nexus"):
+    """Envoie une notification push (même app fermée) à tous les abonnements de
+    l'utilisateur. Best-effort ; no-op si VAPID non configuré. Supprime les
+    abonnements expirés (404/410)."""
+    if not _web_push_enabled() or not user_id:
+        return
+    try:
+        subs = await db.push_subscriptions.find({"user_id": user_id}).to_list(length=50)
+    except Exception:
+        return
+    if not subs:
+        return
+    payload = json.dumps({"title": title, "body": (body or "")[:180], "url": url, "tag": tag})
+    for s in subs:
+        sub_info = s.get("subscription")
+        if not sub_info:
+            continue
+        try:
+            # pywebpush est synchrone : on l'exécute hors de la boucle asyncio.
+            await asyncio.to_thread(
+                webpush,
+                subscription_info=sub_info,
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_SUBJECT},
+            )
+        except WebPushException as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status in (404, 410):
+                try:
+                    await db.push_subscriptions.delete_one({"_id": s["_id"]})
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+
 async def create_notification(user_id, notif_type, from_user, post_id=None,
                               comment_content=None):
     """Crée une notification (et la pousse en temps réel). Best-effort.
@@ -448,6 +552,9 @@ async def create_notification(user_id, notif_type, from_user, post_id=None,
     try:
         await db.notifications.insert_one(dict(doc))
         await push_realtime(user_id, {"type": "notification", "data": doc})
+        # Push navigateur (app fermée) — best-effort, no-op si VAPID absent.
+        title, body, url = _push_content_for(notif_type, from_user, post_id, comment_content)
+        await send_web_push(user_id, title, body, url, tag=notif_type)
     except Exception:
         pass
 
@@ -3197,6 +3304,43 @@ async def active_lives(current_user: dict = Depends(get_current_user)):
                 "started_at": s.get("started_at"),
             })
     return out
+
+
+# ==================== WEB PUSH ROUTES ====================
+@api_router.get("/push/vapid-public-key")
+async def get_vapid_public_key():
+    """Clé publique VAPID + état d'activation (le front n'essaie de s'abonner
+    que si le serveur est configuré)."""
+    return {"public_key": VAPID_PUBLIC_KEY, "enabled": _web_push_enabled()}
+
+
+@api_router.post("/push/subscribe")
+async def push_subscribe(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Enregistre (ou met à jour) l'abonnement push du navigateur courant."""
+    sub = data.get("subscription") or data
+    endpoint = (sub or {}).get("endpoint")
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="Abonnement invalide")
+    await db.push_subscriptions.update_one(
+        {"endpoint": endpoint},
+        {"$set": {
+            "user_id": current_user["id"],
+            "subscription": sub,
+            "endpoint": endpoint,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"success": True}
+
+
+@api_router.post("/push/unsubscribe")
+async def push_unsubscribe(data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    """Désabonne le navigateur courant (suppression par endpoint)."""
+    endpoint = ((data or {}).get("subscription") or data or {}).get("endpoint") or (data or {}).get("endpoint")
+    if endpoint:
+        await db.push_subscriptions.delete_one({"endpoint": endpoint})
+    return {"success": True}
 
 
 # ==================== NOTIFICATIONS ROUTES ====================
@@ -6597,6 +6741,12 @@ async def startup_db_client():
         )
     except Exception as e:
         logger.warning(f"Index clip_views non créé (peut déjà exister): {e}")
+    # Index des abonnements push (un doc par navigateur/endpoint).
+    try:
+        await db.push_subscriptions.create_index("endpoint", unique=True, name="uniq_endpoint")
+        await db.push_subscriptions.create_index("user_id", name="by_user")
+    except Exception as e:
+        logger.warning(f"Index push_subscriptions non créé (peut déjà exister): {e}")
     # Lance la boucle de notifications « tendance » en tâche de fond.
     try:
         asyncio.create_task(trending_notifier_loop())

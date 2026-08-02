@@ -12,3 +12,11 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+// Enregistre le service worker (push + offline). Best-effort : sans lui, le
+// handler `push` du SW ne peut jamais s'activer.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+  });
+}
