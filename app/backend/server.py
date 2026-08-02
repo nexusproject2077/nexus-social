@@ -433,6 +433,14 @@ async def create_notification(user_id, notif_type, from_user, post_id=None,
     """
     if not user_id or user_id == from_user.get("id"):
         return
+    # Préférences par type (activé par défaut) : si le destinataire a désactivé
+    # ce type de notification, on n'en crée pas.
+    try:
+        _u = await db.users.find_one({"id": user_id}, {"notif_prefs": 1})
+        if ((_u or {}).get("notif_prefs") or {}).get(notif_type) is False:
+            return
+    except Exception:
+        pass
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -3271,6 +3279,36 @@ async def clear_notifications(current_user: dict = Depends(get_current_user)):
     """Supprime toutes les notifications de l'utilisateur."""
     await db.notifications.delete_many({"user_id": current_user["id"]})
     return {"success": True}
+
+
+# Types de notifications activables/désactivables (spec Instagram).
+NOTIF_TYPES = [
+    "message", "like", "comment", "comment_reply", "mention", "tag",
+    "follow", "follow_request", "follow_accepted",
+    "story_reply", "story_reaction", "instant", "instant_reaction",
+    "live", "trending", "security",
+]
+
+
+class NotifPrefs(BaseModel):
+    prefs: Dict[str, bool]
+
+
+@api_router.get("/notifications/preferences")
+async def get_notif_preferences(current_user: dict = Depends(get_current_user)):
+    """Préférences de notification par type (tout activé par défaut)."""
+    u = await db.users.find_one({"id": current_user["id"]}, {"notif_prefs": 1})
+    prefs = (u or {}).get("notif_prefs") or {}
+    return {t: bool(prefs.get(t, True)) for t in NOTIF_TYPES}
+
+
+@api_router.put("/notifications/preferences")
+async def set_notif_preferences(data: NotifPrefs, current_user: dict = Depends(get_current_user)):
+    """Active/désactive des types de notification."""
+    clean = {t: bool(v) for t, v in (data.prefs or {}).items() if t in NOTIF_TYPES}
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"notif_prefs": clean}})
+    return {"success": True, "prefs": clean}
+
 
 # ==================== MESSAGES ROUTES ====================
 @api_router.get("/messages/conversations", response_model=List[Conversation])

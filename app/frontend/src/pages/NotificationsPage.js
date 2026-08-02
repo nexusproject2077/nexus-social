@@ -4,8 +4,9 @@ import { API } from "@/App";
 import Layout from "@/components/Layout";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, UserPlus, Repeat, AtSign, TrendingUp, Trash2, Radio, Reply, Check } from "lucide-react";
+import { Heart, MessageCircle, UserPlus, Repeat, AtSign, TrendingUp, Trash2, Radio, Reply, Check, Settings } from "lucide-react";
 import { toast } from "sonner";
+import NotificationSettings from "@/components/NotificationSettings";
 
 // Onglets façon X/Instagram.
 const TABS = [
@@ -48,6 +49,7 @@ export default function NotificationsPage({ user }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
+  const [showSettings, setShowSettings] = useState(false);
   const [followedBack, setFollowedBack] = useState(() => new Set());
 
   const skipRef = useRef(0);
@@ -248,9 +250,15 @@ export default function NotificationsPage({ user }) {
                   <Trash2 className="w-5 h-5" />
                 </button>
               )}
+              <button onClick={() => setShowSettings(true)} title="Paramètres des notifications"
+                className="p-2 rounded-full hover:bg-white/5 transition-colors text-slate-400 hover:text-slate-200">
+                <Settings className="w-5 h-5" />
+              </button>
             </div>
           </div>
         </div>
+
+        {showSettings && <NotificationSettings onClose={() => setShowSettings(false)} />}
 
         {loading ? (
           <div className="flex justify-center py-16">
