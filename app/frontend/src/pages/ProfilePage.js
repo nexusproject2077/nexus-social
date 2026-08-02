@@ -275,18 +275,24 @@ export default function ProfilePage({ user, setUser }) {
       {/* Tirer vers le bas pour rafraîchir le profil (mobile). */}
       <PullToRefresh onRefresh={refreshProfile} />
 
-      {/* Bouton Paramètres — en haut à droite, sur mon propre profil (mobile).
-          Sans fond : uniquement le pictogramme, façon Instagram. */}
+      {/* Header collant mobile (mon profil) : contient le bouton Paramètres,
+          fond translucide (blur). Reste toujours accessible au scroll ; les
+          onglets se collent juste en dessous, sans espace vide. */}
       {isOwnProfile && (
-        <button
-          onClick={() => navigate("/settings")}
-          data-testid="profile-settings-button"
-          className="lg:hidden fixed top-3 right-4 z-[55] w-10 h-10 flex items-center justify-center"
-          style={{ color: "#dae2fd", textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
-          title="Paramètres"
+        <div
+          className="lg:hidden sticky top-0 z-[56] flex items-center justify-end px-3"
+          style={{ height: 48, background: "rgba(11,19,38,0.5)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}
         >
-          <span className="material-symbols-outlined" style={{ fontSize: 26 }}>settings</span>
-        </button>
+          <button
+            onClick={() => navigate("/settings")}
+            data-testid="profile-settings-button"
+            className="w-10 h-10 flex items-center justify-center rounded-full transition-transform active:scale-90"
+            style={{ color: "#dae2fd", background: "transparent", textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}
+            title="Paramètres"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 26 }}>settings</span>
+          </button>
+        </div>
       )}
 
       {/* ── Cinematic Hero ───────────────────────────────────────────────── */}
@@ -475,7 +481,7 @@ export default function ProfilePage({ user, setUser }) {
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
       <div
         className="sticky z-30 mt-6"
-        style={{ top: 56, background: `${C.surface}d9`, backdropFilter: "blur(16px)", borderTop: `1px solid ${C.outlineVariant}18`, borderBottom: `1px solid ${C.outlineVariant}18` }}
+        style={{ top: isOwnProfile ? 48 : 0, background: `${C.surface}d9`, backdropFilter: "blur(16px)", borderTop: `1px solid ${C.outlineVariant}18`, borderBottom: `1px solid ${C.outlineVariant}18` }}
       >
         <div className="max-w-5xl mx-auto flex">
           {tabs.map(({ id, label, icon }) => {

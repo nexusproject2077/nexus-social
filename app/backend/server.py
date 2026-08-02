@@ -4762,6 +4762,13 @@ async def call_signal(data: dict = Body(...), current_user: dict = Depends(get_c
             "signal": signal,
         },
     })
+    # Appel entrant (offre) → Web Push : l'utilisateur est alerté même app
+    # fermée (il peut rouvrir l'app et rappeler). Les calls ne sont pas dans
+    # NOTIF_TYPES (toujours actifs), mais on respecte le mute d'un compte.
+    if signal.get("kind") == "offer" and await _notif_allowed(to_user_id, "call", current_user["id"]):
+        is_video = bool(signal.get("video"))
+        body = f"📞 Appel {'vidéo ' if is_video else ''}entrant de @{current_user.get('username', '')}"
+        await send_web_push(to_user_id, "Nexus Social", body, f"/messages/{current_user['id']}", tag="call")
     return {"success": True}
 
 # ==================== SEARCH ROUTES ====================
