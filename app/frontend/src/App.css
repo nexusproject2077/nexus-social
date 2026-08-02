@@ -68,9 +68,13 @@ body {
   max-height: 500px;
 }
 
-/* Button hover effects */
+/* Button hover effects.
+   On anime des propriétés PRÉCISES (pas `all`) : `transition: all` relançait
+   une animation à chaque changement de mise en page (largeur, marge…), source
+   de saccades au tap. On limite aux propriétés visuelles peu coûteuses. */
 button {
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease,
+    transform 0.12s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 button:active {
