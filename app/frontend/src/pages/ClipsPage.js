@@ -191,6 +191,53 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const longPressTimer = useRef(null);
   const longPressFired = useRef(false);
 
+  // --- Signal de temps de visionnage (algorithme « Pour toi ») -------------
+  // On mesure le temps réellement regardé (onglet visible + lecture) et si le
+  // clip a été (quasi) terminé, puis on l'envoie au backend en quittant le clip.
+  const watchMsRef   = useRef(0);
+  const completedRef = useRef(false);
+  const reportedRef  = useRef(false);
+
+  const reportWatch = () => {
+    if (reportedRef.current) return;
+    reportedRef.current = true;
+    const v = videoRef.current;
+    const durMs = v && v.duration && isFinite(v.duration) ? Math.round(v.duration * 1000) : 0;
+    const watch = Math.round(watchMsRef.current);
+    if (watch < 300) return; // trop court → bruit, on n'envoie pas
+    const completed = completedRef.current || (durMs > 0 && watch >= durMs * 0.9);
+    axios.post(`${API}/clips/${post.id}/watch`, { watch_ms: watch, duration_ms: durMs, completed }).catch(() => {});
+  };
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    // Réinitialise les compteurs à chaque (dés)activation du clip.
+    watchMsRef.current = 0;
+    completedRef.current = false;
+    reportedRef.current = false;
+    if (!isActive) return;
+    let raf = 0, last = 0;
+    const tick = (t) => {
+      if (last && !v.paused && !v.ended && document.visibilityState === "visible") {
+        watchMsRef.current += (t - last);
+      }
+      last = t;
+      if (v.duration && isFinite(v.duration) && v.currentTime / v.duration >= 0.9) {
+        completedRef.current = true;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    const onEnded = () => { completedRef.current = true; };
+    raf = requestAnimationFrame(tick);
+    v.addEventListener("ended", onEnded);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      v.removeEventListener("ended", onEnded);
+      reportWatch(); // on quitte ce clip → on remonte le signal
+    };
+  }, [isActive]);
+
   // Enregistre l'élément vidéo auprès du parent (contrôle clavier : espace).
   useEffect(() => {
     registerVideo?.(index, videoRef.current);

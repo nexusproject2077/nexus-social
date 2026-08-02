@@ -776,7 +776,7 @@ function InstantsArchive({ onClose, onChanged }) {
         ) : (
           <div className="grid grid-cols-3 gap-2">
             {items.map((it) => (
-              <button key={it.id} onClick={() => setOpen(it)} className="relative rounded-xl overflow-hidden" style={{ aspectRatio: "3 / 4", background: C.container }}>
+              <button key={it.id} onClick={() => setOpen(it)} className="relative overflow-hidden" style={{ aspectRatio: "3 / 4", background: C.container, ...squircleStyle }}>
                 {isVideoMedia(it.media_url)
                   ? <video src={it.media_url} className="w-full h-full object-cover" muted playsInline preload="metadata" style={{ opacity: it.canceled ? 0.35 : 1 }} />
                   : <img src={it.media_url} alt="" className="w-full h-full object-cover" style={{ opacity: it.canceled ? 0.35 : 1 }} />}
