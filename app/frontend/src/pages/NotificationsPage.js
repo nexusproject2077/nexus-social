@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNavigate } from "react-router-dom";
 import { Heart, MessageCircle, UserPlus, Repeat, AtSign, TrendingUp, Trash2, Radio, Reply, Check, X, BellRing } from "lucide-react";
 import { toast } from "sonner";
-import { enablePush } from "@/lib/push";
+import { enablePush, pushReasonLabel } from "@/lib/push";
 
 // Onglets façon X/Instagram.
 const TABS = [
@@ -65,13 +65,13 @@ export default function NotificationsPage({ user }) {
   }, []);
 
   const handleEnablePush = async () => {
-    const ok = await enablePush({ interactive: true });
-    if (ok) { toast.success("Notifications push activées"); setShowPushBanner(false); }
-    else if (typeof Notification !== "undefined" && Notification.permission === "denied") {
-      toast.error("Notifications bloquées dans les réglages du navigateur");
+    const res = await enablePush({ interactive: true });
+    if (res.ok) {
+      toast.success(pushReasonLabel("ok"));
       setShowPushBanner(false);
     } else {
-      toast("Notifications push indisponibles pour le moment");
+      (res.reason === "denied" ? toast.error : toast)(pushReasonLabel(res.reason));
+      if (res.reason === "denied") setShowPushBanner(false);
     }
   };
 

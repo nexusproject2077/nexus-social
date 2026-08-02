@@ -35,27 +35,49 @@ function urlBase64ToUint8Array(base64String) {
   return out;
 }
 
+// Messages FR pour chaque cause d'échec (pour des toasts clairs).
+export function pushReasonLabel(reason) {
+  return {
+    ok: "Notifications push activées",
+    unsupported: "Ce navigateur ne supporte pas les notifications push",
+    insecure: "Les notifications push exigent une connexion sécurisée (HTTPS)",
+    denied: "Notifications bloquées dans les réglages du navigateur",
+    no_permission: "Permission refusée",
+    server_disabled: "Le serveur n'a pas encore les notifications push activées",
+    server_unreachable: "Serveur de notifications injoignable (déploiement en cours ?)",
+    subscribe_failed: "Échec de l'abonnement push",
+  }[reason] || "Notifications push indisponibles pour le moment";
+}
+
 // Abonne le navigateur au push et enregistre l'abonnement côté serveur.
 // `interactive` = true autorise la demande de permission (à déclencher sur une
 // action utilisateur) ; false = ré-abonnement silencieux si déjà autorisé.
-// Renvoie true si l'abonnement est actif.
+// Renvoie { ok, reason } pour un diagnostic clair.
 export async function enablePush({ interactive = false } = {}) {
+  if (!pushSupported()) return { ok: false, reason: "unsupported" };
+  if (typeof window !== "undefined" && window.isSecureContext === false)
+    return { ok: false, reason: "insecure" };
+  if (Notification.permission === "denied") return { ok: false, reason: "denied" };
+  if (!interactive && Notification.permission !== "granted")
+    return { ok: false, reason: "no_permission" };
+
+  // Le serveur doit être configuré (clé VAPID présente + pywebpush installé).
+  let data;
   try {
-    if (!pushSupported()) return false;
-    if (Notification.permission === "denied") return false;
-    if (!interactive && Notification.permission !== "granted") return false;
+    ({ data } = await axios.get(`${API}/push/vapid-public-key`));
+  } catch {
+    return { ok: false, reason: "server_unreachable" };
+  }
+  if (!data?.enabled || !data?.public_key)
+    return { ok: false, reason: "server_disabled" };
 
-    // Le serveur doit être configuré (clé VAPID présente).
-    const { data } = await axios.get(`${API}/push/vapid-public-key`);
-    if (!data?.enabled || !data?.public_key) return false;
-
+  try {
     if (Notification.permission !== "granted") {
       const perm = await Notification.requestPermission();
-      if (perm !== "granted") return false;
+      if (perm !== "granted") return { ok: false, reason: "no_permission" };
     }
-
     const reg = (await navigator.serviceWorker.ready) || (await registerServiceWorker());
-    if (!reg?.pushManager) return false;
+    if (!reg?.pushManager) return { ok: false, reason: "unsupported" };
 
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
@@ -65,9 +87,9 @@ export async function enablePush({ interactive = false } = {}) {
       });
     }
     await axios.post(`${API}/push/subscribe`, { subscription: sub.toJSON() });
-    return true;
+    return { ok: true, reason: "ok" };
   } catch {
-    return false;
+    return { ok: false, reason: "subscribe_failed" };
   }
 }
 

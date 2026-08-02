@@ -9,7 +9,7 @@ import ChangePasswordModal from '../components/ChangePasswordModal';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import AlgorithmTransparencyModal from '../components/AlgorithmTransparencyModal';
 import { ACCENTS, applyAccent, getAccent } from '../lib/accent';
-import { enablePush, disablePush, isPushEnabled } from '@/lib/push';
+import { enablePush, disablePush, isPushEnabled, pushReasonLabel } from '@/lib/push';
 
 // Libellés FR des types de notification (pour les réglages).
 const NOTIF_TYPE_LABELS = {
@@ -178,10 +178,10 @@ export default function SettingsPage({ user, setUser }) {
     setPushBusy(true);
     try {
       if (on) {
-        const ok = await enablePush({ interactive: true });
-        setPushOn(ok);
-        if (!ok) toast.error("Notifications push indisponibles (permission refusée ?)");
-        else toast.success("Notifications push activées");
+        const res = await enablePush({ interactive: true });
+        setPushOn(res.ok);
+        if (res.ok) toast.success(pushReasonLabel("ok"));
+        else toast.error(pushReasonLabel(res.reason));
       } else {
         await disablePush();
         setPushOn(false);
