@@ -6175,31 +6175,247 @@ async def analytics_my_hourly(
     return result
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ALGORITHME DE RECOMMANDATION — feed « Pour toi » + Clips
+#
+# Objectif : maximiser le temps passé en montrant le contenu le plus engageant.
+# Signaux : engagement (likes/commentaires/partages), rétention des clips
+# (taux de complétion + temps de visionnage), fraîcheur (décroissance dans le
+# temps), personnalisation (comptes suivis + affinités créateurs/hashtags) et
+# diversité (éviter le même créateur d'affilée, varier les découvertes).
+#
+# Performance : on classe un « pool » borné de candidats récents/engageants en
+# Python (souple), avec un cache par utilisateur pour stabiliser la pagination
+# du scroll infini. Render tourne en 1 worker → cache mémoire suffisant.
+# ═══════════════════════════════════════════════════════════════════════════
+
+_HASHTAG_RE = re.compile(r"#(\w{1,50})", re.UNICODE)
+
+
+def _extract_tags(text):
+    return {m.lower() for m in _HASHTAG_RE.findall(text or "")}
+
+
+def _parse_iso_ts(s):
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
+# Affinités de l'utilisateur (créateurs & hashtags qu'il aime), cache 5 min.
+_affinity_cache: Dict[str, tuple] = {}
+AFFINITY_TTL = 300
+
+
+async def _user_affinity(user_id):
+    now = time.time()
+    hit = _affinity_cache.get(user_id)
+    if hit and hit[0] > now:
+        return hit[1]
+    creators, tags = set(), set()
+    try:
+        liked = await db.likes.find({"user_id": user_id}).sort("created_at", -1).limit(60).to_list(length=60)
+        pids = [l.get("post_id") for l in liked if l.get("post_id")]
+        if pids:
+            posts = await db.posts.find(
+                {"id": {"$in": pids}}, {"author_id": 1, "content": 1}
+            ).to_list(length=len(pids))
+            for p in posts:
+                if p.get("author_id"):
+                    creators.add(p["author_id"])
+                tags |= _extract_tags(p.get("content"))
+    except Exception:
+        pass
+    aff = {"creators": creators, "tags": set(list(tags)[:40])}
+    _affinity_cache[user_id] = (now + AFFINITY_TTL, aff)
+    return aff
+
+
+def _score_post(p, now_ts, followed, aff, is_clip, premium=frozenset()):
+    """Score d'engagement d'un post/clip pour un utilisateur donné."""
+    likes = p.get("likes_count", 0) or 0
+    comments = p.get("comments_count", 0) or 0
+    shares = p.get("shares_count", 0) or 0
+    views = max(1, p.get("views", 0) or 0)
+    ws = p.get("watch_sessions", 0) or 0
+    comp_sum = p.get("completion_sum", 0.0) or 0.0
+    watch_ms = p.get("watch_ms_total", 0) or 0
+    avg_comp = (comp_sum / ws) if ws else 0.0
+    avg_watch_s = (watch_ms / 1000.0 / ws) if ws else 0.0
+
+    # Engagement absolu (portée) + taux d'engagement (qualité, par vue).
+    eng = likes * 1.0 + comments * 2.0 + shares * 3.0
+    eng_rate = eng / views
+    quality = eng * 0.4 + eng_rate * 40.0
+    if is_clip:
+        # Rétention = signal fort côté clips (watch time + complétion).
+        quality += avg_comp * 60.0 + min(avg_watch_s, 45.0) * 1.2
+
+    # Fraîcheur : décroissance exponentielle (demi-vie ~33 h), avec un plancher
+    # pour que la qualité compte encore sur du contenu un peu plus ancien.
+    age_h = max(0.0, (now_ts - _parse_iso_ts(p.get("created_at"))) / 3600.0)
+    recency = math.exp(-age_h / 48.0)
+    score = quality * (0.35 + 0.65 * recency)
+
+    # Boost « nouveau contenu prometteur » (jeune + déjà bon taux d'engagement).
+    if age_h < 6 and eng_rate > 0.12:
+        score += 20.0
+    # Pénalité « fait quitter » : beaucoup vu mais peu complété.
+    if is_clip and ws >= 5 and avg_comp < 0.25:
+        score -= 30.0
+    # Personnalisation.
+    author = p.get("author_id")
+    if author in followed:
+        score += 18.0
+    if author in aff["creators"]:
+        score += 14.0
+    if aff["tags"] and (_extract_tags(p.get("content")) & aff["tags"]):
+        score += 10.0
+    # Avantage Premium (bonus de visibilité, avantage réel des abonnés).
+    if author in premium:
+        score += 8.0
+    return score
+
+
+def _diversify(items, author_of, gap=2, max_per_author=4):
+    """Réordonne (items déjà triés par score desc) pour éviter le même créateur
+    d'affilée (fenêtre `gap`) et plafonner le nombre par créateur."""
+    remaining = list(items)
+    result, counts = [], {}
+    while remaining:
+        pick = None
+        recent = [author_of(x) for x in result[-gap:]]
+        for i, it in enumerate(remaining):
+            a = author_of(it)
+            if counts.get(a, 0) >= max_per_author or a in recent:
+                continue
+            pick = i
+            break
+        if pick is None:  # contrainte d'écart trop stricte → 1er sous quota
+            for i, it in enumerate(remaining):
+                if counts.get(author_of(it), 0) < max_per_author:
+                    pick = i
+                    break
+        if pick is None:
+            break  # tout le monde a atteint le quota
+        it = remaining.pop(pick)
+        a = author_of(it)
+        counts[a] = counts.get(a, 0) + 1
+        result.append(it)
+    return result
+
+
+# Cache de l'ordre de classement par utilisateur (stabilise la pagination).
+_rank_cache: Dict[str, tuple] = {}
+RANK_TTL = 180  # 3 min
+
+
+async def _followed_ids(user_id):
+    follows_raw = await db.follows.find(
+        {"follower_id": user_id, "status": "following"}
+    ).to_list(length=2000)
+    out = set()
+    for f in follows_raw:
+        fid = f.get("followed_id") or f.get("following_id")
+        if fid:
+            out.add(fid)
+    return out
+
+
+async def _ranked_ids(kind, user_id, eu):
+    """Renvoie l'ordre (liste d'ids) du feed classé, caché `RANK_TTL` s.
+    kind = 'clips' (vidéos) | 'foryou' (posts)."""
+    ckey = f"{kind}:{user_id}"
+    hit = _rank_cache.get(ckey)
+    if hit and hit[0] > time.time():
+        return hit[1]
+
+    is_clip = kind == "clips"
+    base = {"media_type": "video", "media_url": {"$ne": None}} if is_clip \
+        else {"repost_of": None}
+    if is_clip and eu:
+        base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": user_id}]
+
+    proj = {"id": 1, "author_id": 1, "content": 1, "created_at": 1, "likes_count": 1,
+            "comments_count": 1, "shares_count": 1, "views": 1, "watch_sessions": 1,
+            "completion_sum": 1, "watch_ms_total": 1}
+    # Pool : les 400 plus récents + les 200 plus engageants (pépites plus vieilles).
+    recent = await db.posts.find(base, proj).sort("created_at", -1).limit(400).to_list(length=400)
+    top = await db.posts.find(base, proj).sort("likes_count", -1).limit(200).to_list(length=200)
+    pool, seen = [], set()
+    for p in recent + top:
+        pid = p.get("id")
+        if pid and pid not in seen:
+            seen.add(pid)
+            pool.append(p)
+
+    followed = await _followed_ids(user_id)
+    aff = await _user_affinity(user_id)
+    premium = {u["id"] for u in await db.users.find({"is_premium": True}, {"id": 1}).to_list(length=5000)}
+    now_ts = time.time()
+    for p in pool:
+        p["_score"] = _score_post(p, now_ts, followed, aff, is_clip, premium)
+    pool.sort(key=lambda x: x["_score"], reverse=True)
+    ordered = _diversify(pool, lambda x: x.get("author_id"), gap=2, max_per_author=4)
+    ids = [p["id"] for p in ordered if p.get("id")]
+
+    _rank_cache[ckey] = (now_ts + RANK_TTL, ids)
+    if len(_rank_cache) > 20000:
+        _rank_cache.clear()
+    return ids
+
+
+async def _fetch_posts_in_order(ids, user_id):
+    """Récupère et enrichit des posts en respectant l'ordre de `ids`."""
+    if not ids:
+        return []
+    raw = await db.posts.find({"id": {"$in": ids}}).to_list(length=len(ids))
+    by_id = {p.get("id"): p for p in raw}
+    saved_ids = await _saved_post_ids(user_id, ids)
+    premium_ids = await _premium_author_ids([by_id[i].get("author_id") for i in ids if i in by_id])
+    liked = {l.get("post_id") for l in await db.likes.find(
+        {"post_id": {"$in": ids}, "user_id": user_id}, {"post_id": 1}
+    ).to_list(length=len(ids))}
+    out = []
+    for pid in ids:
+        pr = by_id.get(pid)
+        if not pr:
+            continue
+        post = convert_mongo_doc_to_dict(pr)
+        post["is_liked"] = pid in liked
+        post["is_saved"] = pid in saved_ids
+        post["author_is_premium"] = post.get("author_id") in premium_ids
+        enrich_post_poll(post, user_id)
+        out.append(Post(**post))
+    return out
+
+
 @api_router.get("/clips", response_model=List[Post])
 async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
     """
-    Fil Nexus Clips : publications vidéo de tout le monde, du plus récent au plus
-    ancien, paginé (skip/limit) pour le scroll infini façon TikTok.
+    Fil Nexus Clips classé par un algorithme d'engagement (watch time +
+    complétion + interactions + fraîcheur + affinités), avec diversité des
+    créateurs. Paginé (skip/limit) pour le scroll infini façon TikTok.
 
-    Geo-block : pour un visiteur de l'UE, les clips marqués eu_blocked sont retirés
-    du fil (l'auteur voit toujours les siens).
+    Geo-block : pour un visiteur de l'UE, les clips eu_blocked sont retirés
+    (l'auteur voit toujours les siens).
     """
     limit = max(1, min(limit, 40))
-    query = {"media_type": "video", "media_url": {"$ne": None}}
-    if CLIPS_EU_GEO_BLOCK and is_eu_request(request):
-        query["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
-    videos_raw = await db.posts.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    eu = CLIPS_EU_GEO_BLOCK and is_eu_request(request)
+    ids = await _ranked_ids("clips", current_user["id"], eu)
+    page = ids[skip: skip + limit]
+    clips = await _fetch_posts_in_order(page, current_user["id"])
 
-    clips = []
-    saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in videos_raw])
-    premium_ids = await _premium_author_ids([p.get("author_id") for p in videos_raw])
-    for post_raw in videos_raw:
-        post = convert_mongo_doc_to_dict(post_raw)
-        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
-        post["is_liked"] = bool(like_raw)
-        post["is_saved"] = post["id"] in saved_ids
-        post["author_is_premium"] = post.get("author_id") in premium_ids
-        clips.append(Post(**post))
+    # Filet de sécurité : si le scroll dépasse le pool classé, on complète en
+    # chronologique (clips plus anciens non inclus dans le pool).
+    if len(clips) < limit and skip >= len(ids):
+        base = {"media_type": "video", "media_url": {"$ne": None}}
+        if eu:
+            base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
+        extra_skip = skip - len(ids)
+        raw = await db.posts.find(base).sort("created_at", -1).skip(max(0, extra_skip)).limit(limit).to_list(length=limit)
+        clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"])
     return clips
 
 
@@ -6662,67 +6878,58 @@ async def register_clip_view(clip_id: str, request: Request, current_user: dict 
     return {"success": True, "views": (post or {}).get("views", 0), "counted": True}
 
 
-@api_router.get("/feed/foryou", response_model=List[Post])
-async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current_user)):
-    """
-    Feed "Pour toi" : mélange les publications des comptes suivis et les
-    contenus tendance (fort engagement), classés par un score d'engagement
-    pondéré avec un bonus de personnalisation pour les comptes suivis.
+@api_router.post("/clips/{clip_id}/watch")
+async def register_clip_watch(clip_id: str, data: dict = Body(default={}),
+                              current_user: dict = Depends(get_current_user)):
+    """Enregistre le temps de visionnage d'un clip (signal de rétention pour le
+    classement). Corps : {watched_ms, duration_ms, completed}. Cumulé sur le
+    clip (moyennes calculées au scoring). Best-effort, silencieux.
 
-    Le score est calculé côté base via un pipeline d'agrégation (plus efficace
-    qu'un chargement massif suivi d'un tri en mémoire).
+    Anti-abus : un visionnage < 300 ms est ignoré ; la complétion est bornée à
+    [0,1] et le temps par session plafonné (évite de gonfler artificiellement)."""
+    try:
+        watched_ms = int(data.get("watched_ms") or 0)
+        duration_ms = int(data.get("duration_ms") or 0)
+    except (TypeError, ValueError):
+        return {"success": False}
+    if watched_ms < 300:
+        return {"success": True, "counted": False}
+    # Plafonne une session à 10 min pour éviter les valeurs aberrantes.
+    watched_ms = min(watched_ms, 600_000)
+    completed = bool(data.get("completed"))
+    if duration_ms > 0:
+        completion = min(1.0, watched_ms / duration_ms)
+    else:
+        completion = 1.0 if completed else 0.0
+    if completed:
+        completion = 1.0
+    try:
+        await db.posts.update_one(
+            {"id": clip_id},
+            {"$inc": {
+                "watch_sessions": 1,
+                "watch_ms_total": watched_ms,
+                "completion_sum": completion,
+            }},
+        )
+    except Exception:
+        return {"success": False}
+    return {"success": True, "counted": True}
+
+
+@api_router.get("/feed/foryou", response_model=List[Post])
+async def for_you_feed(limit: int = 50, skip: int = 0, current_user: dict = Depends(get_current_user)):
+    """
+    Feed « Pour toi » intelligent : classe les publications par un score
+    d'engagement personnalisé (interactions + taux d'engagement + fraîcheur +
+    affinités créateurs/hashtags + comptes suivis), avec diversité des
+    créateurs — au lieu d'un simple tri chronologique ou par likes bruts.
+    Paginé (skip/limit) pour le scroll infini.
     """
     limit = max(1, min(limit, 100))
-
-    # Comptes suivis (formats followed_id et following_id supportés)
-    follows_raw = await db.follows.find({
-        "follower_id": current_user["id"],
-        "status": "following"
-    }).to_list(length=1000)
-    followed_ids = []
-    for f in follows_raw:
-        fid = f.get("followed_id") or f.get("following_id")
-        if fid:
-            followed_ids.append(fid)
-
-    # Auteurs Premium : petit bonus de visibilité dans « Pour toi » (avantage réel).
-    premium_authors = [u["id"] for u in await db.users.find(
-        {"is_premium": True}, {"id": 1}
-    ).to_list(length=5000)]
-
-    pipeline = [
-        {"$addFields": {
-            "engagement_score": {
-                "$add": [
-                    {"$multiply": [{"$ifNull": ["$likes_count", 0]}, 2]},
-                    {"$multiply": [{"$ifNull": ["$comments_count", 0]}, 3]},
-                    {"$multiply": [{"$ifNull": ["$shares_count", 0]}, 4]},
-                    # Bonus de personnalisation : les comptes suivis remontent
-                    {"$cond": [{"$in": ["$author_id", followed_ids]}, 15, 0]},
-                    # Bonus Premium : priorité dans le feed « Pour toi »
-                    {"$cond": [{"$in": ["$author_id", premium_authors]}, 8, 0]},
-                ]
-            }
-        }},
-        {"$sort": {"engagement_score": -1, "created_at": -1}},
-        {"$limit": limit},
-    ]
-
-    posts_raw = await db.posts.aggregate(pipeline).to_list(length=limit)
-
-    posts = []
-    saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
-    premium_set = set(premium_authors)
-    for post_raw in posts_raw:
-        post = convert_mongo_doc_to_dict(post_raw)
-        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
-        post["is_liked"] = bool(like_raw)
-        post["is_saved"] = post["id"] in saved_ids
-        post["author_is_premium"] = post.get("author_id") in premium_set
-        enrich_post_poll(post, current_user["id"])
-        posts.append(Post(**post))
-
-    return posts
+    ids = await _ranked_ids("foryou", current_user["id"], False)
+    page = ids[skip: skip + limit]
+    return await _fetch_posts_in_order(page, current_user["id"])
 
 # ==================== END ENHANCED FEATURES ====================
 

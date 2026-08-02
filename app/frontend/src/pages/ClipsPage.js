@@ -194,6 +194,34 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const longPressTimer = useRef(null);
   const longPressFired = useRef(false);
 
+  // ── Mesure du temps de visionnage (signal de rétention pour l'algorithme) ──
+  // On cumule le temps RÉELLEMENT lu via onTimeUpdate (robuste : rien pendant
+  // les pauses, on ignore les sauts/boucles), puis on l'envoie au backend quand
+  // le clip n'est plus actif (scroll) ou au démontage.
+  const watchedMsRef = useRef(0);
+  const lastTimeRef  = useRef(0);
+  const durationMsRef = useRef(0);
+
+  const flushWatch = () => {
+    const ms = Math.round(watchedMsRef.current);
+    watchedMsRef.current = 0;
+    lastTimeRef.current = 0;
+    if (ms < 300) return; // trop court → ignoré
+    const dur = durationMsRef.current || 0;
+    const completed = dur > 0 && ms >= dur * 0.9;
+    axios.post(`${API}/clips/${post.id}/watch`, { watched_ms: ms, duration_ms: dur, completed })
+      .catch(() => {});
+  };
+
+  // Envoie la mesure quand le clip cesse d'être actif ; remet à zéro au retour.
+  useEffect(() => {
+    if (isActive) { watchedMsRef.current = 0; lastTimeRef.current = 0; }
+    else { flushWatch(); }
+  }, [isActive]);
+
+  // Filet : envoie aussi au démontage (fermeture/onglet).
+  useEffect(() => () => flushWatch(), []);
+
   // Enregistre l'élément vidéo auprès du parent (contrôle clavier : espace).
   useEffect(() => {
     registerVideo?.(index, videoRef.current);
@@ -450,10 +478,15 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         onLoadedMetadata={(e) => {
           const v = e.target;
           if (v.videoWidth && v.videoHeight) setIsLandscape(v.videoWidth / v.videoHeight >= 1.4);
-          if (v.duration && isFinite(v.duration)) setDuration(v.duration);
+          if (v.duration && isFinite(v.duration)) { setDuration(v.duration); durationMsRef.current = v.duration * 1000; }
         }}
         onTimeUpdate={(e) => {
           const v = e.target;
+          // Cumule le temps réellement lu (delta positif et court ; ignore
+          // sauts/boucles). Comptabilisé même pendant un scrubbing léger.
+          const dt = v.currentTime - lastTimeRef.current;
+          if (dt > 0 && dt < 1.5) watchedMsRef.current += dt * 1000;
+          lastTimeRef.current = v.currentTime;
           if (scrubbing) return; // pendant le glissement, on ne suit pas la lecture
           if (v.duration) setProgress((v.currentTime / v.duration) * 100);
           setCurrentTime(v.currentTime);
