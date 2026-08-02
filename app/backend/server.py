@@ -529,13 +529,43 @@ async def send_web_push(user_id: str, title: str, body: str, url: str = "/", tag
             pass
 
 
+# Types de notification connus (pour l'UI des réglages).
+NOTIF_TYPES = [
+    "like", "comment", "comment_reply", "mention", "tag",
+    "follow", "follow_request", "follow_accepted", "live",
+    "message", "group_message", "story_reply", "story_reaction",
+    "trending", "security",
+]
+
+
+async def _notif_allowed(user_id, notif_type, from_user_id=None):
+    """False si l'utilisateur a désactivé ce type de notification, ou coupé les
+    notifications de cet expéditeur. Best-effort (autorise en cas d'erreur)."""
+    if not user_id:
+        return False
+    try:
+        pref = await db.notification_prefs.find_one({"user_id": user_id})
+    except Exception:
+        return True
+    if not pref:
+        return True
+    if notif_type in (pref.get("disabled_types") or []):
+        return False
+    if from_user_id and from_user_id in (pref.get("muted_accounts") or []):
+        return False
+    return True
+
+
 async def create_notification(user_id, notif_type, from_user, post_id=None,
                               comment_content=None):
     """Crée une notification (et la pousse en temps réel). Best-effort.
 
     N'auto-notifie jamais : si l'émetteur est le destinataire, on ignore.
+    Respecte les préférences de l'utilisateur (type désactivé / compte coupé).
     """
     if not user_id or user_id == from_user.get("id"):
+        return
+    if not await _notif_allowed(user_id, notif_type, from_user.get("id")):
         return
     doc = {
         "id": str(uuid.uuid4()),
@@ -3343,6 +3373,51 @@ async def push_unsubscribe(data: dict = Body(default={}), current_user: dict = D
     return {"success": True}
 
 
+# ==================== PRÉFÉRENCES DE NOTIFICATION ====================
+@api_router.get("/notifications/settings")
+async def get_notif_settings(current_user: dict = Depends(get_current_user)):
+    """Préférences de notification de l'utilisateur (types désactivés + comptes
+    coupés). `types` liste les types connus pour l'UI."""
+    pref = await db.notification_prefs.find_one({"user_id": current_user["id"]}) or {}
+    return {
+        "types": NOTIF_TYPES,
+        "disabled_types": pref.get("disabled_types", []),
+        "muted_accounts": pref.get("muted_accounts", []),
+    }
+
+
+@api_router.put("/notifications/settings")
+async def update_notif_settings(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Met à jour les types désactivés (liste complète remplacée)."""
+    update = {}
+    if "disabled_types" in data and isinstance(data["disabled_types"], list):
+        # On ne garde que des types connus.
+        update["disabled_types"] = [t for t in data["disabled_types"] if t in NOTIF_TYPES]
+    if update:
+        await db.notification_prefs.update_one(
+            {"user_id": current_user["id"]}, {"$set": update}, upsert=True
+        )
+    return {"success": True}
+
+
+@api_router.post("/notifications/mute/{target_id}")
+async def toggle_mute_account(target_id: str, current_user: dict = Depends(get_current_user)):
+    """Active/désactive la coupure des notifications d'un compte précis."""
+    pref = await db.notification_prefs.find_one({"user_id": current_user["id"]}) or {}
+    muted = set(pref.get("muted_accounts") or [])
+    if target_id in muted:
+        muted.discard(target_id)
+        state = False
+    else:
+        muted.add(target_id)
+        state = True
+    await db.notification_prefs.update_one(
+        {"user_id": current_user["id"]},
+        {"$set": {"muted_accounts": list(muted)}}, upsert=True,
+    )
+    return {"success": True, "muted": state}
+
+
 # ==================== NOTIFICATIONS ROUTES ====================
 @api_router.get("/notifications", response_model=List[Notification])
 async def get_notifications(skip: int = 0, limit: int = 30, current_user: dict = Depends(get_current_user)):
@@ -3884,8 +3959,9 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
 
     # Push navigateur (app fermée). On n'ajoute PAS d'entrée au fil de
     # notifications : les messages ont déjà leur propre pastille.
-    _mt, _mb, _mu = _push_content_for("message", current_user)
-    await send_web_push(message_data.recipient_id, _mt, _mb, _mu, tag="message")
+    if await _notif_allowed(message_data.recipient_id, "message", current_user["id"]):
+        _mt, _mb, _mu = _push_content_for("message", current_user)
+        await send_web_push(message_data.recipient_id, _mt, _mb, _mu, tag="message")
 
     return Message(**message)
 
@@ -4398,7 +4474,8 @@ async def send_group_message(
                 "sender_username": current_user["username"],
                 "content": text,
             }})
-            await send_web_push(_mid, _gt, _gb, _gu, tag="group_message")
+            if await _notif_allowed(_mid, "group_message", current_user["id"]):
+                await send_web_push(_mid, _gt, _gb, _gu, tag="group_message")
 
         return {
             "success": True,
