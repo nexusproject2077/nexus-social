@@ -910,13 +910,17 @@ export default function InstantsEntry({ user, hidden = false }) {
       {/* FAB caméra « + » */}
       {!hidden && !screen && !viewing && (
         <button onClick={() => setScreen("camera")} aria-label="Nouvel instantané"
-          className="fixed z-[55] flex items-center justify-center rounded-2xl shadow-2xl active:scale-95 transition-transform"
+          className="fixed z-[55] active:scale-95 transition-transform"
           style={{
             width: 60, height: 60,
             right: "16px", bottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)",
-            background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary,
+            filter: "drop-shadow(0 6px 14px rgba(0,0,0,0.45))",
           }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 30 }}>photo_camera</span>
+          {/* Fond en SQUIRCLE (l'ombre suit la forme via le drop-shadow du parent) */}
+          <span className="w-full h-full flex items-center justify-center"
+            style={{ ...squircleStyle, background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 30 }}>photo_camera</span>
+          </span>
           {inbox.length > 0 && (
             <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center text-[11px] font-black"
               style={{ background: "#f87171", color: "#fff", border: `2px solid ${C.surface}` }}>{inbox.length}</span>

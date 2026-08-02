@@ -1414,12 +1414,6 @@ export default function MessagesPage({ user }) {
           style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>
           {user?.username || "Messages"}
         </h2>
-        {/* Instantané (photo éphémère façon Instagram) — MOBILE uniquement. */}
-        <button onClick={() => window.dispatchEvent(new CustomEvent("nexus:instant-open"))} title="Nouvel instantané"
-          className="lg:hidden w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
-          style={{ background: `${C.cyan}18`, color: C.cyan }}>
-          <span className="material-symbols-outlined text-lg">photo_camera</span>
-        </button>
         {/* Un seul bouton « Nouveau message » (façon Insta : DM ou groupe). */}
         <button onClick={openNewMessageModal} title="Nouveau message"
           className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
