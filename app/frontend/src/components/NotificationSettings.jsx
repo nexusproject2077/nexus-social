@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
+import { getPushState, enablePush, disablePush } from "@/lib/push";
 
 const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
 
@@ -61,10 +62,44 @@ function Toggle({ on, onChange }) {
 export default function NotificationSettings({ onClose }) {
   const [prefs, setPrefs] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [push, setPush] = useState(null); // état Web Push (support/permission/abonnement)
+  const [pushBusy, setPushBusy] = useState(false);
 
   useEffect(() => {
     axios.get(`${API}/notifications/preferences`).then((r) => setPrefs(r.data || {})).catch(() => setPrefs({}));
+    getPushState().then(setPush).catch(() => setPush({ supported: false }));
   }, []);
+
+  const togglePush = async () => {
+    if (pushBusy || !push) return;
+    setPushBusy(true);
+    try {
+      if (push.subscribed) {
+        await disablePush();
+        toast.success("Notifications push désactivées");
+      } else {
+        const res = await enablePush();
+        if (!res.ok) {
+          const msg = {
+            "ios-install": "Sur iPhone/iPad : ajoutez d'abord Nexus à l'écran d'accueil (Partager → Sur l'écran d'accueil), puis réessayez.",
+            denied: "Autorisez les notifications dans les réglages de votre navigateur.",
+            unsupported: "Votre navigateur ne prend pas en charge les notifications push.",
+            "no-key": "Serveur indisponible, réessayez plus tard.",
+            "subscribe-failed": "Impossible de s'abonner aux notifications.",
+            "backend-failed": "Échec de l'enregistrement, réessayez.",
+            "no-sw": "Service worker indisponible.",
+          }[res.reason] || "Activation impossible.";
+          toast.error(msg);
+        } else {
+          toast.success("Notifications push activées 🔔");
+        }
+      }
+    } finally {
+      const st = await getPushState().catch(() => null);
+      if (st) setPush(st);
+      setPushBusy(false);
+    }
+  };
 
   const toggle = (key, value) => {
     const next = { ...prefs, [key]: value };
@@ -86,6 +121,44 @@ export default function NotificationSettings({ onClose }) {
             <span className="material-symbols-outlined" style={{ color: "#dae2fd" }}>close</span>
           </button>
         </div>
+
+        {/* Web Push : notifications même quand l'app est fermée. */}
+        {push && (
+          <div className="mb-5">
+            <p className="text-[11px] font-bold uppercase tracking-widest mb-2 px-1" style={{ color: "#859397" }}>Notifications push</p>
+            <div className="rounded-2xl overflow-hidden" style={{ background: "#171f33" }}>
+              <div className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm" style={{ color: "#dae2fd" }}>Notifications sur cet appareil</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: "#5b6b8c" }}>
+                    Reçois les alertes même quand l'app est fermée.
+                  </p>
+                </div>
+                {!push.supported ? (
+                  <span className="text-[11px] flex-shrink-0" style={{ color: "#5b6b8c" }}>Non pris en charge</span>
+                ) : pushBusy ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 flex-shrink-0" style={{ borderColor: ACCENT }} />
+                ) : (
+                  <Toggle on={!!push.subscribed} onChange={togglePush} />
+                )}
+              </div>
+              {push.supported && push.ios && !push.standalone && (
+                <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                  <p className="text-[11px]" style={{ color: "#f0b429" }}>
+                    Sur iPhone/iPad : ouvre le menu Partager puis « Sur l'écran d'accueil » pour installer Nexus. Les notifications push deviennent alors disponibles.
+                  </p>
+                </div>
+              )}
+              {push.supported && push.permission === "denied" && (
+                <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                  <p className="text-[11px]" style={{ color: "#f0b429" }}>
+                    Les notifications sont bloquées pour ce site. Autorise-les dans les réglages de ton navigateur pour les réactiver.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {!prefs ? (
           <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: ACCENT }} /></div>

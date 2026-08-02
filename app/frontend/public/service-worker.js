@@ -158,21 +158,35 @@ self.addEventListener('notificationclick', (event) => {
   console.log('[SW] Notification clicked');
 
   event.notification.close();
+  if (event.action === 'close') return;
 
-  const urlToOpen = event.notification.data?.url || '/';
+  const rawUrl = event.notification.data?.url || '/';
+  // URL absolue basée sur l'origine du SW (les URLs stockées sont relatives).
+  const target = new URL(rawUrl, self.location.origin);
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
-        // Chercher une fenêtre existante
+        // Réutiliser une fenêtre déjà ouverte sur l'app : la focus puis naviguer.
         for (const client of clientList) {
-          if (client.url === urlToOpen && 'focus' in client) {
-            return client.focus();
-          }
+          try {
+            const cu = new URL(client.url);
+            if (cu.origin === target.origin && 'focus' in client) {
+              return client.focus().then((c) => {
+                const f = c || client;
+                // navigate() n'est pas partout dispo → message au client sinon.
+                if ('navigate' in f) {
+                  return f.navigate(target.href).catch(() => f);
+                }
+                if (f.postMessage) f.postMessage({ type: 'navigate', url: rawUrl });
+                return f;
+              });
+            }
+          } catch (e) { /* ignore */ }
         }
-        // Ouvrir nouvelle fenêtre
+        // Aucune fenêtre : en ouvrir une nouvelle sur la destination.
         if (clients.openWindow) {
-          return clients.openWindow(urlToOpen);
+          return clients.openWindow(target.href);
         }
       })
   );

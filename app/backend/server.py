@@ -458,6 +458,16 @@ async def create_notification(user_id, notif_type, from_user, post_id=None,
         await push_realtime(user_id, {"type": "notification", "data": doc})
     except Exception:
         pass
+    # Push navigateur (fonctionne app fermée). Best-effort, ne bloque jamais.
+    try:
+        _title, _body, _url = _notif_push_text(doc, from_user)
+        await send_web_push(user_id, {
+            "title": _title, "body": _body, "url": _url,
+            "icon": from_user.get("profile_pic") or "/logo192.png",
+            "tag": doc["id"],
+        })
+    except Exception:
+        pass
 
 # ==================== LIVE (WebRTC signaling) ====================
 # Relais de signaling minimal pour un direct 1:1 (offre/réponse/ICE).
@@ -3310,6 +3320,151 @@ async def set_notif_preferences(data: NotifPrefs, current_user: dict = Depends(g
     return {"success": True, "prefs": clean}
 
 
+# ==================== WEB PUSH (notifications app fermée) ====================
+_VAPID_CACHE: Dict[str, str] = {}
+
+
+def _generate_vapid_keys():
+    """Génère une paire de clés VAPID (EC P-256) via cryptography."""
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import serialization
+    priv = ec.generate_private_key(ec.SECP256R1())
+    priv_pem = priv.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+    ).decode()
+    pub_point = priv.public_key().public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
+    pub_b64 = base64.urlsafe_b64encode(pub_point).rstrip(b"=").decode()
+    return priv_pem, pub_b64
+
+
+async def _get_vapid():
+    """Clés VAPID : générées une fois puis persistées en base (stables)."""
+    if _VAPID_CACHE:
+        return _VAPID_CACHE
+    doc = None
+    try:
+        doc = await db.config.find_one({"id": "vapid"})
+    except Exception:
+        pass
+    if not doc:
+        priv_pem, pub_b64 = _generate_vapid_keys()
+        doc = {"id": "vapid", "private_pem": priv_pem, "public_b64": pub_b64}
+        try:
+            await db.config.insert_one(dict(doc))
+        except Exception:
+            pass
+    _VAPID_CACHE["private_pem"] = doc["private_pem"]
+    _VAPID_CACHE["public_b64"] = doc["public_b64"]
+    return _VAPID_CACHE
+
+
+async def send_web_push(user_id: str, payload: dict):
+    """Envoie une notification push aux abonnements du destinataire. Best-effort."""
+    try:
+        subs = await db.push_subscriptions.find({"user_id": user_id}).to_list(50)
+    except Exception:
+        return
+    if not subs:
+        return
+    try:
+        vp = await _get_vapid()
+    except Exception:
+        return
+    data_str = json.dumps(payload)
+
+    def _send(sub_info):
+        try:
+            from pywebpush import webpush, WebPushException
+        except Exception:
+            return None
+        try:
+            webpush(
+                subscription_info=sub_info, data=data_str,
+                vapid_private_key=vp["private_pem"],
+                vapid_claims={"sub": "mailto:notifications@nexus-social.app"},
+            )
+            return True
+        except WebPushException as e:
+            code = getattr(getattr(e, "response", None), "status_code", None)
+            return "gone" if code in (404, 410) else False
+        except Exception:
+            return False
+
+    loop = asyncio.get_event_loop()
+    for raw in subs:
+        s = convert_mongo_doc_to_dict(raw)
+        sub_info = s.get("subscription")
+        if not sub_info:
+            continue
+        try:
+            res = await loop.run_in_executor(None, _send, sub_info)
+        except Exception:
+            res = False
+        if res == "gone":
+            try:
+                await db.push_subscriptions.delete_one({"id": s["id"]})
+            except Exception:
+                pass
+
+
+class PushSub(BaseModel):
+    subscription: dict
+
+
+@api_router.get("/push/vapid-public-key")
+async def push_vapid_public_key():
+    vp = await _get_vapid()
+    return {"public_key": vp["public_b64"]}
+
+
+@api_router.post("/push/subscribe")
+async def push_subscribe(data: PushSub, current_user: dict = Depends(get_current_user)):
+    endpoint = (data.subscription or {}).get("endpoint")
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="Abonnement invalide.")
+    await db.push_subscriptions.update_one(
+        {"user_id": current_user["id"], "endpoint": endpoint},
+        {"$set": {"user_id": current_user["id"], "endpoint": endpoint, "subscription": data.subscription},
+         "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"success": True}
+
+
+@api_router.post("/push/unsubscribe")
+async def push_unsubscribe(data: PushSub, current_user: dict = Depends(get_current_user)):
+    endpoint = (data.subscription or {}).get("endpoint")
+    if endpoint:
+        await db.push_subscriptions.delete_many({"user_id": current_user["id"], "endpoint": endpoint})
+    return {"success": True}
+
+
+def _notif_push_text(doc: dict, from_user: dict):
+    """Texte + URL de destination d'une notification pour le push."""
+    u = from_user.get("username", "Quelqu'un")
+    t = doc.get("type")
+    pid = doc.get("post_id")
+    mapping = {
+        "like": (f"{u} a aimé votre publication", f"/post/{pid}" if pid else "/notifications"),
+        "comment": (f"{u} a commenté : {doc.get('comment_content') or ''}".strip(), f"/post/{pid}" if pid else "/notifications"),
+        "comment_reply": (f"{u} a répondu à votre commentaire", f"/post/{pid}" if pid else "/notifications"),
+        "mention": (f"{u} vous a mentionné", f"/post/{pid}" if pid else "/notifications"),
+        "tag": (f"{u} vous a identifié", f"/post/{pid}" if pid else "/notifications"),
+        "follow": (f"{u} s'est abonné à vous", f"/profil/{from_user.get('id')}"),
+        "follow_request": (f"{u} souhaite s'abonner", f"/profil/{from_user.get('id')}"),
+        "follow_accepted": (f"{u} a accepté votre demande", f"/profil/{from_user.get('id')}"),
+        "story_reaction": (f"{u} a réagi à votre story", "/notifications"),
+        "story_reply": (f"{u} a répondu à votre story", f"/messages/{from_user.get('id')}"),
+        "instant": (f"{u} vous a envoyé un instantané", "/nexus-clips"),
+        "instant_reaction": (f"{u} a réagi à votre instantané", "/notifications"),
+        "live": (f"{u} est en direct", "/live"),
+    }
+    title, url = mapping.get(t, (f"{u}", "/notifications"))
+    return "Nexus Social", title, url
+
+
 # ==================== MESSAGES ROUTES ====================
 @api_router.get("/messages/conversations", response_model=List[Conversation])
 async def get_conversations(current_user: dict = Depends(get_current_user)):
@@ -3783,6 +3938,26 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
             "created_at": message_to_insert["created_at"],
         },
     })
+
+    # Push navigateur au destinataire (app fermée). Respecte la préférence
+    # « message » et n'expose qu'un aperçu (pas de média data-URL lourd).
+    try:
+        _pref = ((recipient.get("notif_prefs")) or {}).get("message")
+        if _pref is not False:
+            _preview = (message_data.content or "").strip()
+            if not _preview:
+                _preview = "📷 Photo" if message_data.media_type == "image" else "🎬 Média" if message_data.media_url else ""
+            if len(_preview) > 120:
+                _preview = _preview[:117] + "…"
+            await send_web_push(message_data.recipient_id, {
+                "title": current_user["username"],
+                "body": _preview or "Nouveau message",
+                "url": f"/messages/{current_user['id']}",
+                "icon": current_user.get("profile_pic") or "/logo192.png",
+                "tag": f"msg:{current_user['id']}",
+            })
+    except Exception:
+        pass
 
     return Message(**message)
 

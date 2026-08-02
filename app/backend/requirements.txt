@@ -37,3 +37,6 @@ stripe>=12.0.0
 
 # Modération NSFW des vidéos (échantillonnage de frames pour Google Vision / NudeNet)
 opencv-python-headless>=4.9.0
+
+# Web Push (notifications quand l'app est fermée)
+pywebpush>=1.14.0
