@@ -24,8 +24,11 @@ import ClipsPage from './pages/ClipsPage';
 import ClipsSearchPage from './pages/ClipsSearchPage';
 import LiveStream from './pages/LiveStream';
 
-// URL du backend (NE CHANGE PLUS JAMAIS)
-const BACKEND_URL = "https://nexus-social-4k3v.onrender.com";
+// URL du backend. Configurable par variable d'environnement au build
+// (REACT_APP_BACKEND_URL) pour pouvoir changer d'hébergeur sans toucher au code
+// — ex. pointer vers Google Cloud Run. À défaut, on garde l'URL Render actuelle.
+// L'URL WebSocket (temps réel + lives) est dérivée de API → suit automatiquement.
+const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "https://nexus-social-4k3v.onrender.com").replace(/\/$/, "");
 export const API = `${BACKEND_URL}/api`;
 
 // INTERCEPTOR AXIOS – ENVOIE LE TOKEN À CHAQUE REQUÊTE (LA CLÉ DE LA VICTOIRE)

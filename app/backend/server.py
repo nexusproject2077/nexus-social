@@ -142,15 +142,21 @@ ALGORITHM = "HS256"
 app = FastAPI(title="Nexus Social API", version="1.0.0")
 
 # ==================== CORS ====================
+# Origines autorisées : la liste de base + celles fournies par la variable
+# d'environnement CORS_EXTRA_ORIGINS (séparées par des virgules). Permet
+# d'ajouter le nouveau domaine du front (ex. Cloudflare Pages) SANS toucher au
+# code lors d'un changement d'hébergeur.
+_CORS_ORIGINS = [
+    "https://nexus-social-3ta5.onrender.com",
+    "https://nexus-social-4k3v.onrender.com",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5174",
+]
+_CORS_ORIGINS += [o.strip() for o in os.environ.get("CORS_EXTRA_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://nexus-social-3ta5.onrender.com",
-        "https://nexus-social-4k3v.onrender.com",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:5174",
-    ],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
