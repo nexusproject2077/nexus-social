@@ -29,12 +29,16 @@ MongoDB Atlas reste tel quel, on ne migre que l'hébergement.
 Pré-requis : un projet Google Cloud + `gcloud` installé et connecté
 (`gcloud auth login`, `gcloud config set project <TON_PROJET>`).
 
-Le `Dockerfile` est déjà prêt dans `app/backend/`. Déploiement en une commande
-(Cloud Build construit l'image depuis le Dockerfile) :
+Le `Dockerfile` est déjà prêt dans `app/backend/`. **Contexte de build = racine
+du dépôt** (le Dockerfile fait `COPY app/backend/…`), ce qui correspond au
+déploiement continu Cloud Run. Chemin du Dockerfile à indiquer :
+`app/backend/Dockerfile`.
+
+Alternative en ligne de commande (Cloud Build construit depuis la racine) :
 
 ```bash
 gcloud run deploy nexus-backend \
-  --source app/backend \
+  --source . \
   --region europe-west1 \            # choisir une région PROCHE de ton cluster Atlas
   --allow-unauthenticated \
   --port 8080 \
