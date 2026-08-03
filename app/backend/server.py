@@ -7634,18 +7634,37 @@ async def register_clip_watch(clip_id: str, data: dict = Body(default={}),
 
 
 @api_router.get("/feed/foryou", response_model=List[Post])
-async def for_you_feed(limit: int = 50, skip: int = 0, current_user: dict = Depends(get_current_user)):
+async def for_you_feed(limit: int = 10, skip: int = 0, current_user: dict = Depends(get_current_user)):
     """
-    Feed « Pour toi » intelligent : classe les publications par un score
-    d'engagement personnalisé (interactions + taux d'engagement + fraîcheur +
-    affinités créateurs/hashtags + comptes suivis), avec diversité des
-    créateurs — au lieu d'un simple tri chronologique ou par likes bruts.
-    Paginé (skip/limit) pour le scroll infini.
+    Feed « Pour vous » — version SIMPLE et fiable (l'algorithme de classement a
+    été retiré temporairement car il posait problème sur cet onglet).
+
+    Contenu : publications récentes de TOUT LE MONDE (hors reposts), du plus
+    récent au plus ancien, paginé (skip/limit) — c'est-à-dire de la découverte,
+    contrairement à l'onglet « Abonnements » limité aux comptes suivis.
     """
-    limit = max(1, min(limit, 100))
-    ids = await _ranked_ids("foryou", current_user["id"], False)
-    page = ids[skip: skip + limit]
-    return await _fetch_posts_in_order(page, current_user["id"])
+    limit = max(1, min(limit, 30))
+    posts_raw = await db.posts.find(
+        {"repost_of": None}
+    ).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+
+    posts = []
+    ids = [p.get("id") for p in posts_raw]
+    saved_ids = await _saved_post_ids(current_user["id"], ids)
+    premium_ids = await _premium_author_ids([p.get("author_id") for p in posts_raw])
+    liked = {l.get("post_id") for l in await db.likes.find(
+        {"post_id": {"$in": ids}, "user_id": current_user["id"]}, {"post_id": 1}
+    ).to_list(length=len(ids) or 1)} if ids else set()
+    for post_raw in posts_raw:
+        # Migre en arrière-plan les anciens médias base64 (allègement progressif).
+        schedule_lazy_media_migration("posts", post_raw)
+        post = convert_mongo_doc_to_dict(post_raw)
+        post["is_liked"] = post["id"] in liked
+        post["is_saved"] = post["id"] in saved_ids
+        post["author_is_premium"] = post.get("author_id") in premium_ids
+        enrich_post_poll(post, current_user["id"])
+        posts.append(Post(**post))
+    return posts
 
 
 # ==================== MIGRATION MÉDIAS base64 → Cloudinary (admin) ====================
