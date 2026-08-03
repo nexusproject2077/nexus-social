@@ -156,6 +156,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ==================== CLOUDINARY (médias hors base — anti-OOM) ====================
+# Les médias (photos/vidéos) étaient stockés en base64 DANS MongoDB : les charger
+# en mémoire faisait exploser la RAM (OOM Render). Ici on les envoie sur
+# Cloudinary et on ne conserve qu'une URL légère en base.
+#
+# Config par variables d'environnement (Render → service backend) :
+#   - soit CLOUDINARY_URL = cloudinary://<api_key>:<api_secret>@<cloud_name>
+#   - soit CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET
+# Si Cloudinary n'est pas configuré, store_media() renvoie le média inchangé
+# (base64 conservé) → AUCUNE régression, juste pas d'allègement.
+_CLOUDINARY_READY = False
+try:
+    import cloudinary as _cloudinary
+    import cloudinary.uploader as _cloudinary_uploader
+    if os.environ.get("CLOUDINARY_URL"):
+        _cloudinary.config(secure=True)  # lit CLOUDINARY_URL
+        _CLOUDINARY_READY = True
+    elif os.environ.get("CLOUDINARY_CLOUD_NAME"):
+        _cloudinary.config(
+            cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+            api_key=os.environ.get("CLOUDINARY_API_KEY"),
+            api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
+            secure=True,
+        )
+        _CLOUDINARY_READY = True
+    if _CLOUDINARY_READY:
+        print("✅ Cloudinary configuré (médias hors base)")
+    else:
+        print("ℹ️ Cloudinary non configuré — médias conservés en base (base64)")
+except Exception as _e:
+    print(f"ℹ️ Cloudinary indisponible ({_e}) — médias en base64")
+
+
+async def store_media(media, folder="nexus"):
+    """Décharge un média base64 vers Cloudinary et renvoie son URL (légère).
+
+    - Si `media` est None/vide → renvoyé tel quel.
+    - Si c'est déjà une URL http(s) (média externe déjà hébergé) → inchangé.
+    - Si c'est une data URL base64 ET Cloudinary configuré → upload puis URL.
+    - Sinon (pas de Cloudinary, ou échec upload) → renvoyé tel quel (base64
+      conservé) : best-effort, jamais bloquant, aucune régression.
+    """
+    if not media or not isinstance(media, str):
+        return media
+    if not media.startswith("data:"):
+        return media  # déjà une URL externe → rien à faire
+    if not _CLOUDINARY_READY:
+        return media  # pas de Cloudinary → on garde le base64
+    resource_type = "video" if media.startswith("data:video") else "image"
+
+    def _upload():
+        return _cloudinary_uploader.upload(
+            media, folder=folder, resource_type=resource_type,
+            unique_filename=True, overwrite=False,
+        )
+    try:
+        res = await asyncio.to_thread(_upload)
+        return res.get("secure_url") or media
+    except Exception as e:
+        logger.warning(f"Upload Cloudinary échoué (média conservé en base64): {e}")
+        return media
+
+
+async def store_media_list(items, folder="nexus"):
+    """store_media appliqué à une liste (messages de groupe : media_urls)."""
+    if not items:
+        return items
+    out = []
+    for it in items:
+        out.append(await store_media(it, folder=folder))
+    return out
+
 # ==================== EU GEO-BLOCK ====================
 # Bloque les visiteurs des pays de l'UE (réponse HTTP 451) sauf sur les pages
 # légales. Le middleware "fail-open" : s'il n'y a pas de base GeoIP disponible
@@ -1721,9 +1793,10 @@ async def update_profile(
    
     if profile_pic:
         contents = await profile_pic.read()
-        base64_image = base64.b64encode(contents).decode('utf-8')
-        update_data["profile_pic"] = f"data:{profile_pic.content_type};base64,{base64_image}"
-   
+        data_url = f"data:{profile_pic.content_type};base64,{base64.b64encode(contents).decode('utf-8')}"
+        # Décharge l'avatar vers Cloudinary (URL légère au lieu de base64 en base).
+        update_data["profile_pic"] = await store_media(data_url, folder="avatars")
+
     if update_data:
         await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
    
@@ -2194,6 +2267,9 @@ async def create_post(post_data: PostCreate, current_user: dict = Depends(get_cu
     """Créer un nouveau post"""
     # Modération auto (toxicité + NSFW) : bloque le contenu interdit avant insertion.
     verdict = await screen_content(text=post_data.content, media_url=post_data.media_url)
+
+    # Décharge le média vers Cloudinary (URL légère) au lieu de base64 en base.
+    post_data.media_url = await store_media(post_data.media_url, folder="posts")
 
     post_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -3951,6 +4027,8 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     # des DM ; seul le média est vérifié (anti-nudes non sollicités).
     if message_data.media_url:
         await screen_content(media_url=message_data.media_url)
+        # Décharge le média vers Cloudinary (URL légère au lieu de base64).
+        message_data.media_url = await store_media(message_data.media_url, folder="messages")
 
     recipient = convert_mongo_doc_to_dict(recipient_raw)
     message_id = str(uuid.uuid4())
@@ -4377,7 +4455,7 @@ async def create_group(
         group = {
             "id": group_id,
             "name": group_data["name"].strip(),
-            "avatar_url": group_data.get("avatar_url"),
+            "avatar_url": await store_media(group_data.get("avatar_url"), folder="avatars"),
             "creator_id": current_user["id"],
             "admin_ids": [current_user["id"]],
             "member_ids": all_member_ids,
@@ -4467,6 +4545,8 @@ async def send_group_message(
         # Modération NSFW des médias du groupe (fail-open si non configurée).
         for _mu in media_urls:
             await screen_content(media_url=_mu)
+        # Décharge les médias vers Cloudinary (URLs légères au lieu de base64).
+        media_urls = await store_media_list(media_urls, folder="groups")
 
         # Vérifier membership
         group_raw = await db.group_chats.find_one({"id": group_id})
@@ -4596,7 +4676,7 @@ async def update_group(
             update_data["name"] = group_data["name"].strip()
 
         if "avatar_url" in group_data:
-            update_data["avatar_url"] = group_data["avatar_url"]
+            update_data["avatar_url"] = await store_media(group_data["avatar_url"], folder="avatars")
 
         if not update_data:
             raise HTTPException(status_code=400, detail="Aucune donnée à mettre à jour")
@@ -5015,6 +5095,9 @@ async def create_story(
 
     # Modération NSFW du média (fail-open si non configurée).
     _stverdict = await screen_content(media_url=media_url)
+
+    # Décharge le média vers Cloudinary (URL légère au lieu de base64).
+    media_url = await store_media(media_url, folder="stories")
 
     # Visibilité de la story.
     audience = audience if audience in ("everyone", "close_friends", "custom") else "everyone"
@@ -5523,6 +5606,9 @@ async def create_instant(data: InstantCreate, current_user: dict = Depends(get_c
     # Modération NSFW : uniquement l'image (le service ne traite pas la vidéo).
     if is_image:
         await screen_content(media_url=media)
+
+    # Décharge le média vers Cloudinary (URL légère au lieu de base64).
+    media = await store_media(media, folder="instants")
 
     audience = data.audience if data.audience in ("close_friends", "mutuals", "manual") else "mutuals"
     if audience == "manual":
@@ -7136,7 +7222,25 @@ async def create_clip(
                 detail=f"Clip refusé par la modération ({verdict['category']}: {verdict['label']})",
             )
 
-    media_url = f"data:{file.content_type};base64," + base64.b64encode(contents).decode("utf-8")
+    # Décharge la vidéo vers Cloudinary directement depuis les octets bruts (pas
+    # de détour base64 en mémoire). Repli base64-en-base si Cloudinary absent.
+    media_url = None
+    if _CLOUDINARY_READY:
+        try:
+            def _up_clip():
+                return _cloudinary_uploader.upload_large(
+                    contents, folder="clips", resource_type="video",
+                    unique_filename=True, overwrite=False, chunk_size=6_000_000,
+                ) if len(contents) > 90_000_000 else _cloudinary_uploader.upload(
+                    contents, folder="clips", resource_type="video",
+                    unique_filename=True, overwrite=False,
+                )
+            res = await asyncio.to_thread(_up_clip)
+            media_url = res.get("secure_url")
+        except Exception as e:
+            logger.warning(f"Upload clip Cloudinary échoué (repli base64): {e}")
+    if not media_url:
+        media_url = f"data:{file.content_type};base64," + base64.b64encode(contents).decode("utf-8")
 
     clip_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -7497,6 +7601,55 @@ async def for_you_feed(limit: int = 50, skip: int = 0, current_user: dict = Depe
     ids = await _ranked_ids("foryou", current_user["id"], False)
     page = ids[skip: skip + limit]
     return await _fetch_posts_in_order(page, current_user["id"])
+
+
+# ==================== MIGRATION MÉDIAS base64 → Cloudinary (admin) ====================
+# Migre les médias EXISTANTS (stockés en base64) vers Cloudinary, PAR PETITS LOTS
+# pour ne pas saturer la mémoire. À appeler en boucle (admin) jusqu'à ce que
+# `remaining` tombe à 0. Chaque collection/champ est traité séparément.
+_MEDIA_TARGETS = [
+    ("posts", "media_url"),        # publications + clips (le plus lourd)
+    ("stories", "media_url"),
+    ("instants", "media_url"),
+    ("users", "profile_pic"),
+    ("group_chats", "avatar_url"),
+]
+
+
+@api_router.post("/admin/migrate-media")
+async def migrate_media_to_cloudinary(collection: str = "posts", field: str = "media_url",
+                                      batch: int = 10, current_user: dict = Depends(get_current_user)):
+    """Migre un LOT de médias base64 → Cloudinary. Réservé aux administrateurs.
+
+    Appeler en boucle (ex. batch=10) jusqu'à `remaining == 0`, pour chaque
+    couple (collection, field) de `targets` renvoyé. Best-effort : un média qui
+    échoue est laissé tel quel et réessayé au prochain passage.
+    """
+    if not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
+    if not _CLOUDINARY_READY:
+        raise HTTPException(status_code=400, detail="Cloudinary n'est pas configuré (variables d'environnement).")
+    if (collection, field) not in _MEDIA_TARGETS:
+        raise HTTPException(status_code=400, detail="Cible non autorisée.")
+    batch = max(1, min(batch, 25))
+    coll = db[collection]
+    rx = {"$regex": "^data:"}
+    # Projection : uniquement id + le champ média (pas les autres gros champs).
+    docs = await coll.find({field: rx}, {"id": 1, field: 1}).limit(batch).to_list(length=batch)
+    migrated, failed = 0, 0
+    for d in docs:
+        new_url = await store_media(d.get(field), folder=f"migrated/{collection}")
+        if new_url and not str(new_url).startswith("data:"):
+            await coll.update_one({"id": d["id"]}, {"$set": {field: new_url}})
+            migrated += 1
+        else:
+            failed += 1
+    remaining = await coll.count_documents({field: rx})
+    return {
+        "collection": collection, "field": field,
+        "migrated": migrated, "failed": failed, "remaining": remaining,
+        "targets": [{"collection": c, "field": f} for c, f in _MEDIA_TARGETS],
+    }
 
 # ==================== END ENHANCED FEATURES ====================
 
