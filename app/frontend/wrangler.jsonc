@@ -1,0 +1,17 @@
+{
+  // Déploiement du front React (build CRA) sur Cloudflare via `wrangler deploy`.
+  // Site 100% statique : pas de script Worker (`main`), juste des assets servis
+  // depuis ./build. `not_found_handling: single-page-application` renvoie
+  // index.html sur les routes inconnues → le routage React (liens profonds
+  // /profil/…, /premium…) fonctionne.
+  //
+  // ⚠️ `name` DOIT correspondre au nom de ton projet Cloudflare (visible dans
+  // Workers & Pages). S'il diffère, remplace-le ici, sinon wrangler créerait un
+  // nouveau projet au lieu de mettre à jour l'existant.
+  "name": "nexus-social",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "directory": "./build",
+    "not_found_handling": "single-page-application"
+  }
+}
