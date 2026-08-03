@@ -228,6 +228,42 @@ async def store_media_list(items, folder="nexus"):
         out.append(await store_media(it, folder=folder))
     return out
 
+
+# --- Migration paresseuse : convertit les anciens médias base64 en URL Cloudinary
+# EN ARRIÈRE-PLAN au moment où ils sont servis (ex. dans le fil). Ainsi les
+# publications existantes s'allègent d'elles-mêmes au fil de la navigation, sans
+# action manuelle. Borné : quelques migrations concurrentes maximum, dédupliqué.
+_lazy_migrating: set = set()
+_LAZY_MIGRATE_MAX = 3  # migrations simultanées max (évite un pic mémoire)
+
+
+def schedule_lazy_media_migration(collection: str, doc: dict, field: str = "media_url"):
+    """Programme (best-effort) la migration base64→Cloudinary d'un document servi."""
+    if not _CLOUDINARY_READY:
+        return
+    val = doc.get(field)
+    if not (isinstance(val, str) and val.startswith("data:")):
+        return
+    did = doc.get("id")
+    if not did or did in _lazy_migrating or len(_lazy_migrating) >= _LAZY_MIGRATE_MAX:
+        return
+    _lazy_migrating.add(did)
+
+    async def _run():
+        try:
+            new_url = await store_media(val, folder=f"migrated/{collection}")
+            if new_url and not str(new_url).startswith("data:"):
+                await db[collection].update_one({"id": did}, {"$set": {field: new_url}})
+        except Exception:
+            pass
+        finally:
+            _lazy_migrating.discard(did)
+
+    try:
+        asyncio.create_task(_run())
+    except Exception:
+        _lazy_migrating.discard(did)
+
 # ==================== EU GEO-BLOCK ====================
 # Bloque les visiteurs des pays de l'UE (réponse HTTP 451) sauf sur les pages
 # légales. Le middleware "fail-open" : s'il n'y a pas de base GeoIP disponible
@@ -2940,6 +2976,8 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
 
     posts = []
     for post_raw in posts_raw:
+        # Migre en arrière-plan les anciens médias base64 (allègement progressif).
+        schedule_lazy_media_migration("posts", post_raw)
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
@@ -7035,6 +7073,8 @@ async def _fetch_posts_in_order(ids, user_id):
         pr = by_id.get(pid)
         if not pr:
             continue
+        # Migre en arrière-plan les anciens médias base64 (allègement progressif).
+        schedule_lazy_media_migration("posts", pr)
         post = convert_mongo_doc_to_dict(pr)
         post["is_liked"] = pid in liked
         post["is_saved"] = pid in saved_ids
