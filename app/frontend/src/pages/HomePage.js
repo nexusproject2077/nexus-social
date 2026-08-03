@@ -11,10 +11,15 @@ import PullToRefresh from "../components/PullToRefresh";
 import { toast } from "sonner";
 
 export default function HomePage({ user, setUser }) {
+  const PAGE = 8; // petite page → premier affichage rapide (surtout médias lourds)
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [serverWaking, setServerWaking] = useState(false); // backend en cours de réveil (cold start)
   const feedReqRef = useRef(0); // jeton pour annuler des retries devenus obsolètes
+  const skipRef = useRef(0);    // pagination : nb de posts déjà chargés
+  const sentinelRef = useRef(null); // cible d'observation pour le scroll infini
   const [showCreatePost, setShowCreatePost] = useState(false);
   // "following" | "foryou" — synchronisé avec les onglets du header (mobile) via
   // localStorage + événement. À l'arrivée sur l'accueil, on démarre sur « Pour vous ».
@@ -45,47 +50,80 @@ export default function HomePage({ user, setUser }) {
   // réseau (affichée comme « CORS » car la page d'erreur de Render n'a pas
   // d'en-têtes CORS). Plutôt que d'échouer, on RÉESSAYE avec backoff en gardant
   // le skeleton, et on informe l'utilisateur que le serveur se réveille.
-  const fetchFeed = async () => {
+  // Charge une PAGE du fil. reset=true → repart de zéro (changement d'onglet /
+  // pull-to-refresh) ; sinon on ajoute la page suivante (scroll infini).
+  // Résilient au cold start Render : réessaie sur 502/503/504/erreur réseau.
+  const fetchFeed = async (reset = true) => {
     const myTab = feedType;
-    // jeton : si l'utilisateur change d'onglet pendant les retries, on abandonne.
-    const token = ++feedReqRef.current;
-    setLoading(true);
+    const token = ++feedReqRef.current; // annule les requêtes devenues obsolètes
+    if (reset) {
+      skipRef.current = 0;
+      setLoading(true);
+      setHasMore(true);
+    } else {
+      setLoadingMore(true);
+    }
     setServerWaking(false);
-    const endpoint =
-      myTab === "foryou" ? `${API}/feed/foryou` : `${API}/posts/feed`;
+    const base = myTab === "foryou" ? `${API}/feed/foryou` : `${API}/posts/feed`;
+    const skip = reset ? 0 : skipRef.current;
 
-    // 502/503/504 ou pas de réponse (réseau) = backend en cours de réveil → retry.
     const isTransient = (err) => {
       const s = err?.response?.status;
       return !err?.response || s === 502 || s === 503 || s === 504 || err?.code === "ERR_NETWORK";
     };
-    // Backoff : ~2,3,4,6,8,10,12,15,15… s → couvre un cold start de plusieurs min.
     const delays = [2000, 3000, 4000, 6000, 8000, 10000, 12000, 15000];
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     for (let attempt = 0; ; attempt++) {
-      if (token !== feedReqRef.current) return; // onglet changé → on abandonne
+      if (token !== feedReqRef.current) return;
       try {
-        const response = await axios.get(endpoint);
+        const response = await axios.get(base, { params: { skip, limit: PAGE } });
         if (token !== feedReqRef.current) return;
-        setPosts(response.data);
+        const batch = response.data || [];
+        setPosts((prev) => {
+          if (reset) return batch;
+          // Dédup par id (au cas où le classement se recompose entre 2 pages).
+          const seen = new Set(prev.map((p) => p.id));
+          return [...prev, ...batch.filter((p) => !seen.has(p.id))];
+        });
+        skipRef.current = skip + batch.length;
+        setHasMore(batch.length >= PAGE);
         setServerWaking(false);
         setLoading(false);
+        setLoadingMore(false);
         return;
       } catch (error) {
         if (token !== feedReqRef.current) return;
-        if (isTransient(error) && attempt < 12) {
-          setServerWaking(true); // « le serveur se réveille… », on garde le skeleton
+        // On ne réessaie longuement que le 1er chargement (reset) ; un « load more »
+        // qui échoue s'arrête discrètement (l'utilisateur peut re-scroller).
+        if (isTransient(error) && reset && attempt < 12) {
+          setServerWaking(true);
           await sleep(delays[Math.min(attempt, delays.length - 1)]);
           continue;
         }
-        console.error("Erreur lors du chargement du fil:", error);
-        toast.error("Impossible de charger le fil. Réessaie dans un instant.");
+        if (reset) {
+          console.error("Erreur lors du chargement du fil:", error);
+          toast.error("Impossible de charger le fil. Réessaie dans un instant.");
+        }
         setLoading(false);
+        setLoadingMore(false);
         return;
       }
     }
   };
+
+  // Scroll infini : charge la page suivante quand le sentinel entre dans l'écran.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
+        fetchFeed(false);
+      }
+    }, { rootMargin: "600px" }); // précharge avant d'atteindre le bas
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, loading, loadingMore, feedType]);
 
   const handlePostCreated = (newPost) => {
     setPosts([newPost, ...posts]);
@@ -216,6 +254,15 @@ export default function HomePage({ user, setUser }) {
                 )}
               </Fragment>
             ))
+          )}
+
+          {/* Scroll infini : sentinel observé + indicateur de chargement de page. */}
+          {!loading && posts.length > 0 && (
+            <div ref={sentinelRef} className="h-10 flex items-center justify-center">
+              {loadingMore && (
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor: "#22d3ee" }} />
+              )}
+            </div>
           )}
         </div>
       </div>

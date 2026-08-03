@@ -2405,14 +2405,17 @@ async def vote_poll(post_id: str, vote: PollVote, current_user: dict = Depends(g
     return Post(**post)
 
 @api_router.get("/posts/feed", response_model=List[Post])
-async def get_posts_feed(current_user: dict = Depends(get_current_user)):
-    """Récupère le feed de posts (seulement des comptes autorisés)"""
+async def get_posts_feed(skip: int = 0, limit: int = 10, current_user: dict = Depends(get_current_user)):
+    """Feed « Abonnements » (comptes suivis), paginé (skip/limit) pour un premier
+    affichage rapide + scroll infini. Charger 50 posts d'un coup rendait le fil
+    lent (surtout avec des médias lourds) → petites pages."""
+    limit = max(1, min(limit, 30))
     # Récupère les utilisateurs suivis
     follows_raw = await db.follows.find({
         "follower_id": current_user["id"],
         "status": "following"  # ← IMPORTANT: seulement les follows confirmés
-    }).to_list(length=100)
-    
+    }).to_list(length=2000)
+
     # Support ancien format (following_id) et nouveau (followed_id)
     followed_user_ids = []
     for f in follows_raw:
@@ -2421,18 +2424,20 @@ async def get_posts_feed(current_user: dict = Depends(get_current_user)):
         user_id = f_dict.get("followed_id") or f_dict.get("following_id")
         if user_id:
             followed_user_ids.append(user_id)
-    
+
     followed_user_ids.append(current_user["id"])
-    
-    # Récupère les posts
+
+    # Récupère les posts (page)
     posts_raw = await db.posts.find({
         "author_id": {"$in": followed_user_ids}
-    }).sort("created_at", -1).limit(50).to_list(length=50)
-    
+    }).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+
     posts = []
     saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
     premium_ids = await _premium_author_ids([p.get("author_id") for p in posts_raw])
     for post_raw in posts_raw:
+        # Migre en arrière-plan les anciens médias base64 (allègement progressif).
+        schedule_lazy_media_migration("posts", post_raw)
         post = convert_mongo_doc_to_dict(post_raw)
         like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
         post["is_liked"] = bool(like_raw)
