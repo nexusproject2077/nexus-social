@@ -2076,10 +2076,15 @@ async def get_account_stats(current_user: dict = Depends(get_current_user)):
         # Compter les posts
         posts_count = await db.posts.count_documents({"author_id": current_user["id"]})
         
-        # Compter les likes reçus
-        posts = await db.posts.find({"author_id": current_user["id"]}).to_list(length=1000)
+        # Compter les likes/commentaires reçus — PROJECTION légère (surtout PAS
+        # media_url : c'est du base64 potentiellement lourd, inutile pour un total,
+        # et charger tous les médias en mémoire faisait grimper la RAM → OOM).
+        posts = await db.posts.find(
+            {"author_id": current_user["id"]},
+            {"likes_count": 1, "comments_count": 1},
+        ).to_list(length=5000)
         total_likes = sum(post.get("likes_count", 0) for post in posts)
-        
+
         # Compter les commentaires reçus
         total_comments = sum(post.get("comments_count", 0) for post in posts)
         
@@ -6787,6 +6792,9 @@ async def _user_affinity(user_id):
     except Exception:
         pass
     aff = {"creators": creators, "tags": set(list(tags)[:40])}
+    # Borne mémoire : purge le cache s'il grossit trop (évite une fuite lente).
+    if len(_affinity_cache) > 5000:
+        _affinity_cache.clear()
     _affinity_cache[user_id] = (now + AFFINITY_TTL, aff)
     return aff
 
@@ -7587,35 +7595,45 @@ async def trending_notifier_loop():
 
 
 # Event handlers
-@app.on_event("startup")
-async def startup_db_client():
-    """Vérifie la connexion MongoDB au démarrage"""
+async def _startup_warmup():
+    """Réchauffe la base EN TÂCHE DE FOND : ping + création d'index.
+
+    IMPORTANT (cold start Render) : on ne bloque PAS le démarrage avec ces
+    opérations. Uvicorn devient « prêt » immédiatement et peut répondre aux
+    requêtes pendant que la base se connecte — ce qui réduit la fenêtre de
+    502 après un réveil du service.
+    """
     try:
         await client.admin.command('ping')
         logger.info("✅ MongoDB connection successful")
     except Exception as e:
-        logger.error(f"❌ MongoDB connection failed: {e}")
-        raise
-    # Index unique pour les vues de clips : garantit « une vue par (clip, user) »
-    # même en cas de course, et rend la vérification de doublon instantanée.
+        # Motor se connecte de toute façon paresseusement à la 1re requête :
+        # on n'interrompt PAS le démarrage (sinon boucle de redémarrage Render).
+        logger.warning(f"MongoDB ping différé (connexion paresseuse): {e}")
+    # Index (idempotents) — best-effort, n'empêchent jamais de servir.
     try:
         await db.clip_views.create_index(
             [("clip_id", 1), ("user_id", 1)], unique=True, name="uniq_clip_user"
         )
     except Exception as e:
         logger.warning(f"Index clip_views non créé (peut déjà exister): {e}")
-    # Index des abonnements push (un doc par navigateur/endpoint).
     try:
         await db.push_subscriptions.create_index("endpoint", unique=True, name="uniq_endpoint")
         await db.push_subscriptions.create_index("user_id", name="by_user")
     except Exception as e:
         logger.warning(f"Index push_subscriptions non créé (peut déjà exister): {e}")
-    # Lance la boucle de notifications « tendance » en tâche de fond.
+
+
+@app.on_event("startup")
+async def startup_db_client():
+    """Démarrage NON bloquant : on lance le réchauffage DB et la boucle
+    « tendance » en tâches de fond, pour que le serveur réponde tout de suite."""
     try:
+        asyncio.create_task(_startup_warmup())
         asyncio.create_task(trending_notifier_loop())
-        logger.info("✅ Trending notifier lancé")
+        logger.info("✅ Démarrage : réchauffage DB + trending notifier lancés en fond")
     except Exception as e:
-        logger.error(f"Impossible de lancer le trending notifier: {e}")
+        logger.error(f"Impossible de lancer les tâches de démarrage: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

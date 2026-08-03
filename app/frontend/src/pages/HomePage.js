@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import axios from "axios";
 import { API } from "../App";
 import Layout from "../components/Layout";
@@ -13,6 +13,8 @@ import { toast } from "sonner";
 export default function HomePage({ user, setUser }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [serverWaking, setServerWaking] = useState(false); // backend en cours de réveil (cold start)
+  const feedReqRef = useRef(0); // jeton pour annuler des retries devenus obsolètes
   const [showCreatePost, setShowCreatePost] = useState(false);
   // "following" | "foryou" — synchronisé avec les onglets du header (mobile) via
   // localStorage + événement. À l'arrivée sur l'accueil, on démarre sur « Pour vous ».
@@ -38,20 +40,50 @@ export default function HomePage({ user, setUser }) {
     return () => window.removeEventListener("nexus:feedtab", onTab);
   }, []);
 
+  // Le backend (Render) peut « dormir » et mettre plusieurs secondes/minutes à
+  // se réveiller : les 1res requêtes renvoient alors 502/503/504 ou une erreur
+  // réseau (affichée comme « CORS » car la page d'erreur de Render n'a pas
+  // d'en-têtes CORS). Plutôt que d'échouer, on RÉESSAYE avec backoff en gardant
+  // le skeleton, et on informe l'utilisateur que le serveur se réveille.
   const fetchFeed = async () => {
+    const myTab = feedType;
+    // jeton : si l'utilisateur change d'onglet pendant les retries, on abandonne.
+    const token = ++feedReqRef.current;
     setLoading(true);
-    try {
-      // "For You" utilise l'algorithme d'engagement du backend,
-      // "Following" garde le fil classique des comptes suivis.
-      const endpoint =
-        feedType === "foryou" ? `${API}/feed/foryou` : `${API}/posts/feed`;
-      const response = await axios.get(endpoint);
-      setPosts(response.data);
-    } catch (error) {
-      console.error("Erreur lors du chargement du fil:", error);
-      toast.error("Erreur lors du chargement des publications");
-    } finally {
-      setLoading(false);
+    setServerWaking(false);
+    const endpoint =
+      myTab === "foryou" ? `${API}/feed/foryou` : `${API}/posts/feed`;
+
+    // 502/503/504 ou pas de réponse (réseau) = backend en cours de réveil → retry.
+    const isTransient = (err) => {
+      const s = err?.response?.status;
+      return !err?.response || s === 502 || s === 503 || s === 504 || err?.code === "ERR_NETWORK";
+    };
+    // Backoff : ~2,3,4,6,8,10,12,15,15… s → couvre un cold start de plusieurs min.
+    const delays = [2000, 3000, 4000, 6000, 8000, 10000, 12000, 15000];
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    for (let attempt = 0; ; attempt++) {
+      if (token !== feedReqRef.current) return; // onglet changé → on abandonne
+      try {
+        const response = await axios.get(endpoint);
+        if (token !== feedReqRef.current) return;
+        setPosts(response.data);
+        setServerWaking(false);
+        setLoading(false);
+        return;
+      } catch (error) {
+        if (token !== feedReqRef.current) return;
+        if (isTransient(error) && attempt < 12) {
+          setServerWaking(true); // « le serveur se réveille… », on garde le skeleton
+          await sleep(delays[Math.min(attempt, delays.length - 1)]);
+          continue;
+        }
+        console.error("Erreur lors du chargement du fil:", error);
+        toast.error("Impossible de charger le fil. Réessaie dans un instant.");
+        setLoading(false);
+        return;
+      }
     }
   };
 
@@ -127,6 +159,15 @@ export default function HomePage({ user, setUser }) {
         <div className="px-4 py-4 lg:py-6 space-y-4 lg:space-y-6">
           {loading ? (
             <div className="space-y-4 lg:space-y-6" data-testid="feed-skeleton">
+              {serverWaking && (
+                <div className="flex items-center gap-3 rounded-2xl px-4 py-3"
+                  style={{ backgroundColor: "#171f33", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: "#22d3ee" }} />
+                  <p className="text-sm" style={{ color: "#a9b6d9" }}>
+                    Le serveur se réveille… le fil arrive dans quelques secondes.
+                  </p>
+                </div>
+              )}
               {Array.from({ length: 5 }).map((_, i) => (
                 <div
                   key={i}
