@@ -29,10 +29,10 @@ MongoDB Atlas reste tel quel, on ne migre que l'hébergement.
 Pré-requis : un projet Google Cloud + `gcloud` installé et connecté
 (`gcloud auth login`, `gcloud config set project <TON_PROJET>`).
 
-Le `Dockerfile` est déjà prêt dans `app/backend/`. **Contexte de build = racine
-du dépôt** (le Dockerfile fait `COPY app/backend/…`), ce qui correspond au
-déploiement continu Cloud Run. Chemin du Dockerfile à indiquer :
-`app/backend/Dockerfile`.
+Le `Dockerfile` est **à la racine du dépôt** (c'est là que le déploiement continu
+Cloud Run/Cloud Build le cherche : `/workspace/Dockerfile`). Le contexte de build
+est la racine, d'où les `COPY app/backend/…` dans le Dockerfile. Rien à
+configurer côté déclencheur.
 
 Alternative en ligne de commande (Cloud Build construit depuis la racine) :
 

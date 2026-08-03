@@ -1,11 +1,10 @@
 # Image du backend Nexus Social (FastAPI) pour Google Cloud Run.
-# Cloud Run injecte la variable PORT (8080 par défaut) : on écoute dessus.
-# On lance uvicorn directement (et non gunicorn) car il gère proprement les
-# WebSockets (temps réel + lives), essentiels à l'app.
+# PLACÉ À LA RACINE du dépôt car le déploiement continu Cloud Run/Cloud Build
+# cherche le Dockerfile à `/workspace/Dockerfile` (racine), avec la racine du
+# dépôt comme contexte de build → d'où les COPY préfixés `app/backend/`.
 #
-# ⚠️ CONTEXTE DE BUILD = RACINE DU DÉPÔT. Le déploiement continu Cloud Run
-# (Cloud Build) construit avec la racine du repo comme contexte et ce Dockerfile
-# via son chemin `app/backend/Dockerfile`. D'où les COPY préfixés `app/backend/`.
+# Cloud Run injecte PORT (8080 par défaut). On lance uvicorn directement (pas
+# gunicorn) car il gère proprement les WebSockets (temps réel + lives).
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
