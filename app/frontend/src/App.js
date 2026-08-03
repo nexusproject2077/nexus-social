@@ -6,6 +6,7 @@ import { Toaster } from "./components/ui/sonner";
 import CookieConsent from "./components/CookieConsent";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
 import { initAccent, applyAccent } from "@/lib/accent";
+import { enablePush } from "@/lib/push";
 import { GeoProvider } from "@/context/GeoContext";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
@@ -87,6 +88,14 @@ function App() {
   // ✅ Active le time tracking
   useTimeTracking(user);
 
+  // Ré-abonnement push silencieux : si l'utilisateur est connecté et a déjà
+  // autorisé les notifications, on (re)synchronise l'abonnement côté serveur
+  // (l'abonnement navigateur peut expirer/changer). Ne demande jamais la
+  // permission ici — c'est fait sur action explicite (cloche/paramètres).
+  useEffect(() => {
+    if (user?.id) enablePush({ interactive: false });
+  }, [user?.id]);
+
   const checkAuth = async (attempt = 0) => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -125,40 +134,8 @@ function App() {
     initAccent(); // Applique la couleur d'accentuation choisie
     checkAuth();
   }, []);
-
-  // Service Worker + Web Push : on enregistre le SW dès le chargement. Si la
-  // permission notifications est déjà accordée et qu'un utilisateur est
-  // connecté, on rafraîchit (silencieusement) l'abonnement push côté serveur
-  // pour qu'il reste valide (nouvel appareil, réinstallation, endpoint changé).
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-    let cancelled = false;
-    import("@/lib/push").then(async (push) => {
-      if (cancelled) return;
-      await push.registerServiceWorker();
-      try {
-        if (
-          user &&
-          typeof Notification !== "undefined" &&
-          Notification.permission === "granted"
-        ) {
-          await push.enablePush(); // ré-abonne / met à jour l'endpoint
-        }
-      } catch (e) { /* best-effort */ }
-    }).catch(() => {});
-    // Le SW peut demander une navigation in-app (clic notification, fallback).
-    const onMsg = (event) => {
-      const url = event?.data?.url;
-      if (event?.data?.type === "navigate" && url) {
-        window.location.assign(url);
-      }
-    };
-    navigator.serviceWorker.addEventListener("message", onMsg);
-    return () => {
-      cancelled = true;
-      navigator.serviceWorker.removeEventListener("message", onMsg);
-    };
-  }, [user]);
+  // NB : l'enregistrement du Service Worker est fait dans index.js, et le
+  // ré-abonnement push silencieux dans l'effet [user?.id] ci-dessus.
 
   if (loading) {
     return (

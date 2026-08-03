@@ -425,22 +425,157 @@ async def push_realtime(user_id: str, payload: dict):
         pass
 
 
+# ==================== WEB PUSH (notifications app fermée) ====================
+# Clés VAPID lues dans l'environnement (à définir sur Render pour la prod).
+# En leur absence, l'envoi push est un no-op propre : l'in-app + le temps réel
+# WebSocket continuent de fonctionner normalement.
+VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "").strip()
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
+VAPID_SUBJECT     = os.environ.get("VAPID_SUBJECT", "mailto:contact@nexus-social.app").strip()
+
+try:
+    from pywebpush import webpush, WebPushException  # type: ignore
+    _WEBPUSH_LIB = True
+except Exception:
+    _WEBPUSH_LIB = False
+
+def _web_push_enabled() -> bool:
+    return _WEBPUSH_LIB and bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
+
+
+def _push_content_for(notif_type, from_user, post_id=None, comment_content=None):
+    """Titre / corps / URL cliquable d'une notification push, par type."""
+    u = from_user.get("username", "Quelqu'un")
+    uid = from_user.get("id", "")
+    body = {
+        "follow":          f"@{u} vous suit maintenant",
+        "follow_request":  f"@{u} souhaite vous suivre",
+        "follow_accepted": f"@{u} a accepté votre demande d'abonnement",
+        "like":            f"@{u} a aimé votre publication",
+        "like_clip":       f"@{u} a aimé votre clip",
+        "like_story":      f"@{u} a aimé votre story",
+        "comment":         f"@{u} a commenté" + (f" : {comment_content}" if comment_content else ""),
+        "comment_reply":   f"@{u} a répondu à votre commentaire",
+        "mention":         f"@{u} vous a mentionné",
+        "tag":             f"@{u} vous a identifié",
+        "live":            f"@{u} est en direct 🔴",
+        "clip":            f"@{u} a publié un nouveau clip",
+        "story":           f"@{u} a publié une nouvelle story",
+        "story_reply":     f"@{u} a répondu à votre story",
+        "story_reaction":  f"@{u} a réagi à votre story",
+        "message":         f"Nouveau message de @{u}",
+        "group_message":   f"@{u} a écrit dans un groupe",
+        "message_request": f"@{u} veut vous envoyer un message",
+        "trending":        "Votre publication est dans les tendances 🔥",
+        "security":        "Connexion inhabituelle détectée sur votre compte",
+    }.get(notif_type, f"@{u}")
+
+    if notif_type in ("like", "like_clip", "like_story", "comment", "comment_reply",
+                      "mention", "tag", "trending") and post_id:
+        url = f"/post/{post_id}"
+    elif notif_type == "clip":
+        url = f"/nexus-clips/{post_id}" if post_id else "/nexus-clips"
+    elif notif_type == "live":
+        url = f"/live/{post_id}" if post_id else "/live"
+    elif notif_type == "group_message":
+        url = f"/messages/group/{post_id}" if post_id else "/messages"
+    elif notif_type in ("message", "message_request"):
+        url = f"/messages/{uid}" if uid else "/messages"
+    elif notif_type in ("story", "story_reply", "story_reaction"):
+        url = "/notifications"
+    elif notif_type in ("follow", "follow_request", "follow_accepted"):
+        url = f"/profil/{uid}" if uid else "/notifications"
+    elif notif_type == "security":
+        url = "/settings"
+    else:
+        url = "/notifications"
+    return ("Nexus Social", body, url)
+
+
+async def send_web_push(user_id: str, title: str, body: str, url: str = "/", tag: str = "nexus"):
+    """Envoie une notification push (même app fermée) à tous les abonnements de
+    l'utilisateur. Best-effort ; no-op si VAPID non configuré. Supprime les
+    abonnements expirés (404/410)."""
+    if not _web_push_enabled() or not user_id:
+        return
+    try:
+        subs = await db.push_subscriptions.find({"user_id": user_id}).to_list(length=50)
+    except Exception:
+        return
+    if not subs:
+        return
+    payload = json.dumps({"title": title, "body": (body or "")[:180], "url": url, "tag": tag})
+    for s in subs:
+        sub_info = s.get("subscription")
+        if not sub_info:
+            continue
+        try:
+            # pywebpush est synchrone : on l'exécute hors de la boucle asyncio.
+            await asyncio.to_thread(
+                webpush,
+                subscription_info=sub_info,
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_SUBJECT},
+            )
+        except WebPushException as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status in (404, 410):
+                try:
+                    await db.push_subscriptions.delete_one({"_id": s["_id"]})
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+
+# Types de notification connus (pour l'UI des réglages).
+NOTIF_TYPES = [
+    "like", "comment", "comment_reply", "mention", "tag",
+    "follow", "follow_request", "follow_accepted", "live",
+    "message", "group_message", "story_reply", "story_reaction",
+    "instant", "instant_reaction", "trending", "security",
+]
+
+
+async def _notif_allowed(user_id, notif_type, from_user_id=None):
+    """False si l'utilisateur a désactivé ce type de notification, ou coupé les
+    notifications de cet expéditeur. Best-effort (autorise en cas d'erreur)."""
+    if not user_id:
+        return False
+    try:
+        pref = await db.notification_prefs.find_one({"user_id": user_id})
+    except Exception:
+        return True
+    if not pref:
+        return True
+    if notif_type in (pref.get("disabled_types") or []):
+        return False
+    if from_user_id and from_user_id in (pref.get("muted_accounts") or []):
+        return False
+    return True
+
+
 async def create_notification(user_id, notif_type, from_user, post_id=None,
                               comment_content=None):
     """Crée une notification (et la pousse en temps réel). Best-effort.
 
     N'auto-notifie jamais : si l'émetteur est le destinataire, on ignore.
+    Respecte les préférences de l'utilisateur (type désactivé / compte coupé).
     """
     if not user_id or user_id == from_user.get("id"):
         return
-    # Préférences par type (activé par défaut) : si le destinataire a désactivé
-    # ce type de notification, on n'en crée pas.
+    # Préférences par type (activé par défaut). On respecte les DEUX systèmes
+    # (rétro-compat) : le profil par-type (users.notif_prefs, modale
+    # NotificationSettings) ET la collection notification_prefs (page Réglages).
     try:
         _u = await db.users.find_one({"id": user_id}, {"notif_prefs": 1})
         if ((_u or {}).get("notif_prefs") or {}).get(notif_type) is False:
             return
     except Exception:
         pass
+    if not await _notif_allowed(user_id, notif_type, from_user.get("id")):
+        return
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -456,16 +591,9 @@ async def create_notification(user_id, notif_type, from_user, post_id=None,
     try:
         await db.notifications.insert_one(dict(doc))
         await push_realtime(user_id, {"type": "notification", "data": doc})
-    except Exception:
-        pass
-    # Push navigateur (fonctionne app fermée). Best-effort, ne bloque jamais.
-    try:
-        _title, _body, _url = _notif_push_text(doc, from_user)
-        await send_web_push(user_id, {
-            "title": _title, "body": _body, "url": _url,
-            "icon": from_user.get("profile_pic") or "/logo192.png",
-            "tag": doc["id"],
-        })
+        # Push navigateur (app fermée) — best-effort, no-op si VAPID absent.
+        title, body, url = _push_content_for(notif_type, from_user, post_id, comment_content)
+        await send_web_push(user_id, title, body, url, tag=notif_type)
     except Exception:
         pass
 
@@ -2382,9 +2510,6 @@ async def like_post(post_id: str, current_user: dict = Depends(get_current_user)
                 "read": False,
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
-        # Signal « Pour toi » : un like renforce l'affinité auteur + hashtags.
-        await bump_user_interest(current_user["id"], post.get("author_id"),
-                                 extract_hashtags(post.get("content") or ""), 1.0)
 
         return {"liked": True}
 
@@ -2435,9 +2560,6 @@ async def save_post(post_id: str, current_user: dict = Depends(get_current_user)
         "user_id": current_user["id"],
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    # Signal « Pour toi » : enregistrer est le signal d'intérêt le plus fort.
-    await bump_user_interest(current_user["id"], post_raw.get("author_id"),
-                             extract_hashtags(post_raw.get("content") or ""), 2.0)
     return {"saved": True}
 
 
@@ -2512,9 +2634,6 @@ async def create_comment(post_id: str, comment_data: CommentCreate, current_user
     
     await db.comments.insert_one(comment_to_insert)
     await db.posts.update_one({"id": post_id}, {"$inc": {"comments_count": 1}})
-    # Signal « Pour toi » : commenter est un signal d'intérêt fort.
-    await bump_user_interest(current_user["id"], post_raw.get("author_id"),
-                             extract_hashtags(post_raw.get("content") or ""), 1.5)
 
     if verdict and verdict["action"] == "flag":
         await flag_for_review("comment", comment_id, current_user["id"],
@@ -3234,6 +3353,88 @@ async def active_lives(current_user: dict = Depends(get_current_user)):
     return out
 
 
+# ==================== WEB PUSH ROUTES ====================
+@api_router.get("/push/vapid-public-key")
+async def get_vapid_public_key():
+    """Clé publique VAPID + état d'activation (le front n'essaie de s'abonner
+    que si le serveur est configuré)."""
+    return {"public_key": VAPID_PUBLIC_KEY, "enabled": _web_push_enabled()}
+
+
+@api_router.post("/push/subscribe")
+async def push_subscribe(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Enregistre (ou met à jour) l'abonnement push du navigateur courant."""
+    sub = data.get("subscription") or data
+    endpoint = (sub or {}).get("endpoint")
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="Abonnement invalide")
+    await db.push_subscriptions.update_one(
+        {"endpoint": endpoint},
+        {"$set": {
+            "user_id": current_user["id"],
+            "subscription": sub,
+            "endpoint": endpoint,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"success": True}
+
+
+@api_router.post("/push/unsubscribe")
+async def push_unsubscribe(data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    """Désabonne le navigateur courant (suppression par endpoint)."""
+    endpoint = ((data or {}).get("subscription") or data or {}).get("endpoint") or (data or {}).get("endpoint")
+    if endpoint:
+        await db.push_subscriptions.delete_one({"endpoint": endpoint})
+    return {"success": True}
+
+
+# ==================== PRÉFÉRENCES DE NOTIFICATION ====================
+@api_router.get("/notifications/settings")
+async def get_notif_settings(current_user: dict = Depends(get_current_user)):
+    """Préférences de notification de l'utilisateur (types désactivés + comptes
+    coupés). `types` liste les types connus pour l'UI."""
+    pref = await db.notification_prefs.find_one({"user_id": current_user["id"]}) or {}
+    return {
+        "types": NOTIF_TYPES,
+        "disabled_types": pref.get("disabled_types", []),
+        "muted_accounts": pref.get("muted_accounts", []),
+    }
+
+
+@api_router.put("/notifications/settings")
+async def update_notif_settings(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Met à jour les types désactivés (liste complète remplacée)."""
+    update = {}
+    if "disabled_types" in data and isinstance(data["disabled_types"], list):
+        # On ne garde que des types connus.
+        update["disabled_types"] = [t for t in data["disabled_types"] if t in NOTIF_TYPES]
+    if update:
+        await db.notification_prefs.update_one(
+            {"user_id": current_user["id"]}, {"$set": update}, upsert=True
+        )
+    return {"success": True}
+
+
+@api_router.post("/notifications/mute/{target_id}")
+async def toggle_mute_account(target_id: str, current_user: dict = Depends(get_current_user)):
+    """Active/désactive la coupure des notifications d'un compte précis."""
+    pref = await db.notification_prefs.find_one({"user_id": current_user["id"]}) or {}
+    muted = set(pref.get("muted_accounts") or [])
+    if target_id in muted:
+        muted.discard(target_id)
+        state = False
+    else:
+        muted.add(target_id)
+        state = True
+    await db.notification_prefs.update_one(
+        {"user_id": current_user["id"]},
+        {"$set": {"muted_accounts": list(muted)}}, upsert=True,
+    )
+    return {"success": True, "muted": state}
+
+
 # ==================== NOTIFICATIONS ROUTES ====================
 @api_router.get("/notifications", response_model=List[Notification])
 async def get_notifications(skip: int = 0, limit: int = 30, current_user: dict = Depends(get_current_user)):
@@ -3300,15 +3501,6 @@ async def clear_notifications(current_user: dict = Depends(get_current_user)):
     return {"success": True}
 
 
-# Types de notifications activables/désactivables (spec Instagram).
-NOTIF_TYPES = [
-    "message", "like", "comment", "comment_reply", "mention", "tag",
-    "follow", "follow_request", "follow_accepted",
-    "story_reply", "story_reaction", "instant", "instant_reaction",
-    "live", "trending", "security",
-]
-
-
 class NotifPrefs(BaseModel):
     prefs: Dict[str, bool]
 
@@ -3327,151 +3519,6 @@ async def set_notif_preferences(data: NotifPrefs, current_user: dict = Depends(g
     clean = {t: bool(v) for t, v in (data.prefs or {}).items() if t in NOTIF_TYPES}
     await db.users.update_one({"id": current_user["id"]}, {"$set": {"notif_prefs": clean}})
     return {"success": True, "prefs": clean}
-
-
-# ==================== WEB PUSH (notifications app fermée) ====================
-_VAPID_CACHE: Dict[str, str] = {}
-
-
-def _generate_vapid_keys():
-    """Génère une paire de clés VAPID (EC P-256) via cryptography."""
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.hazmat.primitives import serialization
-    priv = ec.generate_private_key(ec.SECP256R1())
-    priv_pem = priv.private_bytes(
-        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
-    ).decode()
-    pub_point = priv.public_key().public_bytes(
-        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
-    )
-    pub_b64 = base64.urlsafe_b64encode(pub_point).rstrip(b"=").decode()
-    return priv_pem, pub_b64
-
-
-async def _get_vapid():
-    """Clés VAPID : générées une fois puis persistées en base (stables)."""
-    if _VAPID_CACHE:
-        return _VAPID_CACHE
-    doc = None
-    try:
-        doc = await db.config.find_one({"id": "vapid"})
-    except Exception:
-        pass
-    if not doc:
-        priv_pem, pub_b64 = _generate_vapid_keys()
-        doc = {"id": "vapid", "private_pem": priv_pem, "public_b64": pub_b64}
-        try:
-            await db.config.insert_one(dict(doc))
-        except Exception:
-            pass
-    _VAPID_CACHE["private_pem"] = doc["private_pem"]
-    _VAPID_CACHE["public_b64"] = doc["public_b64"]
-    return _VAPID_CACHE
-
-
-async def send_web_push(user_id: str, payload: dict):
-    """Envoie une notification push aux abonnements du destinataire. Best-effort."""
-    try:
-        subs = await db.push_subscriptions.find({"user_id": user_id}).to_list(50)
-    except Exception:
-        return
-    if not subs:
-        return
-    try:
-        vp = await _get_vapid()
-    except Exception:
-        return
-    data_str = json.dumps(payload)
-
-    def _send(sub_info):
-        try:
-            from pywebpush import webpush, WebPushException
-        except Exception:
-            return None
-        try:
-            webpush(
-                subscription_info=sub_info, data=data_str,
-                vapid_private_key=vp["private_pem"],
-                vapid_claims={"sub": "mailto:notifications@nexus-social.app"},
-            )
-            return True
-        except WebPushException as e:
-            code = getattr(getattr(e, "response", None), "status_code", None)
-            return "gone" if code in (404, 410) else False
-        except Exception:
-            return False
-
-    loop = asyncio.get_event_loop()
-    for raw in subs:
-        s = convert_mongo_doc_to_dict(raw)
-        sub_info = s.get("subscription")
-        if not sub_info:
-            continue
-        try:
-            res = await loop.run_in_executor(None, _send, sub_info)
-        except Exception:
-            res = False
-        if res == "gone":
-            try:
-                await db.push_subscriptions.delete_one({"id": s["id"]})
-            except Exception:
-                pass
-
-
-class PushSub(BaseModel):
-    subscription: dict
-
-
-@api_router.get("/push/vapid-public-key")
-async def push_vapid_public_key():
-    vp = await _get_vapid()
-    return {"public_key": vp["public_b64"]}
-
-
-@api_router.post("/push/subscribe")
-async def push_subscribe(data: PushSub, current_user: dict = Depends(get_current_user)):
-    endpoint = (data.subscription or {}).get("endpoint")
-    if not endpoint:
-        raise HTTPException(status_code=400, detail="Abonnement invalide.")
-    await db.push_subscriptions.update_one(
-        {"user_id": current_user["id"], "endpoint": endpoint},
-        {"$set": {"user_id": current_user["id"], "endpoint": endpoint, "subscription": data.subscription},
-         "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc).isoformat()}},
-        upsert=True,
-    )
-    return {"success": True}
-
-
-@api_router.post("/push/unsubscribe")
-async def push_unsubscribe(data: PushSub, current_user: dict = Depends(get_current_user)):
-    endpoint = (data.subscription or {}).get("endpoint")
-    if endpoint:
-        await db.push_subscriptions.delete_many({"user_id": current_user["id"], "endpoint": endpoint})
-    return {"success": True}
-
-
-def _notif_push_text(doc: dict, from_user: dict):
-    """Texte + URL de destination d'une notification pour le push."""
-    u = from_user.get("username", "Quelqu'un")
-    t = doc.get("type")
-    pid = doc.get("post_id")
-    mapping = {
-        "like": (f"{u} a aimé votre publication", f"/post/{pid}" if pid else "/notifications"),
-        "comment": (f"{u} a commenté : {doc.get('comment_content') or ''}".strip(), f"/post/{pid}" if pid else "/notifications"),
-        "comment_reply": (f"{u} a répondu à votre commentaire", f"/post/{pid}" if pid else "/notifications"),
-        "mention": (f"{u} vous a mentionné", f"/post/{pid}" if pid else "/notifications"),
-        "tag": (f"{u} vous a identifié", f"/post/{pid}" if pid else "/notifications"),
-        "follow": (f"{u} s'est abonné à vous", f"/profil/{from_user.get('id')}"),
-        "follow_request": (f"{u} souhaite s'abonner", f"/profil/{from_user.get('id')}"),
-        "follow_accepted": (f"{u} a accepté votre demande", f"/profil/{from_user.get('id')}"),
-        "story_reaction": (f"{u} a réagi à votre story", "/notifications"),
-        "story_reply": (f"{u} a répondu à votre story", f"/messages/{from_user.get('id')}"),
-        "instant": (f"{u} vous a envoyé un instantané", "/nexus-clips"),
-        "instant_reaction": (f"{u} a réagi à votre instantané", "/notifications"),
-        "live": (f"{u} est en direct", "/live"),
-    }
-    title, url = mapping.get(t, (f"{u}", "/notifications"))
-    return "Nexus Social", title, url
 
 
 # ==================== MESSAGES ROUTES ====================
@@ -3948,25 +3995,11 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         },
     })
 
-    # Push navigateur au destinataire (app fermée). Respecte la préférence
-    # « message » et n'expose qu'un aperçu (pas de média data-URL lourd).
-    try:
-        _pref = ((recipient.get("notif_prefs")) or {}).get("message")
-        if _pref is not False:
-            _preview = (message_data.content or "").strip()
-            if not _preview:
-                _preview = "📷 Photo" if message_data.media_type == "image" else "🎬 Média" if message_data.media_url else ""
-            if len(_preview) > 120:
-                _preview = _preview[:117] + "…"
-            await send_web_push(message_data.recipient_id, {
-                "title": current_user["username"],
-                "body": _preview or "Nouveau message",
-                "url": f"/messages/{current_user['id']}",
-                "icon": current_user.get("profile_pic") or "/logo192.png",
-                "tag": f"msg:{current_user['id']}",
-            })
-    except Exception:
-        pass
+    # Push navigateur (app fermée). On n'ajoute PAS d'entrée au fil de
+    # notifications : les messages ont déjà leur propre pastille.
+    if await _notif_allowed(message_data.recipient_id, "message", current_user["id"]):
+        _mt, _mb, _mu = _push_content_for("message", current_user)
+        await send_web_push(message_data.recipient_id, _mt, _mb, _mu, tag="message")
 
     return Message(**message)
 
@@ -4466,6 +4499,22 @@ async def send_group_message(
 
         response_message = convert_mongo_doc_to_dict(message)
         response_message["content"] = text  # clair pour l'expéditeur
+
+        # Prévient les autres membres : temps réel (app ouverte) + push (app
+        # fermée). Pas d'entrée dans le fil (pastille messages dédiée).
+        _gt, _gb, _gu = _push_content_for("group_message", current_user, post_id=group_id)
+        for _mid in group.get("member_ids", []):
+            if _mid == current_user["id"]:
+                continue
+            await push_realtime(_mid, {"type": "new_message", "data": {
+                "group_id": group_id,
+                "sender_id": current_user["id"],
+                "sender_username": current_user["username"],
+                "content": text,
+            }})
+            if await _notif_allowed(_mid, "group_message", current_user["id"]):
+                await send_web_push(_mid, _gt, _gb, _gu, tag="group_message")
+
         return {
             "success": True,
             "message": response_message
@@ -4751,6 +4800,13 @@ async def call_signal(data: dict = Body(...), current_user: dict = Depends(get_c
             "signal": signal,
         },
     })
+    # Appel entrant (offre) → Web Push : l'utilisateur est alerté même app
+    # fermée (il peut rouvrir l'app et rappeler). Les calls ne sont pas dans
+    # NOTIF_TYPES (toujours actifs), mais on respecte le mute d'un compte.
+    if signal.get("kind") == "offer" and await _notif_allowed(to_user_id, "call", current_user["id"]):
+        is_video = bool(signal.get("video"))
+        body = f"📞 Appel {'vidéo ' if is_video else ''}entrant de @{current_user.get('username', '')}"
+        await send_web_push(to_user_id, "Nexus Social", body, f"/messages/{current_user['id']}", tag="call")
     return {"success": True}
 
 # ==================== SEARCH ROUTES ====================
@@ -6678,245 +6734,247 @@ async def analytics_my_hourly(
     return result
 
 
-# ====================================================================
-# ALGORITHME « POUR TOI » — scoring engagement + temps de visionnage
-# --------------------------------------------------------------------
-# Objectif : maximiser le temps passé sur l'app (façon TikTok/Instagram) en
-# classant le contenu par un score combinant :
-#   1. Engagement    → likes, commentaires, partages, taux d'engagement/vues
-#   2. Comportement  → affinité de l'utilisateur (auteurs + hashtags aimés)
-#   3. Qualité       → taux de complétion + temps de visionnage moyen
-#   4. Règles        → mélange suivis/découverte, fraîcheur, boost nouveautés,
-#                      pénalité « fait quitter vite », diversité des créateurs.
-# Les signaux sont légers (compteurs agrégés sur le post + un profil d'intérêts
-# par utilisateur), et le scoring se fait sur une projection SANS le média
-# (pas de base64 lourd) : on ne charge le média que pour la page renvoyée.
-# ====================================================================
+# ═══════════════════════════════════════════════════════════════════════════
+# ALGORITHME DE RECOMMANDATION — feed « Pour toi » + Clips
+#
+# Objectif : maximiser le temps passé en montrant le contenu le plus engageant.
+# Signaux : engagement (likes/commentaires/partages), rétention des clips
+# (taux de complétion + temps de visionnage), fraîcheur (décroissance dans le
+# temps), personnalisation (comptes suivis + affinités créateurs/hashtags) et
+# diversité (éviter le même créateur d'affilée, varier les découvertes).
+#
+# Performance : on classe un « pool » borné de candidats récents/engageants en
+# Python (souple), avec un cache par utilisateur pour stabiliser la pagination
+# du scroll infini. Render tourne en 1 worker → cache mémoire suffisant.
+# ═══════════════════════════════════════════════════════════════════════════
 
-# Champs légers nécessaires au scoring (jamais media_url → évite les base64).
-_RANK_PROJECTION = {
-    "id": 1, "author_id": 1, "created_at": 1, "content": 1,
-    "likes_count": 1, "comments_count": 1, "shares_count": 1, "views": 1,
-    "watch_ms_total": 1, "watch_sessions": 1, "completed_count": 1,
-    "duration_ms": 1, "eu_blocked": 1, "media_type": 1,
-}
+_HASHTAG_RE = re.compile(r"#(\w{1,50})", re.UNICODE)
 
 
-def _safe_key(k) -> str:
-    """Clé Mongo sûre (pas de '.' ni de '$' qui casseraient l'update imbriqué)."""
-    return re.sub(r"[.$]", "_", str(k))[:80]
+def _extract_tags(text):
+    return {m.lower() for m in _HASHTAG_RE.findall(text or "")}
 
 
-def _parse_ts(iso_str) -> float:
-    """ISO → timestamp epoch (secondes). Tolérant (0.0 si illisible)."""
-    if not iso_str:
-        return 0.0
+def _parse_iso_ts(s):
     try:
-        s = iso_str.replace("Z", "+00:00")
-        return datetime.fromisoformat(s).timestamp()
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp()
     except Exception:
         return 0.0
 
 
-async def bump_user_interest(user_id: str, author_id: str, tags, weight: float):
-    """Renforce l'affinité d'un utilisateur pour un auteur + des hashtags.
+# Affinités de l'utilisateur (créateurs & hashtags qu'il aime), cache 5 min.
+_affinity_cache: Dict[str, tuple] = {}
+AFFINITY_TTL = 300
 
-    Alimente le profil d'intérêts (collection user_interests) utilisé par le
-    classement « Pour toi ». Best-effort, ne bloque jamais l'appel principal.
-    """
-    if not user_id or weight == 0:
-        return
-    inc = {}
-    if author_id and author_id != user_id:
-        inc[f"authors.{_safe_key(author_id)}"] = weight
-    for t in (tags or [])[:8]:
-        tn = _safe_key(str(t).lower())
-        if tn:
-            inc[f"tags.{tn}"] = weight
-    if not inc:
-        return
+
+async def _user_affinity(user_id):
+    now = time.time()
+    hit = _affinity_cache.get(user_id)
+    if hit and hit[0] > now:
+        return hit[1]
+    creators, tags = set(), set()
     try:
-        await db.user_interests.update_one(
-            {"id": user_id},
-            {"$inc": inc, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
-            upsert=True,
-        )
+        liked = await db.likes.find({"user_id": user_id}).sort("created_at", -1).limit(60).to_list(length=60)
+        pids = [l.get("post_id") for l in liked if l.get("post_id")]
+        if pids:
+            posts = await db.posts.find(
+                {"id": {"$in": pids}}, {"author_id": 1, "content": 1}
+            ).to_list(length=len(pids))
+            for p in posts:
+                if p.get("author_id"):
+                    creators.add(p["author_id"])
+                tags |= _extract_tags(p.get("content"))
     except Exception:
         pass
+    aff = {"creators": creators, "tags": set(list(tags)[:40])}
+    _affinity_cache[user_id] = (now + AFFINITY_TTL, aff)
+    return aff
 
 
-async def _interest_from_post(user_id: str, post_id: str, weight: float):
-    """Bump d'affinité à partir d'un post (récupère auteur + hashtags). Léger."""
-    try:
-        p = await db.posts.find_one({"id": post_id}, {"author_id": 1, "content": 1})
-        if p:
-            await bump_user_interest(user_id, p.get("author_id"),
-                                     extract_hashtags(p.get("content") or ""), weight)
-    except Exception:
-        pass
-
-
-async def get_user_interests(user_id: str):
-    """(authors, tags) : dictionnaires d'affinité de l'utilisateur (peut être vide)."""
-    try:
-        doc = await db.user_interests.find_one({"id": user_id}) or {}
-    except Exception:
-        doc = {}
-    return (doc.get("authors") or {}), (doc.get("tags") or {})
-
-
-def _score_clip(p, aff_authors, aff_tags, followed, premium, seen, now_ts, user_id):
-    """Score de pertinence d'un clip pour un utilisateur (plus haut = mieux)."""
+def _score_post(p, now_ts, followed, aff, is_clip, premium=frozenset()):
+    """Score d'engagement d'un post/clip pour un utilisateur donné."""
     likes = p.get("likes_count", 0) or 0
     comments = p.get("comments_count", 0) or 0
     shares = p.get("shares_count", 0) or 0
-    views = p.get("views", 0) or 0
+    views = max(1, p.get("views", 0) or 0)
+    ws = p.get("watch_sessions", 0) or 0
+    comp_sum = p.get("completion_sum", 0.0) or 0.0
+    watch_ms = p.get("watch_ms_total", 0) or 0
+    avg_comp = (comp_sum / ws) if ws else 0.0
+    avg_watch_s = (watch_ms / 1000.0 / ws) if ws else 0.0
 
-    # 1) Engagement : volume (log) + taux normalisé par les vues.
-    engagement = 2 * likes + 3 * comments + 5 * shares
-    eng_rate = engagement / (views + 5.0)  # amortit les petits volumes
-    score = math.log1p(engagement) * 1.5 + eng_rate * 3.0
+    # Engagement absolu (portée) + taux d'engagement (qualité, par vue).
+    eng = likes * 1.0 + comments * 2.0 + shares * 3.0
+    eng_rate = eng / views
+    quality = eng * 0.4 + eng_rate * 40.0
+    if is_clip:
+        # Rétention = signal fort côté clips (watch time + complétion).
+        quality += avg_comp * 60.0 + min(avg_watch_s, 45.0) * 1.2
 
-    # 2) Qualité : complétion + temps de visionnage moyen (le cœur « TikTok »).
-    sessions = p.get("watch_sessions", 0) or 0
-    completed = p.get("completed_count", 0) or 0
-    completion_rate = (completed / sessions) if sessions else 0.0
-    dur = p.get("duration_ms", 0) or 0
-    avg_watch_frac = 0.0
-    if sessions and dur > 0:
-        avg_watch_frac = min(1.0, (p.get("watch_ms_total", 0) or 0) / (sessions * dur))
-    if sessions >= 3:
-        score += completion_rate * 6.0 + avg_watch_frac * 4.0
-        # Pénalise le contenu qui fait quitter vite (mauvaise rétention).
-        if sessions >= 8 and completion_rate < 0.15:
-            score -= 3.0
+    # Fraîcheur : décroissance exponentielle (demi-vie ~33 h), avec un plancher
+    # pour que la qualité compte encore sur du contenu un peu plus ancien.
+    age_h = max(0.0, (now_ts - _parse_iso_ts(p.get("created_at"))) / 3600.0)
+    recency = math.exp(-age_h / 48.0)
+    score = quality * (0.35 + 0.65 * recency)
 
-    # 3) Affinité comportementale (auteurs + hashtags récemment appréciés).
-    score += min(aff_authors.get(_safe_key(p.get("author_id", "")), 0), 25) * 0.6
-    for t in p.get("_tags", []):
-        score += min(aff_tags.get(_safe_key(t), 0), 25) * 0.25
-
-    # 4) Fraîcheur + boost des nouveautés prometteuses.
-    age_h = max(0.0, (now_ts - p.get("_ts", now_ts)) / 3600.0)
-    score += math.exp(-age_h / 48.0) * 10.0
-    if views < 50 and completion_rate > 0.5:
-        score += 5.0   # nouveau contenu qui retient → on l'aide à percer
-    if views < 15:
-        score += 2.0   # laisse une chance aux tout nouveaux clips
-
-    # 5) Mélange suivis / découverte + avantage Premium.
-    if p.get("author_id") in followed:
-        score += 6.0
-    if p.get("author_id") in premium:
-        score += 3.0
-
-    # 6) Déjà vu → forte décote (surtout si terminé) pour renouveler le fil.
-    st = seen.get(p.get("id"))
-    if st is True:
-        score -= 25.0
-    elif st is False:
-        score -= 12.0
-
-    # 7) Jitter déterministe : diversité/exploration SANS casser la pagination.
-    h = int(hashlib.md5((user_id + p.get("id", "")).encode()).hexdigest(), 16)
-    score += (h % 1000) / 1000.0
+    # Boost « nouveau contenu prometteur » (jeune + déjà bon taux d'engagement).
+    if age_h < 6 and eng_rate > 0.12:
+        score += 20.0
+    # Pénalité « fait quitter » : beaucoup vu mais peu complété.
+    if is_clip and ws >= 5 and avg_comp < 0.25:
+        score -= 30.0
+    # Personnalisation.
+    author = p.get("author_id")
+    if author in followed:
+        score += 18.0
+    if author in aff["creators"]:
+        score += 14.0
+    if aff["tags"] and (_extract_tags(p.get("content")) & aff["tags"]):
+        score += 10.0
+    # Avantage Premium (bonus de visibilité, avantage réel des abonnés).
+    if author in premium:
+        score += 8.0
     return score
 
 
-def _diversify_by_author(items, window=3):
-    """Réordonne pour éviter le même créateur trop souvent d'affilée.
-
-    Glouton : à chaque étape on prend le mieux classé dont l'auteur n'apparaît
-    pas dans les `window` derniers choisis (sinon on relâche la contrainte).
-    """
+def _diversify(items, author_of, gap=2, max_per_author=4):
+    """Réordonne (items déjà triés par score desc) pour éviter le même créateur
+    d'affilée (fenêtre `gap`) et plafonner le nombre par créateur."""
     remaining = list(items)
-    out = []
+    result, counts = [], {}
     while remaining:
-        recent = {x["author_id"] for x in out[-window:]}
-        pick_idx = next((i for i, x in enumerate(remaining) if x.get("author_id") not in recent), 0)
-        out.append(remaining.pop(pick_idx))
+        pick = None
+        recent = [author_of(x) for x in result[-gap:]]
+        for i, it in enumerate(remaining):
+            a = author_of(it)
+            if counts.get(a, 0) >= max_per_author or a in recent:
+                continue
+            pick = i
+            break
+        if pick is None:  # contrainte d'écart trop stricte → 1er sous quota
+            for i, it in enumerate(remaining):
+                if counts.get(author_of(it), 0) < max_per_author:
+                    pick = i
+                    break
+        if pick is None:
+            break  # tout le monde a atteint le quota
+        it = remaining.pop(pick)
+        a = author_of(it)
+        counts[a] = counts.get(a, 0) + 1
+        result.append(it)
+    return result
+
+
+# Cache de l'ordre de classement par utilisateur (stabilise la pagination).
+_rank_cache: Dict[str, tuple] = {}
+RANK_TTL = 180  # 3 min
+
+
+async def _followed_ids(user_id):
+    follows_raw = await db.follows.find(
+        {"follower_id": user_id, "status": "following"}
+    ).to_list(length=2000)
+    out = set()
+    for f in follows_raw:
+        fid = f.get("followed_id") or f.get("following_id")
+        if fid:
+            out.add(fid)
     return out
 
 
-async def _rank_clip_candidates(request, current_user, skip, limit):
-    """Cœur du classement « Pour toi » des Clips : renvoie la page d'IDs classés.
+async def _ranked_ids(kind, user_id, eu):
+    """Renvoie l'ordre (liste d'ids) du feed classé, caché `RANK_TTL` s.
+    kind = 'clips' (vidéos) | 'foryou' (posts)."""
+    ckey = f"{kind}:{user_id}"
+    hit = _rank_cache.get(ckey)
+    if hit and hit[0] > time.time():
+        return hit[1]
 
-    Charge un vivier borné (récents + top engagement) en projection légère,
-    calcule le score, diversifie par auteur, puis applique skip/limit.
-    """
-    query = {"media_type": "video", "media_url": {"$ne": None}}
-    if CLIPS_EU_GEO_BLOCK and is_eu_request(request):
-        query["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
+    is_clip = kind == "clips"
+    base = {"media_type": "video", "media_url": {"$ne": None}} if is_clip \
+        else {"repost_of": None}
+    if is_clip and eu:
+        base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": user_id}]
 
-    # Vivier : les 240 plus récents + les 60 plus engageants (pour ressortir les
-    # « bangers »). Union par id, en projection légère (aucun média chargé).
-    recent = await db.posts.find(query, _RANK_PROJECTION).sort("created_at", -1).limit(240).to_list(length=240)
-    top = await db.posts.find(query, _RANK_PROJECTION).sort("likes_count", -1).limit(60).to_list(length=60)
-    pool = {}
+    proj = {"id": 1, "author_id": 1, "content": 1, "created_at": 1, "likes_count": 1,
+            "comments_count": 1, "shares_count": 1, "views": 1, "watch_sessions": 1,
+            "completion_sum": 1, "watch_ms_total": 1}
+    # Pool : les 400 plus récents + les 200 plus engageants (pépites plus vieilles).
+    recent = await db.posts.find(base, proj).sort("created_at", -1).limit(400).to_list(length=400)
+    top = await db.posts.find(base, proj).sort("likes_count", -1).limit(200).to_list(length=200)
+    pool, seen = [], set()
     for p in recent + top:
-        pool[p.get("id")] = p
-    candidates = list(pool.values())
-    if not candidates:
+        pid = p.get("id")
+        if pid and pid not in seen:
+            seen.add(pid)
+            pool.append(p)
+
+    followed = await _followed_ids(user_id)
+    aff = await _user_affinity(user_id)
+    premium = {u["id"] for u in await db.users.find({"is_premium": True}, {"id": 1}).to_list(length=5000)}
+    now_ts = time.time()
+    for p in pool:
+        p["_score"] = _score_post(p, now_ts, followed, aff, is_clip, premium)
+    pool.sort(key=lambda x: x["_score"], reverse=True)
+    ordered = _diversify(pool, lambda x: x.get("author_id"), gap=2, max_per_author=4)
+    ids = [p["id"] for p in ordered if p.get("id")]
+
+    _rank_cache[ckey] = (now_ts + RANK_TTL, ids)
+    if len(_rank_cache) > 20000:
+        _rank_cache.clear()
+    return ids
+
+
+async def _fetch_posts_in_order(ids, user_id):
+    """Récupère et enrichit des posts en respectant l'ordre de `ids`."""
+    if not ids:
         return []
-
-    # Signaux de personnalisation (une requête chacun).
-    aff_authors, aff_tags = await get_user_interests(current_user["id"])
-    followed = set()
-    for f in await db.follows.find({"follower_id": current_user["id"], "status": "following"},
-                                   {"followed_id": 1, "following_id": 1}).to_list(length=2000):
-        fid = f.get("followed_id") or f.get("following_id")
-        if fid:
-            followed.add(fid)
-    premium = await _premium_author_ids([c.get("author_id") for c in candidates])
-    seen = {}
-    for v in await db.clip_views.find({"user_id": current_user["id"]},
-                                      {"clip_id": 1, "completed": 1}).sort("updated_at", -1).limit(1200).to_list(length=1200):
-        seen[v.get("clip_id")] = bool(v.get("completed"))
-
-    now_ts = datetime.now(timezone.utc).timestamp()
-    for c in candidates:
-        c["_ts"] = _parse_ts(c.get("created_at"))
-        c["_tags"] = [t.lower() for t in extract_hashtags(c.get("content") or "")]
-        c["_score"] = _score_clip(c, aff_authors, aff_tags, followed, premium, seen, now_ts, current_user["id"])
-
-    candidates.sort(key=lambda x: x["_score"], reverse=True)
-    candidates = _diversify_by_author(candidates, window=3)
-    page = candidates[skip: skip + limit]
-    return [c.get("id") for c in page]
+    raw = await db.posts.find({"id": {"$in": ids}}).to_list(length=len(ids))
+    by_id = {p.get("id"): p for p in raw}
+    saved_ids = await _saved_post_ids(user_id, ids)
+    premium_ids = await _premium_author_ids([by_id[i].get("author_id") for i in ids if i in by_id])
+    liked = {l.get("post_id") for l in await db.likes.find(
+        {"post_id": {"$in": ids}, "user_id": user_id}, {"post_id": 1}
+    ).to_list(length=len(ids))}
+    out = []
+    for pid in ids:
+        pr = by_id.get(pid)
+        if not pr:
+            continue
+        post = convert_mongo_doc_to_dict(pr)
+        post["is_liked"] = pid in liked
+        post["is_saved"] = pid in saved_ids
+        post["author_is_premium"] = post.get("author_id") in premium_ids
+        enrich_post_poll(post, user_id)
+        out.append(Post(**post))
+    return out
 
 
 @api_router.get("/clips", response_model=List[Post])
 async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
     """
-    Fil Nexus Clips « Pour toi » : classé par un algorithme d'engagement +
-    temps de visionnage (pas seulement chronologique), pour maximiser la
-    rétention façon TikTok. Paginé (skip/limit) pour le scroll infini.
+    Fil Nexus Clips classé par un algorithme d'engagement (watch time +
+    complétion + interactions + fraîcheur + affinités), avec diversité des
+    créateurs. Paginé (skip/limit) pour le scroll infini façon TikTok.
 
-    Geo-block : pour un visiteur de l'UE, les clips marqués eu_blocked sont
-    retirés du fil (l'auteur voit toujours les siens).
+    Geo-block : pour un visiteur de l'UE, les clips eu_blocked sont retirés
+    (l'auteur voit toujours les siens).
     """
     limit = max(1, min(limit, 40))
-    ranked_ids = await _rank_clip_candidates(request, current_user, skip, limit)
-    if not ranked_ids:
-        return []
+    eu = CLIPS_EU_GEO_BLOCK and is_eu_request(request)
+    ids = await _ranked_ids("clips", current_user["id"], eu)
+    page = ids[skip: skip + limit]
+    clips = await _fetch_posts_in_order(page, current_user["id"])
 
-    # On ne charge le média (potentiellement lourd) que pour la page renvoyée.
-    docs = await db.posts.find({"id": {"$in": ranked_ids}}).to_list(length=len(ranked_ids))
-    by_id = {d.get("id"): d for d in docs}
-    ordered = [by_id[i] for i in ranked_ids if i in by_id]
-
-    clips = []
-    saved_ids = await _saved_post_ids(current_user["id"], ranked_ids)
-    premium_ids = await _premium_author_ids([p.get("author_id") for p in ordered])
-    liked = {l.get("post_id") for l in await db.likes.find(
-        {"post_id": {"$in": ranked_ids}, "user_id": current_user["id"]}, {"post_id": 1}
-    ).to_list(length=len(ranked_ids))}
-    for post_raw in ordered:
-        post = convert_mongo_doc_to_dict(post_raw)
-        post["is_liked"] = post["id"] in liked
-        post["is_saved"] = post["id"] in saved_ids
-        post["author_is_premium"] = post.get("author_id") in premium_ids
-        clips.append(Post(**post))
+    # Filet de sécurité : si le scroll dépasse le pool classé, on complète en
+    # chronologique (clips plus anciens non inclus dans le pool).
+    if len(clips) < limit and skip >= len(ids):
+        base = {"media_type": "video", "media_url": {"$ne": None}}
+        if eu:
+            base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
+        extra_skip = skip - len(ids)
+        raw = await db.posts.find(base).sort("created_at", -1).skip(max(0, extra_skip)).limit(limit).to_list(length=limit)
+        clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"])
     return clips
 
 
@@ -7335,7 +7393,19 @@ async def register_clip_view(clip_id: str, request: Request, current_user: dict 
     exp = _clip_view_cache.get(key)
 
     if exp and exp > now:
-        # Déjà comptée dans cette session → on ne ré-incrémente pas.
+        # Fast-path : déjà comptée récemment (cache mémoire) → pas de ré-incrément.
+        post = await db.posts.find_one({"id": clip_id}, {"views": 1})
+        if not post:
+            raise HTTPException(status_code=404, detail="Clip introuvable")
+        return {"success": True, "views": post.get("views", 0), "counted": False}
+
+    # Source de vérité PERSISTANTE : une vue unique par (clip, utilisateur).
+    # Le cache mémoire seul ne suffit pas — il est vidé à chaque redémarrage
+    # (cold start Render), ce qui re-comptait les vues et gonflait le compteur.
+    # Un enregistrement en base garantit « une vue par personne », durablement.
+    _clip_view_cache[key] = now + CLIP_VIEW_TTL
+    already = await db.clip_views.find_one({"clip_id": clip_id, "user_id": current_user["id"]})
+    if already:
         post = await db.posts.find_one({"id": clip_id}, {"views": 1})
         if not post:
             raise HTTPException(status_code=404, detail="Clip introuvable")
@@ -7347,141 +7417,78 @@ async def register_clip_view(clip_id: str, request: Request, current_user: dict 
             if v <= now:
                 _clip_view_cache.pop(k, None)
 
-    _clip_view_cache[key] = now + CLIP_VIEW_TTL
+    try:
+        await db.clip_views.insert_one({
+            "clip_id": clip_id,
+            "user_id": current_user["id"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        # Collision (index unique) = vue déjà enregistrée → ne pas ré-incrémenter.
+        post = await db.posts.find_one({"id": clip_id}, {"views": 1})
+        return {"success": True, "views": (post or {}).get("views", 0), "counted": False}
+
     result = await db.posts.update_one({"id": clip_id}, {"$inc": {"views": 1}})
     if result.matched_count == 0:
         _clip_view_cache.pop(key, None)
+        await db.clip_views.delete_one({"clip_id": clip_id, "user_id": current_user["id"]})
         raise HTTPException(status_code=404, detail="Clip introuvable")
     post = await db.posts.find_one({"id": clip_id}, {"views": 1})
     return {"success": True, "views": (post or {}).get("views", 0), "counted": True}
 
 
-class ClipWatch(BaseModel):
-    watch_ms: int = 0          # temps réellement visionné (cumul, y compris boucles)
-    duration_ms: int = 0       # durée de la vidéo (pour le taux de complétion)
-    completed: bool = False    # a-t-il regardé (quasi) jusqu'au bout / bouclé ?
-
-
 @api_router.post("/clips/{clip_id}/watch")
-async def register_clip_watch(clip_id: str, data: ClipWatch, current_user: dict = Depends(get_current_user)):
-    """Signal de temps de visionnage (cœur de l'algo « Pour toi »).
+async def register_clip_watch(clip_id: str, data: dict = Body(default={}),
+                              current_user: dict = Depends(get_current_user)):
+    """Enregistre le temps de visionnage d'un clip (signal de rétention pour le
+    classement). Corps : {watched_ms, duration_ms, completed}. Cumulé sur le
+    clip (moyennes calculées au scoring). Best-effort, silencieux.
 
-    Envoyé quand l'utilisateur quitte un clip : on agrège la rétention sur le
-    post et on renforce le profil d'intérêts (auteur + hashtags) proportionnellement
-    à l'attention accordée. Best-effort, jamais bloquant.
-    """
-    watch_ms = max(0, min(int(data.watch_ms or 0), 3600_000))  # borne 1 h
-    if watch_ms < 300:
-        return {"success": True, "counted": False}  # trop court → bruit, on ignore
-
-    post = await db.posts.find_one({"id": clip_id}, {"author_id": 1, "content": 1})
-    if not post:
-        raise HTTPException(status_code=404, detail="Clip introuvable")
-
-    inc = {"watch_ms_total": watch_ms, "watch_sessions": 1}
-    if data.completed:
-        inc["completed_count"] = 1
-    set_fields = {}
-    if data.duration_ms and data.duration_ms > 0:
-        set_fields["duration_ms"] = min(int(data.duration_ms), 3600_000)
-    update = {"$inc": inc}
-    if set_fields:
-        update["$set"] = set_fields
+    Anti-abus : un visionnage < 300 ms est ignoré ; la complétion est bornée à
+    [0,1] et le temps par session plafonné (évite de gonfler artificiellement)."""
     try:
-        await db.posts.update_one({"id": clip_id}, update)
-    except Exception:
-        pass
-
-    # Mémorise « vu » (dedup du fil) + calcule l'attention pour l'affinité.
-    dur = set_fields.get("duration_ms") or 0
-    frac = min(1.0, watch_ms / dur) if dur else (1.0 if data.completed else 0.4)
+        watched_ms = int(data.get("watched_ms") or 0)
+        duration_ms = int(data.get("duration_ms") or 0)
+    except (TypeError, ValueError):
+        return {"success": False}
+    if watched_ms < 300:
+        return {"success": True, "counted": False}
+    # Plafonne une session à 10 min pour éviter les valeurs aberrantes.
+    watched_ms = min(watched_ms, 600_000)
+    completed = bool(data.get("completed"))
+    if duration_ms > 0:
+        completion = min(1.0, watched_ms / duration_ms)
+    else:
+        completion = 1.0 if completed else 0.0
+    if completed:
+        completion = 1.0
     try:
-        await db.clip_views.update_one(
-            {"user_id": current_user["id"], "clip_id": clip_id},
-            {"$max": {"watch_ms": watch_ms},
-             "$set": {"completed": bool(data.completed or frac >= 0.9),
-                      "updated_at": datetime.now(timezone.utc).isoformat()},
-             "$setOnInsert": {"user_id": current_user["id"], "clip_id": clip_id}},
-            upsert=True,
+        await db.posts.update_one(
+            {"id": clip_id},
+            {"$inc": {
+                "watch_sessions": 1,
+                "watch_ms_total": watched_ms,
+                "completion_sum": completion,
+            }},
         )
     except Exception:
-        pass
-
-    # Renforce l'affinité si l'utilisateur a vraiment regardé (attention forte).
-    if post.get("author_id") != current_user["id"] and frac >= 0.4:
-        weight = 1.5 if frac >= 0.9 else 0.8
-        await bump_user_interest(current_user["id"], post.get("author_id"),
-                                 extract_hashtags(post.get("content") or ""), weight)
+        return {"success": False}
     return {"success": True, "counted": True}
 
 
 @api_router.get("/feed/foryou", response_model=List[Post])
-async def for_you_feed(limit: int = 50, current_user: dict = Depends(get_current_user)):
+async def for_you_feed(limit: int = 50, skip: int = 0, current_user: dict = Depends(get_current_user)):
     """
-    Feed "Pour toi" : mélange les publications des comptes suivis et les
-    contenus tendance (fort engagement), classés par un score d'engagement
-    pondéré avec un bonus de personnalisation pour les comptes suivis.
-
-    Le score est calculé côté base via un pipeline d'agrégation (plus efficace
-    qu'un chargement massif suivi d'un tri en mémoire).
+    Feed « Pour toi » intelligent : classe les publications par un score
+    d'engagement personnalisé (interactions + taux d'engagement + fraîcheur +
+    affinités créateurs/hashtags + comptes suivis), avec diversité des
+    créateurs — au lieu d'un simple tri chronologique ou par likes bruts.
+    Paginé (skip/limit) pour le scroll infini.
     """
     limit = max(1, min(limit, 100))
-
-    # Comptes suivis (formats followed_id et following_id supportés)
-    followed = set()
-    for f in await db.follows.find({"follower_id": current_user["id"], "status": "following"},
-                                   {"followed_id": 1, "following_id": 1}).to_list(length=2000):
-        fid = f.get("followed_id") or f.get("following_id")
-        if fid:
-            followed.add(fid)
-
-    # Vivier borné en projection légère (aucun média base64 chargé pour scorer) :
-    # récents + top engagement, façon Clips. On score en Python avec le profil
-    # d'intérêts, la fraîcheur et une diversité par auteur.
-    proj = dict(_RANK_PROJECTION)
-    recent = await db.posts.find({}, proj).sort("created_at", -1).limit(300).to_list(length=300)
-    top = await db.posts.find({}, proj).sort("likes_count", -1).limit(80).to_list(length=80)
-    pool = {}
-    for p in recent + top:
-        pool[p.get("id")] = p
-    candidates = list(pool.values())
-    if not candidates:
-        return []
-
-    aff_authors, aff_tags = await get_user_interests(current_user["id"])
-    premium = await _premium_author_ids([c.get("author_id") for c in candidates])
-    now_ts = datetime.now(timezone.utc).timestamp()
-    for c in candidates:
-        c["_ts"] = _parse_ts(c.get("created_at"))
-        c["_tags"] = [t.lower() for t in extract_hashtags(c.get("content") or "")]
-        # Réutilise le scoring des clips (les compteurs watch sont juste à 0 pour
-        # les posts non-vidéo → n'apportent rien, ce qui est le comportement voulu).
-        c["_score"] = _score_clip(c, aff_authors, aff_tags, followed, premium, {}, now_ts, current_user["id"])
-
-    candidates.sort(key=lambda x: x["_score"], reverse=True)
-    candidates = _diversify_by_author(candidates, window=3)
-    page_ids = [c.get("id") for c in candidates[:limit]]
-
-    # Charge les documents complets (média inclus) pour la seule page renvoyée.
-    docs = await db.posts.find({"id": {"$in": page_ids}}).to_list(length=len(page_ids))
-    by_id = {d.get("id"): d for d in docs}
-    ordered = [by_id[i] for i in page_ids if i in by_id]
-
-    posts = []
-    saved_ids = await _saved_post_ids(current_user["id"], page_ids)
-    premium_ids = await _premium_author_ids([p.get("author_id") for p in ordered])
-    liked = {l.get("post_id") for l in await db.likes.find(
-        {"post_id": {"$in": page_ids}, "user_id": current_user["id"]}, {"post_id": 1}
-    ).to_list(length=len(page_ids))}
-    for post_raw in ordered:
-        post = convert_mongo_doc_to_dict(post_raw)
-        post["is_liked"] = post["id"] in liked
-        post["is_saved"] = post["id"] in saved_ids
-        post["author_is_premium"] = post.get("author_id") in premium_ids
-        enrich_post_poll(post, current_user["id"])
-        posts.append(Post(**post))
-
-    return posts
+    ids = await _ranked_ids("foryou", current_user["id"], False)
+    page = ids[skip: skip + limit]
+    return await _fetch_posts_in_order(page, current_user["id"])
 
 # ==================== END ENHANCED FEATURES ====================
 
@@ -7589,20 +7596,26 @@ async def startup_db_client():
     except Exception as e:
         logger.error(f"❌ MongoDB connection failed: {e}")
         raise
+    # Index unique pour les vues de clips : garantit « une vue par (clip, user) »
+    # même en cas de course, et rend la vérification de doublon instantanée.
+    try:
+        await db.clip_views.create_index(
+            [("clip_id", 1), ("user_id", 1)], unique=True, name="uniq_clip_user"
+        )
+    except Exception as e:
+        logger.warning(f"Index clip_views non créé (peut déjà exister): {e}")
+    # Index des abonnements push (un doc par navigateur/endpoint).
+    try:
+        await db.push_subscriptions.create_index("endpoint", unique=True, name="uniq_endpoint")
+        await db.push_subscriptions.create_index("user_id", name="by_user")
+    except Exception as e:
+        logger.warning(f"Index push_subscriptions non créé (peut déjà exister): {e}")
     # Lance la boucle de notifications « tendance » en tâche de fond.
     try:
         asyncio.create_task(trending_notifier_loop())
         logger.info("✅ Trending notifier lancé")
     except Exception as e:
         logger.error(f"Impossible de lancer le trending notifier: {e}")
-    # Index pour l'algorithme « Pour toi » (dedup + tri des signaux de visionnage).
-    try:
-        await db.clip_views.create_index([("user_id", 1), ("clip_id", 1)], unique=True)
-        await db.clip_views.create_index([("user_id", 1), ("updated_at", -1)])
-        await db.push_subscriptions.create_index([("user_id", 1), ("endpoint", 1)], unique=True)
-        logger.info("✅ Index Pour-toi/push assurés")
-    except Exception as e:
-        logger.error(f"Impossible de créer les index Pour-toi: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

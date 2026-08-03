@@ -2,6 +2,10 @@
 // Fonctionne « app fermée » (Android/Chrome/Firefox/Edge, et iOS 16.4+ SI le
 // site est installé sur l'écran d'accueil). Best-effort partout : aucune de
 // ces fonctions ne jette, elles renvoient un état exploitable par l'UI.
+//
+// API unifiée (deux écrans la consomment) :
+//   • NotificationSettings (modale par type) → getPushState / enablePush / disablePush
+//   • SettingsPage (réglages)                → isPushEnabled / enablePush({interactive}) / pushReasonLabel
 import axios from "axios";
 import { API } from "@/App";
 
@@ -46,8 +50,7 @@ let _swReg = null;
 
 // Enregistre le Service Worker (idempotent). Renvoie l'enregistrement ou null.
 export async function registerServiceWorker() {
-  if (!pushSupported() && !("serviceWorker" in navigator)) return null;
-  if (!("serviceWorker" in navigator)) return null;
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
   try {
     if (_swReg) return _swReg;
     _swReg = await navigator.serviceWorker.register("/service-worker.js");
@@ -77,16 +80,25 @@ export async function getPushState() {
   return base;
 }
 
-// Active le push : demande la permission, s'abonne au PushManager avec la clé
-// VAPID du serveur, puis enregistre l'abonnement côté backend.
+// Booléen simple : l'appareil est-il abonné au push ? (utilisé par SettingsPage)
+export async function isPushEnabled() {
+  const st = await getPushState();
+  return !!st.subscribed;
+}
+
+// Active le push : (option interactive) demande la permission, s'abonne au
+// PushManager avec la clé VAPID du serveur, puis enregistre l'abonnement backend.
+// `interactive` = true (défaut) autorise la demande de permission (à déclencher
+// sur une action utilisateur) ; false = ré-abonnement silencieux si déjà autorisé.
 // Renvoie { ok: true } ou { ok: false, reason }.
-export async function enablePush() {
+export async function enablePush({ interactive = true } = {}) {
   if (!pushSupported()) return { ok: false, reason: "unsupported" };
   // Sur iOS, exige l'installation sur l'écran d'accueil.
   if (isIOS() && !isStandalone()) return { ok: false, reason: "ios-install" };
 
   let permission = Notification.permission;
   if (permission === "default") {
+    if (!interactive) return { ok: false, reason: "denied" }; // pas de prompt en silencieux
     try {
       permission = await Notification.requestPermission();
     } catch (e) {
@@ -144,4 +156,19 @@ export async function disablePush() {
     }
   } catch (e) { /* ignore */ }
   return { ok: true };
+}
+
+// Libellés FR de chaque cause de succès/échec (toasts clairs). Couvre les codes
+// des deux écrans (unifiés).
+export function pushReasonLabel(reason) {
+  return {
+    ok: "Notifications push activées",
+    unsupported: "Ce navigateur ne prend pas en charge les notifications push",
+    "ios-install": "Sur iPhone/iPad : ajoutez d'abord Nexus à l'écran d'accueil",
+    denied: "Notifications bloquées dans les réglages du navigateur",
+    "no-sw": "Service worker indisponible",
+    "no-key": "Serveur de notifications indisponible (réessayez plus tard)",
+    "subscribe-failed": "Échec de l'abonnement push",
+    "backend-failed": "Échec de l'enregistrement, réessayez",
+  }[reason] || "Notifications push indisponibles pour le moment";
 }

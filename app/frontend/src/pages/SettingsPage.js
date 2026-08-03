@@ -9,6 +9,17 @@ import ChangePasswordModal from '../components/ChangePasswordModal';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import AlgorithmTransparencyModal from '../components/AlgorithmTransparencyModal';
 import { ACCENTS, applyAccent, getAccent } from '../lib/accent';
+import { enablePush, disablePush, isPushEnabled, pushReasonLabel } from '@/lib/push';
+
+// Libellés FR des types de notification (pour les réglages).
+const NOTIF_TYPE_LABELS = {
+  like: "J'aime", comment: "Commentaires", comment_reply: "Réponses à vos commentaires",
+  mention: "Mentions", tag: "Identifications", follow: "Nouveaux abonnés",
+  follow_request: "Demandes d'abonnement", follow_accepted: "Demandes acceptées",
+  live: "Directs des abonnements", message: "Messages privés", group_message: "Messages de groupe",
+  story_reply: "Réponses à vos stories", story_reaction: "Réactions à vos stories",
+  trending: "Tendances", security: "Sécurité",
+};
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
@@ -139,6 +150,48 @@ export default function SettingsPage({ user, setUser }) {
   const [showAlgoModal, setShowAlgoModal] = useState(false);
   const [accent, setAccent] = useState(getAccent());
 
+  // Notifications : préférences par type + état de l'abonnement push.
+  const [notifTypes, setNotifTypes]       = useState([]);
+  const [disabledTypes, setDisabledTypes] = useState([]);
+  const [pushOn, setPushOn]               = useState(false);
+  const [pushBusy, setPushBusy]           = useState(false);
+
+  useEffect(() => {
+    axios.get(`${API}/notifications/settings`)
+      .then((r) => { setNotifTypes(r.data?.types || []); setDisabledTypes(r.data?.disabled_types || []); })
+      .catch(() => {});
+    isPushEnabled().then(setPushOn).catch(() => {});
+  }, []);
+
+  const toggleNotifType = async (type, enabled) => {
+    // enabled = true → on RETIRE le type des désactivés.
+    const next = enabled ? disabledTypes.filter((t) => t !== type) : [...new Set([...disabledTypes, type])];
+    setDisabledTypes(next); // optimiste
+    try {
+      await axios.put(`${API}/notifications/settings`, { disabled_types: next });
+    } catch {
+      toast.error("Impossible d'enregistrer la préférence");
+    }
+  };
+
+  const togglePush = async (on) => {
+    setPushBusy(true);
+    try {
+      if (on) {
+        const res = await enablePush({ interactive: true });
+        setPushOn(res.ok);
+        if (res.ok) toast.success(pushReasonLabel("ok"));
+        else toast.error(pushReasonLabel(res.reason));
+      } else {
+        await disablePush();
+        setPushOn(false);
+        toast.success("Notifications push désactivées");
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
   const [profileData, setProfileData] = useState({
     first_name: "", last_name: "", bio: "",
     location: "", website: "", phone: "", birthdate: "", gender: "", crypto_wallet: ""
@@ -241,6 +294,7 @@ export default function SettingsPage({ user, setUser }) {
     { id: "account",  icon: "manage_accounts",  label: t("settings.account") },
     { id: "creator",  icon: "paid",              label: t("settings.creator") },
     { id: "privacy",  icon: "gavel",             label: t("settings.privacy") },
+    { id: "notifications", icon: "notifications", label: "Notifications" },
     { id: "security", icon: "shield",            label: t("settings.security") },
     { id: "content",  icon: "tune",              label: t("settings.content") },
     { id: "display",  icon: "palette",           label: t("settings.display") },
@@ -561,6 +615,42 @@ export default function SettingsPage({ user, setUser }) {
     </div>
   );
 
+  const renderNotifications = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Notifications</h2>
+        <p className="text-sm" style={{ color: C.outline }}>Choisissez ce qui vous alerte, et où.</p>
+      </div>
+
+      <Card>
+        <CardHeader title="Notifications push" icon="notifications_active" />
+        <ToggleRow
+          icon="phonelink_ring"
+          label="Recevoir les push"
+          sublabel="Être prévenu même quand l'app est fermée"
+          checked={pushOn}
+          onChange={togglePush}
+          disabled={pushBusy}
+        />
+      </Card>
+
+      <Card>
+        <CardHeader title="Types de notification" icon="tune" />
+        {notifTypes.map((type) => (
+          <ToggleRow
+            key={type}
+            label={NOTIF_TYPE_LABELS[type] || type}
+            checked={!disabledTypes.includes(type)}
+            onChange={(v) => toggleNotifType(type, v)}
+          />
+        ))}
+        {notifTypes.length === 0 && (
+          <div className="p-5 text-sm" style={{ color: C.outline }}>Chargement des préférences…</div>
+        )}
+      </Card>
+    </div>
+  );
+
   const renderDisplay = () => (
     <div className="space-y-6">
       <div>
@@ -619,6 +709,7 @@ export default function SettingsPage({ user, setUser }) {
     account:  renderAccount,
     creator:  renderCreator,
     privacy:  renderPrivacy,
+    notifications: renderNotifications,
     security: renderSecurity,
     content:  renderContent,
     display:  renderDisplay,

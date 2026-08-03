@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import axios from "axios";
 import { API } from "../App";
+import { SURFACE, TEXT, OUTLINE, ACCENT_GRADIENT } from "@/lib/theme";
 
 interface AddStoryModalProps {
   onClose: () => void;
@@ -81,7 +82,10 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
 
   return (
     <Dialog open onOpenChange={handleClose}>
-      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md select-none">
+      <DialogContent
+        className="text-white max-w-md select-none"
+        style={{ background: SURFACE.container, border: `1px solid ${OUTLINE}` }}
+      >
         <DialogHeader>
           {/* Pas de bouton de fermeture custom ici : DialogContent fournit déjà
               sa propre croix (X) en haut à droite → évite la « double croix ». */}
@@ -90,16 +94,19 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
 
         <div className="mt-4">
           {!preview ? (
-            <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-slate-700 rounded-xl cursor-pointer hover:border-cyan-500 transition">
+            <label
+              className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-2xl cursor-pointer transition"
+              style={{ borderColor: OUTLINE, background: SURFACE.low }}
+            >
               <div className="flex flex-col items-center gap-4">
-                <Camera className="w-12 h-12 text-slate-400" />
-                <p className="text-slate-400">Cliquez pour ajouter une photo ou vidéo</p>
+                <Camera className="w-12 h-12" style={{ color: TEXT.muted }} />
+                <p style={{ color: TEXT.muted }}>Cliquez pour ajouter une photo ou vidéo</p>
                 <div className="flex gap-4">
-                  <div className="flex items-center gap-2 text-slate-500">
+                  <div className="flex items-center gap-2" style={{ color: TEXT.muted }}>
                     <ImageIcon className="w-5 h-5" />
                     <span className="text-sm">Image</span>
                   </div>
-                  <div className="flex items-center gap-2 text-slate-500">
+                  <div className="flex items-center gap-2" style={{ color: TEXT.muted }}>
                     <Video className="w-5 h-5" />
                     <span className="text-sm">Vidéo</span>
                   </div>
@@ -116,9 +123,9 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
             <div className="space-y-4">
               <div className="relative">
                 {file?.type.startsWith("image/") ? (
-                  <img src={preview} alt="Preview" className="w-full rounded-xl" />
+                  <img src={preview} alt="Preview" className="w-full rounded-2xl" />
                 ) : (
-                  <video src={preview} controls className="w-full rounded-xl" />
+                  <video src={preview} controls className="w-full rounded-2xl" />
                 )}
                 <button
                   onClick={() => {
@@ -134,7 +141,8 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
               <Button
                 onClick={handleUpload}
                 disabled={uploading}
-                className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 font-semibold"
+                className="w-full font-semibold rounded-xl transition-all active:scale-95 hover:opacity-90"
+                style={{ background: ACCENT_GRADIENT, color: TEXT.onAccent }}
               >
                 {uploading ? (
                   <div className="flex items-center gap-2">

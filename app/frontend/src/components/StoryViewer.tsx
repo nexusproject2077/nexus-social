@@ -4,6 +4,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { X, MoreVertical, Trash2 } from 'lucide-react';
 import { toast } from "sonner";
 import { API } from "../App";
+import { SURFACE, TEXT, OUTLINE } from "@/lib/theme";
 import { useNavigate } from 'react-router-dom';
 
 interface Story {
@@ -112,11 +113,14 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
         if (u?.username) setCurrentUsername(String(u.username));
         if (u?.id) { setCurrentUserId(String(u.id)); return; }
       }
-      // Fallback: décoder le JWT
+      // Filet de sécurité : décodage JWT robuste (base64url → base64 + padding).
       const token = localStorage.getItem('token');
       if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        setCurrentUserId(String(payload.sub));
+        const part = token.split('.')[1] || '';
+        const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+          .padEnd(part.length + (4 - (part.length % 4)) % 4, '=');
+        const payload = JSON.parse(atob(b64));
+        if (payload?.sub) setCurrentUserId(String(payload.sub));
       }
     } catch (e) {
       console.error("Failed to get current user:", e);
@@ -336,14 +340,17 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
                 <MoreVertical size={20} />
               </button>
               {showOptions && (
-                <div className="absolute top-full right-0 mt-2 w-36 bg-slate-800/95 backdrop-blur-md rounded-lg shadow-xl overflow-hidden">
+                <div
+                  className="absolute top-full right-0 mt-2 w-36 backdrop-blur-md rounded-xl shadow-xl overflow-hidden"
+                  style={{ background: `${SURFACE.high}f2`, border: `1px solid ${OUTLINE}` }}
+                >
                   <button
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      setShowConfirmModal(true); 
-                      setShowOptions(false); 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowConfirmModal(true);
+                      setShowOptions(false);
                     }}
-                    className="flex items-center w-full px-4 py-3 text-sm text-red-400 hover:bg-slate-700/50 transition-colors"
+                    className="flex items-center w-full px-4 py-3 text-sm text-red-400 hover:bg-white/5 transition-colors"
                   >
                     <Trash2 size={16} className="mr-2" /> Supprimer
                   </button>
@@ -570,20 +577,22 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => setShowConfirmModal(false)}
         >
-          <div 
-            className="bg-slate-900 rounded-2xl p-6 shadow-2xl max-w-sm w-full text-center"
+          <div
+            className="rounded-2xl p-6 shadow-2xl max-w-sm w-full text-center"
+            style={{ background: SURFACE.container, border: `1px solid ${OUTLINE}` }}
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-xl font-bold text-white mb-2">
               Supprimer cette story ?
             </h3>
-            <p className="text-slate-400 mb-6 text-sm">
+            <p className="mb-6 text-sm" style={{ color: TEXT.muted }}>
               Cette action est irréversible
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowConfirmModal(false)}
-                className="flex-1 px-5 py-2.5 rounded-xl bg-slate-700 text-white hover:bg-slate-600 transition-colors font-medium"
+                className="flex-1 px-5 py-2.5 rounded-xl text-white transition-colors font-medium hover:opacity-90"
+                style={{ background: SURFACE.high }}
               >
                 Annuler
               </button>

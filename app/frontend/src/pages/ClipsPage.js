@@ -8,14 +8,17 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
+import { SURFACE, TEXT, ACCENT } from "@/lib/theme";
 
+// Tokens dérivés de la source unique (@/lib/theme) : cohérence avec Messages /
+// Stories / Profil.
 const C = {
-  surface:   "#0b1326",
-  high:      "#222a3d",
-  cyan:      (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
-  onPrimary: "#00363e",
-  outline:   "#859397",
-  onSurface: "#dae2fd",
+  surface:   SURFACE.base,
+  high:      SURFACE.high,
+  cyan:      ACCENT,
+  onPrimary: TEXT.onAccent,
+  outline:   TEXT.muted,
+  onSurface: TEXT.primary,
 };
 
 const fmtNum = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
@@ -206,7 +209,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     const watch = Math.round(watchMsRef.current);
     if (watch < 300) return; // trop court → bruit, on n'envoie pas
     const completed = completedRef.current || (durMs > 0 && watch >= durMs * 0.9);
-    axios.post(`${API}/clips/${post.id}/watch`, { watch_ms: watch, duration_ms: durMs, completed }).catch(() => {});
+    axios.post(`${API}/clips/${post.id}/watch`, { watched_ms: watch, duration_ms: durMs, completed }).catch(() => {});
   };
 
   useEffect(() => {
@@ -375,12 +378,22 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const toggleFullscreen = async (e) => {
     e?.stopPropagation();
     const el = sceneRef.current;
+    const video = videoRef.current;
     if (!el) return;
+    // iOS (Safari/Chrome) n'expose PAS le plein écran d'élément : seul
+    // <video>.webkitEnterFullscreen() fonctionne. Sans ce repli, le bouton
+    // « plein écran » ne faisait strictement rien sur iPhone.
+    const canElementFs = !!(el.requestFullscreen || el.webkitRequestFullscreen);
     try {
-      if (!document.fullscreenElement) {
-        await (el.requestFullscreen?.() || el.webkitRequestFullscreen?.());
-        // Best-effort : verrouille l'orientation paysage (mobiles compatibles).
-        try { await window.screen?.orientation?.lock?.("landscape"); } catch { /* refusé sur PC */ }
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        if (canElementFs) {
+          await (el.requestFullscreen?.() || el.webkitRequestFullscreen?.());
+          // Best-effort : verrouille l'orientation paysage (mobiles compatibles).
+          try { await window.screen?.orientation?.lock?.("landscape"); } catch { /* refusé sur PC */ }
+        } else if (video?.webkitEnterFullscreen) {
+          // iPhone : plein écran natif de la vidéo (contrôles système inclus).
+          video.webkitEnterFullscreen();
+        }
       } else {
         try { window.screen?.orientation?.unlock?.(); } catch { /* ignore */ }
         await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());

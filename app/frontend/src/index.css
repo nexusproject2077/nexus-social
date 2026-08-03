@@ -41,6 +41,31 @@ html {
 }
 
 /*
+ * Interactions « chrome » iOS neutralisées sur TOUTES les pages (demande
+ * explicite) :
+ *  - -webkit-tap-highlight-color: transparent → supprime le flash gris au tap.
+ *  - -webkit-touch-callout: none (sur les contrôles) → supprime le menu
+ *    contextuel « Copier / Enregistrer » au appui long sur les boutons/liens.
+ *  - overscroll-behavior-y: none → coupe le pull-to-refresh natif et le rebond.
+ * On PRÉSERVE volontairement la sélection de texte et l'appui long sur les
+ * VRAIS contenus (messages, images à enregistrer, champs de saisie).
+ */
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+button,
+[role="button"],
+.material-symbols-outlined {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+html,
+body {
+    overscroll-behavior-y: none;
+}
+
+/*
  * Bloque le « rubber-band » iOS : ce rebond en fin de scroll (quand on pose le
  * doigt et qu'on glisse vers le haut/bas au-delà du contenu) faisait apparaître
  * une bande noire et donnait l'impression que « ça change de couleur ».

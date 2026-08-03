@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Heart, MessageCircle, UserPlus, Image, Check, X } from 'lucide-react';
 import { API } from '../App';
+import { enablePush } from '@/lib/push';
 import { useNavigate } from 'react-router-dom';
 
 interface Notification {
@@ -198,10 +199,11 @@ export default function NotificationDropdown() {
     return date.toLocaleDateString('fr-FR');
   };
 
-  // Demander la permission pour les notifications navigateur
+  // Demander la permission ET abonner au push (notifications app fermée).
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+    if ('Notification' in window && Notification.permission !== 'denied') {
+      // interactive:true → autorise la demande de permission puis l'abonnement.
+      enablePush({ interactive: true });
     }
   }, []);
 

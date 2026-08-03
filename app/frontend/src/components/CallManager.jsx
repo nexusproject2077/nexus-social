@@ -57,6 +57,54 @@ const getMedia = async (video) => {
 
 const fmtDuration = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
+// Renvoie un flux dont la VIDÉO est inversée horizontalement (miroir), pour que
+// le correspondant voie l'image comme l'utilisateur se voit dans sa vignette.
+// Utilise un <canvas> (le CSS ne peut pas modifier le flux ENVOYÉ en WebRTC).
+// Repli sûr : en cas de souci (API non dispo), renvoie le flux d'origine —
+// donc jamais pire que le comportement standard actuel.
+function makeMirroredStream(camStream) {
+  try {
+    const vTrack = camStream.getVideoTracks()[0];
+    if (!vTrack) return { stream: camStream, cleanup: () => {} };
+    const s = vTrack.getSettings ? vTrack.getSettings() : {};
+    const w = s.width || 640, h = s.height || 480;
+    const srcVideo = document.createElement("video");
+    srcVideo.srcObject = new MediaStream([vTrack]);
+    srcVideo.muted = true;
+    srcVideo.playsInline = true;
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx || !canvas.captureStream) return { stream: camStream, cleanup: () => {} };
+    let raf = 0;
+    const draw = () => {
+      try {
+        if (srcVideo.readyState >= 2) {
+          ctx.save();
+          ctx.scale(-1, 1);
+          ctx.drawImage(srcVideo, -w, 0, w, h);
+          ctx.restore();
+        }
+      } catch { /* frame ignorée */ }
+      raf = requestAnimationFrame(draw);
+    };
+    srcVideo.play().catch(() => {});
+    draw();
+    const out = canvas.captureStream(30);
+    const mTrack = out.getVideoTracks()[0];
+    if (!mTrack) { cancelAnimationFrame(raf); return { stream: camStream, cleanup: () => {} }; }
+    const stream = new MediaStream([mTrack, ...camStream.getAudioTracks()]);
+    const cleanup = () => {
+      try { cancelAnimationFrame(raf); } catch { /* ignore */ }
+      try { mTrack.stop(); } catch { /* ignore */ }
+      try { srcVideo.srcObject = null; } catch { /* ignore */ }
+    };
+    return { stream, cleanup };
+  } catch {
+    return { stream: camStream, cleanup: () => {} };
+  }
+}
+
 const C = {
   bg: "#020617", surface: "#0b1326", high: "#222a3d",
   cyan: (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
@@ -96,6 +144,7 @@ export default function CallManager({ user }) {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null); // sortie audio quand il n'y a pas de vidéo
+  const mirrorCleanupRef = useRef(null); // arrêt du canvas miroir (flux envoyé)
 
   const sendSignal = useCallback((toId, signal) => {
     if (!toId) return;
@@ -105,6 +154,8 @@ export default function CallManager({ user }) {
   const cleanup = useCallback(() => {
     try { pcRef.current?.close(); } catch { /* déjà fermé */ }
     pcRef.current = null;
+    try { mirrorCleanupRef.current?.(); } catch { /* ignore */ }
+    mirrorCleanupRef.current = null;
     if (localStreamRef.current) { localStreamRef.current.getTracks().forEach((t) => t.stop()); }
     localStreamRef.current = null;
     remoteStreamRef.current = null;
@@ -147,7 +198,16 @@ export default function CallManager({ user }) {
       setWithVideo(gotVideo);
       setPhase("outgoing");
       const pc = createPC(userId);
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      // On ENVOIE une version miroir de la vidéo (le correspondant nous voit
+      // comme dans notre vignette). L'aperçu local garde le flux caméra brut +
+      // miroir CSS. Audio inchangé.
+      let sendStream = stream;
+      if (gotVideo) {
+        const m = makeMirroredStream(stream);
+        sendStream = m.stream;
+        mirrorCleanupRef.current = m.cleanup;
+      }
+      sendStream.getTracks().forEach((t) => pc.addTrack(t, sendStream));
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       sendSignal(userId, { kind: "offer", call_id: callIdRef.current, sdp: pc.localDescription, video: gotVideo });
@@ -162,10 +222,17 @@ export default function CallManager({ user }) {
     const offer = pendingOfferRef.current;
     if (!offer || !peer) return;
     try {
-      const { stream } = await getMedia(withVideo);
+      const { stream, video: gotVideo } = await getMedia(withVideo);
       localStreamRef.current = stream;
       const pc = createPC(peer.id);
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      // Idem appel sortant : on envoie la vidéo en miroir.
+      let sendStream = stream;
+      if (gotVideo) {
+        const m = makeMirroredStream(stream);
+        sendStream = m.stream;
+        mirrorCleanupRef.current = m.cleanup;
+      }
+      sendStream.getTracks().forEach((t) => pc.addTrack(t, sendStream));
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       for (const c of pendingCandidatesRef.current) { try { await pc.addIceCandidate(c); } catch { /* ignore */ } }
       pendingCandidatesRef.current = [];
