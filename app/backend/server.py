@@ -7841,14 +7841,49 @@ async def _startup_warmup():
         logger.warning(f"Index push_subscriptions non créé (peut déjà exister): {e}")
 
 
+async def _keep_alive_loop():
+    """Auto-ping toutes les 5 min pour empêcher Render (offre gratuite) d'endormir
+    le service → plus de « cold start » de plusieurs minutes au réveil.
+
+    Utilise l'URL publique fournie par Render (RENDER_EXTERNAL_URL). En local
+    (variable absente), la boucle ne fait rien. Best-effort : les échecs sont
+    ignorés. Intervalle réglable via KEEP_ALIVE_SECONDS (défaut 300 s = 5 min)."""
+    base = (os.environ.get("RENDER_EXTERNAL_URL") or "").rstrip("/")
+    if not base:
+        logger.info("ℹ️ Keep-alive désactivé (RENDER_EXTERNAL_URL absente)")
+        return
+    ping_url = base + "/healthz"
+    try:
+        interval = max(60, int(os.environ.get("KEEP_ALIVE_SECONDS", "300")))
+    except ValueError:
+        interval = 300
+    import urllib.request
+    logger.info(f"✅ Keep-alive actif : ping {ping_url} toutes les {interval}s")
+
+    def _ping():
+        try:
+            with urllib.request.urlopen(ping_url, timeout=30) as r:
+                r.read()
+        except Exception:
+            pass
+
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await asyncio.to_thread(_ping)
+        except Exception:
+            pass
+
+
 @app.on_event("startup")
 async def startup_db_client():
-    """Démarrage NON bloquant : on lance le réchauffage DB et la boucle
-    « tendance » en tâches de fond, pour que le serveur réponde tout de suite."""
+    """Démarrage NON bloquant : on lance le réchauffage DB, la boucle « tendance »
+    et le keep-alive en tâches de fond, pour que le serveur réponde tout de suite."""
     try:
         asyncio.create_task(_startup_warmup())
         asyncio.create_task(trending_notifier_loop())
-        logger.info("✅ Démarrage : réchauffage DB + trending notifier lancés en fond")
+        asyncio.create_task(_keep_alive_loop())
+        logger.info("✅ Démarrage : réchauffage DB + trending + keep-alive lancés en fond")
     except Exception as e:
         logger.error(f"Impossible de lancer les tâches de démarrage: {e}")
 
