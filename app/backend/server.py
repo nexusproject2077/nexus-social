@@ -7920,28 +7920,32 @@ def _send_sms_sync(phone: str, text: str) -> bool:
     """Envoi SMS best-effort. Essaie Twilio puis Brevo SMS selon la config env.
     Renvoie True si un fournisseur a accepté l'envoi, False sinon."""
     import requests as _rq
+    digits = re.sub(r"\D", "", phone or "")          # chiffres seuls (Brevo)
+    e164 = ("+" + digits) if digits else ""           # format E.164 (Twilio)
+
     # Twilio (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM)
     sid = os.environ.get("TWILIO_ACCOUNT_SID")
     tok = os.environ.get("TWILIO_AUTH_TOKEN")
     frm = os.environ.get("TWILIO_FROM")
-    if sid and tok and frm:
+    if sid and tok and frm and e164:
         try:
             r = _rq.post(
                 f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
-                data={"From": frm, "To": phone, "Body": text}, auth=(sid, tok), timeout=15)
+                data={"From": frm, "To": e164, "Body": text}, auth=(sid, tok), timeout=15)
             if r.status_code < 300:
                 return True
         except Exception:
             pass
-    # Brevo SMS (BREVO_API_KEY / BREVO_SMS_SENDER)
+
+    # Brevo SMS (BREVO_API_KEY / BREVO_SMS_SENDER) — recipient sans « + ».
     bk = os.environ.get("BREVO_API_KEY")
     sender = os.environ.get("BREVO_SMS_SENDER")
-    if bk and sender:
+    if bk and sender and digits:
         try:
             r = _rq.post(
                 "https://api.brevo.com/v3/transactionalSMS/sms",
                 headers={"api-key": bk, "Content-Type": "application/json", "accept": "application/json"},
-                json={"type": "transactional", "sender": sender[:11], "recipient": phone, "content": text},
+                json={"type": "transactional", "sender": sender[:11], "recipient": digits, "content": text},
                 timeout=15)
             if r.status_code < 300:
                 return True
