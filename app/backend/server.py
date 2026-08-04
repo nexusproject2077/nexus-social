@@ -8143,8 +8143,20 @@ async def admin_approve_verification(sub_id: str, current_user: dict = Depends(g
     await db.identity_submissions.update_one({"id": sub_id}, {
         "$set": {"status": "verified", "reviewed_at": datetime.now(timezone.utc).isoformat()},
         "$unset": {"document_enc": "", "selfie_enc": ""}})
+    # Prévient l'utilisateur (push même déconnecté + temps réel + notif in-app).
+    uid = sub["user_id"]
     try:
-        await create_notification(sub["user_id"], "security", {"id": "system", "username": "Nexus Social"})
+        await send_web_push(uid, "Nexus Social", "Ton identité a été vérifiée ✓ Badge activé.",
+                            "/profil/" + uid, tag="verif-result")
+    except Exception:
+        pass
+    try:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()), "user_id": uid, "type": "verification_approved",
+            "from_username": "Nexus Social", "content": "Ton identité a été vérifiée ✓",
+            "read": False, "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await push_realtime(uid, {"type": "verification_approved"})
     except Exception:
         pass
     return {"status": "verified"}
@@ -8157,11 +8169,31 @@ async def admin_reject_verification(sub_id: str, data: RejectIn, current_user: d
     sub = await db.identity_submissions.find_one({"id": sub_id})
     if not sub:
         raise HTTPException(status_code=404, detail="Soumission introuvable")
+    reason = (data.reason or "Document non conforme")[:300]
     await db.users.update_one({"id": sub["user_id"]}, {"$set": {"verification_status": "rejected"}})
     await db.identity_submissions.update_one({"id": sub_id}, {
-        "$set": {"status": "rejected", "rejection_reason": (data.reason or "Document non conforme")[:300],
+        "$set": {"status": "rejected", "rejection_reason": reason,
                  "reviewed_at": datetime.now(timezone.utc).isoformat()},
         "$unset": {"document_enc": "", "selfie_enc": ""}})  # purge aussi en cas de refus
+    # Prévient l'utilisateur : push (même déconnecté) + notif in-app + temps réel
+    # (le front affichera un pop-up bloquant l'invitant à recommencer).
+    uid = sub["user_id"]
+    try:
+        await send_web_push(uid, "Nexus Social",
+                            f"Vérification refusée : {reason}. Merci de recommencer.",
+                            "/settings", tag="verif-result")
+    except Exception:
+        pass
+    try:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()), "user_id": uid, "type": "verification_rejected",
+            "from_username": "Nexus Social", "content": f"Vérification refusée : {reason}",
+            "reason": reason, "url": "/settings", "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await push_realtime(uid, {"type": "verification_rejected", "reason": reason})
+    except Exception:
+        pass
     return {"status": "rejected"}
 
 # ==================== END ENHANCED FEATURES ====================

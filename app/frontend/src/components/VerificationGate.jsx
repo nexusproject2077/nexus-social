@@ -4,7 +4,7 @@
 //             l'accès est bloqué). Une fois soumise (en cours de revue) ou
 //             validée, l'accès est débloqué.
 // Les admins sont exemptés (ils doivent pouvoir traiter les demandes).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
@@ -26,6 +26,14 @@ export default function VerificationGate({ user, setUser }) {
   const needAge = user?.age_verified !== true;
   const status = user?.verification_status || "unverified";
   const needId = !needAge && !["pending", "verified"].includes(status);
+
+  // Motif du refus (pour l'afficher précisément dans le pop-up).
+  const [reason, setReason] = useState("");
+  useEffect(() => {
+    if (status === "rejected") {
+      axios.get(`${API}/verify/status`).then((r) => setReason(r.data?.rejection_reason || "")).catch(() => {});
+    }
+  }, [status]);
 
   const refresh = async () => {
     try { const me = await axios.get(`${API}/auth/me`); setUser && setUser(me.data); }
@@ -121,9 +129,12 @@ export default function VerificationGate({ user, setUser }) {
           </p>
         </div>
         {status === "rejected" && (
-          <p className="text-xs px-3 py-2 rounded-lg mb-3" style={{ background: "rgba(248,113,113,0.12)", color: "#f87171" }}>
-            Ta précédente pièce a été refusée. Merci d'en renvoyer une nouvelle, nette et lisible.
-          </p>
+          <div className="px-3 py-2 rounded-lg mb-3" style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.3)" }}>
+            <p className="text-xs font-bold" style={{ color: "#f87171" }}>Vérification refusée</p>
+            <p className="text-xs mt-0.5" style={{ color: "#f8b4b4" }}>
+              Motif : {reason || "document non conforme"}. Merci de recommencer avec une photo nette et lisible.
+            </p>
+          </div>
         )}
         <div className="flex flex-wrap gap-2 mb-3">
           {[["id_card", "Carte d'identité"], ["passport", "Passeport"], ["residence_permit", "Titre de séjour"]].map(([v, l]) => (

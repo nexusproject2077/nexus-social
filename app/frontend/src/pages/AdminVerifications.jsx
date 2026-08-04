@@ -50,11 +50,10 @@ export default function AdminVerifications({ user, setUser }) {
     catch (e) { toast.error(e.response?.data?.detail || "Échec."); }
     finally { setBusyId(null); }
   };
-  const reject = async (id) => {
-    const reason = window.prompt("Motif du refus (visible par l'utilisateur) :", "Document illisible ou non conforme");
-    if (reason === null) return;
+  const reject = async (id, reason) => {
+    if (!reason) return;
     setBusyId(id);
-    try { await axios.post(`${API}/admin/verifications/${id}/reject`, { reason }); toast.success("Refusé"); setItems((p) => p.filter((x) => x.id !== id)); }
+    try { await axios.post(`${API}/admin/verifications/${id}/reject`, { reason }); toast.success("Refusé — l'utilisateur est prévenu."); setItems((p) => p.filter((x) => x.id !== id)); }
     catch (e) { toast.error(e.response?.data?.detail || "Échec."); }
     finally { setBusyId(null); }
   };
@@ -93,14 +92,30 @@ export default function AdminVerifications({ user, setUser }) {
                   <DocPreview subId={it.id} kind="document" label="Pièce d'identité" />
                   {it.has_selfie && <DocPreview subId={it.id} kind="selfie" label="Selfie" />}
                 </div>
-                <div className="flex gap-2">
-                  <button disabled={busyId === it.id} onClick={() => approve(it.id)}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-black disabled:opacity-40" style={{ background: ACCENT, color: "#00363e" }}>
-                    Valider
-                  </button>
-                  <button disabled={busyId === it.id} onClick={() => reject(it.id)}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-black disabled:opacity-40" style={{ background: "rgba(248,113,113,0.15)", color: "#f87171" }}>
-                    Refuser
+                <button disabled={busyId === it.id} onClick={() => approve(it.id)}
+                  className="w-full py-2.5 rounded-xl text-sm font-black disabled:opacity-40 mb-2" style={{ background: ACCENT, color: "#00363e" }}>
+                  ✓ Valider
+                </button>
+                <p className="text-[11px] font-bold mb-1" style={{ color: "#859397" }}>Refuser avec un motif (l'utilisateur devra recommencer) :</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "Document illisible",
+                    "Document non conforme",
+                    "Selfie ne correspond pas",
+                    "Pièce périmée",
+                    "Photo floue / reflets",
+                  ].map((r) => (
+                    <button key={r} disabled={busyId === it.id} onClick={() => reject(it.id, r)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40"
+                      style={{ background: "rgba(248,113,113,0.12)", color: "#f87171", border: "1px solid rgba(248,113,113,0.25)" }}>
+                      {r}
+                    </button>
+                  ))}
+                  <button disabled={busyId === it.id}
+                    onClick={() => { const r = window.prompt("Autre motif (visible par l'utilisateur) :", ""); if (r) reject(it.id, r); }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40"
+                    style={{ background: "#131b2e", color: "#859397", border: "1px solid #2a3550" }}>
+                    Autre motif…
                   </button>
                 </div>
               </div>

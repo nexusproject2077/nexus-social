@@ -3,6 +3,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
+import { toast } from "sonner";
 import CookieConsent from "./components/CookieConsent";
 import VerificationGate from "@/components/VerificationGate";
 import AdminVerifications from "@/pages/AdminVerifications";
@@ -138,6 +139,24 @@ function App() {
   useEffect(() => {
     initAccent(); // Applique la couleur d'accentuation choisie
     checkAuth();
+  }, []);
+
+  // Résultat de vérification d'identité en TEMPS RÉEL : si l'admin refuse (ou
+  // valide), on rafraîchit l'utilisateur → le gate/pop-up réapparaît aussitôt
+  // avec le motif, sans que la personne ait à recharger la page.
+  useEffect(() => {
+    const onRealtime = (e) => {
+      const t = e?.detail?.type;
+      if (t === "verification_rejected") {
+        toast.error(`Vérification refusée : ${e.detail.reason || "document non conforme"}. Merci de recommencer.`);
+        checkAuth();
+      } else if (t === "verification_approved") {
+        toast.success("Ton identité a été vérifiée ✓");
+        checkAuth();
+      }
+    };
+    window.addEventListener("nexus:realtime", onRealtime);
+    return () => window.removeEventListener("nexus:realtime", onRealtime);
   }, []);
   // NB : l'enregistrement du Service Worker est fait dans index.js, et le
   // ré-abonnement push silencieux dans l'effet [user?.id] ci-dessus.
