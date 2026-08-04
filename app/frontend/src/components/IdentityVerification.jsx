@@ -36,7 +36,8 @@ export default function IdentityVerification() {
   const [phoneCode, setPhoneCode] = useState("");
 
   const [docType, setDocType] = useState("id_card");
-  const [file, setFile] = useState(null);
+  const [idFile, setIdFile] = useState(null);
+  const [selfieFile, setSelfieFile] = useState(null);
 
   const load = () => axios.get(`${API}/verify/status`).then((r) => setSt(r.data)).catch(() => setSt({}));
   useEffect(() => { load(); }, []);
@@ -84,15 +85,17 @@ export default function IdentityVerification() {
 
   // --- Pièce d'identité ---
   const submitDoc = async () => {
-    if (!file) return toast.error("Choisis une photo de ta pièce d'identité.");
+    if (!idFile) return toast.error("Prends la photo de ta pièce.");
+    if (!selfieFile) return toast.error("Prends ton selfie.");
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", idFile);
+      fd.append("selfie", selfieFile);
       fd.append("doc_type", docType);
       await axios.post(`${API}/verify/identity/submit`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success("Pièce envoyée. Vérification en cours.");
-      setFile(null); load();
+      toast.success("Pièce + selfie envoyés. Vérification en cours.");
+      setIdFile(null); setSelfieFile(null); load();
     } catch (e) { toast.error(e.response?.data?.detail || "Envoi impossible."); }
     finally { setBusy(false); }
   };
@@ -202,9 +205,14 @@ export default function IdentityVerification() {
                   style={{ background: docType === v ? ACCENT : "#0b1326", color: docType === v ? "#00363e" : "#859397", border: "1px solid #2a3550" }}>{l}</button>
               ))}
             </div>
-            <IdCameraCapture onCapture={setFile} />
-            <button disabled={busy || !file} onClick={submitDoc} className="w-full py-2.5 rounded-xl text-sm font-black disabled:opacity-40"
-              style={{ background: file ? ACCENT : "#0b1326", color: file ? "#00363e" : "#5b6b8c", border: "1px solid #2a3550" }}>{busy ? "Envoi…" : "Envoyer pour vérification"}</button>
+            <p className="text-[11px] font-bold" style={{ color: idFile ? ACCENT : "#bbc9cd" }}>1. Photo de ta pièce {idFile ? "✓" : ""}</p>
+            <IdCameraCapture onCapture={setIdFile} facingMode="environment" />
+            {idFile && (<>
+              <p className="text-[11px] font-bold mt-2" style={{ color: selfieFile ? ACCENT : "#bbc9cd" }}>2. Selfie (visage) {selfieFile ? "✓" : ""}</p>
+              <IdCameraCapture onCapture={setSelfieFile} facingMode="user" />
+            </>)}
+            <button disabled={busy || !idFile || !selfieFile} onClick={submitDoc} className="w-full py-2.5 rounded-xl text-sm font-black disabled:opacity-40"
+              style={{ background: (idFile && selfieFile) ? ACCENT : "#0b1326", color: (idFile && selfieFile) ? "#00363e" : "#5b6b8c", border: "1px solid #2a3550" }}>{busy ? "Envoi…" : "Envoyer pour vérification"}</button>
           </div>
         )}
       </Row>

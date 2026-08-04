@@ -12,23 +12,24 @@ const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("ne
 const CARD = { background: "#171f33", border: "1px solid rgba(255,255,255,0.06)" };
 const DOC_LABEL = { id_card: "Carte d'identité", passport: "Passeport", residence_permit: "Titre de séjour" };
 
-function DocPreview({ subId }) {
+function DocPreview({ subId, kind = "document", label }) {
   const [url, setUrl] = useState(null);
-  const [type, setType] = useState("");
   const [err, setErr] = useState(false);
   useEffect(() => {
     let obj;
-    axios.get(`${API}/admin/verifications/${subId}/document`, { responseType: "blob" })
-      .then((r) => { obj = URL.createObjectURL(r.data); setUrl(obj); setType(r.data.type || ""); })
+    axios.get(`${API}/admin/verifications/${subId}/document`, { params: { kind }, responseType: "blob" })
+      .then((r) => { obj = URL.createObjectURL(r.data); setUrl(obj); })
       .catch(() => setErr(true));
     return () => { if (obj) URL.revokeObjectURL(obj); };
-  }, [subId]);
-  if (err) return <p className="text-xs" style={{ color: "#f87171" }}>Document indisponible.</p>;
-  if (!url) return <div className="animate-spin rounded-full h-6 w-6 border-b-2 my-4" style={{ borderColor: ACCENT }} />;
-  if (type === "application/pdf") {
-    return <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold" style={{ color: ACCENT }}>Ouvrir le PDF ↗</a>;
-  }
-  return <img src={url} alt="Pièce" className="max-h-72 rounded-xl border" style={{ borderColor: "#2a3550" }} />;
+  }, [subId, kind]);
+  return (
+    <div className="flex-1 min-w-0">
+      <p className="text-[11px] font-bold mb-1 text-center" style={{ color: "#859397" }}>{label}</p>
+      {err ? <p className="text-xs text-center" style={{ color: "#f87171" }}>Indisponible</p>
+        : !url ? <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor: ACCENT }} /></div>
+        : <img src={url} alt={label} className="w-full max-h-64 object-contain rounded-xl border" style={{ borderColor: "#2a3550" }} />}
+    </div>
+  );
 }
 
 export default function AdminVerifications({ user, setUser }) {
@@ -88,8 +89,9 @@ export default function AdminVerifications({ user, setUser }) {
                     </p>
                   </div>
                 </div>
-                <div className="flex justify-center mb-3 rounded-xl p-2" style={{ background: "#0b1326" }}>
-                  <DocPreview subId={it.id} />
+                <div className="flex gap-2 mb-3 rounded-xl p-2" style={{ background: "#0b1326" }}>
+                  <DocPreview subId={it.id} kind="document" label="Pièce d'identité" />
+                  {it.has_selfie && <DocPreview subId={it.id} kind="selfie" label="Selfie" />}
                 </div>
                 <div className="flex gap-2">
                   <button disabled={busyId === it.id} onClick={() => approve(it.id)}

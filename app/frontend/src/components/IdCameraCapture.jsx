@@ -5,11 +5,12 @@ import { useEffect, useRef, useState } from "react";
 
 const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
 
-export default function IdCameraCapture({ onCapture }) {
+export default function IdCameraCapture({ onCapture, facingMode = "environment", hint }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const [err, setErr] = useState("");
   const [preview, setPreview] = useState(null); // URL de la photo capturée
+  const isSelfie = facingMode === "user";
 
   const stop = () => {
     try { streamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
@@ -20,7 +21,7 @@ export default function IdCameraCapture({ onCapture }) {
     setErr("");
     try {
       const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } }, // caméra arrière si dispo
+        video: { facingMode: { ideal: facingMode } }, // arrière (pièce) ou avant (selfie)
         audio: false,
       });
       streamRef.current = s;
@@ -80,11 +81,13 @@ export default function IdCameraCapture({ onCapture }) {
           <img src={preview} alt="Pièce capturée" className="w-full h-full object-contain" />
         ) : (
           <>
-            <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover" />
-            {/* Cadre repère pour aligner la pièce */}
-            <div className="absolute inset-4 rounded-lg pointer-events-none" style={{ border: "2px dashed rgba(255,255,255,0.5)" }} />
+            <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover"
+              style={isSelfie ? { transform: "scaleX(-1)" } : undefined} />
+            {/* Cadre repère */}
+            <div className={`absolute inset-4 pointer-events-none ${isSelfie ? "rounded-full" : "rounded-lg"}`}
+              style={{ border: "2px dashed rgba(255,255,255,0.5)" }} />
             <div className="absolute bottom-1 inset-x-0 text-center text-[11px]" style={{ color: "rgba(255,255,255,0.8)" }}>
-              Place ta pièce dans le cadre, bien lisible
+              {hint || (isSelfie ? "Centre ton visage dans le cercle" : "Place ta pièce dans le cadre, bien lisible")}
             </div>
           </>
         )}

@@ -7982,46 +7982,90 @@ async def verify_phone_confirm(data: OtpConfirm, current_user: dict = Depends(ge
 
 
 # ---- Niveau 2 : pièce d'identité (chiffrée) → revue admin ------------------
+async def _admin_ids() -> list:
+    """IDs des comptes administrateurs (via ADMIN_EMAILS)."""
+    if not ADMIN_EMAILS:
+        return []
+    try:
+        rows = await db.users.find({"email": {"$in": list(ADMIN_EMAILS)}}, {"id": 1}).to_list(length=50)
+        return [r["id"] for r in rows if r.get("id")]
+    except Exception:
+        return []
+
+
+async def _notify_admins_new_verification(username: str):
+    """Prévient les admins (push navigateur, même déconnectés) + notif in-app."""
+    for aid in await _admin_ids():
+        try:
+            await send_web_push(
+                aid, "Nexus Social",
+                f"@{username} a soumis une vérification d'identité",
+                "/admin/verifications", tag="verification")
+        except Exception:
+            pass
+        try:
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()), "user_id": aid, "type": "verification",
+                "from_username": username, "post_id": None,
+                "content": f"@{username} a soumis une vérification d'identité",
+                "url": "/admin/verifications", "read": False,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            await push_realtime(aid, {"type": "notification", "data": {"type": "verification"}})
+        except Exception:
+            pass
+
+
+async def _read_id_upload(f: UploadFile, label: str) -> str:
+    """Lit + valide + CHIFFRE un fichier de vérification. Renvoie le base64 chiffré."""
+    ctype = (f.content_type or "")
+    if not ctype.startswith("image/"):
+        raise HTTPException(status_code=400, detail=f"{label} invalide (image attendue).")
+    contents = await f.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail=f"{label} vide.")
+    if len(contents) > ID_DOC_MAX_BYTES:
+        raise HTTPException(status_code=413, detail=f"{label} trop lourd (max 8 Mo).")
+    return encrypt(base64.b64encode(contents).decode())
+
+
 @api_router.post("/verify/identity/submit")
 async def verify_identity_submit(
-    file: UploadFile = File(...),
-    doc_type: str = Form("id_card"),   # id_card | passport | residence_permit
+    file: UploadFile = File(...),               # photo de la pièce (caméra arrière)
+    selfie: UploadFile = File(None),            # selfie visage (caméra avant) — liveness
+    doc_type: str = Form("id_card"),            # id_card | passport | residence_permit
     current_user: dict = Depends(get_current_user),
 ):
-    """Soumission d'une pièce d'identité pour la vérification renforcée.
+    """Soumission pièce d'identité + selfie pour la vérification renforcée.
 
-    Le document est CHIFFRÉ au repos (jamais stocké/servi en clair) puis mis en
-    file de revue admin. Re-soumission autorisée après un refus.
+    Documents CHIFFRÉS au repos (jamais servis en clair), mis en revue admin,
+    purgés après décision. Re-soumission autorisée après un refus.
     """
-    ctype = (file.content_type or "")
-    if not (ctype.startswith("image/") or ctype == "application/pdf"):
-        raise HTTPException(status_code=400, detail="Document invalide (image ou PDF).")
-    contents = await file.read()
-    if not contents:
-        raise HTTPException(status_code=400, detail="Fichier vide.")
-    if len(contents) > ID_DOC_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="Document trop lourd (max 8 Mo).")
-
     u = await db.users.find_one({"id": current_user["id"]}, {"verification_status": 1, "is_verified": 1})
     if (u or {}).get("is_verified") or (u or {}).get("verification_status") == "verified":
         raise HTTPException(status_code=400, detail="Votre identité est déjà vérifiée.")
     if (u or {}).get("verification_status") == "pending":
         raise HTTPException(status_code=409, detail="Une vérification est déjà en cours.")
 
-    # Chiffrement au repos (Fernet). On stocke le base64 chiffré.
-    document_enc = encrypt(base64.b64encode(contents).decode())
+    document_enc = await _read_id_upload(file, "Pièce d'identité")
+    selfie_enc = await _read_id_upload(selfie, "Selfie") if selfie is not None else None
+
     sub_id = str(uuid.uuid4())
     await db.identity_submissions.insert_one({
         "id": sub_id,
         "user_id": current_user["id"],
         "username": current_user.get("username"),
         "doc_type": doc_type if doc_type in ("id_card", "passport", "residence_permit") else "id_card",
-        "content_type": ctype,
+        "content_type": file.content_type or "image/jpeg",
         "document_enc": document_enc,   # CHIFFRÉ — purgé après décision
+        "selfie_enc": selfie_enc,       # CHIFFRÉ — purgé après décision
+        "has_selfie": bool(selfie_enc),
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     await db.users.update_one({"id": current_user["id"]}, {"$set": {"verification_status": "pending"}})
+    # Prévient les admins (push même déconnectés). Best-effort.
+    await _notify_admins_new_verification(current_user.get("username") or "Un utilisateur")
     return {"submitted": True, "status": "pending"}
 
 
@@ -8059,24 +8103,27 @@ async def admin_list_verifications(status: str = "pending", current_user: dict =
     rows = await db.identity_submissions.find(
         {"status": status},
         {"id": 1, "user_id": 1, "username": 1, "doc_type": 1, "content_type": 1,
-         "status": 1, "created_at": 1},  # JAMAIS le document ici
+         "has_selfie": 1, "status": 1, "created_at": 1},  # JAMAIS les documents ici
     ).sort("created_at", -1).limit(100).to_list(length=100)
     return [convert_mongo_doc_to_dict(r) for r in rows]
 
 
 @api_router.get("/admin/verifications/{sub_id}/document")
-async def admin_get_verification_document(sub_id: str, current_user: dict = Depends(get_current_user)):
-    """Renvoie la pièce déchiffrée pour la revue (admin uniquement)."""
+async def admin_get_verification_document(sub_id: str, kind: str = "document",
+                                          current_user: dict = Depends(get_current_user)):
+    """Renvoie la pièce (kind=document) ou le selfie (kind=selfie) déchiffré,
+    pour la revue (admin uniquement)."""
     if not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
     sub = await db.identity_submissions.find_one({"id": sub_id})
-    if not sub or not sub.get("document_enc"):
-        raise HTTPException(status_code=404, detail="Document indisponible (déjà purgé ou introuvable).")
+    field = "selfie_enc" if kind == "selfie" else "document_enc"
+    if not sub or not sub.get(field):
+        raise HTTPException(status_code=404, detail="Média indisponible (déjà purgé ou introuvable).")
     try:
-        raw = base64.b64decode(decrypt(sub["document_enc"]))
+        raw = base64.b64decode(decrypt(sub[field]))
     except Exception:
         raise HTTPException(status_code=500, detail="Déchiffrement impossible.")
-    return Response(content=raw, media_type=sub.get("content_type") or "application/octet-stream")
+    return Response(content=raw, media_type=sub.get("content_type") or "image/jpeg")
 
 
 @api_router.post("/admin/verifications/{sub_id}/approve")
@@ -8088,10 +8135,10 @@ async def admin_approve_verification(sub_id: str, current_user: dict = Depends(g
         raise HTTPException(status_code=404, detail="Soumission introuvable")
     await db.users.update_one({"id": sub["user_id"]}, {"$set": {
         "verification_status": "verified", "is_verified": True}})
-    # Minimisation RGPD : on PURGE la pièce d'identité après validation.
+    # Minimisation RGPD : on PURGE la pièce + le selfie après validation.
     await db.identity_submissions.update_one({"id": sub_id}, {
         "$set": {"status": "verified", "reviewed_at": datetime.now(timezone.utc).isoformat()},
-        "$unset": {"document_enc": ""}})
+        "$unset": {"document_enc": "", "selfie_enc": ""}})
     try:
         await create_notification(sub["user_id"], "security", {"id": "system", "username": "Nexus Social"})
     except Exception:
@@ -8110,7 +8157,7 @@ async def admin_reject_verification(sub_id: str, data: RejectIn, current_user: d
     await db.identity_submissions.update_one({"id": sub_id}, {
         "$set": {"status": "rejected", "rejection_reason": (data.reason or "Document non conforme")[:300],
                  "reviewed_at": datetime.now(timezone.utc).isoformat()},
-        "$unset": {"document_enc": ""}})  # purge aussi en cas de refus
+        "$unset": {"document_enc": "", "selfie_enc": ""}})  # purge aussi en cas de refus
     return {"status": "rejected"}
 
 # ==================== END ENHANCED FEATURES ====================

@@ -18,9 +18,10 @@ export default function VerificationGate({ user, setUser }) {
   const [blocked, setBlocked] = useState(false);
   // Étape âge
   const [birthdate, setBirthdate] = useState("");
-  // Étape pièce
+  // Étape pièce + selfie
   const [docType, setDocType] = useState("id_card");
-  const [file, setFile] = useState(null);
+  const [idFile, setIdFile] = useState(null);
+  const [selfieFile, setSelfieFile] = useState(null);
 
   const needAge = user?.age_verified !== true;
   const status = user?.verification_status || "unverified";
@@ -49,14 +50,15 @@ export default function VerificationGate({ user, setUser }) {
   };
 
   const submitId = async () => {
-    if (!file) return toast.error("Choisis une photo de ta pièce d'identité.");
+    if (!idFile) return toast.error("Prends d'abord la photo de ta pièce.");
+    if (!selfieFile) return toast.error("Prends ton selfie pour valider.");
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.append("file", file); fd.append("doc_type", docType);
+      fd.append("file", idFile); fd.append("selfie", selfieFile); fd.append("doc_type", docType);
       await axios.post(`${API}/verify/identity/submit`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       await refresh();
-      toast.success("Pièce envoyée. Vérification en cours.");
+      toast.success("Pièce + selfie envoyés. Vérification en cours.");
     } catch (e) { toast.error(e.response?.data?.detail || "Envoi impossible."); }
     finally { setBusy(false); }
   };
@@ -129,12 +131,26 @@ export default function VerificationGate({ user, setUser }) {
               style={{ background: docType === v ? ACCENT : "#131b2e", color: docType === v ? "#00363e" : "#859397", border: "1px solid #2a3550" }}>{l}</button>
           ))}
         </div>
-        {/* Capture EN DIRECT (pas d'import de fichier → pas de photo retouchée). */}
-        <IdCameraCapture onCapture={setFile} />
-        <button disabled={busy || !file} onClick={submitId} className="w-full mt-3 py-3 rounded-2xl font-black disabled:opacity-40"
-          style={{ background: file ? ACCENT : "#171f33", color: file ? "#00363e" : "#5b6b8c" }}>{busy ? "Envoi…" : "Envoyer ma pièce d'identité"}</button>
+        {/* Étape A : pièce (caméra arrière) */}
+        <p className="text-[11px] font-bold mb-1 mt-1" style={{ color: idFile ? ACCENT : "#bbc9cd" }}>
+          1. Photo de ta pièce {idFile ? "✓" : ""}
+        </p>
+        <IdCameraCapture onCapture={setIdFile} facingMode="environment" />
+
+        {/* Étape B : selfie (caméra avant) — apparaît une fois la pièce prise */}
+        {idFile && (
+          <div className="mt-4">
+            <p className="text-[11px] font-bold mb-1" style={{ color: selfieFile ? ACCENT : "#bbc9cd" }}>
+              2. Selfie (visage) {selfieFile ? "✓" : ""}
+            </p>
+            <IdCameraCapture onCapture={setSelfieFile} facingMode="user" />
+          </div>
+        )}
+
+        <button disabled={busy || !idFile || !selfieFile} onClick={submitId} className="w-full mt-4 py-3 rounded-2xl font-black disabled:opacity-40"
+          style={{ background: (idFile && selfieFile) ? ACCENT : "#171f33", color: (idFile && selfieFile) ? "#00363e" : "#5b6b8c" }}>{busy ? "Envoi…" : "Envoyer pour vérification"}</button>
         <p className="text-center text-[11px] mt-3" style={{ color: "#5b6b8c" }}>
-          Photo prise en direct, chiffrée, jamais publique, supprimée après vérification (RGPD).
+          Photos prises en direct, chiffrées, jamais publiques, supprimées après vérification (RGPD).
         </p>
         <button onClick={logout} className="w-full mt-2 py-2 text-xs" style={{ color: "#5b6b8c" }}>Se déconnecter</button>
       </Wrap>
