@@ -91,7 +91,8 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 const EMOJIS = ["❤️", "😂", "😍", "🔥", "😮", "👏", "🙏", "😢", "🎉", "✨", "💯", "😎", "🥳", "👍", "😭", "🤔", "💀", "👀", "🙌", "🍀", "⭐", "🌈", "☀️", "🥰"];
 
-export default function StoryComposer({ user, onClose, onPublished }) {
+export default function StoryComposer({ user, onClose, onPublished, target = "story" }) {
+  const isClip = target === "clip";
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const fileRef = useRef(null);
@@ -599,6 +600,31 @@ export default function StoryComposer({ user, onClose, onPublished }) {
     setMode("camera");
   };
 
+  // Publication en tant que CLIP (Nexus Clips) : le média baké (vidéo) est
+  // envoyé à /clips. Réutilise toute l'interface caméra du composer.
+  const publishClip = async () => {
+    setPublishing(true);
+    try {
+      const curSeg = await packCurrentBaked();
+      const all = [...segments]; if (curSeg) all.push(curSeg);
+      const seg = all.find((s) => s.type === "video") || all[0];
+      if (!seg) { toast.error("Enregistre une vidéo pour ton clip."); setPublishing(false); return; }
+      if (seg.type !== "video") { toast.error("Un clip doit être une vidéo (mode CAMÉRA en enregistrant)."); setPublishing(false); return; }
+      const blob = await (await fetch(seg.media)).blob();
+      const file = new File([blob], `clip_${Date.now()}.mp4`, { type: blob.type || "video/mp4" });
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("caption", (seg.text || text || "").slice(0, 500));
+      await axios.post(`${API}/clips`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      toast.success("Clip publié 🎬");
+      onPublished?.();
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Publication impossible.");
+      setPublishing(false);
+    }
+  };
+
   const publish = async (vis, list) => {
     if (vis === "custom" && (!list || list.length === 0)) { setSheet(true); return; }
     setPublishing(true);
@@ -910,9 +936,22 @@ export default function StoryComposer({ user, onClose, onPublished }) {
       {!drawMode && (
         <div className="absolute bottom-0 left-0 right-0 px-4 pb-5 pt-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 18px)", background: "linear-gradient(to top, rgba(0,0,0,0.55), transparent)" }}>
           <input id="story-caption" value={text} onChange={(e) => setText(e.target.value.slice(0, 500))}
-            placeholder="Ajoutez une légende…"
+            placeholder={isClip ? "Ajoutez une légende à votre clip…" : "Ajoutez une légende…"}
             className="w-full text-sm px-1 py-2 bg-transparent border-none outline-none placeholder:text-white/70 text-white mb-2"
             style={{ WebkitUserSelect: "text", userSelect: "text" }} />
+          {isClip ? (
+            <div className="flex items-center gap-2">
+              <button onClick={addMore} disabled={publishing} className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: C.high }} aria-label="Ajouter un média">
+                <span className="material-symbols-outlined text-white">add</span>
+              </button>
+              <button onClick={publishClip} disabled={publishing}
+                className="flex-1 h-11 rounded-full font-black text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+                style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>
+                <span className="material-symbols-outlined">movie</span>
+                {publishing ? "Publication…" : "Publier le clip"}
+              </button>
+            </div>
+          ) : (
           <div className="flex items-center gap-2">
             <button onClick={() => publish("everyone")} disabled={publishing}
               className="flex items-center gap-2 pl-1 pr-4 h-11 rounded-full font-bold text-sm disabled:opacity-60" style={{ background: C.high, color: "#fff" }}>
@@ -934,7 +973,8 @@ export default function StoryComposer({ user, onClose, onPublished }) {
               <span className="material-symbols-outlined">arrow_forward</span>
             </button>
           </div>
-          {segments.length > 0 && (
+          )}
+          {!isClip && segments.length > 0 && (
             <p className="text-center text-[11px] mt-2 text-white/60">{segments.length} média{segments.length > 1 ? "s" : ""} ajouté{segments.length > 1 ? "s" : ""} — « Votre story » publie tout</p>
           )}
         </div>

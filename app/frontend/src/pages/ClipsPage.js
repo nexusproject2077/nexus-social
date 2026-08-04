@@ -9,6 +9,7 @@ import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
 import { SURFACE, TEXT, ACCENT } from "@/lib/theme";
+import StoryComposer from "@/components/StoryComposer";
 
 // Tokens dérivés de la source unique (@/lib/theme) : cohérence avec Messages /
 // Stories / Profil.
@@ -756,6 +757,7 @@ export default function ClipsPage({ user, setUser }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showComposer, setShowComposer] = useState(false); // caméra plein écran (création clip)
   const [view, setView] = useState("immersive"); // "immersive" | "grid"
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1008,6 +1010,8 @@ export default function ClipsPage({ user, setUser }) {
   };
 
   // Bouton flottant d'upload (réutilisé dans l'état vide et l'état principal)
+  // « + » = ouvre la caméra plein écran (composer). Appui LONG = import fichier.
+  const openImport = () => fileInputRef.current?.click();
   const uploadControls = (
     <>
       <input
@@ -1019,10 +1023,11 @@ export default function ClipsPage({ user, setUser }) {
         data-testid="clip-file-input"
       />
       <button
-        onClick={handleUploadClick}
+        onClick={() => setShowComposer(true)}
+        onContextMenu={(e) => { e.preventDefault(); openImport(); }}
         disabled={uploading}
         data-testid="upload-clip"
-        title="Publier un clip"
+        title="Créer un clip (caméra) — appui long : importer"
         className="fixed z-50 top-16 right-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
         style={{
           background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
@@ -1036,6 +1041,14 @@ export default function ClipsPage({ user, setUser }) {
           <span className="material-symbols-outlined text-2xl">add</span>
         )}
       </button>
+      {showComposer && (
+        <StoryComposer
+          target="clip"
+          user={user}
+          onClose={() => setShowComposer(false)}
+          onPublished={() => { setShowComposer(false); fetchClips(true); }}
+        />
+      )}
     </>
   );
 
@@ -1087,13 +1100,13 @@ export default function ClipsPage({ user, setUser }) {
             Publiez une vidéo pour qu'elle apparaisse ici
           </p>
           <button
-            onClick={handleUploadClick}
+            onClick={() => setShowComposer(true)}
             disabled={uploading}
             data-testid="upload-clip-empty"
             className="mt-2 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 active:scale-95 transition-all"
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary, opacity: uploading ? 0.6 : 1 }}
           >
-            <span className="material-symbols-outlined text-lg">upload</span>
+            <span className="material-symbols-outlined text-lg">videocam</span>
             {uploading ? `Publication… ${uploadProgress}%` : "Publier un clip"}
           </button>
         </div>
