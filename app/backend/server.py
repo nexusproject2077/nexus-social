@@ -1455,7 +1455,14 @@ async def login(credentials: UserLogin, request: Request):
     # Vérification avec protection contre les utilisateurs sans mot de passe
     if not user_raw or "password" not in user_raw or not pwd_context.verify(credentials.password, user_raw["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-   
+
+    # Compte bloqué pour non-respect de l'âge minimum (mineur confirmé < 15 ans).
+    if user_raw.get("age_blocked"):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Ce compte n'est pas éligible : l'âge minimum est de {MIN_SIGNUP_AGE} ans (loi française).",
+        )
+
     user = convert_mongo_doc_to_dict(user_raw)
     token = create_access_token({"sub": user["id"]})
    
@@ -7821,6 +7828,10 @@ async def _check_otp(user_id: str, kind: str, code: str) -> bool:
     return True
 
 
+class AgeIn(BaseModel):
+    birthdate: str  # AAAA-MM-JJ
+
+
 class OtpConfirm(BaseModel):
     code: str
 
@@ -7832,6 +7843,27 @@ class PhoneIn(BaseModel):
 
 class RejectIn(BaseModel):
     reason: Optional[str] = ""
+
+
+@api_router.post("/verify/age")
+async def verify_age(data: AgeIn, current_user: dict = Depends(get_current_user)):
+    """Contrôle d'âge pour les comptes EXISTANTS (créés avant le contrôle à
+    l'inscription). Confirme >= 15 ans (loi FR) : au-dessous → compte bloqué.
+    La date de naissance est chiffrée au repos ; on n'expose qu'un booléen."""
+    age = _compute_age(data.birthdate)
+    if age is None:
+        raise HTTPException(status_code=400, detail="Date de naissance invalide (format AAAA-MM-JJ).")
+    enc = encrypt(str(data.birthdate)[:10])
+    if age < MIN_SIGNUP_AGE:
+        await db.users.update_one({"id": current_user["id"]}, {"$set": {
+            "age_verified": False, "age_blocked": True, "birthdate_enc": enc}})
+        raise HTTPException(
+            status_code=403,
+            detail=f"Accès refusé : l'âge minimum est de {MIN_SIGNUP_AGE} ans (loi française).",
+        )
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {
+        "age_verified": True, "age_blocked": False, "birthdate_enc": enc}})
+    return {"age_verified": True, "age": age}
 
 
 @api_router.get("/verify/status")

@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
 import CookieConsent from "./components/CookieConsent";
+import AgeGate from "@/components/AgeGate";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
 import { initAccent, applyAccent } from "@/lib/accent";
 import { enablePush } from "@/lib/push";
@@ -153,6 +154,9 @@ function App() {
     <div className="App">
       <Toaster position="top-center" richColors />
       <CookieConsent />
+      {/* Contrôle d'âge bloquant (loi FR >= 15 ans) pour les comptes existants
+          qui n'ont pas encore confirmé leur date de naissance. */}
+      {user && user.age_verified !== true && <AgeGate setUser={setUser} />}
       <BrowserRouter>
         <Routes>
           <Route
