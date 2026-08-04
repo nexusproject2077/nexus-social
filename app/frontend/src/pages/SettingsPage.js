@@ -10,6 +10,7 @@ import LanguageSwitcher from '../components/LanguageSwitcher';
 import AlgorithmTransparencyModal from '../components/AlgorithmTransparencyModal';
 import { ACCENTS, applyAccent, getAccent } from '../lib/accent';
 import { enablePush, disablePush, isPushEnabled, pushReasonLabel } from '@/lib/push';
+import IdentityVerification from '@/components/IdentityVerification';
 
 // Libellés FR des types de notification (pour les réglages).
 const NOTIF_TYPE_LABELS = {
@@ -292,6 +293,7 @@ export default function SettingsPage({ user, setUser }) {
 
   const navSections = [
     { id: "account",  icon: "manage_accounts",  label: t("settings.account") },
+    { id: "verification", icon: "verified_user", label: "Vérification" },
     { id: "creator",  icon: "paid",              label: t("settings.creator") },
     { id: "privacy",  icon: "gavel",             label: t("settings.privacy") },
     { id: "notifications", icon: "notifications", label: "Notifications" },
@@ -707,6 +709,7 @@ export default function SettingsPage({ user, setUser }) {
 
   const sectionMap = {
     account:  renderAccount,
+    verification: () => <IdentityVerification />,
     creator:  renderCreator,
     privacy:  renderPrivacy,
     notifications: renderNotifications,

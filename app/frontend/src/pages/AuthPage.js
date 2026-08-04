@@ -36,6 +36,26 @@ export default function AuthPage({ setUser }) {
       toast.error("Veuillez accepter les conditions d'utilisation.");
       return;
     }
+    // Contrôle d'âge (loi française : réseaux sociaux interdits avant 15 ans).
+    if (!isLogin) {
+      if (!formData.birthdate) {
+        toast.error("Indique ta date de naissance.");
+        return;
+      }
+      const b = new Date(formData.birthdate);
+      const now = new Date();
+      let age = now.getFullYear() - b.getFullYear();
+      const m = now.getMonth() - b.getMonth();
+      if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
+      if (Number.isNaN(age)) {
+        toast.error("Date de naissance invalide.");
+        return;
+      }
+      if (age < 15) {
+        toast.error("Inscription impossible : l'âge minimum est de 15 ans (loi française).");
+        return;
+      }
+    }
 
     setLoading(true);
 
@@ -256,6 +276,40 @@ export default function AuthPage({ setUser }) {
                     />
                   </div>
                 </div>
+
+                {/* Date de naissance (inscription) — contrôle d'âge >= 15 (loi FR) */}
+                {!isLogin && (
+                  <div className="space-y-2">
+                    <label
+                      className="font-label text-xs uppercase tracking-widest ml-1"
+                      style={{ color: "#bbc9cd" }}
+                      htmlFor="birthdate"
+                    >
+                      Date de naissance
+                    </label>
+                    <div className="relative group">
+                      <div
+                        className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"
+                        style={{ color: "#859397" }}
+                      >
+                        <span className="material-symbols-outlined text-xl">calendar_month</span>
+                      </div>
+                      <input
+                        id="birthdate"
+                        type="date"
+                        required
+                        max={new Date().toISOString().slice(0, 10)}
+                        value={formData.birthdate}
+                        onChange={handleChange("birthdate")}
+                        className={inputClass}
+                        style={{ backgroundColor: "#131b2e", colorScheme: "dark" }}
+                      />
+                    </div>
+                    <p className="text-[11px] ml-1" style={{ color: "#5b6b8c" }}>
+                      Tu dois avoir au moins 15 ans pour t'inscrire (loi française).
+                    </p>
+                  </div>
+                )}
 
                 {isLogin ? (
                   /* Login: single password field */

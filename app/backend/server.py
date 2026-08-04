@@ -893,6 +893,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     bio: Optional[str] = ""
+    birthdate: Optional[str] = None  # AAAA-MM-JJ — requis (loi FR : >= 15 ans)
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -907,9 +908,15 @@ class User(BaseModel):
     profile_pic: Optional[str] = None
     followers_count: int = 0
     following_count: int = 0
-    is_verified: bool = False
+    is_verified: bool = False           # badge « identité vérifiée » (pièce validée)
     is_premium: bool = False
     is_admin: bool = False
+    # Vérification d'identité (RGPD : on n'expose JAMAIS la pièce ni la date de
+    # naissance en clair ; seuls des statuts/booléens sont renvoyés au client).
+    verification_status: str = "unverified"  # unverified | pending | verified | rejected
+    age_verified: bool = False          # >= 15 ans confirmé à l'inscription (loi FR)
+    email_verified: bool = False
+    phone_verified: bool = False
     accent_color: Optional[str] = None
     theme: Optional[str] = None
     created_at: str
@@ -1347,9 +1354,36 @@ async def geo_status(request: Request):
 
 
 # ==================== AUTH ROUTES ====================
+MIN_SIGNUP_AGE = 15  # Loi française : pas de réseau social avant 15 ans.
+
+
+def _compute_age(birthdate_str):
+    """Âge en années à partir d'une date AAAA-MM-JJ. None si illisible."""
+    if not birthdate_str:
+        return None
+    try:
+        d = datetime.fromisoformat(str(birthdate_str)[:10]).date()
+    except Exception:
+        return None
+    today = datetime.now(timezone.utc).date()
+    if d > today:
+        return None
+    return today.year - d.year - ((today.month, today.day) < (d.month, d.day))
+
+
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
     """Enregistre un nouvel utilisateur"""
+    # Contrôle d'âge OBLIGATOIRE (loi FR : réseaux sociaux interdits < 15 ans).
+    age = _compute_age(user_data.birthdate)
+    if age is None:
+        raise HTTPException(status_code=400, detail="Date de naissance requise (format AAAA-MM-JJ).")
+    if age < MIN_SIGNUP_AGE:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Inscription refusée : l'âge minimum est de {MIN_SIGNUP_AGE} ans (loi française).",
+        )
+
     existing_user_raw = await db.users.find_one({
         "$or": [
             {"email": user_data.email},
@@ -1358,7 +1392,7 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
     })
     if existing_user_raw:
         raise HTTPException(status_code=400, detail="Email or username already registered")
-   
+
     hashed_password = pwd_context.hash(user_data.password)
     user_id = str(uuid.uuid4())
     user_to_insert = {
@@ -1370,6 +1404,12 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
         "profile_pic": None,
         "followers_count": 0,
         "following_count": 0,
+        # Date de naissance CHIFFRÉE au repos (RGPD) + booléen d'âge en clair.
+        "birthdate_enc": encrypt(str(user_data.birthdate)[:10]),
+        "age_verified": True,  # >= 15 vérifié ci-dessus
+        "verification_status": "unverified",
+        "email_verified": False,
+        "phone_verified": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_to_insert)
@@ -7721,6 +7761,285 @@ async def migrate_media_to_cloudinary(collection: str = "posts", field: str = "m
         "targets": [{"collection": c, "field": f} for c, f in _MEDIA_TARGETS],
     }
 
+
+# ====================================================================
+# VÉRIFICATION D'IDENTITÉ (3 niveaux) — conforme RGPD + loi FR
+# --------------------------------------------------------------------
+#  1) Basique   : âge >= 15 (à l'inscription) + email + téléphone (codes OTP)
+#  2) Renforcée : upload d'une pièce d'identité → revue admin → badge « Vérifié »
+#  3) Créateur  : identité vérifiée requise pour tips/abonnements/retraits (KYC)
+#
+# Sécurité/RGPD :
+#  • les codes OTP sont HACHÉS (jamais en clair) et expirent ;
+#  • la pièce d'identité est CHIFFRÉE au repos (Fernet), jamais servie
+#    publiquement, consultable uniquement par un admin, et PURGÉE après décision
+#    (minimisation des données) ;
+#  • la date de naissance est chiffrée ; on n'expose que des statuts/booléens.
+# ====================================================================
+import secrets as _secrets
+
+OTP_TTL_SECONDS = 600        # 10 min
+ID_DOC_MAX_BYTES = 8_000_000  # 8 Mo
+_SMS_ENABLED = bool(os.environ.get("SMS_PROVIDER_CONFIGURED"))  # placeholder provider
+
+
+def _hash_code(code: str) -> str:
+    return hashlib.sha256(("nexus-otp:" + str(code)).encode()).hexdigest()
+
+
+def _gen_code() -> str:
+    return f"{_secrets.randbelow(1_000_000):06d}"
+
+
+async def _issue_otp(user_id: str, kind: str) -> str:
+    """Génère + stocke (haché) un code OTP pour (user, kind). Renvoie le code clair
+    (à ENVOYER, pas à stocker)."""
+    code = _gen_code()
+    exp = (datetime.now(timezone.utc) + timedelta(seconds=OTP_TTL_SECONDS)).isoformat()
+    await db.verification_codes.update_one(
+        {"user_id": user_id, "kind": kind},
+        {"$set": {"code_hash": _hash_code(code), "expires_at": exp, "attempts": 0}},
+        upsert=True,
+    )
+    return code
+
+
+async def _check_otp(user_id: str, kind: str, code: str) -> bool:
+    rec = await db.verification_codes.find_one({"user_id": user_id, "kind": kind})
+    if not rec:
+        return False
+    if (rec.get("expires_at") or "") < datetime.now(timezone.utc).isoformat():
+        return False
+    if int(rec.get("attempts", 0)) >= 5:
+        return False
+    ok = _secrets.compare_digest(rec.get("code_hash", ""), _hash_code(code))
+    if not ok:
+        await db.verification_codes.update_one(
+            {"user_id": user_id, "kind": kind}, {"$inc": {"attempts": 1}})
+        return False
+    await db.verification_codes.delete_one({"user_id": user_id, "kind": kind})
+    return True
+
+
+class OtpConfirm(BaseModel):
+    code: str
+
+
+class PhoneIn(BaseModel):
+    phone: str
+    code: Optional[str] = None
+
+
+class RejectIn(BaseModel):
+    reason: Optional[str] = ""
+
+
+@api_router.get("/verify/status")
+async def verify_get_status(current_user: dict = Depends(get_current_user)):
+    """État de vérification de l'utilisateur (aucune donnée sensible exposée)."""
+    u = await db.users.find_one({"id": current_user["id"]}, {
+        "verification_status": 1, "age_verified": 1, "email_verified": 1,
+        "phone_verified": 1, "is_verified": 1,
+    }) or {}
+    last = await db.identity_submissions.find_one(
+        {"user_id": current_user["id"]}, sort=[("created_at", -1)])
+    status = u.get("verification_status", "unverified")
+    return {
+        "status": status,                                   # unverified|pending|verified|rejected
+        "age_verified": bool(u.get("age_verified")),
+        "email_verified": bool(u.get("email_verified")),
+        "phone_verified": bool(u.get("phone_verified")),
+        "identity_verified": bool(u.get("is_verified")),
+        "can_resubmit": status in ("unverified", "rejected"),
+        "rejection_reason": (last or {}).get("rejection_reason") if status == "rejected" else None,
+    }
+
+
+# ---- Niveau 1 : OTP email --------------------------------------------------
+@api_router.post("/verify/email/send")
+async def verify_email_send(background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+    if not rate_limit(f"otp_email:{current_user['id']}", max_attempts=5, window_seconds=600):
+        raise HTTPException(status_code=429, detail="Trop de demandes. Réessayez dans quelques minutes.")
+    code = await _issue_otp(current_user["id"], "email")
+    email = current_user.get("email")
+    delivered = False
+    if send_brevo_email and email:
+        background_tasks.add_task(
+            send_brevo_email, email, "Ton code de vérification Nexus Social",
+            f"<p>Ton code de vérification est : <b style='font-size:20px'>{code}</b></p>"
+            "<p>Il expire dans 10 minutes.</p>")
+        delivered = True
+    # Si l'envoi d'email n'est pas configuré, on renvoie le code (mode dev) pour
+    # que le flux reste testable. En prod, configure Brevo pour que le code parte
+    # par email au lieu d'être renvoyé ici.
+    return {"sent": True, "delivered": delivered, "dev_code": None if delivered else code}
+
+
+@api_router.post("/verify/email/confirm")
+async def verify_email_confirm(data: OtpConfirm, current_user: dict = Depends(get_current_user)):
+    if not await _check_otp(current_user["id"], "email", (data.code or "").strip()):
+        raise HTTPException(status_code=400, detail="Code invalide ou expiré.")
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"email_verified": True}})
+    return {"email_verified": True}
+
+
+# ---- Niveau 1 : OTP téléphone ---------------------------------------------
+@api_router.post("/verify/phone/send")
+async def verify_phone_send(data: PhoneIn, current_user: dict = Depends(get_current_user)):
+    phone = (data.phone or "").strip()
+    if len(phone) < 6:
+        raise HTTPException(status_code=400, detail="Numéro de téléphone invalide.")
+    if not rate_limit(f"otp_phone:{current_user['id']}", max_attempts=5, window_seconds=600):
+        raise HTTPException(status_code=429, detail="Trop de demandes. Réessayez dans quelques minutes.")
+    # Numéro CHIFFRÉ au repos (RGPD).
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"phone_enc": encrypt(phone)}})
+    code = await _issue_otp(current_user["id"], "phone")
+    delivered = False
+    # _send_sms(phone, code) → à brancher sur un fournisseur (Twilio/Brevo SMS).
+    # Tant qu'aucun fournisseur n'est configuré, on renvoie le code (mode dev).
+    return {"sent": True, "delivered": delivered, "dev_code": None if delivered else code}
+
+
+@api_router.post("/verify/phone/confirm")
+async def verify_phone_confirm(data: OtpConfirm, current_user: dict = Depends(get_current_user)):
+    if not await _check_otp(current_user["id"], "phone", (data.code or "").strip()):
+        raise HTTPException(status_code=400, detail="Code invalide ou expiré.")
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"phone_verified": True}})
+    return {"phone_verified": True}
+
+
+# ---- Niveau 2 : pièce d'identité (chiffrée) → revue admin ------------------
+@api_router.post("/verify/identity/submit")
+async def verify_identity_submit(
+    file: UploadFile = File(...),
+    doc_type: str = Form("id_card"),   # id_card | passport | residence_permit
+    current_user: dict = Depends(get_current_user),
+):
+    """Soumission d'une pièce d'identité pour la vérification renforcée.
+
+    Le document est CHIFFRÉ au repos (jamais stocké/servi en clair) puis mis en
+    file de revue admin. Re-soumission autorisée après un refus.
+    """
+    ctype = (file.content_type or "")
+    if not (ctype.startswith("image/") or ctype == "application/pdf"):
+        raise HTTPException(status_code=400, detail="Document invalide (image ou PDF).")
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Fichier vide.")
+    if len(contents) > ID_DOC_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Document trop lourd (max 8 Mo).")
+
+    u = await db.users.find_one({"id": current_user["id"]}, {"verification_status": 1, "is_verified": 1})
+    if (u or {}).get("is_verified") or (u or {}).get("verification_status") == "verified":
+        raise HTTPException(status_code=400, detail="Votre identité est déjà vérifiée.")
+    if (u or {}).get("verification_status") == "pending":
+        raise HTTPException(status_code=409, detail="Une vérification est déjà en cours.")
+
+    # Chiffrement au repos (Fernet). On stocke le base64 chiffré.
+    document_enc = encrypt(base64.b64encode(contents).decode())
+    sub_id = str(uuid.uuid4())
+    await db.identity_submissions.insert_one({
+        "id": sub_id,
+        "user_id": current_user["id"],
+        "username": current_user.get("username"),
+        "doc_type": doc_type if doc_type in ("id_card", "passport", "residence_permit") else "id_card",
+        "content_type": ctype,
+        "document_enc": document_enc,   # CHIFFRÉ — purgé après décision
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"verification_status": "pending"}})
+    return {"submitted": True, "status": "pending"}
+
+
+# ---- Niveau 3 : monétisation (identité vérifiée requise) -------------------
+async def require_identity_verified(current_user: dict):
+    """À appeler avant d'activer tips/abonnements/retraits. Lève 403 sinon."""
+    u = await db.users.find_one({"id": current_user["id"]}, {"is_verified": 1})
+    if not (u or {}).get("is_verified"):
+        raise HTTPException(
+            status_code=403,
+            detail="Vérification d'identité requise pour la monétisation (tips, abonnements, retraits).",
+        )
+    return True
+
+
+@api_router.get("/verify/can-monetize")
+async def verify_can_monetize(current_user: dict = Depends(get_current_user)):
+    """Le compte peut-il activer la monétisation ? (identité vérifiée + KYC Stripe)."""
+    u = await db.users.find_one({"id": current_user["id"]}, {"is_verified": 1}) or {}
+    verified = bool(u.get("is_verified"))
+    return {
+        "allowed": verified,
+        "identity_verified": verified,
+        "reason": None if verified else "Vérifiez votre identité (pièce d'identité) pour débloquer la monétisation.",
+        "next_step": None if verified else "identity",
+    }
+
+
+# ---- Revue ADMIN -----------------------------------------------------------
+@api_router.get("/admin/verifications")
+async def admin_list_verifications(status: str = "pending", current_user: dict = Depends(get_current_user)):
+    if not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
+    status = status if status in ("pending", "verified", "rejected") else "pending"
+    rows = await db.identity_submissions.find(
+        {"status": status},
+        {"id": 1, "user_id": 1, "username": 1, "doc_type": 1, "content_type": 1,
+         "status": 1, "created_at": 1},  # JAMAIS le document ici
+    ).sort("created_at", -1).limit(100).to_list(length=100)
+    return [convert_mongo_doc_to_dict(r) for r in rows]
+
+
+@api_router.get("/admin/verifications/{sub_id}/document")
+async def admin_get_verification_document(sub_id: str, current_user: dict = Depends(get_current_user)):
+    """Renvoie la pièce déchiffrée pour la revue (admin uniquement)."""
+    if not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
+    sub = await db.identity_submissions.find_one({"id": sub_id})
+    if not sub or not sub.get("document_enc"):
+        raise HTTPException(status_code=404, detail="Document indisponible (déjà purgé ou introuvable).")
+    try:
+        raw = base64.b64decode(decrypt(sub["document_enc"]))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Déchiffrement impossible.")
+    return Response(content=raw, media_type=sub.get("content_type") or "application/octet-stream")
+
+
+@api_router.post("/admin/verifications/{sub_id}/approve")
+async def admin_approve_verification(sub_id: str, current_user: dict = Depends(get_current_user)):
+    if not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
+    sub = await db.identity_submissions.find_one({"id": sub_id})
+    if not sub:
+        raise HTTPException(status_code=404, detail="Soumission introuvable")
+    await db.users.update_one({"id": sub["user_id"]}, {"$set": {
+        "verification_status": "verified", "is_verified": True}})
+    # Minimisation RGPD : on PURGE la pièce d'identité après validation.
+    await db.identity_submissions.update_one({"id": sub_id}, {
+        "$set": {"status": "verified", "reviewed_at": datetime.now(timezone.utc).isoformat()},
+        "$unset": {"document_enc": ""}})
+    try:
+        await create_notification(sub["user_id"], "security", {"id": "system", "username": "Nexus Social"})
+    except Exception:
+        pass
+    return {"status": "verified"}
+
+
+@api_router.post("/admin/verifications/{sub_id}/reject")
+async def admin_reject_verification(sub_id: str, data: RejectIn, current_user: dict = Depends(get_current_user)):
+    if not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
+    sub = await db.identity_submissions.find_one({"id": sub_id})
+    if not sub:
+        raise HTTPException(status_code=404, detail="Soumission introuvable")
+    await db.users.update_one({"id": sub["user_id"]}, {"$set": {"verification_status": "rejected"}})
+    await db.identity_submissions.update_one({"id": sub_id}, {
+        "$set": {"status": "rejected", "rejection_reason": (data.reason or "Document non conforme")[:300],
+                 "reviewed_at": datetime.now(timezone.utc).isoformat()},
+        "$unset": {"document_enc": ""}})  # purge aussi en cas de refus
+    return {"status": "rejected"}
+
 # ==================== END ENHANCED FEATURES ====================
 
 # ==================== FOLLOW SYSTEM INTEGRATION ====================
@@ -7845,6 +8164,13 @@ async def _startup_warmup():
         await db.push_subscriptions.create_index("user_id", name="by_user")
     except Exception as e:
         logger.warning(f"Index push_subscriptions non créé (peut déjà exister): {e}")
+    try:
+        # Vérification d'identité : 1 code OTP par (user, canal) ; revue par statut.
+        await db.verification_codes.create_index([("user_id", 1), ("kind", 1)], unique=True)
+        await db.identity_submissions.create_index([("status", 1), ("created_at", -1)])
+        await db.identity_submissions.create_index("user_id")
+    except Exception as e:
+        logger.warning(f"Index vérification non créé (peut déjà exister): {e}")
 
 
 async def _keep_alive_loop():
