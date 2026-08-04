@@ -57,7 +57,7 @@ export default function SavedPage({ user, setUser }) {
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <header
-          className="sticky top-0 z-30 h-16 flex items-center gap-2 px-4 lg:px-8"
+          className="sticky top-0 z-30 min-h-[4rem] hdr-safe flex items-center gap-2 px-4 lg:px-8"
           style={{ backgroundColor: "rgba(11,19,38,0.7)", backdropFilter: "blur(20px)" }}
         >
           <span className="material-symbols-outlined" style={{ color: "var(--nexus-accent)" }}>bookmark</span>

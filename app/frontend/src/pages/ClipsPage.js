@@ -1054,7 +1054,7 @@ export default function ClipsPage({ user, setUser }) {
         disabled={uploading}
         data-testid="upload-clip"
         title="Créer un clip (caméra) — appui long : importer"
-        className="fixed z-50 top-16 right-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+        className="fixed z-50 top-[calc(4rem_+_env(safe-area-inset-top))] right-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
         style={{
           background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
           color: C.onPrimary,
@@ -1084,7 +1084,7 @@ export default function ClipsPage({ user, setUser }) {
       onClick={() => setView((v) => (v === "immersive" ? "grid" : "immersive"))}
       data-testid="toggle-clips-view"
       title={view === "immersive" ? "Vue grille" : "Vue immersive"}
-      className="fixed z-50 top-4 left-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+      className="fixed z-50 top-[calc(1rem_+_env(safe-area-inset-top))] left-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
       style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
     >
       <span className="material-symbols-outlined text-2xl">
@@ -1099,7 +1099,7 @@ export default function ClipsPage({ user, setUser }) {
       onClick={() => navigate("/nexus-clips/recherche")}
       data-testid="clips-search"
       title="Rechercher des clips"
-      className="fixed z-50 top-4 right-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+      className="fixed z-50 top-[calc(1rem_+_env(safe-area-inset-top))] right-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
       style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
     >
       <span className="material-symbols-outlined text-2xl">search</span>

@@ -752,7 +752,7 @@ export default function SettingsPage({ user, setUser }) {
         {/* ── Main content ───────────────────────────────────────────────────── */}
         <main className="flex-1 overflow-y-auto">
           {/* Mobile section selector */}
-          <div className="md:hidden px-4 pt-4 pb-2 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+          <div className="md:hidden px-4 pt-safe-4 pb-2 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
             {navSections.map(s => (
               <button key={s.id} onClick={() => setActiveSection(s.id)}
                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all"

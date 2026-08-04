@@ -281,7 +281,7 @@ export default function ProfilePage({ user, setUser }) {
       {isOwnProfile && (
         <div
           className="lg:hidden sticky top-0 z-[56] flex items-center justify-end px-3"
-          style={{ height: 48, background: "rgba(11,19,38,0.5)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}
+          style={{ minHeight: 48, paddingTop: "env(safe-area-inset-top)", background: "rgba(11,19,38,0.5)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}
         >
           <button
             onClick={() => navigate("/settings")}

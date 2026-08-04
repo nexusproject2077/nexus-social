@@ -444,7 +444,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* ===== Mobile Header ===== */}
       {!hideMobileChrome && !hideMobileHeader && (
       <header
-        className="lg:hidden fixed top-0 left-0 right-0 z-50 flex flex-col select-none transition-transform duration-300"
+        className="lg:hidden fixed top-0 left-0 right-0 z-50 flex flex-col select-none transition-transform duration-300 pt-safe"
         style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", transform: headerHidden ? "translateY(-100%)" : "translateY(0)" }}
       >
         {/* Ligne 1 : « Nexus Social » centré, cloche de notifications à droite
@@ -497,7 +497,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* ===== Main Content ===== */}
       {/* lg:ml-20 = largeur de la sidebar repliée (pas de chevauchement ; la
           sidebar déployée passe au-dessus au survol). */}
-      <main className={`ml-0 lg:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : ((location.pathname === "/feed" || location.pathname === "/") ? "pt-[5.5rem] pb-20" : "pt-14 pb-20"))} lg:pt-0 lg:pb-0`}>
+      <main className={`ml-0 lg:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : ((location.pathname === "/feed" || location.pathname === "/") ? "pt-[calc(5.5rem_+_env(safe-area-inset-top))] pb-20" : "pt-[calc(3.5rem_+_env(safe-area-inset-top))] pb-20"))} lg:pt-0 lg:pb-0`}>
         {children}
       </main>
 

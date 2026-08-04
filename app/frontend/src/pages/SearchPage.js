@@ -301,7 +301,7 @@ export default function SearchPage({ user }) {
       <div className="max-w-2xl mx-auto">
         {/* ── Header collant : barre de recherche + onglets (façon X) ── */}
         <header className="sticky top-0 z-30" style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)" }}>
-          <div className="px-4 pt-3 pb-2">
+          <div className="px-4 pt-safe-3 pb-2">
             <div className="flex items-center gap-2 rounded-full px-4 h-11" style={{ background: "#131b2e" }}>
               <span className="material-symbols-outlined" style={{ color: "#859397", fontSize: 20 }}>search</span>
               <input

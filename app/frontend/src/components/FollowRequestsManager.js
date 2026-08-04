@@ -38,7 +38,7 @@ export default function Layout({ children, user, setUser }) {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-slate-800 px-4 py-3 flex items-center justify-between">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-slate-800 px-4 py-3 pt-safe-3 flex items-center justify-between">
         <h1 className="text-xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
           <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
         </h1>

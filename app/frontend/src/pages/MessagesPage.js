@@ -1499,7 +1499,7 @@ export default function MessagesPage({ user }) {
     >
       {/* Header — pas de trait de séparation, même fond que la liste.
           Plus de bouton retour : le footer mobile gère la navigation. */}
-      <div className="px-5 pt-5 pb-3 flex items-center gap-2">
+      <div className="px-5 pt-[calc(1.25rem_+_env(safe-area-inset-top))] pb-3 flex items-center gap-2">
         {/* Nom d'utilisateur : centré sur mobile, aligné à gauche sur PC */}
         <h2 className="font-black text-xl tracking-tight flex-1 text-center sm:text-left truncate"
           style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>
@@ -1623,7 +1623,7 @@ export default function MessagesPage({ user }) {
       {hasSelection && currentName ? (
         <>
           {/* Chat header */}
-          <div className="h-14 px-5 flex items-center justify-between flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(11,19,38,0.6)" }}>
+          <div className="min-h-[3.5rem] hdr-safe px-5 flex items-center justify-between flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(11,19,38,0.6)" }}>
             <div className="flex items-center gap-3">
               <button onClick={() => navigate("/messages")} className="sm:hidden mr-1" style={{ color: C.outline }}>
                 <span className="material-symbols-outlined">arrow_back</span>

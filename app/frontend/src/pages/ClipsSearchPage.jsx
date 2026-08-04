@@ -208,7 +208,7 @@ export default function ClipsSearchPage({ user, setUser }) {
     <Layout user={user} setUser={setUser} compact hideMobileHeader>
       <div className="max-w-2xl mx-auto min-h-screen" style={{ background: C.bg }}>
         {/* Barre de recherche */}
-        <div className="sticky top-0 z-30 px-3 pt-3 pb-2" style={{ background: "rgba(11,19,38,0.9)", backdropFilter: "blur(16px)" }}>
+        <div className="sticky top-0 z-30 px-3 pt-safe-3 pb-2" style={{ background: "rgba(11,19,38,0.9)", backdropFilter: "blur(16px)" }}>
           <div className="flex items-center gap-2">
             <button onClick={() => navigate("/nexus-clips")} className="w-9 h-9 flex items-center justify-center rounded-full" style={{ color: C.onSurface }}>
               <span className="material-symbols-outlined">arrow_back</span>

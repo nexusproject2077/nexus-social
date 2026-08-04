@@ -15,6 +15,21 @@
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
+/* ─── Zone sûre iOS (encoche / Dynamic Island) ───────────────────────────────
+   En affichage plein écran (PWA « ajouté à l'écran d'accueil »), le haut de
+   l'écran est occupé par la barre d'état / la Dynamic Island. Sans marge, les
+   en-têtes collés en haut passent DESSOUS et deviennent inaccessibles. Ces
+   classes ajoutent la hauteur de la zone sûre au padding haut (0 ailleurs, donc
+   sans effet sur ordinateur / Android sans encoche). */
+.pt-safe   { padding-top: env(safe-area-inset-top); }
+.pt-safe-2 { padding-top: calc(env(safe-area-inset-top) + 0.5rem); }
+.pt-safe-3 { padding-top: calc(env(safe-area-inset-top) + 0.75rem); }
+.pt-safe-4 { padding-top: calc(env(safe-area-inset-top) + 1rem); }
+/* En-tête à hauteur fixe (barre) : réserve la zone sûre au-dessus de la barre. */
+.hdr-safe  { padding-top: env(safe-area-inset-top); }
+/* Décale un élément positionné (top) sous la zone sûre. */
+.top-safe  { top: calc(env(safe-area-inset-top) + 0.5rem); }
+
 /* Cœur « pop » du double-tap like (façon Instagram/TikTok). */
 @keyframes heartPop {
     0%   { transform: scale(0);   opacity: 0; }

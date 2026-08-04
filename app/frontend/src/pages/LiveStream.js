@@ -257,7 +257,7 @@ export default function LiveStream({ user }) {
   if (status === "idle" || status === "ended") {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center gap-5 px-6 select-none" style={{ background: C.surface, color: C.onSurface }}>
-        <button onClick={() => navigate(-1)} className="absolute top-4 left-4" style={{ color: C.outline }}>
+        <button onClick={() => navigate(-1)} className="absolute left-4" style={{ top: "calc(env(safe-area-inset-top) + 1rem)", color: C.outline }}>
           <span className="material-symbols-outlined text-3xl">close</span>
         </button>
         <span className="material-symbols-outlined text-6xl" style={{ color: "#f87171" }}>sensors</span>

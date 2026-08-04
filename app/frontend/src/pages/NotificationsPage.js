@@ -242,7 +242,7 @@ export default function NotificationsPage({ user }) {
       <div className="max-w-2xl mx-auto min-h-screen" style={{ background: "#0b1326" }}>
         {/* Barre d'onglets (pas de gros header) — sticky, façon X. */}
         <div className="sticky top-0 z-20 backdrop-blur-xl border-b" style={{ background: "rgba(11,19,38,0.85)", borderColor: "rgba(255,255,255,0.06)" }}>
-          <div className="flex items-center justify-between px-2 pt-2">
+          <div className="flex items-center justify-between px-2 pt-safe-2">
             <div className="flex-1 flex gap-1 overflow-x-auto no-scrollbar">
               {TABS.map((tab) => {
                 const active = activeTab === tab.key;
