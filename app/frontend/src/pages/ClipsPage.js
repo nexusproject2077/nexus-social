@@ -10,6 +10,15 @@ import { fr } from "date-fns/locale";
 import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
 import { SURFACE, TEXT, ACCENT } from "@/lib/theme";
 import StoryComposer from "@/components/StoryComposer";
+import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
+
+// Le son d'un clip peut être routé par la Web Audio API pour ne PAS réclamer la
+// session « Now Playing » iOS (indicateur son dans la barre d'état). On ne le
+// fait que si l'URL autorise le CORS (Cloudinary / data / blob), sinon le
+// crossOrigin casserait le chargement de la vidéo → on reste alors en natif.
+const CLIP_CORS_SAFE = (url = "") =>
+  url.startsWith("data:") || url.startsWith("blob:") ||
+  /(^|\/\/)([^/]*\.)?cloudinary\.com\//.test(url) || url.includes("/video/upload/");
 
 // Tokens dérivés de la source unique (@/lib/theme) : cohérence avec Messages /
 // Stories / Profil.
@@ -248,6 +257,18 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     return () => registerVideo?.(index, null);
   }, [index, registerVideo]);
 
+  // Route le son du clip par la Web Audio API (si CORS-safe) → pas d'indicateur
+  // son dans la Dynamic Island / barre d'état. Le mute continue de fonctionner
+  // (une vidéo `muted` reste silencieuse même routée). Repli natif sinon.
+  useEffect(() => {
+    if (!CLIP_CORS_SAFE(post.media_url)) return;
+    return attachSilent(videoRef.current);
+  }, [post.media_url]);
+
+  // À la disparition définitive du clip (on quitte l'onglet Clips), on efface la
+  // session résiduelle pour que l'indicateur son parte des autres pages.
+  useEffect(() => () => clearNowPlaying(), []);
+
   const openComments = async () => {
     const next = !showComment;
     setShowComment(next);
@@ -482,6 +503,11 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       <video
         ref={videoRef}
         src={post.media_url}
+        // crossOrigin requis pour router le son par Web Audio (uniquement quand
+        // l'URL est CORS-safe, sinon on casserait le chargement de la vidéo).
+        crossOrigin={CLIP_CORS_SAFE(post.media_url) ? "anonymous" : undefined}
+        // Pas de bascule AirPlay/lecture à distance (évite l'indication système).
+        disableRemotePlayback
         // Jamais de crop du contenu large : vidéos paysage/16:9 en `contain`
         // (letterbox, entièrement visibles) ; vidéos verticales en `cover` (plein
         // cadre, façon TikTok). Sur PC le conteneur est déjà en colonne 9:16.

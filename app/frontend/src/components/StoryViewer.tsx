@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { API } from "../App";
 import { SURFACE, TEXT, OUTLINE } from "@/lib/theme";
 import { useNavigate } from 'react-router-dom';
+import { PreviewAudio } from "@/lib/silentAudio";
 
 interface Story {
   id: string;
@@ -47,6 +48,10 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   const [isLongPressing, setIsLongPressing] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Musique de fond via Web Audio → pas de session « Now Playing » iOS (aucun
+  // indicateur son dans la barre d'état / Dynamic Island / centre de contrôle).
+  const musicRef = useRef<any>(null);
+  if (!musicRef.current) musicRef.current = new PreviewAudio();
   const optionsButtonRef = useRef<HTMLButtonElement>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -205,6 +210,20 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
       setReacted(null);
     }
   }, [currentStory?.id]);
+
+  // Musique de fond via Web Audio (aucune session « Now Playing » iOS). On lance
+  // à partir du passage choisi et on met en pause quand la story est en pause.
+  useEffect(() => {
+    const player = musicRef.current;
+    if (!player) return;
+    const url = (currentStory as any)?.music_url;
+    if (!url) { player.pause(); return; }
+    if (isPaused) player.pause();
+    else player.play(url, (currentStory as any)?.music_start || 0);
+  }, [currentStory?.id, isPaused]);
+
+  // Libère le lecteur (et efface l'indicateur son) à la fermeture du viewer.
+  useEffect(() => () => { try { musicRef.current?.destroy(); } catch { /* noop */ } }, []);
 
   const handleNextStory = useCallback(() => {
     if (currentGroup) {
@@ -437,17 +456,8 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
             />
           )}
 
-          {/* Musique de fond (extrait 30 s, à partir du passage choisi) */}
-          {(currentStory as any).music_url && (
-            <audio key={currentStory.id} src={(currentStory as any).music_url} autoPlay loop
-              onLoadedMetadata={(e) => {
-                const el = e.currentTarget as HTMLAudioElement;
-                const s = (currentStory as any).music_start || 0;
-                if (s > 0) { try { el.currentTime = s; } catch {} }
-                el.play().catch(() => {});
-              }}
-              onCanPlay={(e) => { (e.currentTarget as HTMLAudioElement).play().catch(() => {}); }} />
-          )}
+          {/* Musique de fond : jouée via Web Audio (musicRef / PreviewAudio),
+              donc pas d'élément <audio> ni de session « Now Playing » iOS. */}
 
           {/* Bandeau musique */}
           {(currentStory as any).music_title && (

@@ -10,6 +10,14 @@ import { linkify, extractFirstUrl } from "@/lib/linkify";
 import LinkPreview from "@/components/LinkPreview";
 import InstantsEntry from "@/components/instants/InstantsEntry";
 import { SURFACE, TEXT, OUTLINE, ACCENT, glass as sharedGlass } from "@/lib/theme";
+import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
+
+// Un message vocal ne doit pas non plus réclamer la session « Now Playing »
+// iOS : on route son son par Web Audio quand l'URL est CORS-safe (Cloudinary /
+// data / blob), sinon crossOrigin casserait le chargement → on reste en natif.
+const VOICE_CORS_SAFE = (url = "") =>
+  url.startsWith("data:") || url.startsWith("blob:") ||
+  /(^|\/\/)([^/]*\.)?cloudinary\.com\//.test(url) || url.includes("/upload/");
 
 // Tokens de la page dérivés de la source unique (@/lib/theme) : mêmes valeurs
 // que Clips / Stories / Profil pour une identité visuelle cohérente.
@@ -191,7 +199,14 @@ const videoSrcFrom = (msg) => {
 // des enregistrements MediaRecorder), pas de <audio controls> natif moche.
 function VoiceMessage({ src, own }) {
   const audioRef = useRef(null);
+  const corsSafe = VOICE_CORS_SAFE(src);
   const [playing, setPlaying] = useState(false);
+
+  // Route le son par Web Audio (si CORS-safe) → pas d'indicateur son iOS.
+  useEffect(() => {
+    if (!corsSafe) return;
+    return attachSilent(audioRef.current);
+  }, [src, corsSafe]);
   const [dur, setDur] = useState(0);
   const [cur, setCur] = useState(0);
   const accent = own ? "#93c5fd" : "#22d3ee";
@@ -227,10 +242,12 @@ function VoiceMessage({ src, own }) {
   return (
     <div className="flex items-center gap-2.5 mb-1 py-1" style={{ minWidth: 210 }}>
       <audio ref={audioRef} src={src} preload="metadata"
+        crossOrigin={corsSafe ? "anonymous" : undefined}
+        disableRemotePlayback
         onLoadedMetadata={onMeta}
         onTimeUpdate={(e) => setCur(e.target.currentTime || 0)}
-        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
-        onEnded={() => { setPlaying(false); setCur(0); }} />
+        onPlay={() => setPlaying(true)} onPause={() => { setPlaying(false); clearNowPlaying(); }}
+        onEnded={() => { setPlaying(false); setCur(0); clearNowPlaying(); }} />
       <button type="button" onClick={toggle}
         className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-90"
         style={{ background: accent, color: "#00363e" }}>

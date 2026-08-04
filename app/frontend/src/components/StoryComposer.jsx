@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import axios from "axios";
 import { API } from "../App";
 import { toast } from "sonner";
+import { PreviewAudio } from "@/lib/silentAudio";
 
 const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
 const C = {
@@ -140,7 +141,10 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
   const [selectedId, setSelectedId] = useState(null);
   const [eraser, setEraser] = useState(false);
   const [textEditor, setTextEditor] = useState(null); // {id?, text, color}
+  // Aperçu musique via Web Audio (pas de session « Now Playing » iOS → aucun
+  // indicateur son dans la barre d'état / Dynamic Island).
   const audioRef = useRef(null);
+  if (!audioRef.current) audioRef.current = new PreviewAudio();
   const [music, setMusic] = useState(null);           // {url,title,artist}
   const [musicOpen, setMusicOpen] = useState(false);
   const [camMode, setCamMode] = useState("normal");   // normal | boomerang | layout
@@ -161,7 +165,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     });
     setMusicOpen(false);
     // Joue la musique dans l'éditeur pour l'écouter/tester.
-    try { const a = audioRef.current; if (a) { a.src = track.preview_url; a.currentTime = start || 0; a.play().catch(() => {}); } } catch { /* noop */ }
+    try { audioRef.current?.play(track.preview_url, start || 0); } catch { /* noop */ }
   };
   const stopMusicPreview = () => { try { audioRef.current?.pause(); } catch { /* noop */ } };
 
@@ -221,7 +225,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     clearTimeout(maxRef.current); clearInterval(progressRef.current); clearTimeout(pressRef.current.timer);
     cancelAnimationFrame(rafRef.current);
     const r = recorderRef.current; if (r && r.state !== "inactive") { try { r.stop(); } catch { /* noop */ } }
-    try { audioRef.current?.pause(); } catch { /* noop */ }
+    try { audioRef.current?.destroy(); } catch { /* noop */ }
   }, []);
 
   const toggleTorch = async () => {
@@ -1021,8 +1025,8 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
         <StickerForm type={stickerForm} onCancel={() => setStickerForm(null)} onAdd={addOverlay} />
       )}
 
-      {/* Audio d'aperçu de la musique */}
-      <audio ref={audioRef} loop />
+      {/* L'aperçu musique passe par la Web Audio API (PreviewAudio) → aucun
+          élément <audio> visible et aucune session « Now Playing » iOS. */}
 
       {/* Recherche de musique (extraits gratuits iTunes) */}
       {musicOpen && (
@@ -1296,7 +1300,9 @@ function MusicSearch({ onClose, onAdd, current, onRemove }) {
   const [sel, setSel] = useState(null);      // piste choisie (étape config)
   const [start, setStart] = useState(0);
   const [style, setStyle] = useState("title"); // title | cover | none
+  // Aperçu via Web Audio (aucun indicateur son dans la barre d'état iOS).
   const audioRef = useRef(null);
+  if (!audioRef.current) audioRef.current = new PreviewAudio();
 
   useEffect(() => {
     if (!q.trim()) { setResults([]); return; }
@@ -1308,22 +1314,21 @@ function MusicSearch({ onClose, onAdd, current, onRemove }) {
     }, 350);
     return () => clearTimeout(t);
   }, [q]);
-  useEffect(() => () => { try { audioRef.current?.pause(); } catch { /* noop */ } }, []);
-  // Lance l'aperçu audio une fois l'élément <audio> monté (étape config).
+  useEffect(() => () => { try { audioRef.current?.destroy(); } catch { /* noop */ } }, []);
+  // Lance l'aperçu audio dès qu'une piste est choisie (étape config).
   useEffect(() => {
     if (!sel) return;
-    const a = audioRef.current;
-    if (a) { try { a.src = sel.preview_url; a.currentTime = 0; a.play().catch(() => {}); } catch { /* noop */ } }
+    try { audioRef.current?.play(sel.preview_url, 0); } catch { /* noop */ }
   }, [sel]);
 
   const choose = (t) => { setSel(t); setStart(0); setStyle("title"); };
-  const onSlide = (v) => { setStart(v); try { if (audioRef.current) audioRef.current.currentTime = v; } catch { /* noop */ } };
+  const onSlide = (v) => { setStart(v); try { audioRef.current?.seek(v); } catch { /* noop */ } };
 
   // Étape 2 : configuration de la piste choisie.
   if (sel) {
     return (
       <div className="fixed inset-0 z-[95] flex flex-col" style={{ background: "rgba(0,0,0,0.92)" }}>
-        <audio ref={audioRef} loop />
+        {/* Aperçu audio géré par Web Audio (PreviewAudio) — pas d'élément <audio>. */}
         <div className="flex items-center justify-between px-4 pt-4" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
           <button onClick={() => { setSel(null); try { audioRef.current?.pause(); } catch { /* noop */ } }} className="text-white text-sm font-bold">Retour</button>
           <button onClick={() => { try { audioRef.current?.pause(); } catch { /* noop */ } onAdd(sel, start, style); }} className="font-black px-4 py-2 rounded-full" style={{ background: C.accent, color: C.onPrimary }}>Ajouter</button>
