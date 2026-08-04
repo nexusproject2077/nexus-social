@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
+import IdCameraCapture from "@/components/IdCameraCapture";
 
 const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
 const CARD = { background: "#171f33", border: "1px solid rgba(255,255,255,0.05)" };
@@ -191,8 +192,9 @@ export default function IdentityVerification() {
               </p>
             )}
             <p className="text-xs" style={{ color: "#859397" }}>
-              Envoie une photo nette de ta pièce (carte d'identité, passeport ou titre de séjour). Le document est
-              <b> chiffré</b>, jamais public, et supprimé après vérification.
+              Prends une photo <b>en direct</b> de ta pièce (carte d'identité, passeport ou titre de séjour) — pas
+              d'import de fichier, pour éviter les images retouchées. Le document est <b>chiffré</b>, jamais public,
+              et supprimé après vérification.
             </p>
             <div className="flex flex-wrap gap-2">
               {[["id_card", "Carte d'identité"], ["passport", "Passeport"], ["residence_permit", "Titre de séjour"]].map(([v, l]) => (
@@ -200,10 +202,9 @@ export default function IdentityVerification() {
                   style={{ background: docType === v ? ACCENT : "#0b1326", color: docType === v ? "#00363e" : "#859397", border: "1px solid #2a3550" }}>{l}</button>
               ))}
             </div>
-            <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="block w-full text-xs" style={{ color: "#859397" }} />
+            <IdCameraCapture onCapture={setFile} />
             <button disabled={busy || !file} onClick={submitDoc} className="w-full py-2.5 rounded-xl text-sm font-black disabled:opacity-40"
-              style={{ background: ACCENT, color: "#00363e" }}>{busy ? "Envoi…" : "Envoyer pour vérification"}</button>
+              style={{ background: file ? ACCENT : "#0b1326", color: file ? "#00363e" : "#5b6b8c", border: "1px solid #2a3550" }}>{busy ? "Envoi…" : "Envoyer pour vérification"}</button>
           </div>
         )}
       </Row>

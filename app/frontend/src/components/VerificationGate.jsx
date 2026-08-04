@@ -8,6 +8,7 @@ import { useState } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
+import IdCameraCapture from "@/components/IdCameraCapture";
 
 const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
 const IN = { background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" };
@@ -128,12 +129,12 @@ export default function VerificationGate({ user, setUser }) {
               style={{ background: docType === v ? ACCENT : "#131b2e", color: docType === v ? "#00363e" : "#859397", border: "1px solid #2a3550" }}>{l}</button>
           ))}
         </div>
-        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)}
-          className="block w-full text-xs mb-4" style={{ color: "#859397" }} />
-        <button disabled={busy || !file} onClick={submitId} className="w-full py-3 rounded-2xl font-black disabled:opacity-40"
-          style={{ background: ACCENT, color: "#00363e" }}>{busy ? "Envoi…" : "Envoyer ma pièce d'identité"}</button>
+        {/* Capture EN DIRECT (pas d'import de fichier → pas de photo retouchée). */}
+        <IdCameraCapture onCapture={setFile} />
+        <button disabled={busy || !file} onClick={submitId} className="w-full mt-3 py-3 rounded-2xl font-black disabled:opacity-40"
+          style={{ background: file ? ACCENT : "#171f33", color: file ? "#00363e" : "#5b6b8c" }}>{busy ? "Envoi…" : "Envoyer ma pièce d'identité"}</button>
         <p className="text-center text-[11px] mt-3" style={{ color: "#5b6b8c" }}>
-          Document chiffré, jamais public, supprimé après vérification (RGPD).
+          Photo prise en direct, chiffrée, jamais publique, supprimée après vérification (RGPD).
         </p>
         <button onClick={logout} className="w-full mt-2 py-2 text-xs" style={{ color: "#5b6b8c" }}>Se déconnecter</button>
       </Wrap>
