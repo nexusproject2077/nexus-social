@@ -1,106 +1,70 @@
-// Capture EN DIRECT de la pièce d'identité via la caméra (getUserMedia).
-// Aucun import de fichier possible → l'image ne peut pas être retouchée à
-// l'avance. On prend la photo dans l'app puis on l'envoie telle quelle.
+// Capture EN DIRECT de la pièce / du selfie via la CAMÉRA NATIVE du téléphone
+// (input capture). Plus fiable que getUserMedia+canvas (qui donnait des images
+// noires sur iOS) et toujours en direct : l'attribut `capture` ouvre l'appareil
+// photo, pas la galerie → impossible d'envoyer une image retouchée à l'avance.
 import { useEffect, useRef, useState } from "react";
 
 const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
 
 export default function IdCameraCapture({ onCapture, facingMode = "environment", hint }) {
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const [err, setErr] = useState("");
-  const [preview, setPreview] = useState(null); // URL de la photo capturée
+  const inputRef = useRef(null);
+  const [preview, setPreview] = useState(null);
   const isSelfie = facingMode === "user";
 
-  const stop = () => {
-    try { streamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
-    streamRef.current = null;
-  };
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
-  const start = async () => {
-    setErr("");
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facingMode } }, // arrière (pièce) ou avant (selfie)
-        audio: false,
-      });
-      streamRef.current = s;
-      if (videoRef.current) {
-        videoRef.current.srcObject = s;
-        await videoRef.current.play().catch(() => {});
-      }
-    } catch (e) {
-      setErr("Caméra indisponible. Autorise l'accès à la caméra pour continuer.");
-    }
-  };
+  const openCamera = () => { if (inputRef.current) { inputRef.current.value = ""; inputRef.current.click(); } };
 
-  useEffect(() => {
-    start();
-    return () => { stop(); if (preview) URL.revokeObjectURL(preview); };
-    // eslint-disable-next-line
-  }, []);
-
-  const capture = () => {
-    const v = videoRef.current;
-    if (!v || !v.videoWidth) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = v.videoWidth;
-    canvas.height = v.videoHeight;
-    canvas.getContext("2d").drawImage(v, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const file = new File([blob], `id_${Date.now()}.jpg`, { type: "image/jpeg" });
-      const url = URL.createObjectURL(blob);
-      setPreview(url);
-      onCapture && onCapture(file);
-      stop();
-    }, "image/jpeg", 0.92);
+  const onFile = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(URL.createObjectURL(f));
+    onCapture && onCapture(f);
   };
 
   const retake = () => {
     if (preview) URL.revokeObjectURL(preview);
     setPreview(null);
     onCapture && onCapture(null);
-    start();
+    openCamera();
   };
-
-  if (err) {
-    return (
-      <div className="rounded-xl p-4 text-center" style={{ background: "#0b1326", border: "1px solid #2a3550" }}>
-        <span className="material-symbols-outlined text-3xl mb-1" style={{ color: "#f87171" }}>no_photography</span>
-        <p className="text-xs mb-3" style={{ color: "#f87171" }}>{err}</p>
-        <button onClick={start} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{ background: ACCENT, color: "#00363e" }}>Réessayer</button>
-      </div>
-    );
-  }
 
   return (
     <div>
-      <div className="relative rounded-xl overflow-hidden" style={{ background: "#000", aspectRatio: "4 / 3" }}>
+      {/* La caméra native. `capture` = appareil photo direct (arrière ou avant). */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture={isSelfie ? "user" : "environment"}
+        className="hidden"
+        onChange={onFile}
+      />
+
+      <div className="relative rounded-xl overflow-hidden" style={{ background: "#0b1326", aspectRatio: "4 / 3", border: "1px solid #2a3550" }}>
         {preview ? (
-          <img src={preview} alt="Pièce capturée" className="w-full h-full object-contain" />
+          <img src={preview} alt="Capture" className="w-full h-full object-contain" />
         ) : (
           <>
-            <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover"
-              style={isSelfie ? { transform: "scaleX(-1)" } : undefined} />
-            {/* Cadre repère */}
             <div className={`absolute inset-4 pointer-events-none ${isSelfie ? "rounded-full" : "rounded-lg"}`}
-              style={{ border: "2px dashed rgba(255,255,255,0.5)" }} />
-            <div className="absolute bottom-1 inset-x-0 text-center text-[11px]" style={{ color: "rgba(255,255,255,0.8)" }}>
-              {hint || (isSelfie ? "Centre ton visage dans le cercle" : "Place ta pièce dans le cadre, bien lisible")}
+              style={{ border: "2px dashed rgba(255,255,255,0.3)" }} />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ color: "#5b6b8c" }}>
+              <span className="material-symbols-outlined text-4xl">{isSelfie ? "face" : "id_card"}</span>
+              <span className="text-[11px] px-4 text-center">
+                {hint || (isSelfie ? "Prends ton selfie en direct" : "Prends ta pièce en photo en direct")}
+              </span>
             </div>
           </>
         )}
       </div>
 
       {preview ? (
-        <div className="flex gap-2 mt-3">
-          <button onClick={retake} className="flex-1 py-2.5 rounded-xl text-sm font-bold" style={{ background: "#171f33", color: "#dae2fd" }}>
-            Reprendre
-          </button>
-        </div>
+        <button onClick={retake} className="w-full mt-3 py-2.5 rounded-xl text-sm font-bold" style={{ background: "#171f33", color: "#dae2fd" }}>
+          Reprendre la photo
+        </button>
       ) : (
-        <button onClick={capture} className="w-full mt-3 py-2.5 rounded-xl text-sm font-black flex items-center justify-center gap-2"
+        <button onClick={openCamera} className="w-full mt-3 py-2.5 rounded-xl text-sm font-black flex items-center justify-center gap-2"
           style={{ background: ACCENT, color: "#00363e" }}>
           <span className="material-symbols-outlined text-lg">photo_camera</span> Prendre la photo
         </button>
