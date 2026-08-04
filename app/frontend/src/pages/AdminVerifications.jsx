@@ -12,7 +12,7 @@ const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("ne
 const CARD = { background: "#171f33", border: "1px solid rgba(255,255,255,0.06)" };
 const DOC_LABEL = { id_card: "Carte d'identité", passport: "Passeport", residence_permit: "Titre de séjour" };
 
-function DocPreview({ subId, kind = "document", label }) {
+function DocPreview({ subId, kind = "document", label, emptyMsg = "Indisponible" }) {
   const [url, setUrl] = useState(null);
   const [err, setErr] = useState(false);
   useEffect(() => {
@@ -25,7 +25,7 @@ function DocPreview({ subId, kind = "document", label }) {
   return (
     <div className="flex-1 min-w-0">
       <p className="text-[11px] font-bold mb-1 text-center" style={{ color: "#859397" }}>{label}</p>
-      {err ? <p className="text-xs text-center" style={{ color: "#f87171" }}>Indisponible</p>
+      {err ? <p className="text-xs text-center py-6" style={{ color: "#5b6b8c" }}>{emptyMsg}</p>
         : !url ? <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor: ACCENT }} /></div>
         : <img src={url} alt={label} className="w-full max-h-64 object-contain rounded-xl border" style={{ borderColor: "#2a3550" }} />}
     </div>
@@ -90,7 +90,7 @@ export default function AdminVerifications({ user, setUser }) {
                 </div>
                 <div className="flex gap-2 mb-3 rounded-xl p-2" style={{ background: "#0b1326" }}>
                   <DocPreview subId={it.id} kind="document" label="Pièce d'identité" />
-                  {it.has_selfie && <DocPreview subId={it.id} kind="selfie" label="Selfie" />}
+                  <DocPreview subId={it.id} kind="selfie" label="Selfie" emptyMsg="Aucun selfie fourni" />
                 </div>
                 <button disabled={busyId === it.id} onClick={() => approve(it.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-black disabled:opacity-40 mb-2" style={{ background: ACCENT, color: "#00363e" }}>
