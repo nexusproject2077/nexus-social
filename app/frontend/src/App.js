@@ -175,11 +175,11 @@ function App() {
       <Toaster position="top-center" richColors />
       <CookieConsent />
       {/* Vérification obligatoire (bloquante) : âge (>= 15 ans) puis pièce
-          d'identité. Débloqué une fois la pièce soumise (en revue) ou validée.
+          d'identité + selfie. L'accès reste BLOQUÉ tant que l'identité n'est pas
+          VALIDÉE par un admin (soumis = « en attente », pas d'accès).
           Les admins en sont exemptés (ils doivent traiter les demandes). */}
       {user && !user.is_admin &&
-        (user.age_verified !== true ||
-          !["pending", "verified"].includes(user.verification_status)) && (
+        (user.age_verified !== true || user.verification_status !== "verified") && (
         <VerificationGate user={user} setUser={setUser} />
       )}
       <BrowserRouter>

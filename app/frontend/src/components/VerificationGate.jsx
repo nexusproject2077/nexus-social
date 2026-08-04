@@ -25,7 +25,8 @@ export default function VerificationGate({ user, setUser }) {
 
   const needAge = user?.age_verified !== true;
   const status = user?.verification_status || "unverified";
-  const needId = !needAge && !["pending", "verified"].includes(status);
+  const waiting = !needAge && status === "pending";  // soumis → en attente de validation
+  const needId = !needAge && (status === "unverified" || status === "rejected");
 
   // Motif du refus (pour l'afficher précisément dans le pop-up).
   const [reason, setReason] = useState("");
@@ -72,9 +73,10 @@ export default function VerificationGate({ user, setUser }) {
   };
 
   const Wrap = ({ children }) => (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-[999] flex items-start sm:items-center justify-center p-4 overflow-y-auto"
       style={{ background: "rgba(3,7,18,0.94)", backdropFilter: "blur(6px)" }}>
-      <div className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#0b1326", border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="w-full max-w-sm rounded-3xl p-6 my-auto max-h-[92vh] overflow-y-auto"
+        style={{ background: "#0b1326", border: "1px solid rgba(255,255,255,0.08)", WebkitOverflowScrolling: "touch" }}>
         {children}
       </div>
     </div>
@@ -112,6 +114,28 @@ export default function VerificationGate({ user, setUser }) {
         <button disabled={busy} onClick={submitAge} className="w-full py-3 rounded-2xl font-black disabled:opacity-40"
           style={{ background: ACCENT, color: "#00363e" }}>{busy ? "Vérification…" : "Confirmer"}</button>
         <p className="text-center text-[11px] mt-3" style={{ color: "#5b6b8c" }}>Date chiffrée, jamais publique (RGPD).</p>
+      </Wrap>
+    );
+  }
+
+  // En attente de validation — l'utilisateur NE PEUT PAS utiliser l'app tant que
+  // l'admin n'a pas validé (règle : mise en attente après soumission).
+  if (waiting) {
+    return (
+      <Wrap>
+        <div className="text-center">
+          <span className="material-symbols-outlined text-5xl mb-2" style={{ color: "#f0b429" }}>hourglass_top</span>
+          <h2 className="font-black text-lg mb-2" style={{ color: "#dae2fd" }}>Compte en attente de validation</h2>
+          <p className="text-sm mb-4" style={{ color: "#859397" }}>
+            Ta pièce d'identité et ton selfie ont bien été reçus. Un administrateur les vérifie
+            (généralement sous 24–72 h). Tu pourras accéder à Nexus Social dès la validation —
+            tu recevras une notification.
+          </p>
+          <button onClick={() => refresh()} className="w-full py-3 rounded-2xl font-bold mb-2" style={{ background: ACCENT, color: "#00363e" }}>
+            Actualiser
+          </button>
+          <button onClick={logout} className="w-full py-2 text-xs" style={{ color: "#5b6b8c" }}>Se déconnecter</button>
+        </div>
       </Wrap>
     );
   }
