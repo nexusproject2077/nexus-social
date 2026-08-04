@@ -1,0 +1,111 @@
+// Interface admin — validation des pièces d'identité soumises.
+// Accès réservé aux administrateurs (le backend renvoie 403 sinon).
+// Le document est récupéré en blob AUTHENTIFIÉ (jamais une URL publique) puis
+// affiché le temps de la revue.
+import { useEffect, useState } from "react";
+import axios from "axios";
+import { API } from "@/App";
+import Layout from "@/components/Layout";
+import { toast } from "sonner";
+
+const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
+const CARD = { background: "#171f33", border: "1px solid rgba(255,255,255,0.06)" };
+const DOC_LABEL = { id_card: "Carte d'identité", passport: "Passeport", residence_permit: "Titre de séjour" };
+
+function DocPreview({ subId }) {
+  const [url, setUrl] = useState(null);
+  const [type, setType] = useState("");
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let obj;
+    axios.get(`${API}/admin/verifications/${subId}/document`, { responseType: "blob" })
+      .then((r) => { obj = URL.createObjectURL(r.data); setUrl(obj); setType(r.data.type || ""); })
+      .catch(() => setErr(true));
+    return () => { if (obj) URL.revokeObjectURL(obj); };
+  }, [subId]);
+  if (err) return <p className="text-xs" style={{ color: "#f87171" }}>Document indisponible.</p>;
+  if (!url) return <div className="animate-spin rounded-full h-6 w-6 border-b-2 my-4" style={{ borderColor: ACCENT }} />;
+  if (type === "application/pdf") {
+    return <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold" style={{ color: ACCENT }}>Ouvrir le PDF ↗</a>;
+  }
+  return <img src={url} alt="Pièce" className="max-h-72 rounded-xl border" style={{ borderColor: "#2a3550" }} />;
+}
+
+export default function AdminVerifications({ user, setUser }) {
+  const [items, setItems] = useState(null);
+  const [forbidden, setForbidden] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+
+  const load = () => {
+    axios.get(`${API}/admin/verifications`, { params: { status: "pending" } })
+      .then((r) => setItems(r.data || []))
+      .catch((e) => { if (e.response?.status === 403) setForbidden(true); setItems([]); });
+  };
+  useEffect(() => { load(); }, []);
+
+  const approve = async (id) => {
+    setBusyId(id);
+    try { await axios.post(`${API}/admin/verifications/${id}/approve`); toast.success("Vérifié ✓"); setItems((p) => p.filter((x) => x.id !== id)); }
+    catch (e) { toast.error(e.response?.data?.detail || "Échec."); }
+    finally { setBusyId(null); }
+  };
+  const reject = async (id) => {
+    const reason = window.prompt("Motif du refus (visible par l'utilisateur) :", "Document illisible ou non conforme");
+    if (reason === null) return;
+    setBusyId(id);
+    try { await axios.post(`${API}/admin/verifications/${id}/reject`, { reason }); toast.success("Refusé"); setItems((p) => p.filter((x) => x.id !== id)); }
+    catch (e) { toast.error(e.response?.data?.detail || "Échec."); }
+    finally { setBusyId(null); }
+  };
+
+  return (
+    <Layout user={user} setUser={setUser}>
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        <h1 className="font-black text-xl mb-1" style={{ color: "#dae2fd" }}>Vérifications d'identité</h1>
+        <p className="text-sm mb-5" style={{ color: "#859397" }}>Demandes en attente de validation.</p>
+
+        {forbidden ? (
+          <div className="rounded-2xl p-6 text-center" style={CARD}>
+            <span className="material-symbols-outlined text-4xl mb-2" style={{ color: "#f87171" }}>lock</span>
+            <p style={{ color: "#dae2fd" }}>Accès réservé aux administrateurs.</p>
+          </div>
+        ) : !items ? (
+          <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: ACCENT }} /></div>
+        ) : items.length === 0 ? (
+          <div className="rounded-2xl p-8 text-center" style={CARD}>
+            <span className="material-symbols-outlined text-4xl mb-2" style={{ color: ACCENT }}>task_alt</span>
+            <p style={{ color: "#dae2fd" }}>Aucune demande en attente 🎉</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {items.map((it) => (
+              <div key={it.id} className="rounded-2xl p-4" style={CARD}>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="font-bold" style={{ color: "#dae2fd" }}>@{it.username || it.user_id}</p>
+                    <p className="text-xs" style={{ color: "#859397" }}>
+                      {DOC_LABEL[it.doc_type] || it.doc_type} · {new Date(it.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex justify-center mb-3 rounded-xl p-2" style={{ background: "#0b1326" }}>
+                  <DocPreview subId={it.id} />
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={busyId === it.id} onClick={() => approve(it.id)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-black disabled:opacity-40" style={{ background: ACCENT, color: "#00363e" }}>
+                    Valider
+                  </button>
+                  <button disabled={busyId === it.id} onClick={() => reject(it.id)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-black disabled:opacity-40" style={{ background: "rgba(248,113,113,0.15)", color: "#f87171" }}>
+                    Refuser
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Layout>
+  );
+}

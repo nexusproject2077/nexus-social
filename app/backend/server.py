@@ -7915,7 +7915,48 @@ async def verify_email_confirm(data: OtpConfirm, current_user: dict = Depends(ge
     return {"email_verified": True}
 
 
-# ---- Niveau 1 : OTP téléphone ---------------------------------------------
+# ---- Niveau 1 : OTP téléphone (envoi SMS réel) ----------------------------
+def _send_sms_sync(phone: str, text: str) -> bool:
+    """Envoi SMS best-effort. Essaie Twilio puis Brevo SMS selon la config env.
+    Renvoie True si un fournisseur a accepté l'envoi, False sinon."""
+    import requests as _rq
+    # Twilio (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM)
+    sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    tok = os.environ.get("TWILIO_AUTH_TOKEN")
+    frm = os.environ.get("TWILIO_FROM")
+    if sid and tok and frm:
+        try:
+            r = _rq.post(
+                f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
+                data={"From": frm, "To": phone, "Body": text}, auth=(sid, tok), timeout=15)
+            if r.status_code < 300:
+                return True
+        except Exception:
+            pass
+    # Brevo SMS (BREVO_API_KEY / BREVO_SMS_SENDER)
+    bk = os.environ.get("BREVO_API_KEY")
+    sender = os.environ.get("BREVO_SMS_SENDER")
+    if bk and sender:
+        try:
+            r = _rq.post(
+                "https://api.brevo.com/v3/transactionalSMS/sms",
+                headers={"api-key": bk, "Content-Type": "application/json", "accept": "application/json"},
+                json={"type": "transactional", "sender": sender[:11], "recipient": phone, "content": text},
+                timeout=15)
+            if r.status_code < 300:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+async def send_sms(phone: str, text: str) -> bool:
+    try:
+        return await asyncio.to_thread(_send_sms_sync, phone, text)
+    except Exception:
+        return False
+
+
 @api_router.post("/verify/phone/send")
 async def verify_phone_send(data: PhoneIn, current_user: dict = Depends(get_current_user)):
     phone = (data.phone or "").strip()
@@ -7926,9 +7967,9 @@ async def verify_phone_send(data: PhoneIn, current_user: dict = Depends(get_curr
     # Numéro CHIFFRÉ au repos (RGPD).
     await db.users.update_one({"id": current_user["id"]}, {"$set": {"phone_enc": encrypt(phone)}})
     code = await _issue_otp(current_user["id"], "phone")
-    delivered = False
-    # _send_sms(phone, code) → à brancher sur un fournisseur (Twilio/Brevo SMS).
-    # Tant qu'aucun fournisseur n'est configuré, on renvoie le code (mode dev).
+    delivered = await send_sms(phone, f"Ton code de vérification Nexus Social : {code} (valable 10 min).")
+    # Si aucun fournisseur SMS n'est configuré (delivered=False), on renvoie le
+    # code (mode démo) pour rester testable. En prod, configure Twilio/Brevo SMS.
     return {"sent": True, "delivered": delivered, "dev_code": None if delivered else code}
 
 

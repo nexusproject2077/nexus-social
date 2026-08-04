@@ -4,7 +4,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
 import CookieConsent from "./components/CookieConsent";
-import AgeGate from "@/components/AgeGate";
+import VerificationGate from "@/components/VerificationGate";
+import AdminVerifications from "@/pages/AdminVerifications";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
 import { initAccent, applyAccent } from "@/lib/accent";
 import { enablePush } from "@/lib/push";
@@ -154,9 +155,14 @@ function App() {
     <div className="App">
       <Toaster position="top-center" richColors />
       <CookieConsent />
-      {/* Contrôle d'âge bloquant (loi FR >= 15 ans) pour les comptes existants
-          qui n'ont pas encore confirmé leur date de naissance. */}
-      {user && user.age_verified !== true && <AgeGate setUser={setUser} />}
+      {/* Vérification obligatoire (bloquante) : âge (>= 15 ans) puis pièce
+          d'identité. Débloqué une fois la pièce soumise (en revue) ou validée.
+          Les admins en sont exemptés (ils doivent traiter les demandes). */}
+      {user && !user.is_admin &&
+        (user.age_verified !== true ||
+          !["pending", "verified"].includes(user.verification_status)) && (
+        <VerificationGate user={user} setUser={setUser} />
+      )}
       <BrowserRouter>
         <Routes>
           <Route
@@ -222,6 +228,10 @@ function App() {
           <Route
             path="/privacy-center"
             element={user ? <PrivacyCenter user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+          />
+          <Route
+            path="/admin/verifications"
+            element={user ? <AdminVerifications user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           {/* Nexus Clips : /nexus-clips est l'URL canonique ; /nexus-clips/:clipId
               ouvre (et permet de partager) une vidéo précise. /clips reste un alias. */}
