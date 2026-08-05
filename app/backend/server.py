@@ -8138,7 +8138,7 @@ async def admin_approve_verification(sub_id: str, current_user: dict = Depends(g
     if not sub:
         raise HTTPException(status_code=404, detail="Soumission introuvable")
     await db.users.update_one({"id": sub["user_id"]}, {"$set": {
-        "verification_status": "verified", "is_verified": True}})
+        "verification_status": "verified", "is_verified": True, "age_verified": True}})
     # Minimisation RGPD : on PURGE la pièce + le selfie après validation.
     await db.identity_submissions.update_one({"id": sub_id}, {
         "$set": {"status": "verified", "reviewed_at": datetime.now(timezone.utc).isoformat()},
@@ -8363,10 +8363,49 @@ async def _keep_alive_loop():
             pass
 
 
+async def _ensure_stable_cipher():
+    """Garantit une clé de chiffrement STABLE, même sans ENCRYPTION_KEY définie.
+
+    Sans clé stable, les pièces d'identité chiffrées deviennent ILLISIBLES après
+    un redémarrage — ou depuis une autre instance (Cloud Run peut en lancer
+    plusieurs). L'admin voit alors « Indisponible » et ne peut jamais valider →
+    l'utilisateur reste bloqué « en attente ». On persiste donc UNE clé en base
+    (partagée par toutes les instances, conservée entre les déploiements) et on
+    l'utilise pour (dé)chiffrer. Si ENCRYPTION_KEY est fournie, elle prime."""
+    global cipher
+    if _encryption_key:
+        return  # clé d'environnement = déjà stable, on n'y touche pas
+    try:
+        doc = await asyncio.wait_for(db.app_secrets.find_one({"_id": "encryption_key"}), timeout=10)
+        if doc and doc.get("key"):
+            cipher = Fernet(doc["key"].encode())
+            logger.info("✅ Clé de chiffrement stable chargée depuis la base")
+            return
+        # Aucune clé encore stockée : on en génère une et on la persiste. Le
+        # $setOnInsert + relecture gère la course entre plusieurs instances
+        # (une seule clé « gagne », toutes les instances la relisent ensuite).
+        key = Fernet.generate_key().decode()
+        await db.app_secrets.update_one(
+            {"_id": "encryption_key"},
+            {"$setOnInsert": {"key": key, "created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        doc = await db.app_secrets.find_one({"_id": "encryption_key"})
+        cipher = Fernet((doc.get("key") if doc else key).encode())
+        logger.info("✅ Clé de chiffrement stable générée et persistée en base")
+    except Exception as e:
+        logger.warning(f"⚠️ Clé de chiffrement stable indisponible (repli éphémère) : {e}")
+
+
 @app.on_event("startup")
 async def startup_db_client():
     """Démarrage NON bloquant : on lance le réchauffage DB, la boucle « tendance »
     et le keep-alive en tâches de fond, pour que le serveur réponde tout de suite."""
+    # Clé de chiffrement stable AVANT tout (dé)chiffrement (pièces d'identité).
+    try:
+        await _ensure_stable_cipher()
+    except Exception as e:
+        logger.warning(f"Init clé de chiffrement différée : {e}")
     try:
         asyncio.create_task(_startup_warmup())
         asyncio.create_task(trending_notifier_loop())

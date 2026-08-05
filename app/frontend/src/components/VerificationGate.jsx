@@ -40,6 +40,19 @@ export default function VerificationGate({ user, setUser }) {
     try { const me = await axios.get(`${API}/auth/me`); setUser && setUser(me.data); }
     catch { window.location.reload(); }
   };
+
+  // En attente de validation : on rafraîchit AUTOMATIQUEMENT le statut (toutes
+  // les 12 s + au retour sur l'onglet). Dès que l'admin valide, l'accès se
+  // débloque tout seul — l'utilisateur n'a rien à faire (« ne redemande pas »).
+  useEffect(() => {
+    if (!waiting) return;
+    const tick = () => { if (document.visibilityState === "visible") refresh(); };
+    const iv = setInterval(tick, 12000);
+    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(iv); window.removeEventListener("focus", tick); document.removeEventListener("visibilitychange", tick); };
+    // eslint-disable-next-line
+  }, [waiting]);
   const logout = () => {
     try { localStorage.removeItem("token"); localStorage.removeItem("nexus_user"); } catch { /* ignore */ }
     window.location.href = "/auth";

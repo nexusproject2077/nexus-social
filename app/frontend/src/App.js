@@ -179,7 +179,7 @@ function App() {
           VALIDÉE par un admin (soumis = « en attente », pas d'accès).
           Les admins en sont exemptés (ils doivent traiter les demandes). */}
       {user && !user.is_admin &&
-        (user.age_verified !== true || user.verification_status !== "verified") && (
+        user.is_verified !== true && user.verification_status !== "verified" && (
         <VerificationGate user={user} setUser={setUser} />
       )}
       <BrowserRouter>
