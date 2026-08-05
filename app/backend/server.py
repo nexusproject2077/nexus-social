@@ -7876,6 +7876,11 @@ async def verify_get_status(current_user: dict = Depends(get_current_user)):
     last = await db.identity_submissions.find_one(
         {"user_id": current_user["id"]}, sort=[("created_at", -1)])
     status = u.get("verification_status", "unverified")
+    # is_verified fait autorité : si la pièce a été validée, le statut est
+    # « verified » même si un ancien champ verification_status est resté « pending »
+    # (évite d'afficher « Vérification en cours » sur un compte déjà vérifié).
+    if u.get("is_verified"):
+        status = "verified"
     return {
         "status": status,                                   # unverified|pending|verified|rejected
         "age_verified": bool(u.get("age_verified")),
@@ -7905,6 +7910,84 @@ async def verify_email_send(background_tasks: BackgroundTasks, current_user: dic
     # que le flux reste testable. En prod, configure Brevo pour que le code parte
     # par email au lieu d'être renvoyé ici.
     return {"sent": True, "delivered": delivered, "dev_code": None if delivered else code}
+
+
+# ==================== NEXUS AI (assistant de messagerie) ====================
+# Assistant conversationnel « Nexus AI ». Branché sur Gemini si GEMINI_API_KEY est
+# défini (« l'ami de Gemini »), sinon repli amical le temps de la configuration.
+NEXUS_AI_SYSTEM = (
+    "Tu es Nexus AI, l'assistant intégré du réseau social Nexus Social. Réponds "
+    "dans la langue de l'utilisateur (français par défaut), de façon amicale, "
+    "concise et utile. Tu aides à utiliser l'app, rédiger des publications, "
+    "trouver des idées de clips/stories, et répondre aux questions."
+)
+
+
+class AIChatIn(BaseModel):
+    message: str
+    history: Optional[list] = None  # [{role: "user"|"assistant", text: str}]
+
+
+def _gemini_reply_sync(message: str, history):
+    """Appelle Gemini (REST) si GEMINI_API_KEY est configurée. Renvoie None sinon
+    ou en cas d'échec (repli géré par l'appelant). Best-effort, jamais bloquant."""
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        return None
+    try:
+        import requests as _rq
+        contents = []
+        for h in (history or [])[-10:]:
+            txt = str((h or {}).get("text") or "")[:2000]
+            if not txt:
+                continue
+            role = "user" if (h or {}).get("role") == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": txt}]})
+        contents.append({"role": "user", "parts": [{"text": message}]})
+        model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+        body = {
+            "system_instruction": {"parts": [{"text": NEXUS_AI_SYSTEM}]},
+            "contents": contents,
+            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800},
+        }
+        r = _rq.post(url, json=body, timeout=30)
+        if r.status_code != 200:
+            logger.warning(f"Gemini HTTP {r.status_code}: {r.text[:200]}")
+            return None
+        data = r.json()
+        cand = (data.get("candidates") or [{}])[0]
+        parts = ((cand.get("content") or {}).get("parts") or [])
+        text = "".join(p.get("text", "") for p in parts).strip()
+        return text or None
+    except Exception as e:
+        logger.warning(f"Gemini indisponible : {e}")
+        return None
+
+
+async def _nexus_ai_reply(message: str, history, user: dict) -> str:
+    reply = await asyncio.to_thread(_gemini_reply_sync, message, history)
+    if reply:
+        return reply
+    # Gemini pas encore branché → repli amical (l'endpoint reste fonctionnel).
+    return (
+        "👋 Salut ! Je suis Nexus AI. Mon cerveau complet arrive très bientôt — "
+        "je pourrai alors t'aider à rédiger tes publications, trouver des idées de "
+        "clips et répondre à tes questions sur Nexus Social. À très vite ! 🤖"
+    )
+
+
+@api_router.post("/ai/chat")
+async def ai_chat(data: AIChatIn, current_user: dict = Depends(get_current_user)):
+    """Répond à un message adressé à Nexus AI."""
+    msg = (data.message or "").strip()[:2000]
+    if not msg:
+        raise HTTPException(status_code=400, detail="Message vide.")
+    if not rate_limit(f"ai_chat:{current_user['id']}", max_attempts=30, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Trop de messages — patiente un instant.")
+    reply = await _nexus_ai_reply(msg, data.history, current_user)
+    return {"reply": reply, "ai": True}
+# ==================== END NEXUS AI ====================
 
 
 @api_router.post("/verify/email/confirm")

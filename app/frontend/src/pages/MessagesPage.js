@@ -9,6 +9,7 @@ import { compressImage, dataUrlBytes } from "@/lib/compressImage";
 import { linkify, extractFirstUrl } from "@/lib/linkify";
 import LinkPreview from "@/components/LinkPreview";
 import InstantsEntry from "@/components/instants/InstantsEntry";
+import NexusAIChat from "@/components/NexusAIChat";
 import { SURFACE, TEXT, OUTLINE, ACCENT, glass as sharedGlass } from "@/lib/theme";
 import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
 
@@ -310,6 +311,7 @@ export default function MessagesPage({ user }) {
     try { return JSON.parse(localStorage.getItem("nexus_groups_cache") || "[]"); } catch { return []; }
   });
   const [messages,        setMessages]         = useState([]);
+  const [showAI,          setShowAI]           = useState(false);  // overlay Nexus AI
   const [messageContent,  setMessageContent]   = useState("");
   const [selectedUser,    setSelectedUser]     = useState(null);
   const [selectedGroup,   setSelectedGroup]    = useState(null);
@@ -1598,6 +1600,24 @@ export default function MessagesPage({ user }) {
                 transform: convRefreshing ? "none" : `rotate(${convPull * 4}deg)`, opacity: Math.min(1, convPull / PULL_THRESHOLD) }} />
           </div>
         )}
+        {/* Nexus AI — épinglé tout en haut, toujours accessible. */}
+        {!showNewMsg && (
+          <button onClick={() => setShowAI(true)}
+            className="w-full flex items-center gap-3 px-4 py-3 transition-all hover:bg-white/5 text-left">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: `linear-gradient(135deg, ${C.cyan}, #3b82f6)` }}>
+              <span className="material-symbols-outlined" style={{ color: C.onPrimary }}>auto_awesome</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold flex items-center gap-1" style={{ color: C.onSurface }}>
+                Nexus AI
+                <span className="material-symbols-outlined text-base" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}>verified</span>
+              </p>
+              <p className="text-xs truncate" style={{ color: C.outline }}>Ton assistant — pose ta question</p>
+            </div>
+          </button>
+        )}
+
         {chatItems.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
@@ -2282,6 +2302,9 @@ export default function MessagesPage({ user }) {
           Monté au niveau stable de la page (jamais remonté avec les panneaux).
           Masqué quand une conversation est ouverte sur mobile. */}
       <InstantsEntry user={user} hidden={hasSelection} />
+
+      {/* Nexus AI — overlay de discussion (indépendant du flux WebSocket). */}
+      {showAI && <NexusAIChat onClose={() => setShowAI(false)} />}
 
       {/* ── Menu appui long conversation (mobile) : façon Instagram ── */}
       {convMenu && (
