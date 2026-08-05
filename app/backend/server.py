@@ -13,7 +13,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import InvalidURI, ConnectionFailure
 import os
 import logging
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -965,6 +965,18 @@ class PostCreate(BaseModel):
 
 class Post(BaseModel):
     model_config = ConfigDict(extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_nulls(cls, data):
+        """Empêche qu'une publication ancienne/incomplète (champ requis à null,
+        ex. content=None) ne fasse échouer TOUTE une liste de publications."""
+        if isinstance(data, dict):
+            for k in ("id", "author_id", "author_username", "content", "created_at"):
+                if data.get(k) is None:
+                    data[k] = ""
+        return data
+
     id: str
     author_id: str
     author_username: str
@@ -3155,8 +3167,17 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
         post["is_liked"] = bool(like_raw)
         post["author_is_premium"] = author_premium
         post["is_pinned"] = bool(post.get("pinned"))
-        enrich_post_poll(post, current_user["id"])
-        posts.append(Post(**post))
+        # Champs obligatoires tolérants : une publication ancienne/incomplète ne
+        # doit PAS faire échouer tout le profil (comme pour les notifications).
+        post.setdefault("content", "")
+        if post.get("content") is None:
+            post["content"] = ""
+        try:
+            enrich_post_poll(post, current_user["id"])
+            posts.append(Post(**post))
+        except Exception as e:
+            logger.warning(f"Publication ignorée (invalide) {post.get('id')}: {e}")
+            continue
 
     return posts
 
