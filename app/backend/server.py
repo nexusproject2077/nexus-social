@@ -3160,23 +3160,19 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
 
     posts = []
     for post_raw in posts_raw:
-        # Migre en arrière-plan les anciens médias base64 (allègement progressif).
-        schedule_lazy_media_migration("posts", post_raw)
-        post = convert_mongo_doc_to_dict(post_raw)
-        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
-        post["is_liked"] = bool(like_raw)
-        post["author_is_premium"] = author_premium
-        post["is_pinned"] = bool(post.get("pinned"))
-        # Champs obligatoires tolérants : une publication ancienne/incomplète ne
-        # doit PAS faire échouer tout le profil (comme pour les notifications).
-        post.setdefault("content", "")
-        if post.get("content") is None:
-            post["content"] = ""
+        # Tout le traitement d'une publication est protégé : une seule entrée
+        # ancienne/incomplète ne doit JAMAIS faire échouer tout le profil.
         try:
+            schedule_lazy_media_migration("posts", post_raw)
+            post = convert_mongo_doc_to_dict(post_raw)
+            like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+            post["is_liked"] = bool(like_raw)
+            post["author_is_premium"] = author_premium
+            post["is_pinned"] = bool(post.get("pinned"))
             enrich_post_poll(post, current_user["id"])
             posts.append(Post(**post))
         except Exception as e:
-            logger.warning(f"Publication ignorée (invalide) {post.get('id')}: {e}")
+            logger.warning(f"Publication ignorée (invalide) {post_raw.get('id')}: {e}")
             continue
 
     return posts
