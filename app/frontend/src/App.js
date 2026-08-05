@@ -5,8 +5,6 @@ import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import CookieConsent from "./components/CookieConsent";
-import VerificationGate from "@/components/VerificationGate";
-import AdminVerifications from "@/pages/AdminVerifications";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
 import { initAccent, applyAccent } from "@/lib/accent";
 import { enablePush } from "@/lib/push";
@@ -141,23 +139,6 @@ function App() {
     checkAuth();
   }, []);
 
-  // Résultat de vérification d'identité en TEMPS RÉEL : si l'admin refuse (ou
-  // valide), on rafraîchit l'utilisateur → le gate/pop-up réapparaît aussitôt
-  // avec le motif, sans que la personne ait à recharger la page.
-  useEffect(() => {
-    const onRealtime = (e) => {
-      const t = e?.detail?.type;
-      if (t === "verification_rejected") {
-        toast.error(`Vérification refusée : ${e.detail.reason || "document non conforme"}. Merci de recommencer.`);
-        checkAuth();
-      } else if (t === "verification_approved") {
-        toast.success("Ton identité a été vérifiée ✓");
-        checkAuth();
-      }
-    };
-    window.addEventListener("nexus:realtime", onRealtime);
-    return () => window.removeEventListener("nexus:realtime", onRealtime);
-  }, []);
   // NB : l'enregistrement du Service Worker est fait dans index.js, et le
   // ré-abonnement push silencieux dans l'effet [user?.id] ci-dessus.
 
@@ -174,14 +155,6 @@ function App() {
     <div className="App">
       <Toaster position="top-center" richColors />
       <CookieConsent />
-      {/* Vérification obligatoire (bloquante) : âge (>= 15 ans) puis pièce
-          d'identité + selfie. L'accès reste BLOQUÉ tant que l'identité n'est pas
-          VALIDÉE par un admin (soumis = « en attente », pas d'accès).
-          Les admins en sont exemptés (ils doivent traiter les demandes). */}
-      {user && !user.is_admin &&
-        user.is_verified !== true && user.verification_status !== "verified" && (
-        <VerificationGate user={user} setUser={setUser} />
-      )}
       <BrowserRouter>
         <Routes>
           <Route
@@ -247,10 +220,6 @@ function App() {
           <Route
             path="/privacy-center"
             element={user ? <PrivacyCenter user={user} setUser={setUser} /> : <Navigate to="/auth" />}
-          />
-          <Route
-            path="/admin/verifications"
-            element={user ? <AdminVerifications user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           {/* Nexus Clips : /nexus-clips est l'URL canonique ; /nexus-clips/:clipId
               ouvre (et permet de partager) une vidéo précise. /clips reste un alias. */}

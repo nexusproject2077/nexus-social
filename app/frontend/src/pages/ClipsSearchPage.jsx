@@ -138,7 +138,6 @@ export default function ClipsSearchPage({ user, setUser }) {
       <div className="min-w-0">
         <p className="font-bold text-sm flex items-center gap-1" style={{ color: C.onSurface }}>
           @{u.username}
-          {u.is_verified && <span className="material-symbols-outlined text-sm" style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1" }}>verified</span>}
           {u.is_premium && <span className="material-symbols-outlined text-sm" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>}
         </p>
         <p className="text-xs truncate" style={{ color: C.outline }}>{fmt(u.followers_count)} abonnés{u.bio ? ` · ${u.bio}` : ""}</p>

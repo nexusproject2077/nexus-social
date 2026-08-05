@@ -323,15 +323,6 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               {/* Nom + @username côte à côte (façon X) */}
               <p className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1 flex-wrap" style={{ color: C.onSurface }}>
                 <span className="truncate">{displayAuthorName}</span>
-                {displayAuthorVerified && (
-                  <span
-                    className="material-symbols-outlined text-sm"
-                    style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1" }}
-                    title="Compte vérifié"
-                  >
-                    verified
-                  </span>
-                )}
                 {post.author_is_premium && (
                   <span
                     className="material-symbols-outlined text-sm"

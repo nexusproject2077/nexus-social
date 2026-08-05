@@ -252,8 +252,6 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
     { icon: "bookmark",       label: "Enregistrés",      path: "/enregistres",          testId: "nav-saved" },
     { icon: "workspace_premium", label: "Premium",       path: "/premium",              testId: "nav-premium" },
     { icon: "settings",       label: t("settings.title"),      path: "/settings",             testId: "nav-settings" },
-    // Lien admin — visible UNIQUEMENT par les administrateurs.
-    ...(user?.is_admin ? [{ icon: "verified_user", label: "Vérifications", path: "/admin/verifications", testId: "nav-admin-verif" }] : []),
   ];
 
   return (

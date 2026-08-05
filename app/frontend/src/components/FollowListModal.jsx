@@ -122,7 +122,6 @@ export default function FollowListModal({
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-white flex items-center gap-1 truncate">
                       @{u.username}
-                      {u.is_verified && <BadgeCheck size={14} color={C.accent} />}
                     </p>
                     {u.bio && <p className="text-xs truncate" style={{ color: C.outline }}>{u.bio}</p>}
                   </div>
