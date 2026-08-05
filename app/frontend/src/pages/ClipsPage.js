@@ -1175,7 +1175,7 @@ export default function ClipsPage({ user, setUser }) {
           `}</style>
           {clips.map((clip, idx) => (
             <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100dvh" }}>
-              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex}
+              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex && !showComposer}
                 index={idx} registerVideo={registerVideo} onDelete={handleDeleteClip} />
             </div>
           ))}
