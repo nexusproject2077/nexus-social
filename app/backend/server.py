@@ -7940,11 +7940,17 @@ class AIChatIn(BaseModel):
 
 
 def _gemini_reply_sync(message: str, history):
-    """Appelle Gemini (REST) si GEMINI_API_KEY est configurée. Renvoie None sinon
-    ou en cas d'échec (repli géré par l'appelant). Best-effort, jamais bloquant."""
+    """Appelle Gemini (REST) si GEMINI_API_KEY est configurée.
+
+    Renvoie un tuple (statut, valeur) :
+      • ("nokey", None)  → aucune clé configurée
+      • ("ok", texte)    → réponse de Gemini
+      • ("error", détail)→ clé présente mais l'appel a échoué (modèle, API non
+                           activée, quota, clé invalide…). Best-effort, jamais bloquant.
+    """
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
-        return None
+        return ("nokey", None)
     try:
         import requests as _rq
         contents = []
@@ -7955,32 +7961,52 @@ def _gemini_reply_sync(message: str, history):
             role = "user" if (h or {}).get("role") == "user" else "model"
             contents.append({"role": role, "parts": [{"text": txt}]})
         contents.append({"role": "user", "parts": [{"text": message}]})
-        model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
         body = {
             "system_instruction": {"parts": [{"text": NEXUS_AI_SYSTEM}]},
             "contents": contents,
             "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800},
         }
-        r = _rq.post(url, json=body, timeout=30)
-        if r.status_code != 200:
-            logger.warning(f"Gemini HTTP {r.status_code}: {r.text[:200]}")
-            return None
-        data = r.json()
-        cand = (data.get("candidates") or [{}])[0]
-        parts = ((cand.get("content") or {}).get("parts") or [])
-        text = "".join(p.get("text", "") for p in parts).strip()
-        return text or None
+        # Les noms de modèles évoluent côté Google (les 1.5 ont été retirés). On
+        # essaie le modèle configuré puis des valeurs récentes jusqu'à succès.
+        preferred = os.environ.get("GEMINI_MODEL")
+        candidates = [preferred, "gemini-2.0-flash", "gemini-2.5-flash",
+                      "gemini-flash-latest", "gemini-1.5-flash"]
+        tried = [m for m in dict.fromkeys(candidates) if m]  # dédup, sans None
+        last_err = "inconnu"
+        for model in tried:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            r = _rq.post(url, json=body, timeout=30)
+            if r.status_code == 200:
+                data = r.json()
+                cand = (data.get("candidates") or [{}])[0]
+                parts = ((cand.get("content") or {}).get("parts") or [])
+                text = "".join(p.get("text", "") for p in parts).strip()
+                if text:
+                    return ("ok", text)
+                last_err = "réponse vide (contenu bloqué ?)"
+                continue
+            last_err = f"HTTP {r.status_code}"
+            logger.warning(f"Gemini {model} → {r.status_code}: {r.text[:200]}")
+            # 404 = modèle inconnu → on tente le suivant ; 400/403 = clé/API →
+            # inutile d'insister mais on laisse la boucle finir vite.
+        return ("error", last_err)
     except Exception as e:
         logger.warning(f"Gemini indisponible : {e}")
-        return None
+        return ("error", str(e)[:120])
 
 
 async def _nexus_ai_reply(message: str, history, user: dict) -> str:
-    reply = await asyncio.to_thread(_gemini_reply_sync, message, history)
-    if reply:
-        return reply
-    # Gemini pas encore branché → repli amical (l'endpoint reste fonctionnel).
+    status, value = await asyncio.to_thread(_gemini_reply_sync, message, history)
+    if status == "ok" and value:
+        return value
+    if status == "error":
+        # Clé présente mais l'appel échoue → message clair pour débloquer la config.
+        return (
+            "🤖 Je suis connecté mais je n'arrive pas à joindre mon moteur Gemini "
+            f"({value}). Vérifie que la variable GEMINI_API_KEY est valide et que "
+            "l'API « Generative Language » est activée sur ton projet Google."
+        )
+    # Aucune clé → repli amical (l'endpoint reste fonctionnel).
     return (
         "👋 Salut ! Je suis Nexus AI. Mon cerveau complet arrive très bientôt — "
         "je pourrai alors t'aider à rédiger tes publications, trouver des idées de "
