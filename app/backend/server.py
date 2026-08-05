@@ -1050,11 +1050,17 @@ class Notification(BaseModel):
     id: str
     user_id: str
     type: str
-    from_user_id: str
-    from_username: str
+    # Optionnels : certaines notifications système (vérification d'identité, etc.)
+    # n'ont pas d'expéditeur utilisateur — un défaut évite de casser TOUTE la
+    # liste des notifications à cause d'une seule entrée sans from_user_id.
+    from_user_id: str = ""
+    from_username: str = "Nexus Social"
     from_profile_pic: Optional[str] = None
     post_id: Optional[str] = None
     comment_content: Optional[str] = None
+    content: Optional[str] = None
+    reason: Optional[str] = None
+    url: Optional[str] = None
     read: bool = False
     created_at: str
 
@@ -3624,8 +3630,13 @@ async def get_notifications(skip: int = 0, limit: int = 30, current_user: dict =
     notifications = []
     for notif_raw in notifications_raw:
         notif = convert_mongo_doc_to_dict(notif_raw)
-        notifications.append(Notification(**notif))
-    
+        try:
+            notifications.append(Notification(**notif))
+        except Exception as e:
+            # Une notification malformée ne doit JAMAIS casser toute la liste.
+            logger.warning(f"Notification ignorée (invalide) : {e}")
+            continue
+
     return notifications
 
 @api_router.get("/badges")
@@ -8093,7 +8104,7 @@ async def _notify_admins_new_verification(username: str):
         try:
             await db.notifications.insert_one({
                 "id": str(uuid.uuid4()), "user_id": aid, "type": "verification",
-                "from_username": username, "post_id": None,
+                "from_user_id": "", "from_username": username, "post_id": None,
                 "content": f"@{username} a soumis une vérification d'identité",
                 "url": "/admin/verifications", "read": False,
                 "created_at": datetime.now(timezone.utc).isoformat(),
@@ -8236,7 +8247,7 @@ async def admin_approve_verification(sub_id: str, current_user: dict = Depends(g
     try:
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()), "user_id": uid, "type": "verification_approved",
-            "from_username": "Nexus Social", "content": "Ton identité a été vérifiée ✓",
+            "from_user_id": "", "from_username": "Nexus Social", "content": "Ton identité a été vérifiée ✓",
             "read": False, "created_at": datetime.now(timezone.utc).isoformat(),
         })
         await push_realtime(uid, {"type": "verification_approved"})
@@ -8270,7 +8281,7 @@ async def admin_reject_verification(sub_id: str, data: RejectIn, current_user: d
     try:
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()), "user_id": uid, "type": "verification_rejected",
-            "from_username": "Nexus Social", "content": f"Vérification refusée : {reason}",
+            "from_user_id": "", "from_username": "Nexus Social", "content": f"Vérification refusée : {reason}",
             "reason": reason, "url": "/settings", "read": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
