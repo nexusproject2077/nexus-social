@@ -536,18 +536,30 @@ export default function SettingsPage({ user, setUser }) {
         <p className="text-sm" style={{ color: C.outline }}>Protégez votre compte et gérez vos sessions actives</p>
       </div>
 
-      {/* 2FA */}
+      {/* 2FA — code de connexion envoyé par email */}
       <Card>
         <CardHeader title="Authentification à deux facteurs" icon="security" />
         <div className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-sm font-bold" style={{ color: C.onSurface }}>Authentification 2FA</p>
-              <p className="text-xs mt-0.5" style={{ color: C.outline }}>Gratuit via application Authenticator</p>
+          <div className="flex items-center justify-between">
+            <div className="pr-3">
+              <p className="text-sm font-bold" style={{ color: C.onSurface }}>Code de connexion par email</p>
+              <p className="text-xs mt-0.5" style={{ color: C.outline }}>
+                À chaque connexion, un code à 6 chiffres est envoyé à ton email pour confirmer que c'est bien toi.
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase" style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80" }}>Actif</span>
-              <Toggle checked={true} onChange={() => toast.info("Configurez dans l'appli")} />
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {user?.twofa_enabled && (
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase" style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80" }}>Actif</span>
+              )}
+              <Toggle checked={!!user?.twofa_enabled} onChange={async () => {
+                const next = !user?.twofa_enabled;
+                try {
+                  await axios.put(`${API}/users/me/2fa`, { enabled: next });
+                  const me = await axios.get(`${API}/auth/me`);
+                  setUser && setUser(me.data);
+                  toast.success(next ? "2FA activée" : "2FA désactivée");
+                } catch (e) { toast.error(e.response?.data?.detail || "Action impossible."); }
+              }} />
             </div>
           </div>
         </div>

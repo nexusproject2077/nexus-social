@@ -67,14 +67,19 @@ except ImportError:
         print("⚠️ WARNING: Module 'websocket_notifications' introuvable. Temps réel désactivé.")
         ws_manager = None
 
-# Emails transactionnels (Brevo) — no-op si BREVO_API_KEY absente
+# Emails transactionnels (Brevo) — no-op si BREVO_API_KEY absente.
+# _EMAIL_ENABLED reflète la config RÉELLE (clé API + SDK présents) : la fonction
+# send_brevo_email existe toujours même sans config, donc on ne peut PAS s'y fier
+# pour savoir si un email partira vraiment (sinon on bloquerait des comptes sur
+# une vérification email qui n'arrive jamais).
 try:
-    from backend.brevo import send_email as send_brevo_email
+    from backend.brevo import send_email as send_brevo_email, EMAIL_ENABLED as _EMAIL_ENABLED
 except ImportError:
     try:
-        from brevo import send_email as send_brevo_email
+        from brevo import send_email as send_brevo_email, EMAIL_ENABLED as _EMAIL_ENABLED
     except ImportError:
         send_brevo_email = None
+        _EMAIL_ENABLED = False
 
 # Modération auto gratuite (toxic-bert + NudeNet) — optionnelle et fail-open :
 # si le module ou ses dépendances (transformers/torch, nudenet) manquent, rien
@@ -917,6 +922,7 @@ class User(BaseModel):
     age_verified: bool = False          # >= 15 ans confirmé à l'inscription (loi FR)
     email_verified: bool = False
     phone_verified: bool = False
+    twofa_enabled: bool = False         # double authentification (code email à la connexion)
     accent_color: Optional[str] = None
     theme: Optional[str] = None
     created_at: str
@@ -1414,22 +1420,28 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
         "birthdate_enc": encrypt(str(user_data.birthdate)[:10]),
         "age_verified": True,  # >= 15 vérifié ci-dessus
         "verification_status": "unverified",
-        "email_verified": False,
+        # Vérification EMAIL : si l'envoi d'email est configuré, le compte doit
+        # confirmer son adresse (gate). Sinon on n'enferme personne → auto-vérifié.
+        "email_verified": not _EMAIL_ENABLED,
         "phone_verified": False,
+        "twofa_enabled": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_to_insert)
 
     token = create_access_token({"sub": user_id})
 
-    # Email de bienvenue (best-effort, en tâche de fond : ne bloque pas l'inscription)
-    if send_brevo_email:
+    # Email de bienvenue + code de confirmation (best-effort, en tâche de fond).
+    if _EMAIL_ENABLED and send_brevo_email:
+        code = await _issue_otp(user_id, "email")
         background_tasks.add_task(
             send_brevo_email,
             user_data.email,
-            "Bienvenue sur Nexus Social 🎉",
+            "Bienvenue sur Nexus Social 🎉 — confirme ton email",
             f"<h1>Bienvenue {user_data.username} !</h1>"
-            "<p>Ton compte est prêt. Publie ton premier post et rejoins la communauté 🚀</p>",
+            "<p>Ton compte est presque prêt. Confirme ton adresse email avec ce code :</p>"
+            f"<p style='font-size:26px;font-weight:bold;letter-spacing:4px'>{code}</p>"
+            "<p>Ce code expire dans 10 minutes.</p>",
         )
 
     return {
@@ -1447,7 +1459,7 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
     }
 
 @api_router.post("/auth/login")
-async def login(credentials: UserLogin, request: Request):
+async def login(credentials: UserLogin, request: Request, background_tasks: BackgroundTasks):
     """Connecte un utilisateur existant"""
     # Anti brute-force : max 10 tentatives / 5 min par IP
     if not rate_limit(f"login:{client_ip(request)}", max_attempts=10, window_seconds=300):
@@ -1469,9 +1481,20 @@ async def login(credentials: UserLogin, request: Request):
             detail=f"Ce compte n'est pas éligible : l'âge minimum est de {MIN_SIGNUP_AGE} ans (loi française).",
         )
 
+    # Double authentification (2FA) : mot de passe OK mais un code email est requis.
+    # On n'émet PAS de token ici ; le client devra confirmer via /auth/login/2fa.
+    if user_raw.get("twofa_enabled") and _EMAIL_ENABLED and send_brevo_email:
+        code = await _issue_otp(user_raw["id"], "2fa")
+        background_tasks.add_task(
+            send_brevo_email, user_raw["email"], "Ton code de connexion Nexus Social",
+            "<p>Voici ton code de connexion :</p>"
+            f"<p style='font-size:26px;font-weight:bold;letter-spacing:4px'>{code}</p>"
+            "<p>Ce code expire dans 10 minutes. Si ce n'est pas toi, change ton mot de passe.</p>")
+        return {"twofa_required": True, "email": user_raw["email"]}
+
     user = convert_mongo_doc_to_dict(user_raw)
     token = create_access_token({"sub": user["id"]})
-   
+
     return {
         "token": token,
         "user": {
@@ -1485,6 +1508,91 @@ async def login(credentials: UserLogin, request: Request):
             "created_at": user["created_at"]
         }
     }
+
+
+def _auth_payload(user: dict) -> dict:
+    """Réponse standard de connexion (token + profil minimal)."""
+    return {
+        "token": create_access_token({"sub": user["id"]}),
+        "user": {
+            "id": user["id"], "username": user["username"], "email": user["email"],
+            "bio": user.get("bio", ""), "profile_pic": user.get("profile_pic"),
+            "followers_count": user.get("followers_count", 0),
+            "following_count": user.get("following_count", 0),
+            "created_at": user.get("created_at"),
+        },
+    }
+
+
+class TwoFAConfirm(BaseModel):
+    email: EmailStr
+    code: str
+
+
+@api_router.post("/auth/login/2fa")
+async def login_2fa(data: TwoFAConfirm, request: Request):
+    """2e étape de connexion : vérifie le code email (double authentification)."""
+    if not rate_limit(f"login2fa:{client_ip(request)}", max_attempts=10, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
+    user_raw = await db.users.find_one({"email": data.email})
+    if not user_raw:
+        raise HTTPException(status_code=400, detail="Code invalide ou expiré.")
+    if not await _check_otp(user_raw["id"], "2fa", (data.code or "").strip()):
+        raise HTTPException(status_code=400, detail="Code invalide ou expiré.")
+    return _auth_payload(convert_mongo_doc_to_dict(user_raw))
+
+
+class ForgotIn(BaseModel):
+    email: EmailStr
+
+
+class ResetIn(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+
+@api_router.post("/auth/password/forgot")
+async def password_forgot(data: ForgotIn, background_tasks: BackgroundTasks, request: Request):
+    """Envoie un code de réinitialisation par email. Réponse identique que le
+    compte existe ou non (on ne révèle pas l'existence d'une adresse)."""
+    if not rate_limit(f"forgot:{client_ip(request)}", max_attempts=5, window_seconds=600):
+        raise HTTPException(status_code=429, detail="Trop de demandes. Réessayez plus tard.")
+    user = await db.users.find_one({"email": data.email}, {"id": 1, "username": 1, "email": 1})
+    if user and _EMAIL_ENABLED and send_brevo_email:
+        code = await _issue_otp(user["id"], "reset")
+        background_tasks.add_task(
+            send_brevo_email, user["email"], "Réinitialisation de ton mot de passe Nexus Social",
+            "<p>Voici ton code pour réinitialiser ton mot de passe :</p>"
+            f"<p style='font-size:26px;font-weight:bold;letter-spacing:4px'>{code}</p>"
+            "<p>Ce code expire dans 10 minutes. Si tu n'es pas à l'origine de cette demande, ignore cet email.</p>")
+    return {"sent": True}
+
+
+@api_router.post("/auth/password/reset")
+async def password_reset(data: ResetIn):
+    """Réinitialise le mot de passe après vérification du code email."""
+    if len((data.new_password or "")) < 6:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit faire au moins 6 caractères.")
+    user = await db.users.find_one({"email": data.email}, {"id": 1})
+    if not user or not await _check_otp(user["id"], "reset", (data.code or "").strip()):
+        raise HTTPException(status_code=400, detail="Code invalide ou expiré.")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"password": pwd_context.hash(data.new_password)}})
+    return {"reset": True}
+
+
+class TwoFAToggle(BaseModel):
+    enabled: bool
+
+
+@api_router.put("/users/me/2fa")
+async def set_twofa(data: TwoFAToggle, current_user: dict = Depends(get_current_user)):
+    """Active/désactive la double authentification par email à la connexion."""
+    if data.enabled and not _EMAIL_ENABLED:
+        raise HTTPException(status_code=400, detail="L'envoi d'email n'est pas configuré : impossible d'activer la 2FA.")
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"twofa_enabled": bool(data.enabled)}})
+    return {"twofa_enabled": bool(data.enabled)}
+
 
 @api_router.get("/auth/me", response_model=User)
 async def get_me(current_user: dict = Depends(get_current_user)):
@@ -7911,7 +8019,7 @@ async def verify_email_send(background_tasks: BackgroundTasks, current_user: dic
     code = await _issue_otp(current_user["id"], "email")
     email = current_user.get("email")
     delivered = False
-    if send_brevo_email and email:
+    if _EMAIL_ENABLED and send_brevo_email and email:
         background_tasks.add_task(
             send_brevo_email, email, "Ton code de vérification Nexus Social",
             f"<p>Ton code de vérification est : <b style='font-size:20px'>{code}</b></p>"

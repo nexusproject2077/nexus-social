@@ -21,9 +21,60 @@ export default function AuthPage({ setUser }) {
   });
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [twofa, setTwofa] = useState(null);   // { email } quand un code de connexion est requis
+  const [twofaCode, setTwofaCode] = useState("");
+  const [forgot, setForgot] = useState(null); // { step, email, code, pw, pw2 } pour la réinitialisation
 
   const handleChange = (field) => (e) =>
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+
+  // Stocke le token + le profil et connecte l'utilisateur.
+  const finishAuth = async (data) => {
+    const token = data.token;
+    localStorage.setItem("token", token);
+    try {
+      const me = await axios.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      localStorage.setItem("user", JSON.stringify(me.data));
+      setUser(me.data);
+    } catch {
+      localStorage.setItem("user", JSON.stringify(data.user));
+      setUser(data.user);
+    }
+  };
+
+  // 2e étape de connexion (2FA) : code reçu par email.
+  const submit2fa = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const r = await axios.post(`${API}/auth/login/2fa`, { email: twofa.email, code: twofaCode.trim() });
+      await finishAuth(r.data);
+      toast.success("Connexion réussie !");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Code invalide ou expiré.");
+    } finally { setLoading(false); }
+  };
+
+  // Mot de passe oublié : étape 0 = envoi du code, étape 1 = nouveau mot de passe.
+  const submitForgot = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      if (forgot.step === 0) {
+        await axios.post(`${API}/auth/password/forgot`, { email: forgot.email });
+        toast.success("Si un compte existe, un code a été envoyé par email.");
+        setForgot((f) => ({ ...f, step: 1 }));
+      } else {
+        if ((forgot.pw || "").length < 6) { toast.error("Mot de passe : 6 caractères minimum."); setLoading(false); return; }
+        if (forgot.pw !== forgot.pw2) { toast.error("Les mots de passe ne correspondent pas."); setLoading(false); return; }
+        await axios.post(`${API}/auth/password/reset`, { email: forgot.email, code: (forgot.code || "").trim(), new_password: forgot.pw });
+        toast.success("Mot de passe réinitialisé. Connecte-toi.");
+        setForgot(null); setIsLogin(true);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Échec de la réinitialisation.");
+    } finally { setLoading(false); }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -77,21 +128,18 @@ export default function AuthPage({ setUser }) {
           };
 
       const response = await axios.post(`${API}${endpoint}`, payload);
-      const token = response.data.token;
-      localStorage.setItem("token", token);
 
-      try {
-        const userResponse = await axios.get(`${API}/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        localStorage.setItem("user", JSON.stringify(userResponse.data));
-        setUser(userResponse.data);
-        toast.success(isLogin ? "Connexion réussie!" : "Inscription réussie!");
-      } catch {
-        localStorage.setItem("user", JSON.stringify(response.data.user));
-        setUser(response.data.user);
-        toast.success(isLogin ? "Connexion réussie!" : "Inscription réussie!");
+      // Double authentification : le backend ne renvoie pas de token, il attend
+      // un code de connexion envoyé par email.
+      if (response.data?.twofa_required) {
+        setTwofa({ email: response.data.email || formData.email });
+        setTwofaCode("");
+        toast.message("Code de connexion envoyé par email.", { description: "Vérifie ta boîte (et les spams)." });
+        return;
       }
+
+      await finishAuth(response.data);
+      toast.success(isLogin ? "Connexion réussie!" : "Inscription réussie!");
     } catch (error) {
       toast.error(error.response?.data?.detail || "Une erreur s'est produite");
     } finally {
@@ -341,6 +389,13 @@ export default function AuthPage({ setUser }) {
                         style={{ backgroundColor: "#131b2e" }}
                       />
                     </div>
+                    <div className="text-right">
+                      <button type="button"
+                        onClick={() => setForgot({ step: 0, email: formData.email, code: "", pw: "", pw2: "" })}
+                        className="text-xs hover:underline bg-transparent border-none cursor-pointer" style={{ color: "#8aebff" }}>
+                        Mot de passe oublié ?
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   /* Register: password + confirm side by side */
@@ -474,6 +529,64 @@ export default function AuthPage({ setUser }) {
           </div>
         </section>
       </main>
+
+      {/* Overlay 2FA : code de connexion reçu par email */}
+      {twofa && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4" style={{ background: "rgba(3,7,18,0.94)", backdropFilter: "blur(6px)" }}>
+          <form onSubmit={submit2fa} className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#0b1326", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="text-center mb-4">
+              <span className="material-symbols-outlined text-4xl mb-1" style={{ color: "#22d3ee" }}>encrypted</span>
+              <h2 className="font-black text-lg" style={{ color: "#dae2fd" }}>Code de connexion</h2>
+              <p className="text-sm mt-1" style={{ color: "#859397" }}>Un code a été envoyé à <b style={{ color: "#dae2fd" }}>{twofa.email}</b>.</p>
+            </div>
+            <input autoFocus value={twofaCode} onChange={(e) => setTwofaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              inputMode="numeric" maxLength={6} placeholder="Code à 6 chiffres"
+              className="w-full mb-3 px-4 py-3 rounded-2xl outline-none text-center text-lg tracking-[0.4em] font-bold"
+              style={{ background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" }} />
+            <button type="submit" disabled={loading} className="w-full py-3 rounded-2xl font-black disabled:opacity-40" style={{ background: "#22d3ee", color: "#00363e" }}>
+              {loading ? "Vérification…" : "Se connecter"}
+            </button>
+            <button type="button" onClick={() => { setTwofa(null); setTwofaCode(""); }} className="w-full mt-2 py-2 text-xs" style={{ color: "#859397" }}>Annuler</button>
+          </form>
+        </div>
+      )}
+
+      {/* Overlay Mot de passe oublié */}
+      {forgot && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4" style={{ background: "rgba(3,7,18,0.94)", backdropFilter: "blur(6px)" }}>
+          <form onSubmit={submitForgot} className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#0b1326", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="text-center mb-4">
+              <span className="material-symbols-outlined text-4xl mb-1" style={{ color: "#22d3ee" }}>lock_reset</span>
+              <h2 className="font-black text-lg" style={{ color: "#dae2fd" }}>Mot de passe oublié</h2>
+              <p className="text-sm mt-1" style={{ color: "#859397" }}>
+                {forgot.step === 0 ? "Entre ton email : on t'envoie un code." : `Code envoyé à ${forgot.email}. Choisis un nouveau mot de passe.`}
+              </p>
+            </div>
+            {forgot.step === 0 ? (
+              <input autoFocus type="email" required value={forgot.email} onChange={(e) => setForgot((f) => ({ ...f, email: e.target.value }))}
+                placeholder="ton@email.com" className="w-full mb-3 px-4 py-3 rounded-2xl outline-none text-sm"
+                style={{ background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" }} />
+            ) : (
+              <>
+                <input autoFocus value={forgot.code} onChange={(e) => setForgot((f) => ({ ...f, code: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
+                  inputMode="numeric" maxLength={6} placeholder="Code à 6 chiffres"
+                  className="w-full mb-2 px-4 py-3 rounded-2xl outline-none text-center tracking-[0.3em] font-bold"
+                  style={{ background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" }} />
+                <input type="password" value={forgot.pw} onChange={(e) => setForgot((f) => ({ ...f, pw: e.target.value }))}
+                  placeholder="Nouveau mot de passe" className="w-full mb-2 px-4 py-3 rounded-2xl outline-none text-sm"
+                  style={{ background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" }} />
+                <input type="password" value={forgot.pw2} onChange={(e) => setForgot((f) => ({ ...f, pw2: e.target.value }))}
+                  placeholder="Confirme le mot de passe" className="w-full mb-3 px-4 py-3 rounded-2xl outline-none text-sm"
+                  style={{ background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" }} />
+              </>
+            )}
+            <button type="submit" disabled={loading} className="w-full py-3 rounded-2xl font-black disabled:opacity-40" style={{ background: "#22d3ee", color: "#00363e" }}>
+              {loading ? "…" : forgot.step === 0 ? "Envoyer le code" : "Réinitialiser"}
+            </button>
+            <button type="button" onClick={() => setForgot(null)} className="w-full mt-2 py-2 text-xs" style={{ color: "#859397" }}>Annuler</button>
+          </form>
+        </div>
+      )}
     </>
   );
 }
