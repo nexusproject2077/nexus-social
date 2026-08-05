@@ -976,9 +976,9 @@ export default function ClipsPage({ user, setUser }) {
     }
     // Sans Firebase, on garde l'ancien chemin (base64 via le backend) qui
     // impose des vidéos courtes/légères. Avec Firebase, on autorise le long.
-    const BACKEND_MAX_MB = 25;
+    const BACKEND_MAX_MB = 50;
     if (!isFirebaseConfigured && file.size > BACKEND_MAX_MB * 1024 * 1024) {
-      toast.error(`Vidéo trop lourde (max ${BACKEND_MAX_MB} Mo sans stockage vidéo configuré)`);
+      toast.error(`Vidéo trop lourde (max ${BACKEND_MAX_MB} Mo)`);
       return;
     }
 

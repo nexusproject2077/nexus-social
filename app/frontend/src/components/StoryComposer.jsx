@@ -21,7 +21,8 @@ const C = {
   accent: ACCENT, onPrimary: "#00363e", onSurface: "#dae2fd", onVariant: "#bbc9cd", outline: "#859397",
 };
 const MAX_VIDEO_MS = 15000;
-const MAX_IMPORT = 10 * 1024 * 1024;
+const MAX_IMPORT = 10 * 1024 * 1024;          // Stories : légères (éphémères, courtes)
+const MAX_IMPORT_CLIP = 50 * 1024 * 1024;     // Clips : vidéos plus longues (upload Cloudinary)
 
 const FILTERS = [
   { key: "none", label: "Normal", css: "none" },
@@ -316,7 +317,8 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f) return;
     if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) { toast.error("Image ou vidéo uniquement."); return; }
-    if (f.size > MAX_IMPORT) { toast.error("Fichier trop lourd (max 10 Mo)."); return; }
+    const limit = isClip ? MAX_IMPORT_CLIP : MAX_IMPORT;
+    if (f.size > limit) { toast.error(`Fichier trop lourd (max ${Math.round(limit / 1024 / 1024)} Mo).`); return; }
     if (f.type.startsWith("video/")) {
       // Vidéo : aperçu via blob URL (fiable iOS), base64 à la publication.
       toEdit(URL.createObjectURL(f), "video", "cover", { blob: f });
