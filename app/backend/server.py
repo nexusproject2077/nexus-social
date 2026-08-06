@@ -3224,11 +3224,14 @@ async def get_user_mentions(user_id: str, current_user: dict = Depends(get_curre
 
     posts = []
     for post_raw in posts_raw:
-        post = convert_mongo_doc_to_dict(post_raw)
-        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
-        post["is_liked"] = bool(like_raw)
-        enrich_post_poll(post, current_user["id"])
-        posts.append(Post(**post))
+        try:
+            post = convert_mongo_doc_to_dict(post_raw)
+            like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+            post["is_liked"] = bool(like_raw)
+            enrich_post_poll(post, current_user["id"])
+            posts.append(Post(**post))
+        except Exception as e:
+            logger.warning(f"Publication ignorée (invalide) {post_raw.get('id')}: {e}")
 
     return posts
 
@@ -6786,11 +6789,14 @@ async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
 
     posts = []
     for post_raw in posts_raw:
-        post = convert_mongo_doc_to_dict(post_raw)
-        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
-        post["is_liked"] = bool(like_raw)
-        enrich_post_poll(post, current_user["id"])
-        posts.append(Post(**post))
+        try:
+            post = convert_mongo_doc_to_dict(post_raw)
+            like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+            post["is_liked"] = bool(like_raw)
+            enrich_post_poll(post, current_user["id"])
+            posts.append(Post(**post))
+        except Exception as e:
+            logger.warning(f"Publication ignorée (invalide) {post_raw.get('id')}: {e}")
 
     return posts
 
@@ -6873,11 +6879,14 @@ async def get_posts_by_hashtag(tag: str, current_user: dict = Depends(get_curren
 
     posts = []
     for post_raw in posts_raw:
-        post = convert_mongo_doc_to_dict(post_raw)
-        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
-        post["is_liked"] = bool(like_raw)
-        enrich_post_poll(post, current_user["id"])
-        posts.append(Post(**post))
+        try:
+            post = convert_mongo_doc_to_dict(post_raw)
+            like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+            post["is_liked"] = bool(like_raw)
+            enrich_post_poll(post, current_user["id"])
+            posts.append(Post(**post))
+        except Exception as e:
+            logger.warning(f"Publication ignorée (invalide) {post_raw.get('id')}: {e}")
 
     return posts
 
@@ -7273,8 +7282,11 @@ async def _fetch_posts_in_order(ids, user_id):
         post["is_liked"] = pid in liked
         post["is_saved"] = pid in saved_ids
         post["author_is_premium"] = post.get("author_id") in premium_ids
-        enrich_post_poll(post, user_id)
-        out.append(Post(**post))
+        try:
+            enrich_post_poll(post, user_id)
+            out.append(Post(**post))
+        except Exception as e:
+            logger.warning(f"Clip/post ignoré (invalide) {post.get('id')}: {e}")
     return out
 
 
@@ -7320,8 +7332,11 @@ async def _enrich_posts_for_user(raw, user_id):
         p["is_liked"] = p["id"] in liked
         p["is_saved"] = p["id"] in saved_ids
         p["author_is_premium"] = p.get("author_id") in premium_ids
-        enrich_post_poll(p, user_id)
-        out.append(Post(**p))
+        try:
+            enrich_post_poll(p, user_id)
+            out.append(Post(**p))
+        except Exception as e:
+            logger.warning(f"Post ignoré (invalide) {p.get('id')}: {e}")
     return out
 
 
