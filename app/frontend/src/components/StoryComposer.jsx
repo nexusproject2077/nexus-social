@@ -136,7 +136,8 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
   const [drawColor, setDrawColor] = useState("#ffffff");
   const [stickerMenu, setStickerMenu] = useState(false);
   const [emojiPicker, setEmojiPicker] = useState(false);
-  const [stickerForm, setStickerForm] = useState(null); // "poll" | "question" | "music"
+  const [gifOpen, setGifOpen] = useState(false);
+  const [stickerForm, setStickerForm] = useState(null); // "poll"|"question"|"link"|"location"|"mention"|"hashtag"|"slider"|"countdown"
   const [stage, setStage] = useState({ w: 0, h: 0 });
   const resizeRef = useRef(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -458,43 +459,133 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
   const drawEnd = () => { drawingActiveRef.current = false; };
   const clearDraw = () => { const c = drawCanvasRef.current; if (c) c.getContext("2d")?.clearRect(0, 0, c.width, c.height); };
 
-  const dragStart = (e, o) => {
-    if (drawMode) return;
-    e.stopPropagation(); e.preventDefault?.();
-    const r = stageRef.current?.getBoundingClientRect();
-    const pfx = r ? (e.clientX - r.left) / r.width : o.x;
-    const pfy = r ? (e.clientY - r.top) / r.height : o.y;
-    // On mémorise l'écart entre le doigt et le centre → déplacement fluide,
-    // sans « saut » au moment où on attrape l'élément.
-    dragRef.current = { id: o.id, ox: pfx - o.x, oy: pfy - o.y };
-    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
+  // ── Gestes tactiles FLUIDES (déplacer + zoom + rotation) ───────────────────
+  // Clé de la fluidité « façon Instagram » : pendant le geste on met à jour le
+  // transform du sticker DIRECTEMENT dans le DOM (aucun setState par frame → 0
+  // saccade), et on ne « commit » l'état React qu'au relâchement du doigt.
+  //   • 1 doigt  → déplacer
+  //   • 2 doigts → zoom (pincer) + rotation, simultanément
+  const gRef = useRef(null);   // geste multi-touch en cours sur un sticker
+  const hRef = useRef(null);   // geste via la poignée coin (1 doigt : zoom+rotation)
+
+  const _geom = (pts) => {
+    const a = [...pts.values()];
+    if (a.length < 2) return { cx: a[0]?.x || 0, cy: a[0]?.y || 0, dist: 1, ang: 0 };
+    return {
+      cx: (a[0].x + a[1].x) / 2, cy: (a[0].y + a[1].y) / 2,
+      dist: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1,
+      ang: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x),
+    };
   };
-  const resizeStart = (e, o) => {
+  const _applyLive = (el, v) => {
+    if (!el) return;
+    el.style.left = `${v.x * 100}%`;
+    el.style.top = `${v.y * 100}%`;
+    el.style.transform = `translate(-50%,-50%) rotate(${v.rotate}deg) scale(${v.scale})`;
+  };
+  const _rebase = (g) => { g.baseGeom = _geom(g.pointers); g.baseVal = { ...g.live }; };
+
+  const ovDown = (e, o) => {
+    if (drawMode) return;
+    e.stopPropagation();
+    const el = e.currentTarget;
+    setSelectedId(o.id);
+    let g = gRef.current;
+    if (!g || g.id !== o.id) {
+      g = { id: o.id, el, pointers: new Map(), live: { x: o.x, y: o.y, scale: o.scale || 1, rotate: o.rotate || 0 } };
+      gRef.current = g;
+    }
+    g.el = el;
+    try { el.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
+    g.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    _rebase(g);
+  };
+  const ovMove = (e) => {
+    const g = gRef.current; if (!g || !g.pointers.has(e.pointerId)) return;
+    g.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const r = stageRef.current?.getBoundingClientRect(); if (!r) return;
+    const now = _geom(g.pointers), base = g.baseGeom, bv = g.baseVal;
+    let x = bv.x + (now.cx - base.cx) / r.width;
+    let y = bv.y + (now.cy - base.cy) / r.height;
+    let scale = bv.scale, rotate = bv.rotate;
+    if (g.pointers.size >= 2) {
+      scale = Math.min(6, Math.max(0.3, bv.scale * (now.dist / base.dist)));
+      rotate = bv.rotate + (now.ang - base.ang) * 180 / Math.PI;
+    }
+    g.live = { x: Math.min(1.12, Math.max(-0.12, x)), y: Math.min(1.12, Math.max(-0.12, y)), scale, rotate };
+    _applyLive(g.el, g.live);
+  };
+  const ovUp = (e) => {
+    const g = gRef.current; if (!g) return;
+    g.pointers.delete(e.pointerId);
+    try { g.el?.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+    if (g.pointers.size > 0) { _rebase(g); return; }   // encore un doigt posé → on rebase
+    const v = g.live;
+    setOverlays((ov) => ov.map((o) => (o.id === g.id ? { ...o, x: v.x, y: v.y, scale: v.scale, rotate: v.rotate } : o)));
+    gRef.current = null;
+  };
+
+  // Poignée coin : zoom + rotation à un doigt (précision / desktop).
+  const rzDown = (e, o) => {
     e.stopPropagation();
     const r = stageRef.current?.getBoundingClientRect(); if (!r) return;
+    const el = e.currentTarget.closest("[data-ov]");
     const cx = r.left + o.x * r.width, cy = r.top + o.y * r.height;
-    const d = Math.hypot(e.clientX - cx, e.clientY - cy) || 1;
-    resizeRef.current = { id: o.id, startDist: d, startScale: o.scale || 1, cx, cy };
+    hRef.current = {
+      id: o.id, el, cx, cy,
+      startDist: Math.hypot(e.clientX - cx, e.clientY - cy) || 1,
+      startAng: Math.atan2(e.clientY - cy, e.clientX - cx),
+      baseScale: o.scale || 1, baseRot: o.rotate || 0,
+      x: o.x, y: o.y, live: { scale: o.scale || 1, rotate: o.rotate || 0 },
+    };
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* noop */ }
   };
-  const stageMove = (e) => {
-    if (resizeRef.current) {
-      const rr = resizeRef.current;
-      const d = Math.hypot(e.clientX - rr.cx, e.clientY - rr.cy) || 1;
-      const scale = Math.min(5, Math.max(0.4, rr.startScale * (d / rr.startDist)));
-      setOverlays((ov) => ov.map((o) => (o.id === rr.id ? { ...o, scale } : o)));
-      return;
-    }
-    if (!dragRef.current) return;
-    const r = stageRef.current?.getBoundingClientRect(); if (!r) return;
-    const d = dragRef.current;
-    const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width - d.ox));
-    const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height - d.oy));
-    setOverlays((ov) => ov.map((o) => (o.id === d.id ? { ...o, x, y } : o)));
+  const rzMove = (e) => {
+    const h = hRef.current; if (!h) return;
+    const d = Math.hypot(e.clientX - h.cx, e.clientY - h.cy) || 1;
+    const a = Math.atan2(e.clientY - h.cy, e.clientX - h.cx);
+    h.live = {
+      scale: Math.min(6, Math.max(0.3, h.baseScale * (d / h.startDist))),
+      rotate: h.baseRot + (a - h.startAng) * 180 / Math.PI,
+    };
+    _applyLive(h.el, { x: h.x, y: h.y, scale: h.live.scale, rotate: h.live.rotate });
   };
-  const stageUp = () => { dragRef.current = null; resizeRef.current = null; };
+  const rzUp = (e) => {
+    const h = hRef.current; if (!h) return;
+    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+    setOverlays((ov) => ov.map((o) => (o.id === h.id ? { ...o, scale: h.live.scale, rotate: h.live.rotate } : o)));
+    hRef.current = null;
+  };
 
-  const addOverlay = (o) => { setOverlays((ov) => [...ov, { id: uid(), x: 0.5, y: 0.42, scale: 1, ...o }]); setStickerMenu(false); setEmojiPicker(false); setStickerForm(null); };
+  const addOverlay = (o) => { setOverlays((ov) => [...ov, { id: uid(), x: 0.5, y: 0.42, scale: 1, rotate: 0, ...o }]); setStickerMenu(false); setEmojiPicker(false); setStickerForm(null); setGifOpen(false); };
+
+  // Météo : géolocalisation + open-meteo (gratuit, sans clé). Repli propre si refus.
+  const weatherIcon = (code) => {
+    if (code === 0) return "☀️";
+    if ([1, 2].includes(code)) return "🌤️";
+    if (code === 3) return "☁️";
+    if ([45, 48].includes(code)) return "🌫️";
+    if (code >= 51 && code <= 67) return "🌧️";
+    if (code >= 71 && code <= 77) return "🌨️";
+    if (code >= 80 && code <= 82) return "🌦️";
+    if (code >= 95) return "⛈️";
+    return "🌡️";
+  };
+  const addWeather = () => {
+    setStickerMenu(false);
+    const fallback = () => addOverlay({ type: "weather", temp: null, icon: "🌡️" });
+    if (!navigator.geolocation) return fallback();
+    toast.message("Localisation en cours…");
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const { latitude, longitude } = pos.coords;
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`);
+        const j = await r.json();
+        const cw = j.current_weather || {};
+        addOverlay({ type: "weather", temp: cw.temperature != null ? Math.round(cw.temperature) : null, icon: weatherIcon(cw.weathercode) });
+      } catch { fallback(); }
+    }, () => fallback(), { timeout: 8000, maximumAge: 600000 });
+  };
   const removeOverlay = (id) => setOverlays((ov) => ov.filter((o) => o.id !== id));
 
   const wrap = (ctx, t, maxW) => {
@@ -530,16 +621,83 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     }
     const dc = drawCanvasRef.current;
     if (dc && dc.width) { try { ctx.drawImage(dc, 0, 0, W, H); } catch { /* noop */ } }
-    for (const o of overlays) paintOverlay(ctx, o, W, H);
+    // Pré-charge les GIF (CORS) pour pouvoir les incruster dans l'image cuite.
+    const gifImgs = {};
+    await Promise.all(overlays.filter((o) => o.type === "gif" && o.url).map((o) => new Promise((res) => {
+      const im = new Image(); im.crossOrigin = "anonymous";
+      im.onload = () => { gifImgs[o.id] = im; res(); };
+      im.onerror = () => res();
+      im.src = o.url;
+    })));
+    for (const o of overlays) paintOverlay(ctx, o, W, H, gifImgs[o.id]);
     return canvas.toDataURL("image/jpeg", 0.9);
   };
 
-  const paintOverlay = (ctx, o, W, H) => {
-    const px = o.x * W, py = o.y * H;
+  const paintOverlay = (ctx, o, W, H, gimg) => {
     const S = W * (o.scale || 1);   // base d'échelle (positions inchangées, tailles × scale)
-    ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.save();
+    ctx.translate(o.x * W, o.y * H);            // centre du sticker
+    ctx.rotate((o.rotate || 0) * Math.PI / 180); // rotation autour du centre
+    const px = 0, py = 0;                        // tout est dessiné autour de l'origine
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = S * 0.03; ctx.shadowOffsetY = S * 0.012;
-    if (o.type === "text") {
+    // Petit utilitaire « pilule » (lien / lieu / mention).
+    const chip = (label, bg, fg) => {
+      ctx.font = `700 ${Math.round(S * 0.04)}px sans-serif`;
+      const w = Math.min(S * 0.9, ctx.measureText(label).width + S * 0.09), h = S * 0.09;
+      ctx.fillStyle = bg; roundRect(ctx, px - w / 2, py - h / 2, w, h, h / 2); ctx.fill();
+      ctx.fillStyle = fg; ctx.fillText(label, px, py);
+    };
+    if (o.type === "link") { chip(`🔗  ${o.label || o.url}`, "#ffffff", "#111"); }
+    else if (o.type === "location") { chip(`📍  ${o.place}`, "#f97316", "#fff"); }
+    else if (o.type === "mention") { chip(`@${(o.username || "").replace(/^@/, "")}`, "#22d3ee", "#00252b"); }
+    else if (o.type === "hashtag") {
+      ctx.font = `900 ${Math.round(S * 0.075)}px sans-serif`;
+      ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = S * 0.02; ctx.shadowOffsetY = S * 0.008;
+      ctx.fillStyle = "#fff"; ctx.fillText(`#${(o.tag || "").replace(/^#/, "")}`, px, py);
+    }
+    else if (o.type === "gif") {
+      if (gimg && gimg.width) {
+        const w = S * 0.42, h = w * (gimg.height / gimg.width || 1);
+        try { ctx.drawImage(gimg, px - w / 2, py - h / 2, w, h); } catch { /* taint */ }
+      }
+    }
+    else if (o.type === "time") {
+      const now = new Date();
+      ctx.font = `900 ${Math.round(S * 0.07)}px sans-serif`; ctx.fillStyle = "#fff";
+      ctx.fillText(`${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`, px, py);
+    }
+    else if (o.type === "weather") {
+      const now = new Date();
+      const label = `${o.icon || "☀️"}  ${o.temp != null ? o.temp + "°" : ""}  ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      ctx.font = `700 ${Math.round(S * 0.05)}px sans-serif`; ctx.fillStyle = "#fff";
+      ctx.fillText(label, px, py);
+    }
+    else if (o.type === "slider") {
+      const w = S * 0.74, pad = S * 0.045;
+      ctx.font = `700 ${Math.round(S * 0.042)}px sans-serif`;
+      const lines = wrap(ctx, o.q || "Fais glisser", w - pad * 2);
+      const lh = S * 0.055, trackH = S * 0.02, h = pad + lh * lines.length + pad + S * 0.08 + pad;
+      ctx.fillStyle = "#fff"; roundRect(ctx, px - w / 2, py - h / 2, w, h, S * 0.04); ctx.fill();
+      ctx.fillStyle = "#111";
+      lines.forEach((ln, i) => ctx.fillText(ln, px, py - h / 2 + pad + lh / 2 + i * lh));
+      const ty = py + h / 2 - pad - S * 0.04;
+      ctx.fillStyle = "#dbe4ff"; roundRect(ctx, px - (w - pad * 2) / 2, ty - trackH / 2, w - pad * 2, trackH, trackH / 2); ctx.fill();
+      ctx.font = `${Math.round(S * 0.075)}px "Apple Color Emoji","Segoe UI Emoji",serif`;
+      ctx.fillText(o.emoji || "😍", px + (w - pad * 2) * 0.12, ty);
+    }
+    else if (o.type === "countdown") {
+      const ms = Math.max(0, new Date(o.target || Date.now()).getTime() - Date.now());
+      const s = Math.floor(ms / 1000);
+      const parts = `${Math.floor(s / 86400)}j ${String(Math.floor((s % 86400) / 3600)).padStart(2, "0")}h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}m`;
+      const w = S * 0.62, h = S * 0.16;
+      ctx.fillStyle = "#7c3aed"; roundRect(ctx, px - w / 2, py - h / 2, w, h, S * 0.04); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.font = `900 ${Math.round(S * 0.052)}px sans-serif`;
+      ctx.fillText(parts, px, py - S * 0.02);
+      ctx.font = `700 ${Math.round(S * 0.03)}px sans-serif`; ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillText((o.title || "Compte à rebours").slice(0, 30), px, py + S * 0.045);
+    }
+    else if (o.type === "text") {
       const size = Math.round(S * 0.06);
       ctx.font = `800 ${size}px sans-serif`;
       const lines = wrap(ctx, o.text, S * 0.86);
@@ -821,8 +979,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
       {/* Scène : média (filtré) + dessin + stickers (draggables) */}
       <div ref={stageRef} className="absolute inset-0"
-        onPointerDown={() => { setSelectedId(null); try { editVideoRef.current?.play?.().catch(() => {}); } catch { /* noop */ } }}
-        onPointerMove={stageMove} onPointerUp={stageUp} onPointerLeave={stageUp}>
+        onPointerDown={() => { setSelectedId(null); try { editVideoRef.current?.play?.().catch(() => {}); } catch { /* noop */ } }}>
         {cur?.type === "background"
           ? <div className="absolute inset-0" style={{ background: cur.bg?.css }} />
           : cur?.type === "video"
@@ -840,15 +997,17 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
             onPointerDown={drawStart} onPointerMove={drawMove} onPointerUp={drawEnd} onPointerCancel={drawEnd} />
         )}
 
-        {/* Stickers & textes (déplaçables, redimensionnables) */}
+        {/* Stickers & textes : déplaçables / zoom / rotation au doigt (fluide) */}
         {overlays.map((o) => (
-          <div key={o.id} onPointerDown={(e) => { setSelectedId(o.id); dragStart(e, o); }}
-            className="absolute"
-            style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, transform: `translate(-50%,-50%) scale(${o.scale || 1})`, touchAction: "none", cursor: "move", filter: "drop-shadow(0 3px 8px rgba(0,0,0,0.45))" }}>
+          <div key={o.id} data-ov
+            onPointerDown={(e) => ovDown(e, o)} onPointerMove={ovMove}
+            onPointerUp={ovUp} onPointerCancel={ovUp}
+            className="absolute will-change-transform"
+            style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, transform: `translate(-50%,-50%) rotate(${o.rotate || 0}deg) scale(${o.scale || 1})`, touchAction: "none", cursor: "move", filter: "drop-shadow(0 3px 8px rgba(0,0,0,0.45))" }}>
             <OverlayView o={o} selected={selectedId === o.id}
               onRemove={() => { removeOverlay(o.id); setSelectedId(null); }}
               onEdit={o.type === "text" ? () => setTextEditor({ id: o.id, text: o.text, color: o.color }) : undefined}
-              onResizeStart={(e) => resizeStart(e, o)} />
+              onResizeStart={(e) => rzDown(e, o)} onResizeMove={rzMove} onResizeEnd={rzUp} />
           </div>
         ))}
 
@@ -991,16 +1150,25 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
         <div className="fixed inset-0 z-[90] flex items-end" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setStickerMenu(false)}>
           <div className="w-full rounded-t-3xl p-4 pb-8" style={{ background: C.surface, paddingBottom: "max(env(safe-area-inset-bottom), 24px)" }} onClick={(e) => e.stopPropagation()}>
             <div className="w-10 h-1.5 rounded-full mx-auto mb-4" style={{ background: C.high }} />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2.5 max-h-[60vh] overflow-y-auto">
               {[
-                { k: "emoji", icon: "mood", label: "Emoji", on: () => { setStickerMenu(false); setEmojiPicker(true); } },
+                { k: "gif", icon: "gif_box", label: "GIF", on: () => { setStickerMenu(false); setGifOpen(true); } },
+                { k: "mention", icon: "alternate_email", label: "Mention", on: () => { setStickerMenu(false); setStickerForm("mention"); } },
+                { k: "hashtag", icon: "tag", label: "Hashtag", on: () => { setStickerMenu(false); setStickerForm("hashtag"); } },
+                { k: "link", icon: "link", label: "Lien", on: () => { setStickerMenu(false); setStickerForm("link"); } },
+                { k: "location", icon: "location_on", label: "Lieu", on: () => { setStickerMenu(false); setStickerForm("location"); } },
+                { k: "countdown", icon: "hourglass_top", label: "Compte à rebours", on: () => { setStickerMenu(false); setStickerForm("countdown"); } },
+                { k: "slider", icon: "sentiment_satisfied", label: "Curseur emoji", on: () => { setStickerMenu(false); setStickerForm("slider"); } },
                 { k: "poll", icon: "bar_chart", label: "Sondage", on: () => { setStickerMenu(false); setStickerForm("poll"); } },
                 { k: "question", icon: "help", label: "Questions", on: () => { setStickerMenu(false); setStickerForm("question"); } },
+                { k: "time", icon: "schedule", label: "Heure", on: () => addOverlay({ type: "time" }) },
+                { k: "weather", icon: "partly_cloudy_day", label: "Météo", on: addWeather },
+                { k: "emoji", icon: "mood", label: "Emoji", on: () => { setStickerMenu(false); setEmojiPicker(true); } },
                 { k: "music", icon: "music_note", label: "Musique", on: () => { setStickerMenu(false); setMusicOpen(true); } },
               ].map((s) => (
-                <button key={s.k} onClick={s.on} className="flex items-center gap-3 px-4 py-4 rounded-2xl" style={{ background: C.container }}>
+                <button key={s.k} onClick={s.on} className="flex flex-col items-center justify-center gap-1.5 px-2 py-3 rounded-2xl text-center" style={{ background: C.container }}>
                   <span className="material-symbols-outlined" style={{ color: C.accent }}>{s.icon}</span>
-                  <span className="font-bold" style={{ color: C.onSurface }}>{s.label}</span>
+                  <span className="font-bold text-[11px] leading-tight" style={{ color: C.onSurface }}>{s.label}</span>
                 </button>
               ))}
             </div>
@@ -1022,7 +1190,12 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
         </div>
       )}
 
-      {/* Formulaire sticker (sondage / questions / musique) */}
+      {/* Sélecteur de GIF (GIPHY) */}
+      {gifOpen && (
+        <GifPicker onClose={() => setGifOpen(false)} onPick={(url) => addOverlay({ type: "gif", url })} />
+      )}
+
+      {/* Formulaire sticker (sondage / questions / lien / mention / hashtag / lieu / curseur / compte à rebours) */}
       {stickerForm && (
         <StickerForm type={stickerForm} onCancel={() => setStickerForm(null)} onAdd={addOverlay} />
       )}
@@ -1166,7 +1339,36 @@ function VisibilitySheet({ user, visibility, customList, onClose, onPick }) {
 }
 
 // ── Rendu DOM d'un sticker (miroir du rendu « cuit » sur canvas) ─────────────
-function OverlayView({ o, selected, onRemove, onEdit, onResizeStart }) {
+// Horloge vivante (sticker Heure / Météo).
+function LiveClock() {
+  const [t, setT] = useState(() => new Date());
+  useEffect(() => { const i = setInterval(() => setT(new Date()), 1000); return () => clearInterval(i); }, []);
+  return <>{String(t.getHours()).padStart(2, "0")}:{String(t.getMinutes()).padStart(2, "0")}</>;
+}
+
+// Compte à rebours vivant.
+function CountdownView({ target }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i); }, []);
+  const ms = Math.max(0, new Date(target || Date.now()).getTime() - now);
+  const s = Math.floor(ms / 1000);
+  const box = (v, l) => (
+    <div className="flex flex-col items-center">
+      <span className="font-black" style={{ fontSize: 22, lineHeight: 1 }}>{String(v).padStart(2, "0")}</span>
+      <span className="text-[9px] uppercase opacity-80">{l}</span>
+    </div>
+  );
+  return (
+    <div className="flex items-center gap-1.5 justify-center">
+      {box(Math.floor(s / 86400), "j")}<span className="opacity-60">:</span>
+      {box(Math.floor((s % 86400) / 3600), "h")}<span className="opacity-60">:</span>
+      {box(Math.floor((s % 3600) / 60), "m")}<span className="opacity-60">:</span>
+      {box(s % 60, "s")}
+    </div>
+  );
+}
+
+function OverlayView({ o, selected, onRemove, onEdit, onResizeStart, onResizeMove, onResizeEnd }) {
   const Controls = () => selected ? (
     <>
       <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRemove(); }}
@@ -1179,14 +1381,55 @@ function OverlayView({ o, selected, onRemove, onEdit, onResizeStart }) {
           <span className="material-symbols-outlined text-white" style={{ fontSize: 14 }}>edit</span>
         </button>
       )}
-      <div onPointerDown={onResizeStart}
+      <div onPointerDown={onResizeStart} onPointerMove={onResizeMove} onPointerUp={onResizeEnd} onPointerCancel={onResizeEnd}
         className="absolute -bottom-3 -right-3 w-6 h-6 rounded-full flex items-center justify-center"
         style={{ background: "#22d3ee", touchAction: "none", cursor: "nwse-resize" }}>
-        <span className="material-symbols-outlined" style={{ fontSize: 14, color: "#00363e" }}>open_in_full</span>
+        <span className="material-symbols-outlined" style={{ fontSize: 14, color: "#00363e" }}>sync</span>
       </div>
     </>
   ) : null;
   const ring = selected ? "0 0 0 2px rgba(34,211,238,0.9)" : "none";
+  const chip = (icon, text, bg = "#fff", fg = "#111") => (
+    <div className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-full font-bold text-sm" style={{ background: bg, color: fg, maxWidth: 260, boxShadow: ring }}>
+      {icon && <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{icon}</span>}
+      <span className="truncate">{text}</span>
+      <Controls />
+    </div>
+  );
+
+  if (o.type === "link") return chip("link", o.label || o.url, "#fff", "#111");
+  if (o.type === "location") return chip("location_on", o.place, "linear-gradient(135deg,#f97316,#ec4899)", "#fff");
+  if (o.type === "mention") return chip("alternate_email", (o.username || "").replace(/^@/, ""), "linear-gradient(135deg,#22d3ee,#3b82f6)", "#00252b");
+  if (o.type === "hashtag") return (
+    <div className="relative font-black" style={{ color: "#fff", fontSize: 34, textShadow: "0 2px 8px rgba(0,0,0,0.5)", boxShadow: ring, borderRadius: 8, padding: "0 6px" }}>#{(o.tag || "").replace(/^#/, "")}<Controls /></div>
+  );
+  if (o.type === "gif") return (
+    <div className="relative" style={{ boxShadow: ring, borderRadius: 12, overflow: "hidden" }}>
+      <img src={o.url} alt="gif" draggable={false} style={{ width: 150, display: "block", pointerEvents: "none" }} /><Controls />
+    </div>
+  );
+  if (o.type === "time") return (
+    <div className="relative px-4 py-2 rounded-2xl font-black" style={{ background: "rgba(0,0,0,0.35)", color: "#fff", fontSize: 26, letterSpacing: 1, backdropFilter: "blur(4px)", boxShadow: ring }}><LiveClock /><Controls /></div>
+  );
+  if (o.type === "weather") return (
+    <div className="relative flex items-center gap-2 px-4 py-2 rounded-2xl font-bold" style={{ background: "rgba(0,0,0,0.35)", color: "#fff", fontSize: 20, backdropFilter: "blur(4px)", boxShadow: ring }}>
+      <span style={{ fontSize: 24 }}>{o.icon || "☀️"}</span><span>{o.temp != null ? `${o.temp}°` : "—"}</span><span className="opacity-80"><LiveClock /></span><Controls />
+    </div>
+  );
+  if (o.type === "slider") return (
+    <div className="relative px-4 py-4 rounded-3xl" style={{ background: "#fff", color: "#111", width: 250, boxShadow: ring }}>
+      <p className="font-bold text-sm mb-3 text-center leading-snug">{o.q || "Fais glisser"}</p>
+      <div className="relative h-2 rounded-full" style={{ background: "linear-gradient(90deg,#e5e7eb,#c7d2fe)" }}>
+        <div className="absolute top-1/2 -translate-y-1/2" style={{ left: "62%", fontSize: 30, transform: "translate(-50%,-50%)" }}>{o.emoji || "😍"}</div>
+      </div>
+      <Controls />
+    </div>
+  );
+  if (o.type === "countdown") return (
+    <div className="relative px-5 py-3 rounded-3xl text-center" style={{ background: "linear-gradient(135deg,#7c3aed,#ec4899)", color: "#fff", minWidth: 200, boxShadow: ring }}>
+      <CountdownView target={o.target} /><p className="text-xs font-bold mt-1 opacity-90 truncate">{o.title || "Compte à rebours"}</p><Controls />
+    </div>
+  );
 
   if (o.type === "text") {
     return (
@@ -1257,38 +1500,106 @@ function TextEditor({ value, onCancel, onSave }) {
   );
 }
 
-// ── Formulaire de sticker (sondage / questions / musique) ────────────────────
+// ── Formulaire de sticker (saisie) ───────────────────────────────────────────
+const SLIDER_EMOJIS = ["😍", "🔥", "😂", "😮", "😢", "👏", "💯", "❤️", "⭐", "🚀"];
 function StickerForm({ type, onCancel, onAdd }) {
   const [q, setQ] = useState("");
   const [a, setA] = useState("");
   const [b, setB] = useState("");
-  const title = { poll: "Sondage", question: "Questions", music: "Musique" }[type];
+  const [emoji, setEmoji] = useState("😍");
+  const [when, setWhen] = useState("");
+  const title = {
+    poll: "Sondage", question: "Questions", link: "Lien", location: "Lieu",
+    mention: "Mention", hashtag: "Hashtag", slider: "Curseur emoji", countdown: "Compte à rebours",
+  }[type] || "Sticker";
   const submit = () => {
     if (type === "poll") onAdd({ type: "poll", q: q.trim() || "Sondage", a: a.trim() || "Oui", b: b.trim() || "Non" });
     else if (type === "question") onAdd({ type: "question", q: q.trim() || "Posez-moi une question" });
-    else onAdd({ type: "music", title: q.trim() || "Ma musique" });
+    else if (type === "link") { let u = q.trim(); if (u && !/^https?:\/\//i.test(u)) u = "https://" + u; onAdd({ type: "link", url: u || "https://", label: a.trim() || u.replace(/^https?:\/\//, "") }); }
+    else if (type === "location") onAdd({ type: "location", place: q.trim() || "Mon lieu" });
+    else if (type === "mention") onAdd({ type: "mention", username: q.trim().replace(/^@/, "") || "utilisateur" });
+    else if (type === "hashtag") onAdd({ type: "hashtag", tag: q.trim().replace(/^#/, "") || "hashtag" });
+    else if (type === "slider") onAdd({ type: "slider", q: q.trim() || "Fais glisser", emoji });
+    else if (type === "countdown") onAdd({ type: "countdown", title: q.trim() || "Événement", target: when || new Date(Date.now() + 86400000).toISOString() });
   };
   const input = "w-full text-sm px-4 py-3 rounded-xl border-none outline-none mb-3 placeholder:text-slate-500";
+  const ph = { link: "URL (ex. nexus.social)", location: "Nom du lieu…", mention: "Nom d'utilisateur (sans @)", hashtag: "Mot-clé (sans #)", slider: "Ta question…", countdown: "Nom de l'événement…", poll: "Ta question…", question: "Pose une question…" }[type] || "…";
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.7)" }} onClick={onCancel}>
       <div className="w-full max-w-sm rounded-3xl p-5" style={{ background: C.surface }} onClick={(e) => e.stopPropagation()}>
         <h3 className="font-black text-lg mb-4" style={{ color: C.onSurface }}>{title}</h3>
-        {type === "music" ? (
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value.slice(0, 60))} placeholder="Titre / artiste…" className={input} style={{ background: C.high, color: C.onSurface }} />
-        ) : (
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value.slice(0, 120))}
-            placeholder={type === "poll" ? "Ta question…" : "Pose une question…"} className={input} style={{ background: C.high, color: C.onSurface }} />
-        )}
+
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value.slice(0, 140))} placeholder={ph} className={input} style={{ background: C.high, color: C.onSurface }} />
+
         {type === "poll" && (
           <div className="flex gap-2">
             <input value={a} onChange={(e) => setA(e.target.value.slice(0, 24))} placeholder="Option 1" className={input} style={{ background: C.high, color: C.onSurface }} />
             <input value={b} onChange={(e) => setB(e.target.value.slice(0, 24))} placeholder="Option 2" className={input} style={{ background: C.high, color: C.onSurface }} />
           </div>
         )}
+        {type === "link" && (
+          <input value={a} onChange={(e) => setA(e.target.value.slice(0, 40))} placeholder="Texte affiché (optionnel)" className={input} style={{ background: C.high, color: C.onSurface }} />
+        )}
+        {type === "slider" && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {SLIDER_EMOJIS.map((e) => (
+              <button key={e} onClick={() => setEmoji(e)} className="text-2xl w-11 h-11 rounded-xl flex items-center justify-center transition-transform active:scale-90"
+                style={{ background: emoji === e ? C.accent : C.high }}>{e}</button>
+            ))}
+          </div>
+        )}
+        {type === "countdown" && (
+          <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className={input} style={{ background: C.high, color: C.onSurface, colorScheme: "dark" }} />
+        )}
+
         <div className="flex gap-2 mt-1">
           <button onClick={onCancel} className="flex-1 py-3 rounded-2xl font-bold" style={{ background: C.high, color: C.onSurface }}>Annuler</button>
           <button onClick={submit} className="flex-1 py-3 rounded-2xl font-black" style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>Ajouter</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Sélecteur de GIF (GIPHY — clé publique ou REACT_APP_GIPHY_KEY) ────────────
+const GIPHY_KEY = process.env.REACT_APP_GIPHY_KEY || "dc6zaTOxFJmzC"; // clé de démo publique GIPHY
+function GifPicker({ onClose, onPick }) {
+  const [q, setQ] = useState("");
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    let cancel = false;
+    const t = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const base = q.trim()
+          ? `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&limit=24&rating=pg-13&q=${encodeURIComponent(q.trim())}`
+          : `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=24&rating=pg-13`;
+        const r = await fetch(base);
+        const j = await r.json();
+        if (!cancel) setItems((j.data || []).map((g) => ({ id: g.id, url: g.images?.fixed_width?.url, prev: g.images?.fixed_width_small?.url || g.images?.fixed_width?.url })));
+      } catch { if (!cancel) setItems([]); }
+      if (!cancel) setLoading(false);
+    }, 350);
+    return () => { cancel = true; clearTimeout(t); };
+  }, [q]);
+  return (
+    <div className="fixed inset-0 z-[96] flex flex-col" style={{ background: "rgba(0,0,0,0.92)" }}>
+      <div className="flex items-center gap-2 px-3 pt-4 pb-2" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
+        <button onClick={onClose} className="w-10 h-10 flex items-center justify-center"><span className="material-symbols-outlined text-white">arrow_back</span></button>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un GIF…"
+          className="flex-1 text-sm px-4 py-2.5 rounded-xl border-none outline-none" style={{ background: C.high, color: C.onSurface }} />
+      </div>
+      <div className="flex-1 overflow-y-auto px-2 pb-6">
+        {loading && <div className="flex justify-center pt-8"><div className="animate-spin rounded-full h-7 w-7 border-b-2" style={{ borderColor: C.accent }} /></div>}
+        <div className="grid grid-cols-3 gap-1.5">
+          {items.map((g) => (
+            <button key={g.id} onClick={() => onPick(g.url)} className="rounded-lg overflow-hidden" style={{ background: C.high }}>
+              <img src={g.prev} alt="" loading="lazy" className="w-full h-full object-cover" style={{ aspectRatio: "1/1" }} />
+            </button>
+          ))}
+        </div>
+        {!loading && items.length === 0 && <p className="text-center text-sm mt-8" style={{ color: C.outline }}>Aucun GIF trouvé.</p>}
       </div>
     </div>
   );
