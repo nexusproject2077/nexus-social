@@ -6318,7 +6318,7 @@ async def get_data_usage_info(user_id: str):
 
 @app.get("/api/legal/privacy-policy")
 async def get_privacy_policy():
-    """Politique de confidentialité (RGPD)"""
+    """Politique de confidentialité (RGPD)."""
     return Response(content="""
 <!DOCTYPE html>
 <html lang="fr">
@@ -6327,53 +6327,141 @@ async def get_privacy_policy():
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Politique de Confidentialité - Nexus Social</title>
     <style>
+        :root { --accent: #22d3ee; }
+        * { box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-            color: #e2e8f0;
-            background: #0f172a;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            max-width: 820px; margin: 0 auto; padding: 32px 22px 80px;
+            line-height: 1.7; color: #dae2fd; background: #0b1326; font-size: 16px;
         }
-        h1 { color: #06b6d4; font-size: 2em; }
-        h2 { color: #22d3ee; font-size: 1.5em; margin-top: 30px; }
-        .date { color: #94a3b8; font-style: italic; }
-        .important { background: #1e293b; border-left: 4px solid #06b6d4; padding: 15px; margin: 20px 0; }
+        header { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px; margin-bottom: 8px; }
+        h1 { font-size: 28px; margin: 0 0 6px; color: #ffffff; letter-spacing: -0.02em; }
+        .meta { color: #859397; font-size: 14px; margin: 0; }
+        .intro { color: #bbc9cd; }
+        h2 { font-size: 19px; color: #ffffff; margin: 34px 0 10px; padding-top: 8px; }
+        h2 .num { display: inline-block; min-width: 30px; color: var(--accent); font-weight: 800; }
+        h3 { font-size: 16px; color: var(--accent); margin: 18px 0 6px; }
+        p, li { color: #cdd6ea; }
+        ul { padding-left: 22px; }
+        li { margin: 5px 0; }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        strong { color: #eef2ff; }
+        table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14.5px; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); vertical-align: top; }
+        th { color: #eef2ff; }
+        .callout { background: rgba(34,211,238,0.06); border: 1px solid rgba(34,211,238,0.2); border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+        footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.1); color: #859397; font-size: 14px; }
     </style>
 </head>
 <body>
-    <h1>🔒 Politique de Confidentialité</h1>
-    <p class="date">Dernière mise à jour : 21 décembre 2024</p>
-    
-    <div class="important">
-        <strong>📌 En résumé :</strong> Nous respectons votre vie privée. Vos données sont protégées conformément au RGPD.
-    </div>
+    <header>
+        <h1>Politique de Confidentialité</h1>
+        <p class="meta">Nexus Social &middot; Dernière mise à jour : 9 août 2026</p>
+    </header>
 
-    <h2>1. Responsable du traitement</h2>
-    <p><strong>Nexus Social</strong></p>
+    <p class="intro">La présente Politique de confidentialité explique comment Nexus Social collecte, utilise, partage et protège vos données personnelles, dans le respect du Règlement Général sur la Protection des Données (RGPD) et de la loi française &laquo;&nbsp;Informatique et Libertés&nbsp;&raquo;.</p>
+
+    <h2><span class="num">1.</span> Introduction</h2>
+    <p>Nexus Social est un réseau social permettant de publier des contenus et d'interagir avec une communauté. La protection de votre vie privée est une priorité : nous nous engageons à traiter vos données de manière loyale, transparente et sécurisée, à ne collecter que ce qui est nécessaire, et à vous donner le contrôle sur vos informations. En utilisant le Service, vous êtes informé des traitements décrits ci-dessous.</p>
+
+    <h2><span class="num">2.</span> Responsable du traitement</h2>
+    <p>Le responsable du traitement des données est&nbsp;:</p>
     <ul>
-        <li>Email : privacy@nexussocial.com</li>
-        <li>DPO : dpo@nexussocial.com</li>
+        <li><strong>Nexus Social</strong></li>
+        <li>Adresse&nbsp;: [adresse postale de l'éditeur], France</li>
+        <li>Email&nbsp;: <a href="mailto:privacy@nexussocial.com">privacy@nexussocial.com</a></li>
+        <li>Délégué à la protection des données (DPO)&nbsp;: <a href="mailto:dpo@nexussocial.com">dpo@nexussocial.com</a></li>
     </ul>
 
-    <h2>2. Vos droits RGPD</h2>
-    <p>Vous avez le droit de :</p>
+    <h2><span class="num">3.</span> Quelles données nous collectons</h2>
     <ul>
-        <li>📄 Accéder à vos données (Article 15)</li>
-        <li>✏️ Rectifier vos données (Article 16)</li>
-        <li>🗑️ Supprimer vos données (Article 17)</li>
-        <li>📦 Exporter vos données (Article 20)</li>
-        <li>🚫 Vous opposer au traitement (Article 21)</li>
+        <li><strong>Données d'inscription&nbsp;:</strong> nom d'utilisateur, adresse email, date de naissance, mot de passe (chiffré), et le cas échéant photo de profil et biographie.</li>
+        <li><strong>Données de contenu&nbsp;:</strong> les contenus que vous créez ou partagez (publications, stories, clips, commentaires, messages privés, notes).</li>
+        <li><strong>Données techniques&nbsp;:</strong> adresse IP, type et identifiants de l'appareil, système d'exploitation, navigateur, données de connexion et journaux (logs).</li>
+        <li><strong>Données d'utilisation&nbsp;:</strong> interactions (mentions J'aime, vues, temps de visionnage, abonnements, recherches) permettant de faire fonctionner et d'améliorer le Service.</li>
+        <li><strong>Données de paiement&nbsp;:</strong> en cas d'abonnement ou de monétisation, des informations de facturation traitées par nos prestataires de paiement (nous ne stockons pas les numéros de carte complets).</li>
+        <li><strong>Données de vérification d'identité&nbsp;:</strong> lorsque cela est applicable (par exemple pour la monétisation), des éléments justificatifs, traités de manière sécurisée, chiffrés et supprimés après vérification.</li>
     </ul>
 
-    <p>Pour exercer vos droits : <strong>Centre de confidentialité</strong> ou <strong>dpo@nexussocial.com</strong></p>
-    
-    <h2>3. Contact</h2>
-    <p>Questions ? <a href="mailto:privacy@nexussocial.com" style="color: #06b6d4;">privacy@nexussocial.com</a></p>
-    
-    <footer style="margin-top: 50px; padding-top: 20px; border-top: 1px solid #334155; color: #94a3b8; text-align: center;">
-        <p>© 2024 Nexus Social - Tous droits réservés</p>
+    <h2><span class="num">4.</span> Comment nous collectons les données</h2>
+    <ul>
+        <li><strong>Directement&nbsp;:</strong> lorsque vous créez un compte, publiez du contenu ou nous contactez.</li>
+        <li><strong>Automatiquement&nbsp;:</strong> lors de votre utilisation du Service (données techniques et d'usage).</li>
+        <li><strong>Via des cookies</strong> et technologies similaires (voir section 6).</li>
+        <li><strong>Via des tiers&nbsp;:</strong> nos prestataires (hébergement, paiement, envoi d'emails/SMS) qui agissent pour notre compte.</li>
+    </ul>
+
+    <h2><span class="num">5.</span> Pourquoi nous utilisons vos données (bases légales)</h2>
+    <table>
+        <tr><th>Finalité</th><th>Base légale (RGPD)</th></tr>
+        <tr><td>Créer et gérer votre compte, fournir le Service</td><td>Exécution du contrat (art. 6.1.b)</td></tr>
+        <tr><td>Personnalisation, cookies non essentiels, communications marketing</td><td>Consentement (art. 6.1.a)</td></tr>
+        <tr><td>Sécurité, prévention de la fraude, amélioration et mesure d'audience</td><td>Intérêt légitime (art. 6.1.f)</td></tr>
+        <tr><td>Contrôle de l'âge, réponses aux réquisitions, conservation légale</td><td>Obligation légale (art. 6.1.c)</td></tr>
+    </table>
+
+    <h2><span class="num">6.</span> Cookies et technologies similaires</h2>
+    <p>Nous utilisons des cookies et technologies équivalentes pour faire fonctionner le Service, mémoriser vos préférences, sécuriser votre session et mesurer l'audience&nbsp;:</p>
+    <ul>
+        <li><strong>Cookies strictement nécessaires&nbsp;:</strong> indispensables au fonctionnement (authentification, sécurité). Exemptés de consentement.</li>
+        <li><strong>Cookies de préférences&nbsp;:</strong> mémorisent vos réglages.</li>
+        <li><strong>Cookies de mesure d'audience et analytiques&nbsp;:</strong> soumis à votre consentement.</li>
+    </ul>
+    <p>Vous pouvez accepter, refuser ou retirer votre consentement à tout moment via le bandeau de gestion des cookies ou les réglages de votre navigateur. Pour plus de détails, consultez notre <a href="/api/legal/cookie-policy">Politique relative aux cookies</a>.</p>
+
+    <h2><span class="num">7.</span> Avec qui nous partageons vos données</h2>
+    <ul>
+        <li><strong>Prestataires (sous-traitants)&nbsp;:</strong> hébergement, stockage des médias, paiement, envoi d'emails/SMS, mesure d'audience. Ils n'agissent que sur nos instructions et sont tenus à la confidentialité.</li>
+        <li><strong>Autorités&nbsp;:</strong> en cas d'obligation légale ou de réquisition judiciaire valable.</li>
+        <li><strong>Autres utilisateurs&nbsp;:</strong> les contenus que vous rendez publics sont visibles selon les paramètres de visibilité que vous choisissez.</li>
+    </ul>
+    <div class="callout"><strong>Nous ne vendons pas vos données personnelles</strong> à des tiers.</div>
+
+    <h2><span class="num">8.</span> Transferts hors de l'Union européenne</h2>
+    <p>Vos données sont hébergées au sein de l'Union européenne dans la mesure du possible. Si certains prestataires impliquent un transfert hors de l'UE, celui-ci est encadré par des garanties appropriées conformément au RGPD (notamment les Clauses Contractuelles Types de la Commission européenne ou une décision d'adéquation), afin d'assurer un niveau de protection équivalent.</p>
+
+    <h2><span class="num">9.</span> Durée de conservation des données</h2>
+    <p>Nous conservons vos données uniquement le temps nécessaire aux finalités décrites&nbsp;:</p>
+    <ul>
+        <li><strong>Données de compte&nbsp;:</strong> pendant la durée de vie du compte, puis supprimées ou anonymisées après sa suppression.</li>
+        <li><strong>Contenus&nbsp;:</strong> jusqu'à leur suppression par vos soins ou celle de votre compte.</li>
+        <li><strong>Données de vérification d'identité&nbsp;:</strong> supprimées après la vérification.</li>
+        <li><strong>Journaux techniques et données légales&nbsp;:</strong> conservés pour les durées imposées par la loi.</li>
+    </ul>
+
+    <h2><span class="num">10.</span> Sécurité des données</h2>
+    <p>Nous mettons en oeuvre des mesures techniques et organisationnelles appropriées pour protéger vos données&nbsp;: chiffrement des données sensibles et des mots de passe, connexions sécurisées (HTTPS), contrôle des accès, journalisation, et minimisation des données. Aucun système n'étant infaillible, nous vous invitons à protéger vos identifiants et à nous signaler tout incident.</p>
+
+    <h2><span class="num">11.</span> Vos droits RGPD</h2>
+    <p>Conformément au RGPD, vous disposez des droits suivants&nbsp;:</p>
+    <ul>
+        <li><strong>Droit d'accès</strong> (art. 15)&nbsp;: obtenir une copie des données vous concernant.</li>
+        <li><strong>Droit de rectification</strong> (art. 16)&nbsp;: corriger des données inexactes.</li>
+        <li><strong>Droit à l'effacement</strong> (art. 17)&nbsp;: demander la suppression de vos données.</li>
+        <li><strong>Droit à la portabilité</strong> (art. 20)&nbsp;: récupérer vos données dans un format réutilisable.</li>
+        <li><strong>Droit d'opposition</strong> (art. 21)&nbsp;: vous opposer à certains traitements.</li>
+        <li><strong>Droit à la limitation</strong> (art. 18)&nbsp;: restreindre temporairement un traitement.</li>
+        <li><strong>Retrait du consentement</strong>&nbsp;: à tout moment, sans effet rétroactif, lorsque le traitement repose sur le consentement.</li>
+        <li><strong>Droit de réclamation&nbsp;:</strong> vous pouvez introduire une réclamation auprès de la CNIL (<a href="https://www.cnil.fr" target="_blank" rel="noopener">www.cnil.fr</a>).</li>
+    </ul>
+    <p>Pour exercer vos droits, utilisez le Centre de confidentialité de l'application ou écrivez à <a href="mailto:dpo@nexussocial.com">dpo@nexussocial.com</a>. Nous répondons dans un délai d'un mois.</p>
+
+    <h2><span class="num">12.</span> Comptes de mineurs</h2>
+    <p>Le Service est interdit aux mineurs de moins de <strong>15 ans</strong>, conformément à la législation française relative au consentement numérique des mineurs. Nous vérifions l'âge à l'inscription et pouvons suspendre tout compte ne respectant pas cette condition. Si vous pensez qu'un mineur de moins de 15 ans utilise le Service, contactez-nous afin que nous prenions les mesures nécessaires.</p>
+
+    <h2><span class="num">13.</span> Modifications de la politique</h2>
+    <p>Nous pouvons mettre à jour la présente Politique afin de refléter des évolutions du Service ou de la réglementation. En cas de modification substantielle, nous vous en informerons par un moyen approprié (par exemple une notification dans l'application). La date de dernière mise à jour figure en tête de ce document.</p>
+
+    <h2><span class="num">14.</span> Contact</h2>
+    <p>Pour toute question relative à vos données personnelles ou à la présente Politique&nbsp;:</p>
+    <ul>
+        <li>Service confidentialité&nbsp;: <a href="mailto:privacy@nexussocial.com">privacy@nexussocial.com</a></li>
+        <li>Délégué à la protection des données (DPO)&nbsp;: <a href="mailto:dpo@nexussocial.com">dpo@nexussocial.com</a></li>
+    </ul>
+
+    <footer>
+        &copy; 2026 Nexus Social. Tous droits réservés. Vos données, votre contrôle.
     </footer>
 </body>
 </html>
