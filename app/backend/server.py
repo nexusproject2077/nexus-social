@@ -6381,38 +6381,132 @@ async def get_privacy_policy():
 
 @app.get("/api/legal/terms-of-service")
 async def get_terms_of_service():
-    """Conditions d'utilisation"""
+    """Conditions Générales d'Utilisation (CGU)."""
     return Response(content="""
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CGU - Nexus Social</title>
+    <title>Conditions d'Utilisation - Nexus Social</title>
     <style>
+        :root { --accent: #22d3ee; --accent2: #3b82f6; }
+        * { box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 800px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            max-width: 820px;
             margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-            color: #e2e8f0;
-            background: #0f172a;
+            padding: 32px 22px 80px;
+            line-height: 1.7;
+            color: #dae2fd;
+            background: #0b1326;
+            font-size: 16px;
         }
-        h1 { color: #06b6d4; }
-        h2 { color: #22d3ee; }
+        header { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px; margin-bottom: 8px; }
+        h1 { font-size: 28px; margin: 0 0 6px; color: #ffffff; letter-spacing: -0.02em; }
+        .meta { color: #859397; font-size: 14px; margin: 0; }
+        .intro { color: #bbc9cd; }
+        h2 {
+            font-size: 19px; color: #ffffff; margin: 34px 0 10px; padding-top: 8px;
+        }
+        h2 .num {
+            display: inline-block; min-width: 30px; color: var(--accent); font-weight: 800;
+        }
+        h3 { font-size: 16px; color: var(--accent); margin: 18px 0 6px; }
+        p, li { color: #cdd6ea; }
+        ul { padding-left: 22px; }
+        li { margin: 5px 0; }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        strong { color: #eef2ff; }
+        .callout {
+            background: rgba(34,211,238,0.06); border: 1px solid rgba(34,211,238,0.2);
+            border-radius: 12px; padding: 12px 16px; margin: 14px 0;
+        }
+        footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.1); color: #859397; font-size: 14px; }
     </style>
 </head>
 <body>
-    <h1>📜 Conditions d'Utilisation</h1>
-    <p>En utilisant Nexus Social, vous acceptez ces conditions.</p>
-    <h2>Contenu interdit</h2>
+    <header>
+        <h1>Conditions Générales d'Utilisation</h1>
+        <p class="meta">Nexus Social &middot; Dernière mise à jour : 9 août 2026</p>
+    </header>
+
+    <p class="intro">Les présentes Conditions Générales d'Utilisation (les &laquo;&nbsp;Conditions&nbsp;&raquo;) régissent l'accès et l'utilisation de la plateforme Nexus Social, incluant le site web, l'application et l'ensemble des services associés (le &laquo;&nbsp;Service&nbsp;&raquo;). Veuillez les lire attentivement.</p>
+
+    <h2><span class="num">1.</span> Acceptation des conditions</h2>
+    <p>En créant un compte, en accédant au Service ou en l'utilisant, vous reconnaissez avoir lu, compris et accepté sans réserve les présentes Conditions, ainsi que notre <a href="/api/legal/privacy-policy">Politique de confidentialité</a> et notre <a href="/api/legal/cookie-policy">Politique relative aux cookies</a>. Si vous n'acceptez pas ces Conditions, vous ne devez pas utiliser le Service. Si vous utilisez le Service pour le compte d'une organisation, vous garantissez être habilité à l'engager.</p>
+
+    <h2><span class="num">2.</span> Description du service</h2>
+    <p>Nexus Social est un réseau social permettant à ses utilisateurs de créer un profil, de publier des contenus (textes, photos, vidéos, stories, clips), d'interagir avec d'autres utilisateurs (mentions J'aime, commentaires, partages, messages privés) et de découvrir des contenus. Le Service est fourni &laquo;&nbsp;en l'état&nbsp;&raquo; et peut évoluer, être modifié, suspendu ou interrompu, en tout ou partie, à tout moment. Certaines fonctionnalités peuvent être payantes ou réservées à des comptes vérifiés ou aux abonnés.</p>
+
+    <h2><span class="num">3.</span> Conditions d'inscription</h2>
     <ul>
-        <li>❌ Contenus illégaux</li>
-        <li>❌ Harcèlement</li>
-        <li>❌ Spam</li>
+        <li><strong>Âge minimum :</strong> vous devez être âgé d'au moins <strong>15 ans</strong> pour créer un compte, conformément à la législation française relative au consentement numérique des mineurs. Les mineurs de moins de 15 ans ne sont pas autorisés à s'inscrire.</li>
+        <li><strong>Véracité des informations :</strong> vous vous engagez à fournir des informations exactes, à jour et complètes lors de l'inscription, et à les maintenir à jour.</li>
+        <li><strong>Un seul titulaire :</strong> un compte est personnel. Vous êtes responsable de l'exactitude de votre date de naissance et des informations déclarées.</li>
+        <li>Nexus Social peut refuser une inscription ou fermer un compte ne respectant pas ces conditions.</li>
     </ul>
-    <p>Contact : <a href="mailto:legal@nexussocial.com" style="color: #06b6d4;">legal@nexussocial.com</a></p>
+
+    <h2><span class="num">4.</span> Compte utilisateur</h2>
+    <ul>
+        <li><strong>Sécurité :</strong> vous êtes seul responsable de la confidentialité de vos identifiants et de toute activité réalisée depuis votre compte. Choisissez un mot de passe robuste et ne le partagez pas.</li>
+        <li><strong>Alerte :</strong> vous devez nous informer immédiatement de toute utilisation non autorisée de votre compte ou de toute faille de sécurité.</li>
+        <li><strong>Responsabilité :</strong> vous êtes responsable des contenus que vous publiez et des interactions menées depuis votre compte.</li>
+        <li><strong>Suppression :</strong> vous pouvez supprimer votre compte à tout moment depuis les paramètres. La suppression entraîne l'effacement ou l'anonymisation de vos données, sous réserve des obligations légales de conservation.</li>
+    </ul>
+
+    <h2><span class="num">5.</span> Contenu interdit</h2>
+    <p>Vous vous engagez à ne pas publier, transmettre ou diffuser, directement ou indirectement, des contenus qui relèvent notamment des catégories suivantes :</p>
+    <ul>
+        <li><strong>Contenus illégaux :</strong> tout contenu contraire aux lois et règlements applicables.</li>
+        <li><strong>Harcèlement, menaces, doxxing :</strong> propos harcelants, intimidations, menaces, ou divulgation d'informations personnelles d'autrui sans son consentement.</li>
+        <li><strong>Spam, bots et faux comptes :</strong> messages non sollicités, manipulation de l'engagement, automatisation non autorisée, comptes frauduleux ou trompeurs.</li>
+        <li><strong>Contenu sexuel non consenti et CSAM :</strong> tout contenu à caractère sexuel impliquant des mineurs (strictement interdit et signalé aux autorités compétentes), ainsi que la diffusion d'images intimes sans consentement.</li>
+        <li><strong>Incitation à la haine ou à la violence :</strong> propos ou contenus incitant à la discrimination, à la haine ou à la violence à l'encontre de personnes ou de groupes.</li>
+        <li><strong>Usurpation d'identité :</strong> se faire passer pour une autre personne, marque ou organisation de manière trompeuse.</li>
+        <li><strong>Violation des droits d'auteur :</strong> tout contenu portant atteinte aux droits de propriété intellectuelle de tiers.</li>
+    </ul>
+    <div class="callout">Cette liste n'est pas limitative. Nexus Social se réserve le droit de retirer tout contenu et de sanctionner tout compte contrevenant à ces Conditions ou à la loi.</div>
+
+    <h2><span class="num">6.</span> Propriété intellectuelle</h2>
+    <p>Vous conservez l'ensemble des droits de propriété intellectuelle sur les contenus que vous créez et publiez sur le Service (&laquo;&nbsp;Contenu Utilisateur&nbsp;&raquo;). Nexus Social ne revendique aucune propriété sur votre Contenu Utilisateur. En revanche, la marque &laquo;&nbsp;Nexus Social&nbsp;&raquo;, son logo, l'interface, le code et les éléments graphiques du Service demeurent la propriété exclusive de Nexus Social et sont protégés. Vous garantissez détenir les droits nécessaires sur les contenus que vous publiez.</p>
+
+    <h2><span class="num">7.</span> Licence accordée à Nexus Social</h2>
+    <p>En publiant un Contenu Utilisateur, vous accordez à Nexus Social une licence mondiale, non exclusive, transférable, sous-licenciable et gratuite permettant d'héberger, stocker, reproduire, adapter (par exemple pour le redimensionnement ou la mise en cache), afficher, représenter et distribuer ce contenu, dans le seul but de fournir, exploiter, promouvoir et améliorer le Service. Cette licence prend fin lorsque vous supprimez votre contenu ou votre compte, sous réserve des copies techniques résiduelles et des contenus repartagés par d'autres utilisateurs. Cette licence inclut le droit pour Nexus Social de modérer, filtrer ou retirer les contenus dans les conditions prévues à l'article 8.</p>
+
+    <h2><span class="num">8.</span> Modération et sanctions</h2>
+    <p>Afin de garantir un environnement sûr, Nexus Social peut examiner, modérer et retirer tout contenu, et prendre des mesures à l'encontre d'un compte, notamment de manière graduée :</p>
+    <ul>
+        <li><strong>Avertissement</strong> et/ou retrait du contenu litigieux ;</li>
+        <li><strong>Limitation temporaire</strong> de certaines fonctionnalités ;</li>
+        <li><strong>Suspension</strong> temporaire du compte ;</li>
+        <li><strong>Bannissement</strong> définitif en cas de manquement grave ou répété.</li>
+    </ul>
+    <p>En cas d'infraction grave (notamment CSAM ou menaces crédibles), Nexus Social pourra agir sans avertissement préalable et transmettre les informations utiles aux autorités compétentes. Vous pouvez signaler un contenu ou contester une décision de modération en contactant notre équipe.</p>
+
+    <h2><span class="num">9.</span> Données personnelles et RGPD</h2>
+    <p>Le traitement de vos données personnelles est réalisé conformément au Règlement Général sur la Protection des Données (RGPD) et à la législation applicable. Vous disposez de droits d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité. Les modalités de collecte, d'utilisation et de conservation de vos données sont détaillées dans notre <a href="/api/legal/privacy-policy">Politique de confidentialité</a>, qui fait partie intégrante des présentes Conditions.</p>
+
+    <h2><span class="num">10.</span> Responsabilité limitée</h2>
+    <p>Le Service est fourni &laquo;&nbsp;en l'état&nbsp;&raquo; et &laquo;&nbsp;selon disponibilité&nbsp;&raquo;. Dans les limites autorisées par la loi, Nexus Social ne saurait être tenu responsable des contenus publiés par les utilisateurs, des interruptions, pertes de données, ou dommages indirects résultant de l'utilisation ou de l'impossibilité d'utiliser le Service. Nexus Social ne garantit pas que le Service sera exempt d'erreurs ou disponible sans interruption. Aucune stipulation des présentes ne vise à exclure la responsabilité qui ne peut légalement l'être.</p>
+
+    <h2><span class="num">11.</span> Résiliation</h2>
+    <p><strong>Par l'utilisateur :</strong> vous pouvez cesser d'utiliser le Service et supprimer votre compte à tout moment depuis les paramètres.</p>
+    <p><strong>Par Nexus Social :</strong> nous pouvons suspendre ou résilier votre accès, avec ou sans préavis, en cas de violation des présentes Conditions, d'exigence légale, ou pour protéger le Service et ses utilisateurs. Les stipulations qui, par nature, doivent survivre à la résiliation (notamment la propriété intellectuelle et la limitation de responsabilité) demeurent applicables.</p>
+
+    <h2><span class="num">12.</span> Modifications des conditions</h2>
+    <p>Nexus Social peut modifier les présentes Conditions afin de refléter des évolutions du Service ou de la réglementation. En cas de modification substantielle, nous vous en informerons par un moyen approprié (par exemple une notification dans l'application). La poursuite de l'utilisation du Service après l'entrée en vigueur des modifications vaut acceptation des nouvelles Conditions.</p>
+
+    <h2><span class="num">13.</span> Droit applicable et juridiction</h2>
+    <p>Les présentes Conditions sont régies par le droit français et, le cas échéant, par le droit de l'Union européenne. Tout litige relatif à leur validité, leur interprétation ou leur exécution relève de la compétence des tribunaux français, sous réserve des dispositions protectrices applicables aux consommateurs. Une solution amiable sera recherchée préalablement à toute action contentieuse.</p>
+
+    <h2><span class="num">14.</span> Contact</h2>
+    <p>Pour toute question relative aux présentes Conditions, un signalement ou l'exercice de vos droits, vous pouvez nous contacter à l'adresse : <a href="mailto:legal@nexussocial.com">legal@nexussocial.com</a>.</p>
+
+    <footer>
+        &copy; 2026 Nexus Social. Tous droits réservés. En utilisant Nexus Social, vous reconnaissez avoir pris connaissance des présentes Conditions et les accepter.
+    </footer>
 </body>
 </html>
     """, media_type="text/html")
