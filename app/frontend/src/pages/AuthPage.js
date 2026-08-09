@@ -149,7 +149,7 @@ export default function AuthPage({ setUser }) {
   };
 
   const inputClass =
-    "w-full border-none rounded-xl py-4 pl-12 pr-4 text-ns-on-surface placeholder:text-ns-outline/50 focus:ring-1 focus:ring-ns-primary/40 transition-all font-body outline-none";
+    "w-full border-none rounded-xl py-2.5 pl-11 pr-4 text-ns-on-surface placeholder:text-ns-outline/50 focus:ring-1 focus:ring-ns-primary/40 transition-all font-body outline-none";
 
   return (
     <>
@@ -174,7 +174,7 @@ export default function AuthPage({ setUser }) {
       </div>
 
       <main
-        className="min-h-screen grid lg:grid-cols-2"
+        className="min-h-[100dvh] lg:h-screen grid lg:grid-cols-2"
         style={{ backgroundColor: "#0b1326", color: "#dae2fd" }}
       >
         {/* Left Column: Branding */}
@@ -235,36 +235,36 @@ export default function AuthPage({ setUser }) {
 
         {/* Right Column: Form */}
         <section
-          className="flex items-center justify-center p-6 sm:p-12 lg:p-24"
+          className="flex items-center justify-center p-5 sm:p-8 lg:p-12 lg:h-screen lg:overflow-y-auto"
           style={{ backgroundColor: "#0b1326" }}
         >
-          <div className="w-full max-w-md space-y-10">
+          <div className="w-full max-w-md space-y-5 py-4">
             {/* Mobile logo */}
-            <div className="space-y-2 lg:hidden">
-              <h1 className="font-headline text-2xl font-bold text-kinetic-gradient">
+            <div className="lg:hidden">
+              <h1 className="font-headline text-xl font-bold text-kinetic-gradient">
                 Nexus Social
               </h1>
             </div>
 
             <header>
               <h2
-                className="font-headline text-4xl font-bold tracking-tight mb-2"
+                className="font-headline text-2xl sm:text-3xl font-bold tracking-tight mb-1"
                 style={{ color: "#dae2fd" }}
               >
                 {isLogin ? "Connexion" : "Inscription"}
               </h2>
-              <p style={{ color: "#bbc9cd" }}>
+              <p className="text-sm" style={{ color: "#bbc9cd" }}>
                 {isLogin
                   ? "Bienvenue de retour sur Nexus Social."
                   : "Créez votre profil pour commencer l'aventure."}
               </p>
             </header>
 
-            <form className="space-y-6" onSubmit={handleSubmit}>
-              <div className="space-y-5">
+            <form className="space-y-4" onSubmit={handleSubmit}>
+              <div className="space-y-3">
                 {/* Full Name (register only) */}
                 {!isLogin && (
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     <label
                       className="font-label text-xs uppercase tracking-widest ml-1"
                       style={{ color: "#bbc9cd" }}
@@ -296,7 +296,7 @@ export default function AuthPage({ setUser }) {
                 )}
 
                 {/* Email */}
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <label
                     className="font-label text-xs uppercase tracking-widest ml-1"
                     style={{ color: "#bbc9cd" }}
@@ -328,7 +328,7 @@ export default function AuthPage({ setUser }) {
 
                 {/* Date de naissance (inscription) — contrôle d'âge >= 15 (loi FR) */}
                 {!isLogin && (
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     <label
                       className="font-label text-xs uppercase tracking-widest ml-1"
                       style={{ color: "#bbc9cd" }}
@@ -362,7 +362,7 @@ export default function AuthPage({ setUser }) {
 
                 {isLogin ? (
                   /* Login: single password field */
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     <label
                       className="font-label text-xs uppercase tracking-widest ml-1"
                       style={{ color: "#bbc9cd" }}
@@ -401,7 +401,7 @@ export default function AuthPage({ setUser }) {
                 ) : (
                   /* Register: password + confirm side by side */
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       <label
                         className="font-label text-xs uppercase tracking-widest ml-1"
                         style={{ color: "#bbc9cd" }}
@@ -431,7 +431,7 @@ export default function AuthPage({ setUser }) {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       <label
                         className="font-label text-xs uppercase tracking-widest ml-1"
                         style={{ color: "#bbc9cd" }}
@@ -466,7 +466,7 @@ export default function AuthPage({ setUser }) {
 
               {/* Terms (register only) */}
               {!isLogin && (
-                <div className="flex items-center gap-3 py-2">
+                <div className="flex items-center gap-3">
                   <input
                     id="terms"
                     type="checkbox"
@@ -497,7 +497,7 @@ export default function AuthPage({ setUser }) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-kinetic-gradient font-headline font-bold py-4 rounded-xl transition-all hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full bg-kinetic-gradient font-headline font-bold py-3 rounded-xl transition-all hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{
                   color: "#00363e",
                   boxShadow: "0 10px 30px rgba(34,211,238,0.2)",
@@ -515,7 +515,7 @@ export default function AuthPage({ setUser }) {
               </button>
             </form>
 
-            <footer className="text-center pt-8">
+            <footer className="text-center pt-2">
               <p className="text-sm" style={{ color: "#bbc9cd" }}>
                 {isLogin ? "Pas encore inscrit ?" : "Déjà inscrit ?"}{" "}
                 <button
@@ -526,11 +526,14 @@ export default function AuthPage({ setUser }) {
                   {isLogin ? "Créez un compte" : "Connectez-vous ici"}
                 </button>
               </p>
-              <nav className="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs" style={{ color: "#5b6b8c" }}>
+              <nav className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1.5 text-[11px]">
                 <Link to="/a-propos" className="hover:underline" style={{ color: "#859397" }}>À propos</Link>
                 <Link to="/comment-ca-marche" className="hover:underline" style={{ color: "#859397" }}>Comment ça marche</Link>
                 <Link to="/guides" className="hover:underline" style={{ color: "#859397" }}>Guides</Link>
                 <Link to="/faq" className="hover:underline" style={{ color: "#859397" }}>FAQ</Link>
+                <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#859397" }}>Conditions</a>
+                <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#859397" }}>Confidentialité</a>
+                <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#859397" }}>Cookies</a>
               </nav>
             </footer>
           </div>
