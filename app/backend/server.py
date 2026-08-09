@@ -167,6 +167,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Gestionnaire d'erreurs GLOBAL : sans lui, une exception non gérée renvoie un
+# 500 généré AU-DESSUS du middleware CORS → la réponse n'a pas d'en-tête
+# Access-Control-Allow-Origin, et le navigateur masque le vrai 500 en « erreur
+# CORS ». En interceptant ici, la réponse repasse par le middleware CORS (en-tête
+# ajouté) ET on LOGGE la trace complète (visible dans les journaux Cloud Run).
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"💥 Erreur non gérée sur {request.method} {request.url.path}: {exc}")
+    return JSONResponse(status_code=500, content={"detail": "Erreur interne du serveur."})
+
 # ==================== CLOUDINARY (médias hors base — anti-OOM) ====================
 # Les médias (photos/vidéos) étaient stockés en base64 DANS MongoDB : les charger
 # en mémoire faisait exploser la RAM (OOM Render). Ici on les envoie sur
@@ -3150,9 +3161,15 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
     
     # Publications originales uniquement (les reposts ont leur propre section).
     # Post épinglé d'abord (créateur Premium), puis du plus récent au plus ancien.
-    posts_raw = await db.posts.find(
-        {"author_id": user_id, "repost_of": None}
-    ).sort([("pinned", -1), ("created_at", -1)]).to_list(length=50)
+    # Tout est protégé : le profil doit TOUJOURS charger (au pire liste vide),
+    # jamais un 500 (qui, non géré, était masqué en « erreur CORS » côté navigateur).
+    try:
+        posts_raw = await db.posts.find(
+            {"author_id": user_id, "repost_of": None}
+        ).sort([("pinned", -1), ("created_at", -1)]).to_list(length=50)
+    except Exception as e:
+        logger.exception(f"/users/{user_id}/posts — requête échouée: {e}")
+        return []
 
     # Statut Premium de l'auteur (badge sur ses posts) : une seule lecture.
     author = await db.users.find_one({"id": user_id}, {"is_premium": 1})
@@ -7301,21 +7318,34 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
     (l'auteur voit toujours les siens).
     """
     limit = max(1, min(limit, 40))
-    eu = CLIPS_EU_GEO_BLOCK and is_eu_request(request)
-    ids = await _ranked_ids("clips", current_user["id"], eu)
-    page = ids[skip: skip + limit]
-    clips = await _fetch_posts_in_order(page, current_user["id"])
+    try:
+        eu = CLIPS_EU_GEO_BLOCK and is_eu_request(request)
+        ids = await _ranked_ids("clips", current_user["id"], eu)
+        page = ids[skip: skip + limit]
+        clips = await _fetch_posts_in_order(page, current_user["id"])
 
-    # Filet de sécurité : si le scroll dépasse le pool classé, on complète en
-    # chronologique (clips plus anciens non inclus dans le pool).
-    if len(clips) < limit and skip >= len(ids):
-        base = {"media_type": "video", "media_url": {"$ne": None}}
-        if eu:
-            base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
-        extra_skip = skip - len(ids)
-        raw = await db.posts.find(base).sort("created_at", -1).skip(max(0, extra_skip)).limit(limit).to_list(length=limit)
-        clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"])
-    return clips
+        # Filet de sécurité : si le scroll dépasse le pool classé, on complète en
+        # chronologique (clips plus anciens non inclus dans le pool).
+        if len(clips) < limit and skip >= len(ids):
+            base = {"media_type": "video", "media_url": {"$ne": None}}
+            if eu:
+                base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
+            extra_skip = skip - len(ids)
+            raw = await db.posts.find(base).sort("created_at", -1).skip(max(0, extra_skip)).limit(limit).to_list(length=limit)
+            clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"])
+        return clips
+    except Exception as e:
+        # Le classement a échoué → repli CHRONOLOGIQUE simple pour ne jamais
+        # renvoyer un 500 (le fil doit toujours charger). Trace loggée.
+        logger.exception(f"/clips (classement) a échoué, repli chronologique: {e}")
+        try:
+            raw = await db.posts.find(
+                {"media_type": "video", "media_url": {"$ne": None}}
+            ).sort("created_at", -1).skip(max(0, skip)).limit(limit).to_list(length=limit)
+            return await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"])
+        except Exception as e2:
+            logger.exception(f"/clips repli chronologique a aussi échoué: {e2}")
+            return []
 
 
 async def _enrich_posts_for_user(raw, user_id):
