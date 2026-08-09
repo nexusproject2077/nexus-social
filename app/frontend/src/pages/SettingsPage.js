@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { API } from '../App';
@@ -781,6 +781,10 @@ export default function SettingsPage({ user, setUser }) {
 
           {/* Footer */}
           <div className="px-8 py-6 flex flex-wrap gap-x-6 gap-y-2 text-[10px] font-bold uppercase tracking-widest" style={{ borderTop: `1px solid rgba(255,255,255,0.04)`, color: C.outlineVar }}>
+            <Link to="/a-propos" className="hover:text-cyan-400 transition-colors">À propos</Link>
+            <Link to="/comment-ca-marche" className="hover:text-cyan-400 transition-colors">Comment ça marche</Link>
+            <Link to="/guides" className="hover:text-cyan-400 transition-colors">Guides</Link>
+            <Link to="/faq" className="hover:text-cyan-400 transition-colors">FAQ</Link>
             <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Conditions</a>
             <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Politique de confidentialité</a>
             <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Cookies</a>
