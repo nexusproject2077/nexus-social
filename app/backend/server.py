@@ -6601,32 +6601,107 @@ async def get_terms_of_service():
 
 @app.get("/api/legal/cookie-policy")
 async def get_cookie_policy():
-    """Politique des cookies"""
+    """Politique relative aux cookies (RGPD / ePrivacy)."""
     return Response(content="""
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cookies - Nexus Social</title>
+    <title>Politique relative aux cookies - Nexus Social</title>
     <style>
+        :root { --accent: #22d3ee; }
+        * { box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-            color: #e2e8f0;
-            background: #0f172a;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            max-width: 820px; margin: 0 auto; padding: 32px 22px 80px;
+            line-height: 1.7; color: #dae2fd; background: #0b1326; font-size: 16px;
         }
-        h1 { color: #06b6d4; }
+        header { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px; margin-bottom: 8px; }
+        h1 { font-size: 28px; margin: 0 0 6px; color: #ffffff; letter-spacing: -0.02em; }
+        .meta { color: #859397; font-size: 14px; margin: 0; }
+        .intro { color: #bbc9cd; }
+        h2 { font-size: 19px; color: #ffffff; margin: 34px 0 10px; padding-top: 8px; }
+        h2 .num { display: inline-block; min-width: 30px; color: var(--accent); font-weight: 800; }
+        p, li, td { color: #cdd6ea; }
+        ul { padding-left: 22px; }
+        li { margin: 5px 0; }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        strong { color: #eef2ff; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14.5px; min-width: 520px; }
+        th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid rgba(255,255,255,0.08); vertical-align: top; }
+        th { color: #eef2ff; }
+        .callout { background: rgba(34,211,238,0.06); border: 1px solid rgba(34,211,238,0.2); border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+        footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.1); color: #859397; font-size: 14px; }
     </style>
 </head>
 <body>
-    <h1>🍪 Politique des Cookies</h1>
-    <p>Nous utilisons uniquement des cookies essentiels pour le fonctionnement du site.</p>
-    <p>❌ Pas de cookies publicitaires</p>
-    <p>❌ Pas de tracking tiers</p>
+    <header>
+        <h1>Politique relative aux cookies</h1>
+        <p class="meta">Nexus Social &middot; Dernière mise à jour : 9 août 2026</p>
+    </header>
+
+    <p class="intro">La présente politique explique ce que sont les cookies, lesquels nous utilisons, pourquoi, et comment vous pouvez les contrôler. Elle complète notre <a href="/api/legal/privacy-policy">Politique de confidentialité</a> et s'inscrit dans le respect du RGPD et de la directive &laquo;&nbsp;ePrivacy&nbsp;&raquo;.</p>
+
+    <div class="callout"><strong>En clair&nbsp;:</strong> aujourd'hui, Nexus Social n'utilise que des cookies <strong>strictement nécessaires</strong> au fonctionnement du service (authentification, sécurité, préférences). Nous n'utilisons <strong>ni cookies publicitaires ni traceurs tiers</strong>. Si cela devait changer (par exemple activation d'outils de mesure d'audience ou de publicité), votre consentement serait recueilli au préalable et cette politique serait mise à jour.</div>
+
+    <h2><span class="num">1.</span> Qu'est-ce qu'un cookie&nbsp;?</h2>
+    <p>Un cookie est un petit fichier texte déposé sur votre appareil (ordinateur, téléphone, tablette) lorsque vous visitez un site ou utilisez une application. Il permet de vous reconnaître, de mémoriser des informations (comme votre session de connexion ou vos préférences) et de faire fonctionner le service. Nous utilisons aussi des technologies équivalentes (stockage local du navigateur), regroupées ici sous le terme &laquo;&nbsp;cookies&nbsp;&raquo;.</p>
+
+    <h2><span class="num">2.</span> Qui est responsable&nbsp;?</h2>
+    <p>Les cookies déposés par le service sont sous la responsabilité de <strong>Nexus Social</strong>. Pour toute question, vous pouvez nous contacter à <a href="mailto:privacy@nexussocial.com">privacy@nexussocial.com</a> (ou notre DPO&nbsp;: <a href="mailto:dpo@nexussocial.com">dpo@nexussocial.com</a>).</p>
+
+    <h2><span class="num">3.</span> Types de cookies que nous utilisons</h2>
+    <ul>
+        <li><strong>Cookies essentiels (strictement nécessaires)&nbsp;:</strong> indispensables au fonctionnement et à la sécurité (maintien de votre session de connexion, protection contre la fraude, équilibrage de charge). Ils ne nécessitent pas votre consentement. <strong>Actuellement utilisés.</strong></li>
+        <li><strong>Cookies de préférence / fonctionnels&nbsp;:</strong> mémorisent vos réglages (langue, thème, couleur d'accent, consentement aux cookies). <strong>Actuellement utilisés</strong> (via le stockage local).</li>
+        <li><strong>Cookies de performance / statistiques&nbsp;:</strong> mesureraient l'audience et l'usage pour améliorer le service. <strong>Non utilisés à ce jour</strong> ; le seront uniquement avec votre consentement.</li>
+        <li><strong>Cookies publicitaires / de suivi&nbsp;:</strong> permettraient la personnalisation publicitaire. <strong>Non utilisés à ce jour.</strong> En cas d'activation future (par exemple Google AdSense), ils seraient soumis à votre consentement explicite.</li>
+    </ul>
+
+    <h2><span class="num">4.</span> Finalité de chaque type de cookie</h2>
+    <div class="table-wrap">
+    <table>
+        <tr><th>Cookie / stockage</th><th>Type</th><th>Finalité</th><th>Durée</th></tr>
+        <tr><td>token (session)</td><td>Essentiel</td><td>Vous maintenir connecté de façon sécurisée</td><td>Jusqu'à expiration / déconnexion</td></tr>
+        <tr><td>nexus_user, préférences (thème, accent, langue)</td><td>Fonctionnel</td><td>Mémoriser vos réglages et éviter de tout ressaisir</td><td>Jusqu'à 12 mois</td></tr>
+        <tr><td>consentement cookies</td><td>Essentiel</td><td>Enregistrer votre choix d'acceptation/refus</td><td>Jusqu'à 6 mois</td></tr>
+        <tr><td>Mesure d'audience (le cas échéant)</td><td>Performance</td><td>Statistiques d'usage anonymisées</td><td>Sous consentement, max. 13 mois</td></tr>
+        <tr><td>Publicité (le cas échéant)</td><td>Publicitaire</td><td>Personnalisation publicitaire</td><td>Sous consentement, max. 13 mois</td></tr>
+    </table>
+    </div>
+
+    <h2><span class="num">5.</span> Durée de conservation des cookies</h2>
+    <p>La durée dépend du type de cookie&nbsp;: les cookies de <strong>session</strong> expirent à la fermeture ou à la déconnexion, tandis que les cookies <strong>persistants</strong> (préférences) sont conservés pour une durée limitée, indiquée dans le tableau ci-dessus. Conformément aux recommandations de la CNIL, les cookies soumis à consentement ne dépassent pas <strong>13 mois</strong>, et les informations qu'ils collectent une durée proportionnée.</p>
+
+    <h2><span class="num">6.</span> Cookies tiers</h2>
+    <p>Un cookie tiers est déposé par un service externe. À ce jour, nous limitons au strict nécessaire le recours à des tiers&nbsp;:</p>
+    <ul>
+        <li><strong>Paiement (le cas échéant)&nbsp;:</strong> lors d'un paiement, notre prestataire (par exemple Stripe) peut déposer des cookies nécessaires à la sécurisation de la transaction et à la prévention de la fraude.</li>
+        <li><strong>Mesure d'audience / publicité&nbsp;:</strong> aucun service tiers de type Google Analytics ou Google AdSense n'est actif à ce jour. En cas d'activation future, il serait explicitement mentionné ici et soumis à votre consentement.</li>
+    </ul>
+
+    <h2><span class="num">7.</span> Comment gérer ou refuser les cookies</h2>
+    <ul>
+        <li><strong>Via le bandeau de consentement&nbsp;:</strong> lors de votre première visite, vous pouvez accepter ou refuser les cookies non essentiels. Les cookies essentiels ne peuvent pas être désactivés car ils sont indispensables au service.</li>
+        <li><strong>Via les paramètres de confidentialité du site&nbsp;:</strong> vous pouvez à tout moment modifier vos choix depuis le Centre de confidentialité de l'application.</li>
+        <li><strong>Via votre navigateur&nbsp;:</strong> vous pouvez bloquer ou supprimer les cookies dans les réglages de votre navigateur (Chrome, Safari, Firefox, Edge...). Le blocage des cookies essentiels peut toutefois empêcher le bon fonctionnement du service.</li>
+    </ul>
+
+    <h2><span class="num">8.</span> Consentement</h2>
+    <p>Pour les cookies non essentiels, votre <strong>consentement</strong> est recueilli via le bandeau dédié, de manière libre, éclairée et spécifique. Tant que vous n'avez pas donné votre accord, aucun cookie de mesure d'audience ou de publicité n'est déposé. Vous pouvez <strong>retirer votre consentement à tout moment</strong>, aussi facilement que vous l'avez donné, depuis le Centre de confidentialité ou en supprimant les cookies via votre navigateur. Le retrait n'affecte pas la licéité des traitements effectués avant celui-ci.</p>
+
+    <h2><span class="num">9.</span> Mise à jour de la politique</h2>
+    <p>Cette politique peut évoluer, notamment si nous ajoutons de nouveaux cookies ou services. Toute modification substantielle (par exemple l'activation d'outils de statistiques ou de publicité) sera signalée et, le cas échéant, un nouveau consentement vous sera demandé. La date de dernière mise à jour figure en tête de ce document.</p>
+
+    <h2><span class="num">10.</span> Contact</h2>
+    <p>Pour toute question relative aux cookies&nbsp;: <a href="mailto:privacy@nexussocial.com">privacy@nexussocial.com</a> &middot; DPO&nbsp;: <a href="mailto:dpo@nexussocial.com">dpo@nexussocial.com</a>.</p>
+
+    <footer>
+        &copy; 2026 Nexus Social. Tous droits réservés. Vous gardez le contrôle de vos cookies.
+    </footer>
 </body>
 </html>
     """, media_type="text/html")
