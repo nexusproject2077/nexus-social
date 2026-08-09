@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
 import { toast } from "sonner";
@@ -525,6 +526,12 @@ export default function AuthPage({ setUser }) {
                   {isLogin ? "Créez un compte" : "Connectez-vous ici"}
                 </button>
               </p>
+              <nav className="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs" style={{ color: "#5b6b8c" }}>
+                <Link to="/a-propos" className="hover:underline" style={{ color: "#859397" }}>À propos</Link>
+                <Link to="/comment-ca-marche" className="hover:underline" style={{ color: "#859397" }}>Comment ça marche</Link>
+                <Link to="/guides" className="hover:underline" style={{ color: "#859397" }}>Guides</Link>
+                <Link to="/faq" className="hover:underline" style={{ color: "#859397" }}>FAQ</Link>
+              </nav>
             </footer>
           </div>
         </section>

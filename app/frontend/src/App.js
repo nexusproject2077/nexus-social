@@ -25,6 +25,11 @@ import PrivacyCenter from './pages/PrivacyCenter';
 import ClipsPage from './pages/ClipsPage';
 import ClipsSearchPage from './pages/ClipsSearchPage';
 import LiveStream from './pages/LiveStream';
+import AboutPage from './pages/content/AboutPage';
+import HowItWorksPage from './pages/content/HowItWorksPage';
+import GuidesIndexPage from './pages/content/GuidesIndexPage';
+import ArticlePage from './pages/content/ArticlePage';
+import FaqPage from './pages/content/FaqPage';
 
 // URL du backend. Configurable par variable d'environnement au build
 // (REACT_APP_BACKEND_URL) pour pouvoir changer d'hébergeur sans toucher au code
@@ -51,7 +56,7 @@ axios.interceptors.request.use(
 // Pages PUBLIQUES : accessibles sans connexion. Un 401 déclenché par un appel
 // en arrière-plan (suivi, badges…) ne doit JAMAIS éjecter le visiteur de ces
 // pages vers /auth — sinon /premium, /cgu… deviennent inaccessibles déconnecté.
-const PUBLIC_PATHS = ["/auth", "/premium", "/devenir-premium"];
+const PUBLIC_PATHS = ["/auth", "/premium", "/devenir-premium", "/a-propos", "/comment-ca-marche", "/guides", "/faq"];
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -207,6 +212,13 @@ function App() {
             path="/post/:postId"
             element={user ? <PostDetailPage user={user} /> : <Navigate to="/auth" />}
           />
+          {/* Pages de CONTENU — PUBLIQUES (accessibles sans connexion, pensées
+              pour l'information des visiteurs et le référencement). */}
+          <Route path="/a-propos" element={<AboutPage />} />
+          <Route path="/comment-ca-marche" element={<HowItWorksPage />} />
+          <Route path="/guides" element={<GuidesIndexPage />} />
+          <Route path="/guides/:slug" element={<ArticlePage />} />
+          <Route path="/faq" element={<FaqPage />} />
           {/* Page « Devenir Premium » — PUBLIQUE (visible sans connexion : les
               produits/tarifs doivent être accessibles publiquement). */}
           <Route path="/premium" element={<PremiumPage />} />
