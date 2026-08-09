@@ -3164,9 +3164,12 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
     # Tout est protégé : le profil doit TOUJOURS charger (au pire liste vide),
     # jamais un 500 (qui, non géré, était masqué en « erreur CORS » côté navigateur).
     try:
+        # allow_disk_use : les médias base64 gonflent les documents ; sans index
+        # couvrant, le tri en mémoire dépasse la limite 32 Mo de MongoDB (erreur
+        # 292). On autorise le tri sur disque (+ index créés au démarrage).
         posts_raw = await db.posts.find(
             {"author_id": user_id, "repost_of": None}
-        ).sort([("pinned", -1), ("created_at", -1)]).to_list(length=50)
+        ).sort([("pinned", -1), ("created_at", -1)]).allow_disk_use(True).to_list(length=50)
     except Exception as e:
         logger.exception(f"/users/{user_id}/posts — requête échouée: {e}")
         return []
@@ -5180,7 +5183,7 @@ async def search(q: str, type: str = "all", skip: int = 0, limit: int = 20,
                 {"media_url": {"$nin": [None, ""]}},
                 {"media_urls": {"$exists": True, "$ne": []}},
             ]}]}
-        raw = await db.posts.find(query).sort(sort_field, -1).skip(sk).limit(lm).to_list(length=lm)
+        raw = await db.posts.find(query).sort(sort_field, -1).allow_disk_use(True).skip(sk).limit(lm).to_list(length=lm)
         out = []
         for p in raw:
             p = convert_mongo_doc_to_dict(p)
@@ -6842,7 +6845,7 @@ async def compute_trending_hashtags(limit: int = 10, scope: str = "feed"):
         q["media_type"] = {"$ne": "video"}   # exclut les Clips du fil des tendances
     elif scope == "clips":
         q["media_type"] = "video"            # tendances propres aux Clips
-    recent_posts = await db.posts.find(q).sort("created_at", -1).limit(3000).to_list(length=3000)
+    recent_posts = await db.posts.find(q).sort("created_at", -1).allow_disk_use(True).limit(3000).to_list(length=3000)
 
     stats: Dict[str, dict] = {}
     for post in recent_posts:
@@ -6892,7 +6895,7 @@ async def get_posts_by_hashtag(tag: str, current_user: dict = Depends(get_curren
     # \b ne marche pas après #, on cherche '#tag' suivi d'une limite de mot
     regex = {"$regex": rf"#{re.escape(normalized)}\b", "$options": "i"}
 
-    posts_raw = await db.posts.find({"content": regex}).sort("created_at", -1).limit(50).to_list(length=50)
+    posts_raw = await db.posts.find({"content": regex}).sort("created_at", -1).allow_disk_use(True).limit(50).to_list(length=50)
 
     posts = []
     for post_raw in posts_raw:
@@ -7331,7 +7334,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
             if eu:
                 base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
             extra_skip = skip - len(ids)
-            raw = await db.posts.find(base).sort("created_at", -1).skip(max(0, extra_skip)).limit(limit).to_list(length=limit)
+            raw = await db.posts.find(base).sort("created_at", -1).allow_disk_use(True).skip(max(0, extra_skip)).limit(limit).to_list(length=limit)
             clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"])
         return clips
     except Exception as e:
@@ -7341,7 +7344,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
         try:
             raw = await db.posts.find(
                 {"media_type": "video", "media_url": {"$ne": None}}
-            ).sort("created_at", -1).skip(max(0, skip)).limit(limit).to_list(length=limit)
+            ).sort("created_at", -1).allow_disk_use(True).skip(max(0, skip)).limit(limit).to_list(length=limit)
             return await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"])
         except Exception as e2:
             logger.exception(f"/clips repli chronologique a aussi échoué: {e2}")
@@ -8617,6 +8620,16 @@ async def _startup_warmup():
         await db.identity_submissions.create_index("user_id")
     except Exception as e:
         logger.warning(f"Index vérification non créé (peut déjà exister): {e}")
+    try:
+        # Index de TRI des publications : sans eux, MongoDB trie en mémoire et
+        # dépasse la limite 32 Mo dès que des médias base64 gonflent les documents
+        # (erreur 292 → profil/clips en 500). Ces index rendent les tris « couverts ».
+        await db.posts.create_index([("author_id", 1), ("pinned", -1), ("created_at", -1)], name="by_author_pinned_recent")
+        await db.posts.create_index([("media_type", 1), ("created_at", -1)], name="by_type_recent")
+        await db.posts.create_index([("media_type", 1), ("likes_count", -1)], name="by_type_likes")
+        await db.posts.create_index([("created_at", -1)], name="by_recent")
+    except Exception as e:
+        logger.warning(f"Index posts (tri) non créé (peut déjà exister): {e}")
 
 
 async def _keep_alive_loop():
