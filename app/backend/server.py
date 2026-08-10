@@ -395,6 +395,45 @@ async def eu_geo_block(request, call_next):
             )
     return await call_next(request)
 
+
+def _cors_headers_for(request) -> dict:
+    """En-têtes CORS à ajouter manuellement sur une réponse d'erreur.
+
+    On reflète l'Origin de la requête si elle fait partie des origines
+    autorisées (ou si `*` est configuré). Indispensable sur les réponses 500
+    générées HORS du CORSMiddleware, sinon le navigateur masque le vrai statut
+    en « erreur CORS ».
+    """
+    origin = request.headers.get("origin")
+    headers = {"Vary": "Origin"}
+    if origin and (origin in _CORS_ORIGINS or "*" in _CORS_ORIGINS):
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return headers
+
+
+@app.middleware("http")
+async def catch_all_errors_with_cors(request, call_next):
+    """Filet de sécurité le PLUS EXTÉRIEUR : capture TOUTE exception non gérée
+    en aval (y compris les erreurs de SÉRIALISATION de la réponse, qui échappent
+    aux try/except des endpoints et au gestionnaire @app.exception_handler).
+
+    Renvoie un 500 propre AVEC les en-têtes CORS manuels, pour que le navigateur
+    voie le vrai statut au lieu d'une fausse « erreur CORS ». Logge la trace
+    complète (visible dans les journaux Cloud Run) pour diagnostiquer la cause.
+    """
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        logger.exception(
+            f"💥 Erreur non gérée (middleware) sur {request.method} {request.url.path}: {exc}"
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Erreur interne du serveur."},
+            headers=_cors_headers_for(request),
+        )
+
 # ==================== E2EE HELPER ====================
 # Chiffrement symétrique (Fernet) pour les données sensibles / messages.
 # Définissez ENCRYPTION_KEY (clé Fernet base64) en variable d'environnement.
@@ -3135,9 +3174,17 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         created_at=user["created_at"]
     )
 
-@api_router.get("/users/{user_id}/posts", response_model=List[Post])
+@api_router.get("/users/{user_id}/posts")
 async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Récupère les posts d'un utilisateur (avec vérification privacy)"""
+    """Récupère les posts d'un utilisateur (avec vérification privacy).
+
+    NB : pas de `response_model=List[Post]`. Ce paramètre déclenchait une
+    RE-validation Pydantic de la réponse APRÈS le retour de l'endpoint (hors
+    de notre try/except) ; sur un document lourd/ancien, elle pouvait lever un
+    500 non géré, masqué en « erreur CORS » côté navigateur. Les objets sont
+    déjà validés (Post(**post)) dans la boucle ci-dessous ; on sérialise une
+    seule fois via jsonable_encoder, sans double passe fragile.
+    """
     
     # Vérifier si c'est son propre profil
     is_own_profile = current_user["id"] == user_id
@@ -7567,7 +7614,7 @@ async def _fetch_posts_in_order(ids, user_id):
     return out
 
 
-@api_router.get("/clips", response_model=List[Post])
+@api_router.get("/clips")
 async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, current_user: dict = Depends(get_current_user)):
     """
     Fil Nexus Clips classé par un algorithme d'engagement (watch time +
