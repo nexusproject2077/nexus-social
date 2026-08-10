@@ -8,7 +8,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import InvalidURI, ConnectionFailure
 import os
@@ -882,6 +882,93 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
                 for item in value
             ]
     return new_doc
+
+
+# ==================== PROXY MÉDIA (anti-OOM base64) ====================
+# Les médias (photos/vidéos) sont parfois stockés en base64 DANS MongoDB. Les
+# renvoyer tels quels dans les FLUX (clips, profil) charge des dizaines/centaines
+# de Mo en mémoire d'un coup → l'instance Cloud Run est TUÉE (OOM/SIGKILL) et
+# renvoie un 500 d'infrastructure SANS en-tête CORS (le navigateur le déguise en
+# « erreur CORS », et aucun try/except Python ne peut l'attraper car le process
+# est déjà mort).
+#
+# Solution : dans les flux, on NE transfère PLUS le base64 depuis MongoDB. Une
+# étape d'agrégation remplace un media_url base64 par un sentinel léger
+# « nexusmedia:<id> » (le base64 ne quitte jamais la base). Le front reçoit à la
+# place une URL vers ce proxy, qui sert le média À LA DEMANDE, un seul à la fois
+# (mémoire bornée), avec support des requêtes Range (lecture/seek vidéo).
+
+_MEDIA_SENTINEL = "nexusmedia:"
+
+
+def _drop_base64_media_stage() -> dict:
+    """Étape d'agrégation : remplace un media_url base64 (data:) par un sentinel
+    léger « nexusmedia:<id> » — le base64 ne quitte JAMAIS MongoDB (anti-OOM).
+    Les URLs externes (http/https, Cloudinary…) sont conservées telles quelles."""
+    return {"$addFields": {"media_url": {
+        "$cond": [
+            {"$eq": [{"$substrCP": [{"$ifNull": ["$media_url", ""]}, 0, 5]}, "data:"]},
+            {"$concat": [_MEDIA_SENTINEL, {"$ifNull": ["$id", ""]}]},
+            "$media_url",
+        ]
+    }}}
+
+
+def _media_public_base(request) -> str:
+    """Base publique (https) du backend, dérivée de l'en-tête Host de la requête.
+    Cloud Run termine le TLS en amont ; on force https pour éviter tout
+    contenu mixte côté front (servi en https)."""
+    host = None
+    try:
+        host = request.headers.get("host")
+    except Exception:
+        host = None
+    if not host:
+        try:
+            host = request.url.netloc
+        except Exception:
+            host = ""
+    return f"https://{host}" if host else ""
+
+
+def _resolve_media_sentinel(post: dict, base: str) -> dict:
+    """Remplace le sentinel « nexusmedia:<id> » par l'URL absolue du proxy média.
+    Sans base (pas de requête), on laisse le sentinel : le front l'ignore et
+    l'ancien base64 reste accessible via les autres endpoints — jamais bloquant."""
+    mu = post.get("media_url")
+    if isinstance(mu, str) and mu.startswith(_MEDIA_SENTINEL):
+        pid = mu[len(_MEDIA_SENTINEL):] or post.get("id") or ""
+        post["media_url"] = f"{base}/api/media/post/{pid}" if base and pid else None
+    return post
+
+
+def _ranged_media_response(request, data: bytes, content_type: str) -> Response:
+    """Renvoie des octets média avec support des requêtes Range (seek vidéo).
+    Cache immuable (le contenu d'un id ne change pas)."""
+    total = len(data)
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=31536000, immutable",
+    }
+    range_header = request.headers.get("range") if request else None
+    if range_header and range_header.startswith("bytes="):
+        try:
+            rng = range_header[6:].split(",")[0].strip()
+            start_s, _, end_s = rng.partition("-")
+            start = int(start_s) if start_s else 0
+            end = int(end_s) if end_s else total - 1
+            start = max(0, start)
+            end = min(end, total - 1)
+            if start > end:
+                start, end = 0, total - 1
+            chunk = data[start:end + 1]
+            headers["Content-Range"] = f"bytes {start}-{end}/{total}"
+            headers["Content-Length"] = str(len(chunk))
+            return Response(content=chunk, status_code=206, media_type=content_type, headers=headers)
+        except Exception:
+            pass
+    headers["Content-Length"] = str(total)
+    return Response(content=data, status_code=200, media_type=content_type, headers=headers)
 
 
 def safe_http_url(url: Optional[str]) -> Optional[str]:
@@ -3175,7 +3262,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
     )
 
 @api_router.get("/users/{user_id}/posts")
-async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_user)):
+async def get_user_posts(user_id: str, request: Request, current_user: dict = Depends(get_current_user)):
     """Récupère les posts d'un utilisateur (avec vérification privacy).
 
     NB : pas de `response_model=List[Post]`. Ce paramètre déclenchait une
@@ -3210,13 +3297,21 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
     # Post épinglé d'abord (créateur Premium), puis du plus récent au plus ancien.
     # Tout est protégé : le profil doit TOUJOURS charger (au pire liste vide),
     # jamais un 500 (qui, non géré, était masqué en « erreur CORS » côté navigateur).
+    media_base = _media_public_base(request)
     try:
         # allow_disk_use : les médias base64 gonflent les documents ; sans index
         # couvrant, le tri en mémoire dépasse la limite 32 Mo de MongoDB (erreur
         # 292). On autorise le tri sur disque (+ index créés au démarrage).
-        posts_raw = await db.posts.find(
-            {"author_id": user_id, "repost_of": None}
-        ).sort([("pinned", -1), ("created_at", -1)]).allow_disk_use(True).to_list(length=50)
+        # Agrégation avec _drop_base64_media_stage : le base64 des médias N'EST
+        # PLUS chargé (remplacé par un sentinel → proxy) — sinon 50 documents
+        # lourds saturaient la RAM et l'instance Cloud Run était TUÉE (OOM/500
+        # masqué en « erreur CORS »).
+        posts_raw = await db.posts.aggregate([
+            {"$match": {"author_id": user_id, "repost_of": None}},
+            {"$sort": {"pinned": -1, "created_at": -1}},
+            {"$limit": 50},
+            _drop_base64_media_stage(),
+        ], allowDiskUse=True).to_list(length=50)
     except Exception as e:
         logger.exception(f"/users/{user_id}/posts — requête échouée: {e}")
         return []
@@ -3230,8 +3325,8 @@ async def get_user_posts(user_id: str, current_user: dict = Depends(get_current_
         # Tout le traitement d'une publication est protégé : une seule entrée
         # ancienne/incomplète ne doit JAMAIS faire échouer tout le profil.
         try:
-            schedule_lazy_media_migration("posts", post_raw)
             post = convert_mongo_doc_to_dict(post_raw)
+            _resolve_media_sentinel(post, media_base)
             like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
             post["is_liked"] = bool(like_raw)
             post["author_is_premium"] = author_premium
@@ -7584,11 +7679,18 @@ async def _ranked_ids(kind, user_id, eu):
     return ids
 
 
-async def _fetch_posts_in_order(ids, user_id):
-    """Récupère et enrichit des posts en respectant l'ordre de `ids`."""
+async def _fetch_posts_in_order(ids, user_id, media_base=""):
+    """Récupère et enrichit des posts en respectant l'ordre de `ids`.
+
+    Le base64 des médias N'EST PAS chargé (étape d'agrégation → sentinel), pour
+    ne jamais saturer la mémoire (anti-OOM). `media_base` (https://host) sert à
+    reconstruire l'URL du proxy média servie au front."""
     if not ids:
         return []
-    raw = await db.posts.find({"id": {"$in": ids}}).to_list(length=len(ids))
+    raw = await db.posts.aggregate(
+        [{"$match": {"id": {"$in": ids}}}, _drop_base64_media_stage()],
+        allowDiskUse=True,
+    ).to_list(length=len(ids))
     by_id = {p.get("id"): p for p in raw}
     saved_ids = await _saved_post_ids(user_id, ids)
     premium_ids = await _premium_author_ids([by_id[i].get("author_id") for i in ids if i in by_id])
@@ -7600,9 +7702,8 @@ async def _fetch_posts_in_order(ids, user_id):
         pr = by_id.get(pid)
         if not pr:
             continue
-        # Migre en arrière-plan les anciens médias base64 (allègement progressif).
-        schedule_lazy_media_migration("posts", pr)
         post = convert_mongo_doc_to_dict(pr)
+        _resolve_media_sentinel(post, media_base)
         post["is_liked"] = pid in liked
         post["is_saved"] = pid in saved_ids
         post["author_is_premium"] = post.get("author_id") in premium_ids
@@ -7612,6 +7713,39 @@ async def _fetch_posts_in_order(ids, user_id):
         except Exception as e:
             logger.warning(f"Clip/post ignoré (invalide) {post.get('id')}: {e}")
     return out
+
+
+@api_router.get("/media/post/{post_id}")
+async def serve_post_media(post_id: str, request: Request):
+    """Sert le média d'une publication À LA DEMANDE (un seul à la fois → mémoire
+    bornée), au lieu d'inclure le base64 dans les flux (anti-OOM).
+
+    PUBLIC (pas d'auth) : les balises <video>/<img> n'envoient pas de jeton. Les
+    ids sont des UUID non devinables. Si le média est déjà une URL externe
+    (Cloudinary…), on redirige simplement dessus.
+    """
+    try:
+        doc = await db.posts.find_one({"id": post_id}, {"media_url": 1, "_id": 0})
+    except Exception:
+        raise HTTPException(status_code=404, detail="Média introuvable")
+    url = (doc or {}).get("media_url")
+    if not isinstance(url, str) or not url:
+        raise HTTPException(status_code=404, detail="Média introuvable")
+    # Média externe déjà hébergé → redirection (léger, pas de décodage).
+    if not url.startswith("data:"):
+        return RedirectResponse(url, status_code=302)
+    # Data URL base64 → on décode et on sert les octets (avec support Range).
+    try:
+        header, b64 = url.split(",", 1)
+        content_type = header[5:].split(";")[0] or "application/octet-stream"
+        data = base64.b64decode(b64)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Média illisible")
+    # Migration base64→Cloudinary opportuniste, UN média à la fois (mémoire
+    # bornée) : allège progressivement la base à chaque lecture, sans jamais
+    # charger plusieurs médias d'un coup. Best-effort (ne fait rien sans Cloudinary).
+    schedule_lazy_media_migration("posts", {"id": post_id, "media_url": url})
+    return _ranged_media_response(request, data, content_type)
 
 
 @api_router.get("/clips")
@@ -7625,21 +7759,23 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
     (l'auteur voit toujours les siens).
     """
     limit = max(1, min(limit, 40))
+    media_base = _media_public_base(request)
     try:
         eu = CLIPS_EU_GEO_BLOCK and is_eu_request(request)
         ids = await _ranked_ids("clips", current_user["id"], eu)
         page = ids[skip: skip + limit]
-        clips = await _fetch_posts_in_order(page, current_user["id"])
+        clips = await _fetch_posts_in_order(page, current_user["id"], media_base)
 
         # Filet de sécurité : si le scroll dépasse le pool classé, on complète en
-        # chronologique (clips plus anciens non inclus dans le pool).
+        # chronologique (clips plus anciens non inclus dans le pool). Projection
+        # {id} : on ne charge PAS le base64 juste pour récupérer des ids (anti-OOM).
         if len(clips) < limit and skip >= len(ids):
             base = {"media_type": "video", "media_url": {"$ne": None}}
             if eu:
                 base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
             extra_skip = skip - len(ids)
-            raw = await db.posts.find(base).sort("created_at", -1).allow_disk_use(True).skip(max(0, extra_skip)).limit(limit).to_list(length=limit)
-            clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"])
+            raw = await db.posts.find(base, {"id": 1, "_id": 0}).sort("created_at", -1).allow_disk_use(True).skip(max(0, extra_skip)).limit(limit).to_list(length=limit)
+            clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base)
         return clips
     except Exception as e:
         # Le classement a échoué → repli CHRONOLOGIQUE simple pour ne jamais
@@ -7647,9 +7783,9 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
         logger.exception(f"/clips (classement) a échoué, repli chronologique: {e}")
         try:
             raw = await db.posts.find(
-                {"media_type": "video", "media_url": {"$ne": None}}
+                {"media_type": "video", "media_url": {"$ne": None}}, {"id": 1, "_id": 0}
             ).sort("created_at", -1).allow_disk_use(True).skip(max(0, skip)).limit(limit).to_list(length=limit)
-            return await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"])
+            return await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base)
         except Exception as e2:
             logger.exception(f"/clips repli chronologique a aussi échoué: {e2}")
             return []
