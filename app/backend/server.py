@@ -27,6 +27,7 @@ import time
 import asyncio
 from enum import Enum
 import hashlib
+import hmac
 import random
 import math
 import re
@@ -900,6 +901,25 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
 
 _MEDIA_SENTINEL = "nexusmedia:"
 
+# Registre des types de médias servis par le proxy : kind -> (collection, champ).
+# - "post" / "story" : contenu public ou entre abonnés → proxy par UUID (comme
+#   les clips déjà en place).
+# - "message" : messages privés (DM) → l'URL est SIGNÉE et EXPIRANTE (voir
+#   _media_sign) pour respecter la confidentialité (pas d'accès public par id).
+_MEDIA_KINDS = {
+    "post": ("posts", "media_url"),
+    "story": ("stories", "media_url"),
+    "message": ("messages", "media_url"),
+}
+_SIGNED_MEDIA_KINDS = {"message"}   # kinds nécessitant une signature valide
+_MEDIA_SIG_TTL = 6 * 3600           # validité d'un lien média signé (6 h)
+
+
+def _media_sign(kind: str, media_id: str, exp: int) -> str:
+    """Signature HMAC courte d'un lien média privé (kind + id + expiration)."""
+    msg = f"{kind}:{media_id}:{exp}".encode()
+    return hmac.new(SECRET_KEY.encode(), msg, hashlib.sha256).hexdigest()[:32]
+
 
 def _drop_base64_media_stage() -> dict:
     """Étape d'agrégation : remplace un media_url base64 (data:) par un sentinel
@@ -931,14 +951,23 @@ def _media_public_base(request) -> str:
     return f"https://{host}" if host else ""
 
 
-def _resolve_media_sentinel(post: dict, base: str) -> dict:
+def _resolve_media_sentinel(post: dict, base: str, kind: str = "post") -> dict:
     """Remplace le sentinel « nexusmedia:<id> » par l'URL absolue du proxy média.
-    Sans base (pas de requête), on laisse le sentinel : le front l'ignore et
-    l'ancien base64 reste accessible via les autres endpoints — jamais bloquant."""
+
+    `kind` (post|story|message) choisit la route. Pour un kind PRIVÉ (message),
+    l'URL est signée + expirante → le média n'est pas accessible publiquement par
+    simple id. Sans base (pas de requête), on met None (jamais bloquant)."""
     mu = post.get("media_url")
     if isinstance(mu, str) and mu.startswith(_MEDIA_SENTINEL):
         pid = mu[len(_MEDIA_SENTINEL):] or post.get("id") or ""
-        post["media_url"] = f"{base}/api/media/post/{pid}" if base and pid else None
+        if base and pid:
+            url = f"{base}/api/media/{kind}/{pid}"
+            if kind in _SIGNED_MEDIA_KINDS:
+                exp = int(time.time()) + _MEDIA_SIG_TTL
+                url += f"?exp={exp}&sig={_media_sign(kind, pid, exp)}"
+            post["media_url"] = url
+        else:
+            post["media_url"] = None
     return post
 
 
@@ -2721,11 +2750,14 @@ async def vote_poll(post_id: str, vote: PollVote, current_user: dict = Depends(g
     return Post(**post)
 
 @api_router.get("/posts/feed", response_model=List[Post])
-async def get_posts_feed(skip: int = 0, limit: int = 10, current_user: dict = Depends(get_current_user)):
+async def get_posts_feed(request: Request, skip: int = 0, limit: int = 10, current_user: dict = Depends(get_current_user)):
     """Feed « Abonnements » (comptes suivis), paginé (skip/limit) pour un premier
     affichage rapide + scroll infini. Charger 50 posts d'un coup rendait le fil
-    lent (surtout avec des médias lourds) → petites pages."""
+    lent (surtout avec des médias lourds) → petites pages.
+
+    Le base64 des médias n'est PAS chargé (agrégation → sentinel/proxy) : anti-OOM."""
     limit = max(1, min(limit, 30))
+    media_base = _media_public_base(request)
     # Récupère les utilisateurs suivis
     follows_raw = await db.follows.find({
         "follower_id": current_user["id"],
@@ -2743,24 +2775,30 @@ async def get_posts_feed(skip: int = 0, limit: int = 10, current_user: dict = De
 
     followed_user_ids.append(current_user["id"])
 
-    # Récupère les posts (page)
-    posts_raw = await db.posts.find({
-        "author_id": {"$in": followed_user_ids}
-    }).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    # Récupère les posts (page) — sans charger le base64 des médias.
+    posts_raw = await db.posts.aggregate([
+        {"$match": {"author_id": {"$in": followed_user_ids}}},
+        {"$sort": {"created_at": -1}},
+        {"$skip": max(0, skip)},
+        {"$limit": limit},
+        _drop_base64_media_stage(),
+    ], allowDiskUse=True).to_list(length=limit)
 
     posts = []
     saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
     premium_ids = await _premium_author_ids([p.get("author_id") for p in posts_raw])
     for post_raw in posts_raw:
-        # Migre en arrière-plan les anciens médias base64 (allègement progressif).
-        schedule_lazy_media_migration("posts", post_raw)
-        post = convert_mongo_doc_to_dict(post_raw)
-        like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
-        post["is_liked"] = bool(like_raw)
-        post["is_saved"] = post["id"] in saved_ids
-        post["author_is_premium"] = post.get("author_id") in premium_ids
-        enrich_post_poll(post, current_user["id"])
-        posts.append(Post(**post))
+        try:
+            post = convert_mongo_doc_to_dict(post_raw)
+            _resolve_media_sentinel(post, media_base)
+            like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
+            post["is_liked"] = bool(like_raw)
+            post["is_saved"] = post["id"] in saved_ids
+            post["author_is_premium"] = post.get("author_id") in premium_ids
+            enrich_post_poll(post, current_user["id"])
+            posts.append(Post(**post))
+        except Exception as e:
+            logger.warning(f"/posts/feed — post ignoré {post_raw.get('id')}: {e}")
 
     return posts
 
@@ -5535,9 +5573,13 @@ async def create_story(
     return Story(**story)
 
 @api_router.get("/stories/feed", response_model=List[StoryGroup])
-async def get_stories_feed(current_user: dict = Depends(get_current_user)):
-    """Récupère les stories du feed (utilisateurs suivis + propres stories)"""
+async def get_stories_feed(request: Request, current_user: dict = Depends(get_current_user)):
+    """Récupère les stories du feed (utilisateurs suivis + propres stories).
+
+    Le base64 des médias n'est PAS chargé (agrégation → sentinel/proxy) : le fil
+    chargeait jusqu'à 1000 stories, dont des vidéos base64 → OOM garanti."""
     now = datetime.now(timezone.utc).isoformat()
+    media_base = _media_public_base(request)
     
     # Récupère les utilisateurs suivis + l'utilisateur actuel
     follows_raw = await db.follows.find({"follower_id": current_user["id"]}).to_list(length=100)
@@ -5553,17 +5595,21 @@ async def get_stories_feed(current_user: dict = Depends(get_current_user)):
     
     followed_user_ids.append(current_user["id"])  # Ajoute l'utilisateur actuel
     
-    # Récupère toutes les stories non expirées des utilisateurs suivis
-    stories_raw = await db.stories.find({
-        "author_id": {"$in": followed_user_ids},
-        "expires_at": {"$gt": now}
-    }).sort("created_at", -1).to_list(length=1000)
-    
+    # Récupère toutes les stories non expirées des utilisateurs suivis — sans
+    # charger le base64 des médias (agrégation → sentinel/proxy).
+    stories_raw = await db.stories.aggregate([
+        {"$match": {"author_id": {"$in": followed_user_ids}, "expires_at": {"$gt": now}}},
+        {"$sort": {"created_at": -1}},
+        {"$limit": 1000},
+        _drop_base64_media_stage(),
+    ], allowDiskUse=True).to_list(length=1000)
+
     # Groupe les stories par auteur
     stories_by_user = {}
     close_friends_cache = {}
     for story_raw in stories_raw:
         story = convert_mongo_doc_to_dict(story_raw)
+        _resolve_media_sentinel(story, media_base, "story")
         author_id = story["author_id"]
 
         # Visibilité : masque les stories non destinées à ce spectateur.
@@ -5610,23 +5656,28 @@ async def get_stories_feed(current_user: dict = Depends(get_current_user)):
     return story_groups
 
 @api_router.get("/stories/user/{user_id}", response_model=List[Story])
-async def get_user_stories(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Récupère les stories d'un utilisateur spécifique"""
+async def get_user_stories(user_id: str, request: Request, current_user: dict = Depends(get_current_user)):
+    """Récupère les stories d'un utilisateur spécifique (médias servis par proxy,
+    base64 non chargé → anti-OOM)."""
     now = datetime.now(timezone.utc).isoformat()
-    
+    media_base = _media_public_base(request)
+
     user_raw = await db.users.find_one({"id": user_id})
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    stories_raw = await db.stories.find({
-        "author_id": user_id,
-        "expires_at": {"$gt": now}
-    }).sort("created_at", 1).to_list(length=100)
-    
+
+    stories_raw = await db.stories.aggregate([
+        {"$match": {"author_id": user_id, "expires_at": {"$gt": now}}},
+        {"$sort": {"created_at": 1}},
+        {"$limit": 100},
+        _drop_base64_media_stage(),
+    ], allowDiskUse=True).to_list(length=100)
+
     stories = []
     for story_raw in stories_raw:
         story = convert_mongo_doc_to_dict(story_raw)
-        
+        _resolve_media_sentinel(story, media_base, "story")
+
         # Vérifie si l'utilisateur a vu cette story
         view_raw = await db.story_views.find_one({
             "story_id": story["id"],
@@ -7715,20 +7766,32 @@ async def _fetch_posts_in_order(ids, user_id, media_base=""):
     return out
 
 
-@api_router.get("/media/post/{post_id}")
-async def serve_post_media(post_id: str, request: Request):
-    """Sert le média d'une publication À LA DEMANDE (un seul à la fois → mémoire
-    bornée), au lieu d'inclure le base64 dans les flux (anti-OOM).
+@api_router.get("/media/{kind}/{media_id}")
+async def serve_media(kind: str, media_id: str, request: Request, exp: int = 0, sig: str = ""):
+    """Sert un média À LA DEMANDE (un seul à la fois → mémoire bornée), au lieu
+    d'inclure le base64 dans les flux (anti-OOM). kind ∈ {post, story, message}.
 
-    PUBLIC (pas d'auth) : les balises <video>/<img> n'envoient pas de jeton. Les
-    ids sont des UUID non devinables. Si le média est déjà une URL externe
-    (Cloudinary…), on redirige simplement dessus.
+    - post / story : contenu public/entre abonnés, servi par UUID (non devinable).
+      Les balises <video>/<img> n'envoient pas de jeton → pas d'auth.
+    - message : PRIVÉ → exige une signature valide et non expirée (exp+sig),
+      pour que le média d'un DM ne soit pas accessible publiquement par id.
+
+    Si le média est déjà une URL externe (Cloudinary…), on redirige dessus.
     """
+    entry = _MEDIA_KINDS.get(kind)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Média introuvable")
+    collection, field = entry
+    # Contenu privé (DM) : signature obligatoire, valide et non expirée.
+    if kind in _SIGNED_MEDIA_KINDS:
+        now = int(time.time())
+        if not sig or not exp or exp < now or not hmac.compare_digest(sig, _media_sign(kind, media_id, exp)):
+            raise HTTPException(status_code=403, detail="Lien média invalide ou expiré")
     try:
-        doc = await db.posts.find_one({"id": post_id}, {"media_url": 1, "_id": 0})
+        doc = await db[collection].find_one({"id": media_id}, {field: 1, "_id": 0})
     except Exception:
         raise HTTPException(status_code=404, detail="Média introuvable")
-    url = (doc or {}).get("media_url")
+    url = (doc or {}).get(field)
     if not isinstance(url, str) or not url:
         raise HTTPException(status_code=404, detail="Média introuvable")
     # Média externe déjà hébergé → redirection (léger, pas de décodage).
@@ -7744,7 +7807,7 @@ async def serve_post_media(post_id: str, request: Request):
     # Migration base64→Cloudinary opportuniste, UN média à la fois (mémoire
     # bornée) : allège progressivement la base à chaque lecture, sans jamais
     # charger plusieurs médias d'un coup. Best-effort (ne fait rien sans Cloudinary).
-    schedule_lazy_media_migration("posts", {"id": post_id, "media_url": url})
+    schedule_lazy_media_migration(collection, {"id": media_id, field: url}, field=field)
     return _ranged_media_response(request, data, content_type)
 
 
@@ -8311,7 +8374,7 @@ async def register_clip_watch(clip_id: str, data: dict = Body(default={}),
 
 
 @api_router.get("/feed/foryou", response_model=List[Post])
-async def for_you_feed(limit: int = 10, skip: int = 0, current_user: dict = Depends(get_current_user)):
+async def for_you_feed(request: Request, limit: int = 10, skip: int = 0, current_user: dict = Depends(get_current_user)):
     """
     Feed « Pour vous » — version SIMPLE et fiable (l'algorithme de classement a
     été retiré temporairement car il posait problème sur cet onglet).
@@ -8319,11 +8382,19 @@ async def for_you_feed(limit: int = 10, skip: int = 0, current_user: dict = Depe
     Contenu : publications récentes de TOUT LE MONDE (hors reposts), du plus
     récent au plus ancien, paginé (skip/limit) — c'est-à-dire de la découverte,
     contrairement à l'onglet « Abonnements » limité aux comptes suivis.
+
+    Le base64 des médias n'est PAS chargé (agrégation → sentinel/proxy) : sinon
+    30 publications lourdes saturaient la RAM (OOM Cloud Run).
     """
     limit = max(1, min(limit, 30))
-    posts_raw = await db.posts.find(
-        {"repost_of": None}
-    ).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    media_base = _media_public_base(request)
+    posts_raw = await db.posts.aggregate([
+        {"$match": {"repost_of": None}},
+        {"$sort": {"created_at": -1}},
+        {"$skip": max(0, skip)},
+        {"$limit": limit},
+        _drop_base64_media_stage(),
+    ], allowDiskUse=True).to_list(length=limit)
 
     posts = []
     ids = [p.get("id") for p in posts_raw]
@@ -8333,14 +8404,16 @@ async def for_you_feed(limit: int = 10, skip: int = 0, current_user: dict = Depe
         {"post_id": {"$in": ids}, "user_id": current_user["id"]}, {"post_id": 1}
     ).to_list(length=len(ids) or 1)} if ids else set()
     for post_raw in posts_raw:
-        # Migre en arrière-plan les anciens médias base64 (allègement progressif).
-        schedule_lazy_media_migration("posts", post_raw)
-        post = convert_mongo_doc_to_dict(post_raw)
-        post["is_liked"] = post["id"] in liked
-        post["is_saved"] = post["id"] in saved_ids
-        post["author_is_premium"] = post.get("author_id") in premium_ids
-        enrich_post_poll(post, current_user["id"])
-        posts.append(Post(**post))
+        try:
+            post = convert_mongo_doc_to_dict(post_raw)
+            _resolve_media_sentinel(post, media_base)
+            post["is_liked"] = post["id"] in liked
+            post["is_saved"] = post["id"] in saved_ids
+            post["author_is_premium"] = post.get("author_id") in premium_ids
+            enrich_post_poll(post, current_user["id"])
+            posts.append(Post(**post))
+        except Exception as e:
+            logger.warning(f"/feed/foryou — post ignoré {post_raw.get('id')}: {e}")
     return posts
 
 
