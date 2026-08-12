@@ -1089,6 +1089,9 @@ class User(BaseModel):
     email_verified: bool = False
     phone_verified: bool = False
     twofa_enabled: bool = False         # double authentification (code email à la connexion)
+    is_private: bool = False            # compte privé (abonnés approuvés uniquement)
+    privacy_strict: bool = False        # Mode Confidentialité stricte : coupe les
+                                        # analytics non essentiels + les pubs ciblées
     accent_color: Optional[str] = None
     theme: Optional[str] = None
     created_at: str
@@ -1697,6 +1700,8 @@ def _auth_payload(user: dict) -> dict:
             "bio": user.get("bio", ""), "profile_pic": user.get("profile_pic"),
             "followers_count": user.get("followers_count", 0),
             "following_count": user.get("following_count", 0),
+            "is_private": bool(user.get("is_private")),
+            "privacy_strict": bool(user.get("privacy_strict")),
             "created_at": user.get("created_at"),
         },
     }
@@ -2190,24 +2195,31 @@ async def update_privacy_settings(
     privacy_data: dict,
     current_user: dict = Depends(get_current_user)
 ):
-    """Met à jour compte privé"""
+    """Met à jour les réglages de confidentialité.
+
+    On ne modifie QUE les champs réellement présents dans la requête (merge) :
+    un appel qui ne change que `privacy_strict` ne doit pas réinitialiser
+    `is_private`, et inversement.
+
+    - is_private     : compte privé (abonnés approuvés uniquement).
+    - privacy_strict : Mode Confidentialité stricte (coupe les analytics non
+      essentiels côté serveur + les pubs ciblées côté client)."""
     try:
-        is_private = privacy_data.get("is_private", False)
-        
-        await db.users.update_one(
-            {"id": current_user["id"]},
-            {"$set": {
-                "is_private": is_private,
-                "privacy_updated_at": datetime.now(timezone.utc).isoformat()
-            }}
-        )
-        
+        update: dict = {"privacy_updated_at": datetime.now(timezone.utc).isoformat()}
+        if "is_private" in privacy_data:
+            update["is_private"] = bool(privacy_data.get("is_private"))
+        if "privacy_strict" in privacy_data:
+            update["privacy_strict"] = bool(privacy_data.get("privacy_strict"))
+
+        await db.users.update_one({"id": current_user["id"]}, {"$set": update})
+
         # Mettre à jour l'utilisateur en mémoire
         updated_user = await db.users.find_one({"id": current_user["id"]})
-        
+
         return {
             "success": True,
-            "is_private": is_private,
+            "is_private": bool((updated_user or {}).get("is_private")),
+            "privacy_strict": bool((updated_user or {}).get("privacy_strict")),
             "user": convert_mongo_doc_to_dict(updated_user)
         }
     except Exception as e:
@@ -2317,7 +2329,15 @@ async def start_user_session(current_user: dict = Depends(get_current_user)):
     """Démarre une session utilisateur (tracking d'activité)"""
     try:
         now = datetime.now(timezone.utc)
-        
+
+        # Mode Confidentialité stricte : on NE crée AUCUN enregistrement de
+        # session (analytics de temps d'écran = non essentiel). Défense en
+        # profondeur : même si le client oublie de couper le suivi, le serveur
+        # ne stocke rien. On renvoie une session « factice » non persistée pour
+        # ne pas casser le client.
+        if current_user.get("privacy_strict"):
+            return {"success": True, "session_id": "", "started_at": now.isoformat(), "privacy_strict": True}
+
         # Mettre à jour la dernière activité de l'utilisateur
         await db.users.update_one(
             {"id": current_user["id"]},

@@ -10,6 +10,7 @@ import LanguageSwitcher from '../components/LanguageSwitcher';
 import AlgorithmTransparencyModal from '../components/AlgorithmTransparencyModal';
 import { ACCENTS, applyAccent, getAccent } from '../lib/accent';
 import { enablePush, disablePush, isPushEnabled, pushReasonLabel } from '@/lib/push';
+import { isPrivacyStrict, setPrivacyStrict } from '@/lib/privacyStrict';
 
 // Libellés FR des types de notification (pour les réglages).
 const NOTIF_TYPE_LABELS = {
@@ -503,6 +504,56 @@ export default function SettingsPage({ user, setUser }) {
           <p className="text-xs" style={{ color: C.outline }}>Vos données sont traitées conformément au RGPD. Vous avez le droit d'accéder, de corriger et de supprimer vos données.</p>
         </div>
       </div>
+
+      {/* Mode Confidentialité stricte — l'interrupteur phare, 1 clic. */}
+      {(() => {
+        const strict = (typeof user?.privacy_strict === "boolean") ? user.privacy_strict : isPrivacyStrict();
+        const setStrict = async (v) => {
+          setPrivacyStrict(v); // effet immédiat côté client (pubs + tracking coupés)
+          try {
+            await axios.put(`${API}/users/me/privacy`, { privacy_strict: v });
+            if (setUser && user) setUser({ ...user, privacy_strict: v });
+            toast.success(v ? "Mode Confidentialité stricte activé" : "Mode Confidentialité stricte désactivé");
+          } catch {
+            setPrivacyStrict(!v); // rollback si le serveur refuse
+            toast.error("Impossible d'enregistrer le réglage");
+          }
+        };
+        return (
+          <div className="p-5 rounded-2xl" style={{ background: strict ? `${C.cyan}10` : C.high, border: `1px solid ${strict ? C.cyan + "55" : "rgba(255,255,255,0.08)"}` }}>
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${C.cyan}18` }}>
+                <span className="material-symbols-outlined" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}>shield_lock</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-base font-black" style={{ color: C.onSurface }}>Mode Confidentialité stricte</p>
+                  <Toggle checked={strict} onChange={setStrict} />
+                </div>
+                <p className="text-xs mt-1" style={{ color: C.outline }}>
+                  En un clic, coupe tout ce qui n'est pas essentiel au service. Les fonctions restent identiques.
+                </p>
+                <div className="mt-3 space-y-1.5">
+                  {[
+                    ["query_stats", "Aucun suivi du temps d'écran (analytics comportemental désactivé)"],
+                    ["ads_click", "Aucune publicité ciblée ni personnalisée"],
+                  ].map(([ic, txt]) => (
+                    <div key={ic} className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-sm" style={{ color: strict ? C.cyan : C.outline }}>{strict ? "check_circle" : ic}</span>
+                      <span className="text-xs" style={{ color: strict ? C.onSurface : C.outline }}>{txt}</span>
+                    </div>
+                  ))}
+                </div>
+                {strict && (
+                  <p className="text-[11px] mt-3 font-semibold" style={{ color: C.cyan }}>
+                    Actif — et synchronisé sur tous vos appareils.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Privacy toggles */}
       <Card>

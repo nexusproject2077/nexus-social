@@ -1,19 +1,28 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { API } from "@/App";
+import { isPrivacyStrict, onPrivacyStrictChange } from "@/lib/privacyStrict";
 
 /**
  * Hook pour tracker le temps passé sur l'application
- * Enregistre automatiquement les sessions et envoie les stats au backend
+ * Enregistre automatiquement les sessions et envoie les stats au backend.
+ *
+ * Respecte le Mode Confidentialité stricte : quand il est actif, AUCUNE session
+ * n'est démarrée ni envoyée (analytics de temps d'écran = non essentiel). Le
+ * suivi s'arrête/reprend immédiatement au basculement de l'interrupteur.
  */
 export function useTimeTracking(user) {
   const startTimeRef = useRef(null);
   const lastActivityRef = useRef(Date.now());
   const sessionIdRef = useRef(null);
   const intervalIdRef = useRef(null);
+  const [strict, setStrict] = useState(isPrivacyStrict());
+
+  // Réagit en direct à l'activation/désactivation du mode strict.
+  useEffect(() => onPrivacyStrictChange(setStrict), []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || strict) return;
 
     // Démarrer une nouvelle session
     const startSession = async () => {
@@ -97,11 +106,11 @@ export function useTimeTracking(user) {
 
       endSession();
     };
-  }, [user]);
+  }, [user, strict]);
 
   // Gérer la fermeture de l'onglet/navigateur
   useEffect(() => {
-    if (!user) return;
+    if (!user || strict) return;
 
     const handleBeforeUnload = async () => {
       if (sessionIdRef.current && startTimeRef.current) {
@@ -120,5 +129,5 @@ export function useTimeTracking(user) {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [user]);
+  }, [user, strict]);
 }

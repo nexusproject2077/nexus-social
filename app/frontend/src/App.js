@@ -8,6 +8,7 @@ import CookieConsent from "./components/CookieConsent";
 import EmailVerifyGate from "@/components/EmailVerifyGate";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
 import { initAccent, applyAccent } from "@/lib/accent";
+import { syncPrivacyStrictFromUser } from "@/lib/privacyStrict";
 import { enablePush } from "@/lib/push";
 import { GeoProvider } from "@/context/GeoContext";
 import AuthPage from "./pages/AuthPage";
@@ -93,6 +94,9 @@ function App() {
       if (u) localStorage.setItem("nexus_user", JSON.stringify(u));
       else localStorage.removeItem("nexus_user");
     } catch { /* quota */ }
+    // Aligne le Mode Confidentialité stricte local sur le compte (suit
+    // l'utilisateur d'un appareil à l'autre).
+    if (u) syncPrivacyStrictFromUser(u);
   };
 
   // ✅ Active le time tracking
