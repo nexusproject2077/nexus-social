@@ -8,6 +8,7 @@ import { Heart, MessageCircle, UserPlus, Repeat, AtSign, TrendingUp, Trash2, Rad
 import { toast } from "sonner";
 import NotificationSettings from "@/components/NotificationSettings";
 import { enablePush, pushReasonLabel } from "@/lib/push";
+import { buildMutedMatcher } from "@/lib/mutedWords";
 
 // Onglets façon X/Instagram.
 const TABS = [
@@ -229,10 +230,14 @@ export default function NotificationsPage({ user }) {
     }
   };
 
-  const filtered = useMemo(
-    () => notifications.filter((n) => matchesTab(n, activeTab)),
-    [notifications, activeTab]
-  );
+  // Mots masqués : on retire aussi les notifications dont le texte (ex. contenu
+  // d'un commentaire) correspond à un mot masqué.
+  const filtered = useMemo(() => {
+    const muteMatch = buildMutedMatcher(user?.muted_words || []);
+    return notifications.filter(
+      (n) => matchesTab(n, activeTab) && !muteMatch(n.comment_content)
+    );
+  }, [notifications, activeTab, user?.muted_words]);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const accent = "var(--nexus-accent, #22d3ee)";

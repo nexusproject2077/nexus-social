@@ -1065,6 +1065,9 @@ class UserCreate(BaseModel):
     password: str
     bio: Optional[str] = ""
     birthdate: Optional[str] = None  # AAAA-MM-JJ — requis (loi FR : >= 15 ans)
+    # Compte privé PAR DÉFAUT (contrôle & vie privée) : seuls les abonnés
+    # approuvés voient le contenu. Modifiable ensuite dans les réglages.
+    is_private: Optional[bool] = True
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -1092,6 +1095,7 @@ class User(BaseModel):
     is_private: bool = False            # compte privé (abonnés approuvés uniquement)
     privacy_strict: bool = False        # Mode Confidentialité stricte : coupe les
                                         # analytics non essentiels + les pubs ciblées
+    muted_words: List[str] = []         # mots/phrases masqués (filtrés du fil + notifs)
     accent_color: Optional[str] = None
     theme: Optional[str] = None
     created_at: str
@@ -1606,6 +1610,9 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
         "email_verified": not _EMAIL_ENABLED,
         "phone_verified": False,
         "twofa_enabled": False,
+        # Compte privé par défaut (sauf si l'inscription l'a explicitement désactivé).
+        "is_private": bool(user_data.is_private),
+        "muted_words": [],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_to_insert)
@@ -1635,6 +1642,9 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
             "profile_pic": None,
             "followers_count": 0,
             "following_count": 0,
+            "is_private": bool(user_to_insert.get("is_private")),
+            "privacy_strict": False,
+            "muted_words": [],
             "created_at": user_to_insert["created_at"]
         }
     }
@@ -1702,6 +1712,7 @@ def _auth_payload(user: dict) -> dict:
             "following_count": user.get("following_count", 0),
             "is_private": bool(user.get("is_private")),
             "privacy_strict": bool(user.get("privacy_strict")),
+            "muted_words": user.get("muted_words") or [],
             "created_at": user.get("created_at"),
         },
     }
@@ -2190,6 +2201,29 @@ async def update_profile(
     updated_user = convert_mongo_doc_to_dict(updated_user_raw)
     return User(**updated_user)
 
+def _sanitize_muted_words(words) -> list:
+    """Nettoie une liste de mots masqués : chaînes non vides, sans doublon
+    (insensible à la casse), longueur d'un terme et nombre total bornés
+    (anti-abus). Conserve la casse d'origine pour l'affichage."""
+    if not isinstance(words, list):
+        return []
+    out, seen = [], set()
+    for w in words:
+        if not isinstance(w, str):
+            continue
+        t = w.strip()[:60]
+        if not t:
+            continue
+        key = t.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(t)
+        if len(out) >= 200:
+            break
+    return out
+
+
 @api_router.put("/users/me/privacy")
 async def update_privacy_settings(
     privacy_data: dict,
@@ -2210,6 +2244,8 @@ async def update_privacy_settings(
             update["is_private"] = bool(privacy_data.get("is_private"))
         if "privacy_strict" in privacy_data:
             update["privacy_strict"] = bool(privacy_data.get("privacy_strict"))
+        if "muted_words" in privacy_data:
+            update["muted_words"] = _sanitize_muted_words(privacy_data.get("muted_words"))
 
         await db.users.update_one({"id": current_user["id"]}, {"$set": update})
 
@@ -2220,6 +2256,7 @@ async def update_privacy_settings(
             "success": True,
             "is_private": bool((updated_user or {}).get("is_private")),
             "privacy_strict": bool((updated_user or {}).get("privacy_strict")),
+            "muted_words": (updated_user or {}).get("muted_words") or [],
             "user": convert_mongo_doc_to_dict(updated_user)
         }
     except Exception as e:

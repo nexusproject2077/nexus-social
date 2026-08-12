@@ -8,6 +8,7 @@ import StoriesFeed from "../components/StoriesFeed";
 import AdSense from "../components/AdSense";
 import { Skeleton } from "../components/ui/skeleton";
 import PullToRefresh from "../components/PullToRefresh";
+import { buildMutedMatcher } from "@/lib/mutedWords";
 import { toast } from "sonner";
 
 export default function HomePage({ user, setUser }) {
@@ -158,6 +159,10 @@ export default function HomePage({ user, setUser }) {
     setPosts(posts.filter((p) => p.id !== postId));
   };
 
+  // Mots masqués : on retire du fil les publications dont le texte correspond.
+  const muteMatch = buildMutedMatcher(user?.muted_words || []);
+  const visiblePosts = posts.filter((p) => !muteMatch(p.content));
+
   return (
     <Layout
       user={user}
@@ -286,7 +291,7 @@ export default function HomePage({ user, setUser }) {
                 </div>
               ))}
             </div>
-          ) : posts.length === 0 ? (
+          ) : visiblePosts.length === 0 ? (
             <div className="text-center py-12" style={{ color: "#859397" }}>
               <p className="text-lg">Aucune publication pour le moment</p>
               <p className="text-sm mt-2">
@@ -296,7 +301,7 @@ export default function HomePage({ user, setUser }) {
               </p>
             </div>
           ) : (
-            posts.map((post, index) => (
+            visiblePosts.map((post, index) => (
               <Fragment key={post.id}>
                 <PostCard
                   post={post}

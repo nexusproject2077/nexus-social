@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
+import { buildMutedMatcher } from "@/lib/mutedWords";
 import { SURFACE, TEXT, ACCENT } from "@/lib/theme";
 import StoryComposer from "@/components/StoryComposer";
 import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
@@ -927,7 +928,9 @@ export default function ClipsPage({ user, setUser }) {
     if (reset) setLoading(true); else setLoadingMore(true);
     try {
       const res = await axios.get(`${API}/clips`, { params: { skip, limit: PAGE } });
-      const videos = (res.data || []).filter((p) => p.media_type === "video" && p.media_url);
+      // Mots masqués : on retire les clips dont la légende correspond.
+      const muteMatch = buildMutedMatcher(user?.muted_words || []);
+      const videos = (res.data || []).filter((p) => p.media_type === "video" && p.media_url && !muteMatch(p.content));
       if (reset) {
         setClips(videos);
         skipRef.current = videos.length;

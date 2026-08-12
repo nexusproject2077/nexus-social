@@ -150,6 +150,7 @@ export default function SettingsPage({ user, setUser }) {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showAlgoModal, setShowAlgoModal] = useState(false);
   const [accent, setAccent] = useState(getAccent());
+  const [mutedInput, setMutedInput] = useState("");
 
   // Notifications : préférences par type + état de l'abonnement push.
   const [notifTypes, setNotifTypes]       = useState([]);
@@ -562,6 +563,72 @@ export default function SettingsPage({ user, setUser }) {
         <ToggleRow icon="chat" label="Autoriser les réponses aux stories" sublabel="Les autres peuvent répondre à vos stories" checked={settings?.privacy?.allow_story_replies !== false} onChange={v => updatePrivacy("allow_story_replies", v)} />
         <ToggleRow icon="alternate_email" label="Autoriser les mentions" sublabel="Permettre aux autres de vous mentionner" checked={settings?.privacy?.allow_mentions !== false} onChange={v => updatePrivacy("allow_mentions", v)} />
       </Card>
+
+      {/* Mots masqués — filtre personnel (fil + notifications) */}
+      {(() => {
+        const words = Array.isArray(user?.muted_words) ? user.muted_words : [];
+        const saveMuted = async (list) => {
+          try {
+            await axios.put(`${API}/users/me/privacy`, { muted_words: list });
+            if (setUser && user) setUser({ ...user, muted_words: list });
+          } catch {
+            toast.error("Impossible d'enregistrer les mots masqués");
+          }
+        };
+        const addMuted = () => {
+          const w = mutedInput.trim();
+          if (!w) return;
+          if (words.some((x) => x.toLowerCase() === w.toLowerCase())) { setMutedInput(""); return; }
+          setMutedInput("");
+          saveMuted([...words, w].slice(0, 200));
+        };
+        const removeMuted = (w) => saveMuted(words.filter((x) => x !== w));
+        return (
+          <Card>
+            <CardHeader title="Mots masqués" icon="filter_alt" />
+            <div className="px-4 pb-4">
+              <p className="text-xs mb-3" style={{ color: C.outline }}>
+                Les publications, clips et notifications contenant l'un de ces mots ou expressions seront masqués pour vous. Insensible à la casse et aux accents.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  value={mutedInput}
+                  onChange={(e) => setMutedInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMuted(); } }}
+                  placeholder="Ajouter un mot ou une expression…"
+                  maxLength={60}
+                  className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
+                  style={{ backgroundColor: "#171f33", color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}
+                />
+                <button
+                  onClick={addMuted}
+                  className="px-4 py-2.5 rounded-xl text-sm font-bold active:scale-95 transition-transform"
+                  style={{ backgroundColor: "var(--nexus-accent)", color: "#00363e" }}
+                >
+                  Ajouter
+                </button>
+              </div>
+              {words.length > 0 ? (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {words.map((w) => (
+                    <span key={w} className="inline-flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full text-xs font-semibold"
+                      style={{ backgroundColor: "#171f33", color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}>
+                      {w}
+                      <button onClick={() => removeMuted(w)} aria-label={`Retirer ${w}`}
+                        className="w-5 h-5 rounded-full flex items-center justify-center active:scale-90"
+                        style={{ color: C.outline }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs mt-3" style={{ color: C.outline }}>Aucun mot masqué pour l'instant.</p>
+              )}
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* Data controls */}
       <Card>

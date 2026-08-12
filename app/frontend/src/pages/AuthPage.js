@@ -21,6 +21,8 @@ export default function AuthPage({ setUser }) {
     phone: "",
   });
   const [termsAccepted, setTermsAccepted] = useState(false);
+  // Compte privé PAR DÉFAUT (contrôle & vie privée) — modifiable ensuite dans les réglages.
+  const [privateAccount, setPrivateAccount] = useState(true);
   const [loading, setLoading] = useState(false);
   const [twofa, setTwofa] = useState(null);   // { email } quand un code de connexion est requis
   const [twofaCode, setTwofaCode] = useState("");
@@ -126,6 +128,7 @@ export default function AuthPage({ setUser }) {
             bio: formData.bio,
             location: formData.location,
             phone: formData.phone,
+            is_private: privateAccount,
           };
 
       const response = await axios.post(`${API}${endpoint}`, payload);
@@ -490,6 +493,26 @@ export default function AuthPage({ setUser }) {
                     >
                       conditions d'utilisation
                     </a>
+                  </label>
+                </div>
+              )}
+
+              {/* Compte privé par défaut (register only) — contrôle & vie privée */}
+              {!isLogin && (
+                <div className="flex items-start gap-3">
+                  <input
+                    id="private-account"
+                    type="checkbox"
+                    checked={privateAccount}
+                    onChange={(e) => setPrivateAccount(e.target.checked)}
+                    className="w-5 h-5 mt-0.5 rounded border-none focus:ring-0 cursor-pointer"
+                    style={{ accentColor: "#8aebff" }}
+                  />
+                  <label className="text-sm cursor-pointer" style={{ color: "#bbc9cd" }} htmlFor="private-account">
+                    Compte privé
+                    <span className="block text-xs" style={{ color: "#859397" }}>
+                      Seuls les abonnés que vous approuvez voient votre contenu. Modifiable à tout moment dans les réglages.
+                    </span>
                   </label>
                 </div>
               )}
