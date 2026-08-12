@@ -19,10 +19,7 @@ import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
 // crossOrigin casserait le chargement de la vidéo → on reste alors en natif.
 const CLIP_CORS_SAFE = (url = "") =>
   url.startsWith("data:") || url.startsWith("blob:") ||
-  /(^|\/\/)([^/]*\.)?cloudinary\.com\//.test(url) || url.includes("/video/upload/") ||
-  // Proxy média Nexus (/api/media/...) : servi avec en-têtes CORS → routage
-  // Web Audio possible (pas d'indicateur son dans la Dynamic Island).
-  url.includes("/api/media/");
+  /(^|\/\/)([^/]*\.)?cloudinary\.com\//.test(url) || url.includes("/video/upload/");
 
 // Tokens dérivés de la source unique (@/lib/theme) : cohérence avec Messages /
 // Stories / Profil.

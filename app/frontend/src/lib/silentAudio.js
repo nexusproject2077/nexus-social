@@ -34,25 +34,19 @@ function bindUnlock() {
 }
 if (typeof window !== "undefined") bindUnlock();
 
-const _routed = new WeakSet();
-
-// Fait passer le son d'un élément média (<audio>/<video>) par la Web Audio API.
-// À n'appeler QUE lorsque l'élément a chargé sa source avec succès (sinon, pour
-// une source cross-origin sans CORS, le son serait « teinté » = muet). Idempotent.
-// Renvoie true si le routage est en place.
-export function routeThroughWebAudio(el) {
-  if (!el || _routed.has(el)) return _routed.has(el);
-  const c = getCtx();
-  if (!c || typeof c.createMediaElementSource !== "function") return false;
-  try {
-    const source = c.createMediaElementSource(el);
-    source.connect(c.destination);
-    _routed.add(el);
-    if (c.state === "suspended") c.resume().catch(() => {});
-    return true;
-  } catch {
-    return false;
-  }
+// Faisait passer le son par la Web Audio API pour masquer l'indicateur « Now
+// Playing » iOS. DÉSACTIVÉ : le routage Web Audio rendait le son peu fiable —
+//   1) sur iOS, un son routé par Web Audio sort sur le canal SONNERIE et est
+//      donc COUPÉ par l'interrupteur silencieux physique, alors que la lecture
+//      native d'un <audio>/<video> passe par le canal MÉDIA (non affecté) ;
+//   2) une source cross-origin dont le CORS n'est pas parfait devient « teintée »
+//      et sort du silence sans jamais déclencher d'erreur (donc pas de repli).
+// Résultat : des clips ET des messages vocaux se retrouvaient muets. On PRIORISE
+// le son : lecture 100 % native. L'indicateur « Now Playing » peut réapparaître
+// (cosmétique) — c'est le compromis assumé. On conserve clearNowPlaying() pour
+// effacer la métadonnée résiduelle. Fonction gardée (no-op) pour les appelants.
+export function routeThroughWebAudio(_el) {
+  return false;
 }
 
 // Efface la session « Now Playing » pour faire disparaître l'indicateur résiduel
