@@ -8393,20 +8393,35 @@ async def register_clip_watch(clip_id: str, data: dict = Body(default={}),
     return {"success": True, "counted": True}
 
 
-@api_router.get("/feed/foryou", response_model=List[Post])
-async def for_you_feed(request: Request, limit: int = 10, skip: int = 0, current_user: dict = Depends(get_current_user)):
-    """
-    Feed « Pour vous » — version SIMPLE et fiable (l'algorithme de classement a
-    été retiré temporairement car il posait problème sur cet onglet).
+async def _mixed_ids(user_id):
+    """Ordre « Mix » : entrelace le classement Recommandé et l'ordre
+    chronologique (une pépite recommandée, puis une publication récente…),
+    dédupliqué. Liste stable → pagination fiable au scroll.
 
-    Contenu : publications récentes de TOUT LE MONDE (hors reposts), du plus
-    récent au plus ancien, paginé (skip/limit) — c'est-à-dire de la découverte,
-    contrairement à l'onglet « Abonnements » limité aux comptes suivis.
+    On ne charge que des ids (projection) — aucun base64 (anti-OOM)."""
+    ranked = await _ranked_ids("foryou", user_id, False)
+    recent_raw = await db.posts.find(
+        {"repost_of": None}, {"id": 1, "_id": 0}
+    ).sort("created_at", -1).limit(400).to_list(length=400)
+    chrono = [p["id"] for p in recent_raw if p.get("id")]
 
-    Le base64 des médias n'est PAS chargé (agrégation → sentinel/proxy) : sinon
-    30 publications lourdes saturaient la RAM (OOM Cloud Run).
-    """
-    limit = max(1, min(limit, 30))
+    out, seen = [], set()
+    i = j = 0
+    while i < len(ranked) or j < len(chrono):
+        if i < len(ranked):
+            x = ranked[i]; i += 1
+            if x not in seen:
+                seen.add(x); out.append(x)
+        if j < len(chrono):
+            y = chrono[j]; j += 1
+            if y not in seen:
+                seen.add(y); out.append(y)
+    return out
+
+
+async def _foryou_chronological(request, current_user, limit, skip):
+    """Fil « Pour vous » en ordre STRICTEMENT chronologique (découverte,
+    publications de tout le monde, hors reposts). Base64 non chargé (anti-OOM)."""
     media_base = _media_public_base(request)
     posts_raw = await db.posts.aggregate([
         {"$match": {"repost_of": None}},
@@ -8435,6 +8450,49 @@ async def for_you_feed(request: Request, limit: int = 10, skip: int = 0, current
         except Exception as e:
             logger.warning(f"/feed/foryou — post ignoré {post_raw.get('id')}: {e}")
     return posts
+
+
+@api_router.get("/feed/foryou", response_model=List[Post])
+async def for_you_feed(request: Request, limit: int = 10, skip: int = 0,
+                       mode: str = "reco", current_user: dict = Depends(get_current_user)):
+    """
+    Feed « Pour vous » — CONTRÔLABLE par l'utilisateur (transparence de l'algo).
+
+    mode :
+      - "chrono" : ordre strictement chronologique (découverte, tout le monde).
+      - "reco"   : algorithme de recommandation « Pour toi » (engagement +
+        fraîcheur + affinités + diversité) — réutilise le classeur existant.
+      - "mix"    : entrelacement des deux (défaut : une pépite, une récente…).
+
+    Paginé (skip/limit), base64 des médias non chargé (agrégation → proxy, anti-OOM).
+    """
+    limit = max(1, min(limit, 30))
+    mode = (mode or "reco").strip().lower()
+    if mode not in ("chrono", "reco", "mix"):
+        mode = "reco"
+
+    # Chronologique : chemin dédié (agrégation triée par date).
+    if mode == "chrono":
+        return await _foryou_chronological(request, current_user, limit, skip)
+
+    media_base = _media_public_base(request)
+    try:
+        ids = await (_mixed_ids(current_user["id"]) if mode == "mix"
+                     else _ranked_ids("foryou", current_user["id"], False))
+        page = ids[skip: skip + limit]
+        posts = await _fetch_posts_in_order(page, current_user["id"], media_base)
+
+        # Pool épuisé (scroll au-delà du classement) → on complète en
+        # chronologique pour garder un scroll infini fluide.
+        if len(posts) < limit and skip >= len(ids):
+            extra = await _foryou_chronological(request, current_user, limit, skip - len(ids))
+            have = {p.id for p in posts}
+            posts += [p for p in extra if p.id not in have]
+        return posts
+    except Exception as e:
+        # Le classement a échoué → repli chronologique (le fil doit TOUJOURS charger).
+        logger.exception(f"/feed/foryou (mode={mode}) a échoué, repli chronologique: {e}")
+        return await _foryou_chronological(request, current_user, limit, skip)
 
 
 # ==================== MIGRATION MÉDIAS base64 → Cloudinary (admin) ====================

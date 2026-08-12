@@ -24,6 +24,15 @@ export default function HomePage({ user, setUser }) {
   // "following" | "foryou" — synchronisé avec les onglets du header (mobile) via
   // localStorage + événement. À l'arrivée sur l'accueil, on démarre sur « Pour vous ».
   const [feedType, setFeedType] = useState("foryou");
+  // Mode d'ORDONNANCEMENT du fil « Pour vous », contrôlé par l'utilisateur :
+  //   "reco"   → algorithme de recommandation (défaut)
+  //   "chrono" → ordre strictement chronologique
+  //   "mix"    → entrelacement des deux
+  // Choix persistant (par appareil) et rechargement fluide au changement.
+  const [feedMode, setFeedMode] = useState(() => {
+    const m = localStorage.getItem("nexus_feedmode");
+    return ["reco", "chrono", "mix"].includes(m) ? m : "reco";
+  });
 
   const selectFeed = (key) => {
     setFeedType(key);
@@ -31,12 +40,19 @@ export default function HomePage({ user, setUser }) {
     window.dispatchEvent(new CustomEvent("nexus:feedtab", { detail: key }));
   };
 
+  const selectMode = (key) => {
+    if (key === feedMode) return;
+    setFeedMode(key);
+    localStorage.setItem("nexus_feedmode", key);
+  };
+
   // Force « Pour vous » à chaque arrivée sur la page d'accueil.
   useEffect(() => { selectFeed("foryou"); }, []);
 
+  // Recharge le fil au changement d'onglet OU de mode d'ordonnancement.
   useEffect(() => {
     fetchFeed();
-  }, [feedType]);
+  }, [feedType, feedMode]);
 
   // Onglets déplacés dans le header (mobile) : on écoute leurs changements.
   useEffect(() => {
@@ -64,8 +80,12 @@ export default function HomePage({ user, setUser }) {
       setLoadingMore(true);
     }
     setServerWaking(false);
+    const myMode = feedMode;
     const base = myTab === "foryou" ? `${API}/feed/foryou` : `${API}/posts/feed`;
     const skip = reset ? 0 : skipRef.current;
+    // Le mode (reco/chrono/mix) ne s'applique qu'au fil de découverte « Pour vous ».
+    const params = { skip, limit: PAGE };
+    if (myTab === "foryou") params.mode = myMode;
 
     const isTransient = (err) => {
       const s = err?.response?.status;
@@ -77,7 +97,7 @@ export default function HomePage({ user, setUser }) {
     for (let attempt = 0; ; attempt++) {
       if (token !== feedReqRef.current) return;
       try {
-        const response = await axios.get(base, { params: { skip, limit: PAGE } });
+        const response = await axios.get(base, { params });
         if (token !== feedReqRef.current) return;
         const batch = response.data || [];
         setPosts((prev) => {
@@ -123,7 +143,7 @@ export default function HomePage({ user, setUser }) {
     }, { rootMargin: "600px" }); // précharge avant d'atteindre le bas
     io.observe(el);
     return () => io.disconnect();
-  }, [hasMore, loading, loadingMore, feedType]);
+  }, [hasMore, loading, loadingMore, feedType, feedMode]);
 
   const handlePostCreated = (newPost) => {
     setPosts([newPost, ...posts]);
@@ -165,6 +185,44 @@ export default function HomePage({ user, setUser }) {
 
         {/* Stories */}
         <StoriesFeed />
+
+        {/* Sélecteur d'ordonnancement du fil « Pour vous » — contrôle utilisateur
+            (transparence de l'algo). Visible mobile ET PC. */}
+        {feedType === "foryou" && (
+          <div className="px-4 mt-3 lg:mt-4">
+            <div
+              className="flex items-center gap-1 p-1 rounded-2xl"
+              role="tablist"
+              aria-label="Ordre du fil"
+              style={{ backgroundColor: "#171f33", border: "1px solid rgba(255,255,255,0.05)" }}
+            >
+              {[
+                { key: "reco", label: "Recommandé", icon: "auto_awesome" },
+                { key: "chrono", label: "Chronologique", icon: "schedule" },
+                { key: "mix", label: "Mix", icon: "shuffle" },
+              ].map(({ key, label, icon }) => {
+                const active = feedMode === key;
+                return (
+                  <button
+                    key={key}
+                    role="tab"
+                    aria-selected={active}
+                    data-testid={`feed-mode-${key}`}
+                    onClick={() => selectMode(key)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] sm:text-sm font-bold transition-all active:scale-95"
+                    style={{
+                      backgroundColor: active ? "var(--nexus-accent)" : "transparent",
+                      color: active ? "#00363e" : "#859397",
+                    }}
+                  >
+                    <span className="material-symbols-outlined hidden sm:inline" style={{ fontSize: 18 }}>{icon}</span>
+                    <span className="truncate">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Switch Feed (PC uniquement) — sur mobile ces onglets sont dans le header.
             La box de création « Quoi de neuf ? » a été retirée : on publie via le
