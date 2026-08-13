@@ -9,7 +9,7 @@ import App from "./App"; // ✅ Correction : Chemin relatif pour le composant Ap
 // Repère de VERSION : permet de confirmer en un coup d'œil (console) quelle
 // version du frontend tourne réellement (diagnostic cache/déploiement).
 // eslint-disable-next-line no-console
-console.log("🟢 NEXUS build = story-delete-v2 (2026-08-13)");
+console.log("🟢 NEXUS build = story-delete-v3-corbeille-directe (2026-08-13)");
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(

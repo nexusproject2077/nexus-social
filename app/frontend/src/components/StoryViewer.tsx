@@ -1,7 +1,7 @@
 // src/components/StoryViewer.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Avatar } from "@/components/ui/avatar";
-import { X, MoreVertical, Trash2 } from 'lucide-react';
+import { X, Trash2 } from 'lucide-react';
 import { toast } from "sonner";
 import axios from "axios";
 import { API } from "../App";
@@ -53,7 +53,6 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   // indicateur son dans la barre d'état / Dynamic Island / centre de contrôle).
   const musicRef = useRef<any>(null);
   if (!musicRef.current) musicRef.current = new PreviewAudio();
-  const optionsButtonRef = useRef<HTMLButtonElement>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -342,19 +341,6 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
     onClose();
   };
 
-  // Fermer options si clic en dehors
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (optionsButtonRef.current && !optionsButtonRef.current.contains(event.target as Node)) {
-        setShowOptions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
   if (!currentGroup || !currentStory) {
     onClose();
     return null;
@@ -371,40 +357,30 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
     <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center select-none"
       style={{ WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
       <div className="relative w-full h-full max-w-lg mx-auto flex flex-col bg-black">
-        {/* Boutons en haut à droite */}
-        <div className="absolute top-4 right-4 z-30 flex gap-2">
+        {/* Boutons en haut à droite — z-index MAXIMAL pour ne jamais être
+            intercepté par les zones tactiles de navigation de la story. */}
+        <div className="absolute top-4 right-4 z-[60] flex gap-2">
           {isAuthor && (
-            <div className="relative">
-              <button
-                ref={optionsButtonRef}
-                onClick={(e) => { e.stopPropagation(); setShowOptions(prev => !prev); }}
-                className="text-white bg-black/50 backdrop-blur-sm rounded-full p-2 hover:bg-black/70 transition-all"
-              >
-                <MoreVertical size={20} />
-              </button>
-              {showOptions && (
-                <div
-                  className="absolute top-full right-0 mt-2 w-36 backdrop-blur-md rounded-xl shadow-xl overflow-hidden"
-                  style={{ background: `${SURFACE.high}f2`, border: `1px solid ${OUTLINE}` }}
-                >
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      console.log("🗑️ [STORY DELETE] clic « Supprimer » (menu options) — v2", { id: currentStory?.id });
-                      setShowOptions(false);
-                      // Confirmation NATIVE (impossible à intercepter, toujours affichée)
-                      // plutôt qu'un modal maison qui pouvait ne pas apparaître.
-                      if (!window.confirm("Supprimer définitivement cette story ?")) return;
-                      await handleDelete();
-                    }}
-                    className="flex items-center w-full px-4 py-3 text-sm text-red-400 hover:bg-white/5 transition-colors"
-                  >
-                    <Trash2 size={16} className="mr-2" /> Supprimer
-                  </button>
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              // Bouton corbeille DIRECT (plus de menu déroulant fragile). Confirmation
+              // native window.confirm, puis suppression. Impossible à rater/intercepter.
+              onClick={async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                console.log("🗑️ [STORY DELETE] clic CORBEILLE (direct) — v3", { id: currentStory?.id });
+                if (!currentStory) { toast.error("Aucune story sélectionnée"); return; }
+                setIsPaused(true); // fige la progression pendant la confirmation
+                const ok = window.confirm("Supprimer définitivement cette story ?");
+                if (!ok) { setIsPaused(false); return; }
+                await handleDelete();
+              }}
+              title="Supprimer la story"
+              aria-label="Supprimer la story"
+              className="text-white bg-red-600/85 backdrop-blur-sm rounded-full p-2 hover:bg-red-600 transition-all"
+            >
+              <Trash2 size={20} />
+            </button>
           )}
           <button
             onClick={onClose}
