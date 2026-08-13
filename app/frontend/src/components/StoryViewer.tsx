@@ -159,6 +159,18 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
     setIsPaused(false);
   }, [currentGroupIndex]);
 
+  // Précharge le média SUIVANT (story d'après + 1re story du groupe suivant) :
+  // transitions fluides, sans flash de chargement entre les stories.
+  useEffect(() => {
+    const urls: string[] = [];
+    const g = allStories[currentGroupIndex];
+    const next = g?.stories?.[currentStoryIndex + 1];
+    if (next?.media_url) urls.push(next.media_url);
+    const ng = allStories[currentGroupIndex + 1];
+    if (ng?.stories?.[0]?.media_url) urls.push(ng.stories[0].media_url);
+    urls.forEach((u) => { const img = new Image(); img.src = u; });
+  }, [currentGroupIndex, currentStoryIndex, allStories]);
+
   // Gestion de la progression (images et vidéos)
   useEffect(() => {
     if (!currentStory || isPaused || isLongPressing || showConfirmModal) return;
@@ -167,7 +179,9 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
     startTimeRef.current = Date.now();
 
     if (currentStory.media_type === 'image') {
-      // Image: progression sur 15 secondes
+      // Image : progression sur 15 s. Tick à 100 ms (au lieu de 50) → moitié
+      // moins de re-rendus par seconde, barre toujours fluide (moins de jank
+      // sur mobile).
       progressIntervalRef.current = setInterval(() => {
         const elapsed = Date.now() - startTimeRef.current;
         const newProgress = Math.min((elapsed / STORY_IMAGE_DURATION) * 100, 100);
@@ -176,7 +190,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
         if (newProgress >= 100) {
           handleNextStory();
         }
-      }, 50);
+      }, 100);
     } else if (currentStory.media_type === 'video' && videoRef.current) {
       // Vidéo: progression basée sur la durée
       const video = videoRef.current;

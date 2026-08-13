@@ -607,16 +607,27 @@ export default function MessagesPage({ user }) {
     }
   }, [selectedUserId, selectedGroupId]);
 
-  // Toujours afficher les DERNIERS messages (bas de la conversation). useLayoutEffect
-  // positionne AVANT le paint (pas de flash sur les premiers messages) ; les passages
-  // différés rattrapent la hauteur une fois les images rendues.
+  // Changement de conversation → on ARME un scroll FORCÉ pour le prochain rendu
+  // des messages (les messages arrivent APRÈS via fetchMessages, donc on ne peut
+  // pas forcer ici : il n'y a encore rien à afficher).
+  const forceScrollRef = useRef(true);
+  useEffect(() => { forceScrollRef.current = true; }, [selectedUserId, selectedGroupId]);
+
+  // Rendu des messages : à l'ouverture d'une conversation on FORCE le bas
+  // (plusieurs passes pour rattraper la hauteur des images) ; sur un simple
+  // nouveau message on ne recolle QUE si on est déjà proche du bas — on
+  // n'arrache jamais l'utilisateur en train de lire d'anciens messages.
   useLayoutEffect(() => {
-    scrollToBottom(true);
-    requestAnimationFrame(() => scrollToBottom(true));
-    const t1 = setTimeout(() => scrollToBottom(true), 150);
-    const t2 = setTimeout(() => scrollToBottom(true), 500);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [messages, selectedUserId, selectedGroupId]);
+    const force = forceScrollRef.current;
+    forceScrollRef.current = false;
+    scrollToBottom(force);
+    requestAnimationFrame(() => scrollToBottom(force));
+    if (force) {
+      const t1 = setTimeout(() => scrollToBottom(true), 150);
+      const t2 = setTimeout(() => scrollToBottom(true), 500);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
+    }
+  }, [messages]);
 
   // ── Hauteur réelle du viewport VISIBLE (fix iOS Safari) ──────────────────────
   // position: fixed s'aligne sur le *layout viewport* : il s'étend derrière la
@@ -738,8 +749,12 @@ export default function MessagesPage({ user }) {
     };
     const onResync = () => { fetchConversations(); fetchGroups(); fetchNotes(); syncOpenThread(); };
     window.addEventListener("nexus:resync", onResync);
+    // Les nouveaux messages arrivent en TEMPS RÉEL (WebSocket). Le poll ne fait
+    // donc que rafraîchir la liste LÉGÈRE des conversations — il NE re-télécharge
+    // PLUS tout le fil ouvert (payload lourd base64) à chaque tick. La resynchro
+    // complète du fil reste faite sur reconnexion (événement nexus:resync).
     const poll = setInterval(() => {
-      if (document.visibilityState === "visible") { fetchConversations(); syncOpenThread(); }
+      if (document.visibilityState === "visible") fetchConversations();
     }, 15000);
     return () => { window.removeEventListener("nexus:resync", onResync); clearInterval(poll); };
   }, [selectedUserId, selectedGroupId]);
