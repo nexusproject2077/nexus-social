@@ -104,6 +104,20 @@ export default function AnalyticsDashboard({ user, setUser }) {
     { icon: Eye, color: "text-green-500", label: "Vues", value: stats?.total_views, badge: null },
   ];
 
+  // Formatage montants (centimes → « X,XX € ») et dates (relatif court).
+  const eur = (cents) => (Number(cents || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+  const fmtDate = (iso) => {
+    if (!iso) return "";
+    try {
+      const d = new Date(iso);
+      const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+      if (days <= 0) return "Aujourd'hui";
+      if (days === 1) return "Hier";
+      if (days < 7) return `il y a ${days} j`;
+      return d.toLocaleDateString();
+    } catch { return ""; }
+  };
+
   return (
     <Layout user={user} setUser={setUser} compact>
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-4 pb-20">
@@ -157,40 +171,46 @@ export default function AnalyticsDashboard({ user, setUser }) {
               ))}
             </div>
 
-            {/* Pourboires reçus */}
+            {/* Pourboires reçus — revenus créateur */}
             {tips && (
               <Card className="bg-slate-900 border-slate-800">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex items-center gap-2.5 mb-4">
+                    <div className="w-9 h-9 rounded-xl bg-cyan-500/15 flex items-center justify-center flex-shrink-0">
                       <span className="material-symbols-outlined text-cyan-400">volunteer_activism</span>
-                      <p className="text-sm font-semibold text-white">Pourboires reçus</p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-lg sm:text-2xl font-bold text-white">
-                        {(tips.total_amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-                      </p>
-                      <p className="text-[11px] text-slate-400">{tips.count} pourboire{tips.count > 1 ? "s" : ""}</p>
-                    </div>
+                    <p className="text-sm font-semibold text-white">Pourboires reçus</p>
                   </div>
+
+                  {/* Total héro + sous-stats */}
+                  <p className="text-3xl sm:text-4xl font-black text-white leading-none">{eur(tips.total_amount)}</p>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[11px] sm:text-xs text-slate-400">
+                    <span><b className="text-slate-200">{tips.count}</b> pourboire{tips.count > 1 ? "s" : ""}</span>
+                    {tips.count > 0 && <span>Moyenne <b className="text-slate-200">{eur(tips.total_amount / tips.count)}</b></span>}
+                  </div>
+
+                  {/* Liste des derniers pourboires */}
                   {tips.tips?.length > 0 ? (
-                    <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                      {tips.tips.map((t) => (
-                        <div key={t.id} className="flex items-center justify-between text-sm py-1.5 px-2 rounded-lg bg-slate-800/50">
-                          <span className="text-slate-300 truncate">@{t.from_username}</span>
-                          <span className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-[11px] text-slate-500">
-                              {t.created_at ? new Date(t.created_at).toLocaleDateString() : ""}
-                            </span>
-                            <span className="font-bold text-cyan-400">
-                              {(t.amount_total / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-                            </span>
-                          </span>
-                        </div>
-                      ))}
+                    <div className="mt-4">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Derniers pourboires</p>
+                      <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                        {tips.tips.map((t) => (
+                          <div key={t.id} className="flex items-center gap-3 py-2 px-2.5 rounded-xl bg-slate-800/50">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-slate-900 flex-shrink-0"
+                              style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)" }}>
+                              {(t.from_username || "?")[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm text-white truncate">@{t.from_username}</p>
+                              <p className="text-[11px] text-slate-500">{fmtDate(t.created_at)}</p>
+                            </div>
+                            <span className="font-bold text-cyan-400 flex-shrink-0">+{eur(t.amount_total)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-slate-400">Aucun pourboire reçu pour l'instant. Activez les pourboires dans les Paramètres pour en recevoir.</p>
+                    <p className="text-xs text-slate-400 mt-4">Aucun pourboire reçu pour l'instant. Active les pourboires dans les Paramètres (Stripe) pour permettre à ta communauté de te soutenir.</p>
                   )}
                 </CardContent>
               </Card>

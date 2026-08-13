@@ -7826,7 +7826,10 @@ def _score_post(p, now_ts, followed, aff, is_clip, premium=frozenset()):
     # pour que la qualité compte encore sur du contenu un peu plus ancien.
     age_h = max(0.0, (now_ts - _parse_iso_ts(p.get("created_at"))) / 3600.0)
     recency = math.exp(-age_h / 48.0)
-    score = quality * (0.35 + 0.65 * recency)
+    # L'engagement (qualité) pèse davantage que la fraîcheur : le fil « Recommandé »
+    # met ainsi le MEILLEUR contenu en tête (nettement différent du chronologique)
+    # dès qu'il existe des interactions, au lieu de coller à l'ordre par date.
+    score = quality * (0.6 + 0.4 * recency)
 
     # Boost « nouveau contenu prometteur » (jeune + déjà bon taux d'engagement).
     if age_h < 6 and eng_rate > 0.12:
