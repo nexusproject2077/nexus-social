@@ -297,7 +297,10 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   };
 
   const handleDelete = async () => {
-    if (!currentStory) return;
+    // Log AVANT toute garde : prouve que le bouton du pop-up a bien déclenché
+    // handleDelete (et si currentStory est absent, on le voit).
+    console.log("🗑️ [STORY DELETE] handleDelete appelé", { hasCurrentStory: !!currentStory, id: currentStory?.id });
+    if (!currentStory) { toast.error("Aucune story sélectionnée (currentStory vide)"); return; }
     const sid = currentStory.id;
     const removeLocally = () => {
       setShowConfirmModal(false);
@@ -387,6 +390,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      console.log("🗑️ [STORY DELETE] clic menu « Supprimer » → ouverture confirmation", { id: currentStory?.id });
                       setShowConfirmModal(true);
                       setShowOptions(false);
                     }}
@@ -628,7 +632,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
                 Annuler
               </button>
               <button
-                onClick={handleDelete}
+                onClick={() => { console.log("🗑️ [STORY DELETE] clic « Supprimer » du pop-up de confirmation"); handleDelete(); }}
                 className="flex-1 px-5 py-2.5 rounded-xl bg-red-600 text-white hover:bg-red-500 transition-colors font-medium"
               >
                 Supprimer
