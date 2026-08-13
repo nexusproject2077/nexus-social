@@ -8430,30 +8430,40 @@ async def register_clip_watch(clip_id: str, data: dict = Body(default={}),
     return {"success": True, "counted": True}
 
 
-async def _mixed_ids(user_id):
-    """Ordre « Mix » : entrelace le classement Recommandé et l'ordre
-    chronologique (une pépite recommandée, puis une publication récente…),
-    dédupliqué. Liste stable → pagination fiable au scroll.
+_mix_cache: Dict[str, tuple] = {}
+MIX_TTL = 180  # 3 min — mélange stable le temps d'une session de scroll
 
-    On ne charge que des ids (projection) — aucun base64 (anti-OOM)."""
+
+async def _mixed_ids(user_id):
+    """Ordre « Mix » : un VRAI mélange varié — ni chronologique, ni purement
+    algorithmique. On réunit le pool recommandé et les publications récentes,
+    puis on MÉLANGE avec une graine stable (utilisateur + fenêtre de temps) :
+    l'ordre paraît aléatoire/varié mais reste stable pour la pagination du
+    scroll (et change à la session suivante). Aucun base64 chargé (ids seuls)."""
+    ckey = f"mix:{user_id}"
+    hit = _mix_cache.get(ckey)
+    if hit and hit[0] > time.time():
+        return hit[1]
+
     ranked = await _ranked_ids("foryou", user_id, False)
     recent_raw = await db.posts.find(
         {"repost_of": None}, {"id": 1, "_id": 0}
-    ).sort("created_at", -1).limit(400).to_list(length=400)
-    chrono = [p["id"] for p in recent_raw if p.get("id")]
+    ).sort("created_at", -1).limit(600).to_list(length=600)
 
-    out, seen = [], set()
-    i = j = 0
-    while i < len(ranked) or j < len(chrono):
-        if i < len(ranked):
-            x = ranked[i]; i += 1
-            if x not in seen:
-                seen.add(x); out.append(x)
-        if j < len(chrono):
-            y = chrono[j]; j += 1
-            if y not in seen:
-                seen.add(y); out.append(y)
-    return out
+    pool, seen = [], set()
+    for pid in ranked + [p.get("id") for p in recent_raw]:
+        if pid and pid not in seen:
+            seen.add(pid)
+            pool.append(pid)
+
+    # Mélange DÉTERMINISTE : graine = utilisateur + fenêtre de temps. Varié à
+    # chaque session, mais stable durant la pagination (pas de doublons/trous).
+    random.Random(f"{user_id}:{int(time.time() // MIX_TTL)}").shuffle(pool)
+
+    _mix_cache[ckey] = (time.time() + MIX_TTL, pool)
+    if len(_mix_cache) > 20000:
+        _mix_cache.clear()
+    return pool
 
 
 async def _foryou_chronological(request, current_user, limit, skip):
