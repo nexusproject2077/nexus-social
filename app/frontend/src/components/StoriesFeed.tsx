@@ -79,6 +79,18 @@ export default function StoriesFeed() {
     const onVisible = () => { if (document.visibilityState === "visible") onFocus(); };
     const onRealtime = (e: any) => {
       const type = e?.detail?.type;
+      // Suppression d'une story par son auteur : on la retire IMMÉDIATEMENT de la
+      // barre (pour tout le monde), puis on resynchronise.
+      if (type === "story_deleted") {
+        const sid = e?.detail?.data?.story_id;
+        if (sid) {
+          setStories((prev) => prev
+            .map((g) => ({ ...g, stories: g.stories.filter((s: any) => s.id !== sid) }))
+            .filter((g) => g.stories.length > 0));
+        }
+        fetchStories();
+        return;
+      }
       if (type === "new_story" || type === "story" || type === "live_started" || type === "new_live") { fetchStories(); fetchLives(); }
     };
     const onResync = () => { fetchStories(); fetchLives(); };

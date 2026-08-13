@@ -5666,6 +5666,13 @@ async def create_story(
     if _stverdict and _stverdict["action"] == "flag":
         await flag_for_review("story", story_id, current_user["id"], "", _stverdict, media_kind=media_type)
 
+    # Diffusion temps réel : la nouvelle story apparaît immédiatement dans la
+    # barre des abonnés (sans attendre leur prochain rafraîchissement).
+    asyncio.create_task(_broadcast_to_followers(
+        current_user["id"],
+        {"type": "new_story", "data": {"story_id": story_id, "author_id": current_user["id"]}},
+    ))
+
     story = convert_mongo_doc_to_dict(story_to_insert)
     story["has_viewed"] = False
     return Story(**story)
@@ -5743,14 +5750,30 @@ async def get_stories_feed(request: Request, current_user: dict = Depends(get_cu
             }
         
         stories_by_user[author_id]["stories"].append(Story(**story))
-    
-    # Convertit en liste et trie par dernière story
-    story_groups = [
-        StoryGroup(**group_data) 
-        for group_data in stories_by_user.values()
-    ]
-    story_groups.sort(key=lambda x: x.last_story_time, reverse=True)
-    
+
+    # Ordre de LECTURE intra-groupe : CHRONOLOGIQUE (plus ancienne → plus récente),
+    # comme Instagram. (L'agrégation trie DESC pour calculer last_story_time ; on
+    # remet chaque groupe dans l'ordre croissant pour la lecture.)
+    for g in stories_by_user.values():
+        g["stories"].sort(key=lambda s: s.created_at)
+
+    story_groups = [StoryGroup(**group_data) for group_data in stories_by_user.values()]
+
+    # Ordre des RONDS (barre du haut), façon Instagram — JAMAIS aléatoire :
+    #   1) sa propre story d'abord ;
+    #   2) priorité aux comptes NON VUS ;
+    #   3) puis aux comptes avec qui on interagit le plus (affinité) ;
+    #   4) enfin les plus récents.
+    me = current_user["id"]
+    aff = await _user_affinity(me)
+    fav = aff.get("creators", set()) if isinstance(aff, dict) else set()
+
+    def _grp_key(g):
+        has_unseen = any(not s.has_viewed for s in g.stories)
+        return (g.user_id == me, has_unseen, g.user_id in fav, g.last_story_time)
+
+    story_groups.sort(key=_grp_key, reverse=True)
+
     return story_groups
 
 @api_router.get("/stories/user/{user_id}", response_model=List[Story])
@@ -5818,20 +5841,43 @@ async def view_story(story_id: str, current_user: dict = Depends(get_current_use
     
     return {"message": "Story viewed successfully"}
 
+async def _broadcast_to_followers(author_id: str, payload: dict, include_self: bool = True):
+    """Diffuse un événement temps réel aux abonnés d'un auteur (best-effort, non
+    bloquant). Sert à faire apparaître/disparaître les stories immédiatement pour
+    tout le monde. push_realtime ne touche que les utilisateurs connectés."""
+    try:
+        rows = await db.follows.find({"followed_id": author_id}, {"follower_id": 1}).to_list(length=5000)
+        targets = {r.get("follower_id") for r in rows if r.get("follower_id")}
+        if include_self:
+            targets.add(author_id)
+        for uid in targets:
+            await push_realtime(uid, payload)
+    except Exception:
+        pass
+
+
 @api_router.delete("/stories/{story_id}")
 async def delete_story(story_id: str, current_user: dict = Depends(get_current_user)):
-    """Supprime une story"""
+    """Supprime une story. La suppression est diffusée en temps réel aux abonnés :
+    la story disparaît immédiatement pour tout le monde."""
     story_raw = await db.stories.find_one({"id": story_id})
     if not story_raw:
         raise HTTPException(status_code=404, detail="Story not found")
-    
+
     story = convert_mongo_doc_to_dict(story_raw)
     if story["author_id"] != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
+
     await db.stories.delete_one({"id": story_id})
     await db.story_views.delete_many({"story_id": story_id})
-    
+
+    # Diffusion temps réel : les abonnés (et l'auteur sur ses autres appareils)
+    # retirent la story sans attendre le prochain rafraîchissement.
+    asyncio.create_task(_broadcast_to_followers(
+        current_user["id"],
+        {"type": "story_deleted", "data": {"story_id": story_id, "author_id": current_user["id"]}},
+    ))
+
     return {"message": "Story deleted successfully"}
 
 @api_router.get("/stories/{story_id}/viewers")
