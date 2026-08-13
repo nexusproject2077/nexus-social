@@ -6,6 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
 import CommentsSection from "./CommentsSection";
+import TipModal from "./TipModal";
 
 const C = {
   surface:    "#0b1326",
@@ -78,6 +79,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const [commentsCount, setCommentsCount] = useState(post.comments_count || 0);
   const [isSaved, setIsSaved]         = useState(post.is_saved || false);
   const [showComments, setShowComments]   = useState(false);
+  const [showTip, setShowTip]             = useState(false);
   const [reposted, setReposted]       = useState(
     post.is_reposted || (!!post.repost_of && post.author_id === currentUser?.id)
   );
@@ -560,6 +562,18 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               bookmark
             </span>
           </button>
+
+          {/* Pourboire (Tip) — contenu ORIGINAL d'un créateur ayant activé Stripe. */}
+          {!isOwnPost && !post.repost_of && post.author_can_receive_tips && (
+            <button
+              onClick={() => setShowTip(true)}
+              title={`Envoyer un pourboire à @${displayAuthorName}`}
+              className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105 ml-auto"
+              style={{ color: C.cyan }}
+            >
+              <span className="material-symbols-outlined text-lg">volunteer_activism</span>
+            </button>
+          )}
         </div>
 
         {/* Comments */}
@@ -572,6 +586,10 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           />
         )}
       </div>
+
+      {showTip && (
+        <TipModal userId={displayAuthorId} username={displayAuthorName} onClose={() => setShowTip(false)} />
+      )}
     </article>
   );
 }

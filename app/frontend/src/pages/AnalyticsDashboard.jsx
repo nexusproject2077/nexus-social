@@ -41,6 +41,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
   const [trends, setTrends] = useState([]);
   const [topPosts, setTopPosts] = useState([]);
   const [hourlyActivity, setHourlyActivity] = useState([]);
+  const [tips, setTips] = useState(null); // { total_amount, count, tips: [...] }
 
   useEffect(() => {
     loadAllData();
@@ -71,6 +72,9 @@ export default function AnalyticsDashboard({ user, setUser }) {
         byHour[item.hour][item.type] = item.activity_count;
       });
       setHourlyActivity(Object.values(byHour));
+
+      // Pourboires reçus (facultatif : ne bloque pas le tableau de bord).
+      axios.get(`${API}/users/me/tips`).then((r) => setTips(r.data)).catch(() => {});
     } catch (error) {
       console.error("Erreur chargement données:", error);
       toast.error("Erreur de chargement des données");
@@ -152,6 +156,45 @@ export default function AnalyticsDashboard({ user, setUser }) {
                 </Card>
               ))}
             </div>
+
+            {/* Pourboires reçus */}
+            {tips && (
+              <Card className="bg-slate-900 border-slate-800">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-cyan-400">volunteer_activism</span>
+                      <p className="text-sm font-semibold text-white">Pourboires reçus</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg sm:text-2xl font-bold text-white">
+                        {(tips.total_amount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                      </p>
+                      <p className="text-[11px] text-slate-400">{tips.count} pourboire{tips.count > 1 ? "s" : ""}</p>
+                    </div>
+                  </div>
+                  {tips.tips?.length > 0 ? (
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                      {tips.tips.map((t) => (
+                        <div key={t.id} className="flex items-center justify-between text-sm py-1.5 px-2 rounded-lg bg-slate-800/50">
+                          <span className="text-slate-300 truncate">@{t.from_username}</span>
+                          <span className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-[11px] text-slate-500">
+                              {t.created_at ? new Date(t.created_at).toLocaleDateString() : ""}
+                            </span>
+                            <span className="font-bold text-cyan-400">
+                              {(t.amount_total / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400">Aucun pourboire reçu pour l'instant. Activez les pourboires dans les Paramètres pour en recevoir.</p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Bandeau engagement */}
             <Card className="bg-slate-900 border-slate-800">

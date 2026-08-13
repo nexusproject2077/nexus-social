@@ -1156,6 +1156,7 @@ class Post(BaseModel):
     author_profile_pic: Optional[str] = None
     author_is_verified: bool = False
     author_is_premium: bool = False  # badge Premium sur la publication (avantage réel)
+    author_can_receive_tips: bool = False  # auteur a un compte Stripe → bouton Pourboire
     is_pinned: bool = False          # post épinglé en haut du profil (créateur Premium)
     content: str
     media_type: Optional[str] = None
@@ -1937,6 +1938,28 @@ async def live_gift_checkout(data: dict = Body(...), current_user: dict = Depend
         raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
 
 
+@api_router.get("/users/me/tips")
+async def my_tips_received(current_user: dict = Depends(get_current_user)):
+    """Historique simple des pourboires REÇUS par le créateur (les plus récents
+    d'abord) + total et nombre. Montants en centimes (le front divise par 100)."""
+    rows = await db.tips.find(
+        {"creator_id": current_user["id"]}
+    ).sort("created_at", -1).to_list(length=200)
+    tips, total = [], 0
+    for r in rows:
+        amt = int(r.get("amount_total") or 0)
+        total += amt
+        tips.append({
+            "id": r.get("id"),
+            "from_user_id": r.get("from_user_id"),
+            "from_username": r.get("from_username") or "Quelqu'un",
+            "amount_total": amt,
+            "currency": (r.get("currency") or "eur"),
+            "created_at": r.get("created_at"),
+        })
+    return {"total_amount": total, "count": len(tips), "currency": "eur", "tips": tips}
+
+
 @api_router.post("/users/{user_id}/tip-checkout")
 async def tip_checkout(user_id: str, data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
     """Crée une session Stripe Checkout (paiement unique) pour laisser un
@@ -1950,6 +1973,8 @@ async def tip_checkout(user_id: str, data: dict = Body(default={}), current_user
     amount = int(data.get("amount_cents") or 0)
     if amount < 100:
         raise HTTPException(status_code=400, detail="Montant minimum : 1 €")
+    if amount > 100000:
+        raise HTTPException(status_code=400, detail="Montant maximum : 1 000 €")
 
     creator = await db.users.find_one({"id": user_id})
     if not creator:
@@ -2844,6 +2869,7 @@ async def get_posts_feed(request: Request, skip: int = 0, limit: int = 10, curre
     posts = []
     saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
     premium_ids = await _premium_author_ids([p.get("author_id") for p in posts_raw])
+    tip_ids = await _tip_author_ids([p.get("author_id") for p in posts_raw])
     for post_raw in posts_raw:
         try:
             post = convert_mongo_doc_to_dict(post_raw)
@@ -2852,6 +2878,7 @@ async def get_posts_feed(request: Request, skip: int = 0, limit: int = 10, curre
             post["is_liked"] = bool(like_raw)
             post["is_saved"] = post["id"] in saved_ids
             post["author_is_premium"] = post.get("author_id") in premium_ids
+            post["author_can_receive_tips"] = post.get("author_id") in tip_ids
             enrich_post_poll(post, current_user["id"])
             # Repost : l'engagement affiché vient de la publication d'origine.
             await _hydrate_repost_engagement(post, current_user["id"])
@@ -3112,6 +3139,18 @@ async def _premium_author_ids(author_ids):
         return set()
     rows = await db.users.find(
         {"id": {"$in": ids}, "is_premium": True}, {"id": 1}
+    ).to_list(length=len(ids))
+    return {r.get("id") for r in rows}
+
+
+async def _tip_author_ids(author_ids):
+    """Sous-ensemble des author_ids pouvant recevoir un pourboire (compte Stripe
+    Connect démarré). Même critère que le profil (bouton Pourboire). Batch."""
+    ids = [a for a in set(author_ids or []) if a]
+    if not ids:
+        return set()
+    rows = await db.users.find(
+        {"id": {"$in": ids}, "stripe_account_id": {"$ne": None}}, {"id": 1}
     ).to_list(length=len(ids))
     return {r.get("id") for r in rows}
 
@@ -3453,9 +3492,10 @@ async def get_user_posts(user_id: str, request: Request, current_user: dict = De
         logger.exception(f"/users/{user_id}/posts — requête échouée: {e}")
         return []
 
-    # Statut Premium de l'auteur (badge sur ses posts) : une seule lecture.
-    author = await db.users.find_one({"id": user_id}, {"is_premium": 1})
+    # Statut Premium + éligibilité aux pourboires de l'auteur : une seule lecture.
+    author = await db.users.find_one({"id": user_id}, {"is_premium": 1, "stripe_account_id": 1})
     author_premium = bool(author and author.get("is_premium"))
+    author_tips = bool(author and author.get("stripe_account_id"))
 
     posts = []
     for post_raw in posts_raw:
@@ -3467,6 +3507,7 @@ async def get_user_posts(user_id: str, request: Request, current_user: dict = De
             like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
             post["is_liked"] = bool(like_raw)
             post["author_is_premium"] = author_premium
+            post["author_can_receive_tips"] = author_tips
             post["is_pinned"] = bool(post.get("pinned"))
             enrich_post_poll(post, current_user["id"])
             posts.append(Post(**post))
@@ -7890,8 +7931,10 @@ async def _fetch_posts_in_order(ids, user_id, media_base=""):
         allowDiskUse=True,
     ).to_list(length=len(ids))
     by_id = {p.get("id"): p for p in raw}
+    author_ids = [by_id[i].get("author_id") for i in ids if i in by_id]
     saved_ids = await _saved_post_ids(user_id, ids)
-    premium_ids = await _premium_author_ids([by_id[i].get("author_id") for i in ids if i in by_id])
+    premium_ids = await _premium_author_ids(author_ids)
+    tip_ids = await _tip_author_ids(author_ids)
     liked = {l.get("post_id") for l in await db.likes.find(
         {"post_id": {"$in": ids}, "user_id": user_id}, {"post_id": 1}
     ).to_list(length=len(ids))}
@@ -7905,6 +7948,7 @@ async def _fetch_posts_in_order(ids, user_id, media_base=""):
         post["is_liked"] = pid in liked
         post["is_saved"] = pid in saved_ids
         post["author_is_premium"] = post.get("author_id") in premium_ids
+        post["author_can_receive_tips"] = post.get("author_id") in tip_ids
         try:
             enrich_post_poll(post, user_id)
             out.append(Post(**post))
@@ -8576,6 +8620,7 @@ async def _foryou_chronological(request, current_user, limit, skip):
     ids = [p.get("id") for p in posts_raw]
     saved_ids = await _saved_post_ids(current_user["id"], ids)
     premium_ids = await _premium_author_ids([p.get("author_id") for p in posts_raw])
+    tip_ids = await _tip_author_ids([p.get("author_id") for p in posts_raw])
     liked = {l.get("post_id") for l in await db.likes.find(
         {"post_id": {"$in": ids}, "user_id": current_user["id"]}, {"post_id": 1}
     ).to_list(length=len(ids) or 1)} if ids else set()
@@ -8586,6 +8631,7 @@ async def _foryou_chronological(request, current_user, limit, skip):
             post["is_liked"] = post["id"] in liked
             post["is_saved"] = post["id"] in saved_ids
             post["author_is_premium"] = post.get("author_id") in premium_ids
+            post["author_can_receive_tips"] = post.get("author_id") in tip_ids
             enrich_post_poll(post, current_user["id"])
             posts.append(Post(**post))
         except Exception as e:
