@@ -2853,6 +2853,8 @@ async def get_posts_feed(request: Request, skip: int = 0, limit: int = 10, curre
             post["is_saved"] = post["id"] in saved_ids
             post["author_is_premium"] = post.get("author_id") in premium_ids
             enrich_post_poll(post, current_user["id"])
+            # Repost : l'engagement affiché vient de la publication d'origine.
+            await _hydrate_repost_engagement(post, current_user["id"])
             posts.append(Post(**post))
         except Exception as e:
             logger.warning(f"/posts/feed — post ignoré {post_raw.get('id')}: {e}")
@@ -3003,13 +3005,52 @@ async def delete_post(post_id: str, current_user: dict = Depends(get_current_use
     
     return {"message": "Post deleted successfully"}
 
+async def _canonical_engagement_target(post_id: str):
+    """Renvoie (id_canonique, doc) de la publication qui PORTE l'engagement.
+
+    Pour un repost (repost_of défini), l'engagement — likes, commentaires, vues —
+    vit sur la vidéo/publication D'ORIGINE (façon TikTok). On résout donc vers
+    l'original. Sinon on renvoie la publication elle-même."""
+    doc = await db.posts.find_one({"id": post_id})
+    if not doc:
+        return post_id, None
+    oid = doc.get("repost_of")
+    if oid:
+        orig = await db.posts.find_one({"id": oid})
+        if orig:
+            return oid, orig
+    return post_id, doc
+
+
+async def _hydrate_repost_engagement(post: dict, viewer_id: str):
+    """Pour un repost affiché dans un fil : montre l'engagement LIVE de la
+    publication D'ORIGINE (likes, commentaires, partages, vues) et l'état
+    is_liked du spectateur calculé sur l'original. Ainsi un repost n'a jamais de
+    compteurs « à lui » : tout vit sur la vidéo originale (façon TikTok)."""
+    oid = post.get("repost_of")
+    if not oid:
+        return post
+    orig = await db.posts.find_one(
+        {"id": oid},
+        {"likes_count": 1, "comments_count": 1, "shares_count": 1, "views": 1},
+    )
+    if orig:
+        post["likes_count"] = orig.get("likes_count", 0) or 0
+        post["comments_count"] = orig.get("comments_count", 0) or 0
+        post["shares_count"] = orig.get("shares_count", 0) or 0
+        post["views"] = orig.get("views", 0) or 0
+    post["is_liked"] = bool(await db.likes.find_one({"post_id": oid, "user_id": viewer_id}))
+    return post
+
+
 @api_router.post("/posts/{post_id}/like")
 async def like_post(post_id: str, current_user: dict = Depends(get_current_user)):
-    """Like/unlike un post"""
-    post_raw = await db.posts.find_one({"id": post_id})
+    """Like/unlike un post. Un like sur un repost compte sur la publication
+    d'origine (l'engagement reste sur la vidéo originale)."""
+    post_id, post_raw = await _canonical_engagement_target(post_id)
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
-    
+
     like_raw = await db.likes.find_one({"post_id": post_id, "user_id": current_user["id"]})
     
     if like_raw:
@@ -3145,8 +3186,9 @@ async def get_post_comments(post_id: str, current_user: dict = Depends(get_curre
 
 @api_router.post("/posts/{post_id}/comments", response_model=Comment)
 async def create_comment(post_id: str, comment_data: CommentCreate, current_user: dict = Depends(get_current_user)):
-    """Ajoute un commentaire à un post"""
-    post_raw = await db.posts.find_one({"id": post_id})
+    """Ajoute un commentaire à un post. Un commentaire sur un repost est rattaché
+    à la publication d'origine (l'engagement reste sur l'originale)."""
+    post_id, post_raw = await _canonical_engagement_target(post_id)
     if not post_raw:
         raise HTTPException(status_code=404, detail="Post not found")
 
@@ -3460,10 +3502,9 @@ async def get_user_reposts(user_id: str, current_user: dict = Depends(get_curren
     posts = []
     for post_raw in reposts_raw:
         post = convert_mongo_doc_to_dict(post_raw)
-        # Like/état calculés sur la publication d'origine.
-        original_id = post.get("repost_of")
-        like_raw = await db.likes.find_one({"post_id": original_id, "user_id": current_user["id"]})
-        post["is_liked"] = bool(like_raw)
+        # Engagement (likes/commentaires/partages/vues) + is_liked : tout vient de
+        # la publication d'origine (le repost n'a pas de compteurs propres).
+        await _hydrate_repost_engagement(post, current_user["id"])
         post["is_reposted"] = (user_id == current_user["id"])
         posts.append(Post(**post))
 
@@ -7753,7 +7794,10 @@ async def _ranked_ids(kind, user_id, eu):
         return hit[1]
 
     is_clip = kind == "clips"
-    base = {"media_type": "video", "media_url": {"$ne": None}} if is_clip \
+    # Nexus Clips = vidéos ORIGINALES uniquement : on exclut les reposts
+    # (repost_of défini) pour éviter les doublons — un repost n'est pas une vidéo
+    # originale (façon TikTok, l'engagement reste sur l'originale).
+    base = {"media_type": "video", "media_url": {"$ne": None}, "repost_of": None} if is_clip \
         else {"repost_of": None}
     if is_clip and eu:
         base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": user_id}]
@@ -7890,7 +7934,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
         # chronologique (clips plus anciens non inclus dans le pool). Projection
         # {id} : on ne charge PAS le base64 juste pour récupérer des ids (anti-OOM).
         if len(clips) < limit and skip >= len(ids):
-            base = {"media_type": "video", "media_url": {"$ne": None}}
+            base = {"media_type": "video", "media_url": {"$ne": None}, "repost_of": None}
             if eu:
                 base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
             extra_skip = skip - len(ids)
@@ -7903,7 +7947,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
         logger.exception(f"/clips (classement) a échoué, repli chronologique: {e}")
         try:
             raw = await db.posts.find(
-                {"media_type": "video", "media_url": {"$ne": None}}, {"id": 1, "_id": 0}
+                {"media_type": "video", "media_url": {"$ne": None}, "repost_of": None}, {"id": 1, "_id": 0}
             ).sort("created_at", -1).allow_disk_use(True).skip(max(0, skip)).limit(limit).to_list(length=limit)
             return await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base)
         except Exception as e2:
@@ -7975,7 +8019,7 @@ async def clips_search(q: str, type: str = "top", skip: int = 0, limit: int = 20
     limit = max(1, min(limit, 40))
 
     async def videos(sk, lm):
-        raw = await db.posts.find({"media_type": "video", "content": rx}) \
+        raw = await db.posts.find({"media_type": "video", "content": rx, "repost_of": None}) \
             .sort([("likes_count", -1), ("created_at", -1)]).skip(sk).limit(lm).to_list(length=lm)
         return await _enrich_posts_for_user(raw, current_user["id"])
 
@@ -8334,7 +8378,9 @@ async def set_clip_geo_block(clip_id: str, data: dict = Body(default={}), curren
 
 @api_router.post("/clips/{clip_id}/view")
 async def register_clip_view(clip_id: str, request: Request, current_user: dict = Depends(get_current_user)):
-    """Compte une vue UNIQUE par utilisateur et par session (pas à chaque replay)."""
+    """Compte une vue UNIQUE par utilisateur et par session (pas à chaque replay).
+    Une vue sur un repost compte sur la vidéo d'origine (engagement centralisé)."""
+    clip_id, _canon_doc = await _canonical_engagement_target(clip_id)
     # Geo-block par clip : un visiteur de l'UE ne peut pas visionner un clip
     # restreint (sauf son auteur, pour la prévisualisation).
     if CLIPS_EU_GEO_BLOCK and is_eu_request(request):
@@ -8399,7 +8445,9 @@ async def register_clip_watch(clip_id: str, data: dict = Body(default={}),
     clip (moyennes calculées au scoring). Best-effort, silencieux.
 
     Anti-abus : un visionnage < 300 ms est ignoré ; la complétion est bornée à
-    [0,1] et le temps par session plafonné (évite de gonfler artificiellement)."""
+    [0,1] et le temps par session plafonné (évite de gonfler artificiellement).
+    Un visionnage de repost est cumulé sur la vidéo d'origine."""
+    clip_id, _canon_doc = await _canonical_engagement_target(clip_id)
     try:
         watched_ms = int(data.get("watched_ms") or 0)
         duration_ms = int(data.get("duration_ms") or 0)

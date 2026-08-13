@@ -120,7 +120,8 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   };
 
   const handleShare = async () => {
-    const url = `${window.location.origin}/post/${post.id}`;
+    // Un repost partage la publication d'ORIGINE (URL canonique).
+    const url = `${window.location.origin}/post/${originalId}`;
     const shareData = {
       title: `${displayAuthorName} sur Nexus`,
       text: post.content ? post.content.slice(0, 120) : "Découvre cette publication sur Nexus",
@@ -156,7 +157,8 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
   // Clic sur la carte (hors éléments interactifs) → page détail = fil de
   // commentaires complet (lecture / réponse / identification), façon X.
-  const openThread = () => navigate(`/post/${post.id}`);
+  // Un repost ouvre le fil de la publication d'ORIGINE (les commentaires y vivent).
+  const openThread = () => navigate(`/post/${originalId}`);
 
   // Double-tap « like » sur la photo (façon Instagram) : cœur animé + like.
   const lastTapRef = useRef(0);
@@ -303,7 +305,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
       {post.repost_of && (
         <div className="flex items-center gap-2 px-4 py-2 border-b text-xs font-bold" style={{ backgroundColor: C.high, borderColor: "rgba(255,255,255,0.05)", color: C.outline }}>
           <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>repeat</span>
-          <span>Reposté par <span style={{ color: C.cyan }}>@{post.author_username}</span> depuis <Link to={`/profile/${post.original_author_id}`} style={{ color: C.onVariant }} className="hover:text-cyan-400">@{post.original_author_username}</Link></span>
+          <span><Link to={`/profile/${post.author_id}`} style={{ color: C.cyan }} className="hover:text-cyan-400">@{post.author_username}</Link> a republié</span>
         </div>
       )}
 
