@@ -388,11 +388,15 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
                   style={{ background: `${SURFACE.high}f2`, border: `1px solid ${OUTLINE}` }}
                 >
                   <button
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
-                      console.log("🗑️ [STORY DELETE] clic menu « Supprimer » → ouverture confirmation", { id: currentStory?.id });
-                      setShowConfirmModal(true);
+                      e.preventDefault();
+                      console.log("🗑️ [STORY DELETE] clic « Supprimer » (menu options) — v2", { id: currentStory?.id });
                       setShowOptions(false);
+                      // Confirmation NATIVE (impossible à intercepter, toujours affichée)
+                      // plutôt qu'un modal maison qui pouvait ne pas apparaître.
+                      if (!window.confirm("Supprimer définitivement cette story ?")) return;
+                      await handleDelete();
                     }}
                     className="flex items-center w-full px-4 py-3 text-sm text-red-400 hover:bg-white/5 transition-colors"
                   >
