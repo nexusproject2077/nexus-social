@@ -5906,32 +5906,56 @@ async def _broadcast_to_followers(author_id: str, payload: dict, include_self: b
 @api_router.delete("/stories/{story_id}")
 async def delete_story(story_id: str, current_user: dict = Depends(get_current_user)):
     """Supprime une story. La suppression est diffusée en temps réel aux abonnés :
-    la story disparaît immédiatement pour tout le monde."""
+    la story disparaît immédiatement pour tout le monde.
+
+    INSTRUMENTÉ (logs temporaires 🗑️) pour diagnostiquer les échecs de
+    suppression : id reçu, document trouvé (et par quelle clé), vérif d'auteur,
+    et deleted_count. À retirer une fois le bug confirmé résolu."""
+    uid = current_user.get("id")
+    logger.info(f"🗑️ [DELETE story] id_reçu={story_id!r} par user={uid!r}")
+
     # On retrouve la story par son champ `id` (UUID) ET, en repli, par son `_id`
     # Mongo — indispensable pour les anciennes stories sans champ `id` (sinon le
     # DELETE renvoyait 404 et la story n'était jamais réellement supprimée).
     story_raw = await db.stories.find_one({"id": story_id})
+    found_by = "id"
     if not story_raw and ObjectId.is_valid(story_id):
         story_raw = await db.stories.find_one({"_id": ObjectId(story_id)})
+        found_by = "_id" if story_raw else "aucune"
     if not story_raw:
+        logger.warning(f"🗑️ [DELETE story] INTROUVABLE en base — id={story_id!r} → 404")
         raise HTTPException(status_code=404, detail="Story not found")
 
     story = convert_mongo_doc_to_dict(story_raw)
-    if story["author_id"] != current_user["id"]:
+    logger.info(
+        f"🗑️ [DELETE story] trouvée via '{found_by}' — story.id={story.get('id')!r} "
+        f"_id={story_raw.get('_id')!r} author_id={story.get('author_id')!r}"
+    )
+
+    if story.get("author_id") != uid:
+        logger.warning(
+            f"🗑️ [DELETE story] NON AUTORISÉ — author_id={story.get('author_id')!r} != user={uid!r} → 403"
+        )
         raise HTTPException(status_code=403, detail="Not authorized")
 
     # Suppression FIABLE par _id (le document trouvé), qu'il ait ou non un champ `id`.
-    await db.stories.delete_one({"_id": story_raw["_id"]})
+    res = await db.stories.delete_one({"_id": story_raw["_id"]})
+    logger.info(f"🗑️ [DELETE story] delete_one → deleted_count={res.deleted_count}")
     await db.story_views.delete_many({"story_id": story.get("id", story_id)})
 
     # Diffusion temps réel : les abonnés (et l'auteur sur ses autres appareils)
     # retirent la story sans attendre le prochain rafraîchissement.
     asyncio.create_task(_broadcast_to_followers(
-        current_user["id"],
-        {"type": "story_deleted", "data": {"story_id": story.get("id", story_id), "author_id": current_user["id"]}},
+        uid,
+        {"type": "story_deleted", "data": {"story_id": story.get("id", story_id), "author_id": uid}},
     ))
 
-    return {"message": "Story deleted successfully"}
+    return {
+        "message": "Story deleted successfully",
+        "deleted_count": res.deleted_count,
+        "found_by": found_by,
+        "story_id": story.get("id", story_id),
+    }
 
 @api_router.get("/stories/{story_id}/viewers")
 async def get_story_viewers(story_id: str, current_user: dict = Depends(get_current_user)):
@@ -9499,6 +9523,18 @@ async def startup_db_client():
         await _ensure_stable_cipher()
     except Exception as e:
         logger.warning(f"Init clé de chiffrement différée : {e}")
+
+    # DIAGNOSTIC (temporaire) : confirme que la route DELETE /api/stories/{id}
+    # est bien enregistrée. À retirer une fois le bug de suppression résolu.
+    try:
+        story_delete_routes = [
+            f"{','.join(sorted(getattr(r, 'methods', []) or []))} {r.path}"
+            for r in app.routes
+            if "/stories/{" in getattr(r, "path", "") and "DELETE" in (getattr(r, "methods", set()) or set())
+        ]
+        logger.info(f"🗑️ [startup] routes DELETE stories enregistrées : {story_delete_routes or 'AUCUNE ⚠️'}")
+    except Exception as e:
+        logger.warning(f"🗑️ [startup] vérif route DELETE story impossible : {e}")
     try:
         asyncio.create_task(_startup_warmup())
         asyncio.create_task(trending_notifier_loop())

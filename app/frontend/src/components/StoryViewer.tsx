@@ -299,24 +299,35 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   const handleDelete = async () => {
     if (!currentStory) return;
     const sid = currentStory.id;
-    // Retrait via axios (auth cohérente via l'intercepteur, gestion d'erreur
-    // fiable). Un 404 = déjà supprimée → on la retire quand même.
     const removeLocally = () => {
       setShowConfirmModal(false);
       setShowOptions(false);
       onDeleteStory(sid);   // retrait immédiat de la barre + refetch serveur
       onClose();
     };
+    // DIAGNOSTIC (temporaire) : on affiche clairement l'id, le status HTTP et le
+    // body de la réponse — pour voir précisément où ça casse (front/auth/DB).
+    console.log("🗑️ [STORY DELETE] tentative", {
+      url: `${API}/stories/${sid}`,
+      story_id: sid,
+      author_id: (currentStory as any).author_id,
+      me: (() => { try { return JSON.parse(localStorage.getItem("nexus_user") || "null")?.id; } catch { return null; } })(),
+      token: !!localStorage.getItem("token"),
+    });
     try {
-      await axios.delete(`${API}/stories/${sid}`);
-      toast.success("Story supprimée");
+      const res = await axios.delete(`${API}/stories/${sid}`);
+      console.log("🗑️ [STORY DELETE] SUCCÈS", { status: res.status, body: res.data });
+      toast.success(`Story supprimée (status ${res.status}, deleted_count=${res.data?.deleted_count ?? "?"})`);
       removeLocally();
     } catch (err: any) {
-      if (err?.response?.status === 404) {
+      const status = err?.response?.status;
+      const body = err?.response?.data;
+      console.error("🗑️ [STORY DELETE] ÉCHEC", { status, body, story_id: sid, message: err?.message, err });
+      if (status === 404) {
+        toast(`Story déjà absente (404) — id ${sid}`);
         removeLocally();
       } else {
-        console.error("Suppression story échouée:", err);
-        toast.error(err?.response?.data?.detail || "Impossible de supprimer la story");
+        toast.error(`Échec suppression — status: ${status ?? "réseau/CORS"} · ${body ? JSON.stringify(body) : (err?.message || "")}`);
       }
     }
   };
