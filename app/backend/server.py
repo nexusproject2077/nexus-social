@@ -5885,9 +5885,15 @@ async def view_story(story_id: str, current_user: dict = Depends(get_current_use
 async def _broadcast_to_followers(author_id: str, payload: dict, include_self: bool = True):
     """Diffuse un événement temps réel aux abonnés d'un auteur (best-effort, non
     bloquant). Sert à faire apparaître/disparaître les stories immédiatement pour
-    tout le monde. push_realtime ne touche que les utilisateurs connectés."""
+    tout le monde. push_realtime ne touche que les utilisateurs connectés.
+
+    Gère les DEUX schémas de follow (`followed_id` récent et `following_id`
+    ancien) pour ne manquer aucun abonné."""
     try:
-        rows = await db.follows.find({"followed_id": author_id}, {"follower_id": 1}).to_list(length=5000)
+        rows = await db.follows.find(
+            {"$or": [{"followed_id": author_id}, {"following_id": author_id}]},
+            {"follower_id": 1},
+        ).to_list(length=5000)
         targets = {r.get("follower_id") for r in rows if r.get("follower_id")}
         if include_self:
             targets.add(author_id)
@@ -5901,7 +5907,12 @@ async def _broadcast_to_followers(author_id: str, payload: dict, include_self: b
 async def delete_story(story_id: str, current_user: dict = Depends(get_current_user)):
     """Supprime une story. La suppression est diffusée en temps réel aux abonnés :
     la story disparaît immédiatement pour tout le monde."""
+    # On retrouve la story par son champ `id` (UUID) ET, en repli, par son `_id`
+    # Mongo — indispensable pour les anciennes stories sans champ `id` (sinon le
+    # DELETE renvoyait 404 et la story n'était jamais réellement supprimée).
     story_raw = await db.stories.find_one({"id": story_id})
+    if not story_raw and ObjectId.is_valid(story_id):
+        story_raw = await db.stories.find_one({"_id": ObjectId(story_id)})
     if not story_raw:
         raise HTTPException(status_code=404, detail="Story not found")
 
@@ -5909,14 +5920,15 @@ async def delete_story(story_id: str, current_user: dict = Depends(get_current_u
     if story["author_id"] != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    await db.stories.delete_one({"id": story_id})
-    await db.story_views.delete_many({"story_id": story_id})
+    # Suppression FIABLE par _id (le document trouvé), qu'il ait ou non un champ `id`.
+    await db.stories.delete_one({"_id": story_raw["_id"]})
+    await db.story_views.delete_many({"story_id": story.get("id", story_id)})
 
     # Diffusion temps réel : les abonnés (et l'auteur sur ses autres appareils)
     # retirent la story sans attendre le prochain rafraîchissement.
     asyncio.create_task(_broadcast_to_followers(
         current_user["id"],
-        {"type": "story_deleted", "data": {"story_id": story_id, "author_id": current_user["id"]}},
+        {"type": "story_deleted", "data": {"story_id": story.get("id", story_id), "author_id": current_user["id"]}},
     ))
 
     return {"message": "Story deleted successfully"}

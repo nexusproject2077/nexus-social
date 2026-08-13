@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Avatar } from "@/components/ui/avatar";
 import { X, MoreVertical, Trash2 } from 'lucide-react';
 import { toast } from "sonner";
+import axios from "axios";
 import { API } from "../App";
 import { SURFACE, TEXT, OUTLINE } from "@/lib/theme";
 import { useNavigate } from 'react-router-dom';
@@ -173,7 +174,10 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
 
   // Gestion de la progression (images et vidéos)
   useEffect(() => {
-    if (!currentStory || isPaused || isLongPressing || showConfirmModal) return;
+    // On met en PAUSE tant qu'un menu est ouvert (options / confirmation de
+    // suppression) → la story ne défile pas sous l'utilisateur avant qu'il
+    // confirme (sinon on pourrait supprimer la mauvaise story).
+    if (!currentStory || isPaused || isLongPressing || showConfirmModal || showOptions) return;
 
     setProgress(0);
     startTimeRef.current = Date.now();
@@ -215,7 +219,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
         clearInterval(progressIntervalRef.current);
       }
     };
-  }, [currentStory, isPaused, isLongPressing, showConfirmModal]);
+  }, [currentStory, isPaused, isLongPressing, showConfirmModal, showOptions]);
 
   // Marquer comme vue au chargement
   useEffect(() => {
@@ -294,34 +298,26 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
 
   const handleDelete = async () => {
     if (!currentStory) return;
-
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast.error("Vous devez être connecté pour supprimer une story.");
-      return;
-    }
-
+    const sid = currentStory.id;
+    // Retrait via axios (auth cohérente via l'intercepteur, gestion d'erreur
+    // fiable). Un 404 = déjà supprimée → on la retire quand même.
+    const removeLocally = () => {
+      setShowConfirmModal(false);
+      setShowOptions(false);
+      onDeleteStory(sid);   // retrait immédiat de la barre + refetch serveur
+      onClose();
+    };
     try {
-      const response = await fetch(`${API}/stories/${currentStory.id}`, {
-        method: "DELETE",
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok || response.status === 404) {
-        // 404 = déjà supprimée : on la retire quand même localement.
-        toast.success("Story supprimée !");
-        setShowConfirmModal(false);
-        setShowOptions(false);
-        onDeleteStory(currentStory.id);   // retrait optimiste immédiat + refetch
-        onClose();
+      await axios.delete(`${API}/stories/${sid}`);
+      toast.success("Story supprimée");
+      removeLocally();
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        removeLocally();
       } else {
-        toast.error(`Erreur: ${response.status}`);
+        console.error("Suppression story échouée:", err);
+        toast.error(err?.response?.data?.detail || "Impossible de supprimer la story");
       }
-    } catch (err) {
-      console.error("Erreur réseau:", err);
-      toast.error("Erreur réseau");
     }
   };
 
