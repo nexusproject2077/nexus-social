@@ -22,7 +22,7 @@ import jwt
 import base64
 from bson import ObjectId
 import json
-from collections import defaultdict, deque
+from collections import defaultdict, deque, OrderedDict
 import time
 import asyncio
 from enum import Enum
@@ -900,6 +900,41 @@ def convert_mongo_doc_to_dict(doc: dict) -> dict:
 # (mémoire bornée), avec support des requêtes Range (lecture/seek vidéo).
 
 _MEDIA_SENTINEL = "nexusmedia:"
+
+# ── Cache LRU des médias DÉCODÉS (accélère la lecture vidéo) ────────────────
+# Un <video> déclenche PLUSIEURS requêtes Range successives (métadonnées, puis
+# lecture/seek). Sans cache, CHAQUE Range rechargeait tout le base64 (plusieurs
+# Mo) depuis Mongo PUIS le redécodait en entier — juste pour renvoyer une
+# tranche. On garde donc en mémoire les octets décodés des derniers médias
+# servis, borné par une taille TOTALE stricte (anti-OOM conservé : on ne détient
+# jamais plus que ce plafond, contrairement au chargement d'un flux entier).
+_media_bytes_cache: "OrderedDict[str, tuple]" = OrderedDict()  # key -> (data, content_type)
+_media_cache_bytes = 0
+_MEDIA_CACHE_MAX_BYTES = 96 * 1024 * 1024   # ~96 Mo (quelques vidéos récentes)
+_MEDIA_CACHE_ITEM_MAX = 20 * 1024 * 1024    # on ne cache pas un média > 20 Mo
+
+
+def _media_cache_get(key: str):
+    hit = _media_bytes_cache.get(key)
+    if hit is not None:
+        _media_bytes_cache.move_to_end(key)  # LRU : marque comme récemment utilisé
+    return hit
+
+
+def _media_cache_put(key: str, data: bytes, content_type: str):
+    global _media_cache_bytes
+    size = len(data)
+    if size <= 0 or size > _MEDIA_CACHE_ITEM_MAX:
+        return  # trop gros (ou vide) → on ne cache pas (évite d'évincer plein d'items)
+    if key in _media_bytes_cache:
+        _media_cache_bytes -= len(_media_bytes_cache[key][0])
+        del _media_bytes_cache[key]
+    _media_bytes_cache[key] = (data, content_type)
+    _media_cache_bytes += size
+    # Éviction LRU jusqu'à repasser sous le plafond total.
+    while _media_cache_bytes > _MEDIA_CACHE_MAX_BYTES and _media_bytes_cache:
+        _, (old_data, _ct) = _media_bytes_cache.popitem(last=False)
+        _media_cache_bytes -= len(old_data)
 
 # Registre des types de médias servis par le proxy : kind -> (collection, champ).
 # - "post" / "story" : contenu public ou entre abonnés → proxy par UUID (comme
@@ -8007,6 +8042,14 @@ async def serve_media(kind: str, media_id: str, request: Request, exp: int = 0, 
         now = int(time.time())
         if not sig or not exp or exp < now or not hmac.compare_digest(sig, _media_sign(kind, media_id, exp)):
             raise HTTPException(status_code=403, detail="Lien média invalide ou expiré")
+    # Cache LRU des octets DÉCODÉS : une lecture vidéo enchaîne plusieurs requêtes
+    # Range → on évite de recharger + redécoder tout le base64 depuis Mongo à
+    # chaque tranche (gros gain de fluidité). Clé = kind:id (les id sont uniques).
+    ckey = f"{kind}:{media_id}"
+    cached = _media_cache_get(ckey)
+    if cached is not None:
+        data, content_type = cached
+        return _ranged_media_response(request, data, content_type)
     try:
         doc = await db[collection].find_one({"id": media_id}, {field: 1, "_id": 0})
     except Exception:
@@ -8024,6 +8067,9 @@ async def serve_media(kind: str, media_id: str, request: Request, exp: int = 0, 
         data = base64.b64decode(b64)
     except Exception:
         raise HTTPException(status_code=404, detail="Média illisible")
+    # Mise en cache des octets décodés (borné en taille totale, anti-OOM conservé)
+    # → les Range suivantes de CETTE même vidéo sont servies sans retoucher Mongo.
+    _media_cache_put(ckey, data, content_type)
     # Migration base64→Cloudinary opportuniste, UN média à la fois (mémoire
     # bornée) : allège progressivement la base à chaque lecture, sans jamais
     # charger plusieurs médias d'un coup. Best-effort (ne fait rien sans Cloudinary).
