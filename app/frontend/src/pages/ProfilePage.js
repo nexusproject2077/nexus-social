@@ -561,7 +561,7 @@ export default function ProfilePage({ user, setUser }) {
                       style={{ aspectRatio: "1 / 1", background: C.surfaceLow }}
                     >
                       {post.media_type === "video" ? (
-                        <video src={post.media_url} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" muted playsInline />
+                        <video src={post.media_url} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" muted playsInline preload="metadata" />
                       ) : (
                         <img src={post.media_url} alt="Post" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                       )}

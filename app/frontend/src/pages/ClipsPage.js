@@ -516,6 +516,11 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         loop
         muted={muted}
         playsInline
+        // MOBILE : ne PAS pré-charger les clips non actifs. Sans ça, tous les
+        // clips de la liste immersive chargeaient leur vidéo (proxy base64) en
+        // même temps à l'ouverture → gros gel. Le clip actif se charge à la
+        // lecture (déclenchée par isActive) ; le cache backend accélère la suite.
+        preload="none"
         onClick={handleTap}
         onPointerDown={startSpeed}
         onPointerUp={endSpeed}
