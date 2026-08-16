@@ -4595,7 +4595,7 @@ async def list_groups_alias(current_user: dict = Depends(get_current_user)):
     return {"success": True, "groups": groups}
 
 @api_router.get("/messages/{user_id}", response_model=List[Message])
-async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_current_user)):
+async def get_messages_with_user(user_id: str, request: Request, current_user: dict = Depends(get_current_user)):
     """Récupère les messages avec un utilisateur spécifique"""
     # On récupère les 60 messages LES PLUS RÉCENTS (tri décroissant + limite),
     # puis on rétablit l'ordre chronologique. Évite de charger tout l'historique
@@ -4627,13 +4627,26 @@ async def get_messages_with_user(user_id: str, current_user: dict = Depends(get_
     })
     query["$and"] = [{"$or": [{"expires_at": None}, {"expires_at": {"$gt": now_iso}}]}]
 
-    messages_raw = await db.messages.find(query).sort("created_at", -1).to_list(length=60)
+    # ANTI-OOM / fil léger : on NE transfère PAS le base64 des médias depuis
+    # MongoDB. Une étape d'agrégation le remplace par un sentinel « nexusmedia:<id> »
+    # (le base64 ne quitte jamais la base), puis on le résout en URL SIGNÉE du
+    # proxy média (servi à la demande, avec Range + cache). Sans ça, ouvrir une
+    # conversation contenant des photos/vidéos transférait des Mo de base64 inline
+    # → affichage lent. Les URL Cloudinary (déjà externes) sont conservées.
+    media_base = _media_public_base(request)
+    messages_raw = await db.messages.aggregate([
+        {"$match": query},
+        {"$sort": {"created_at": -1}},
+        {"$limit": 60},
+        _drop_base64_media_stage(),
+    ], allowDiskUse=True).to_list(length=60)
     messages_raw.reverse()
 
     messages = []
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
         msg["content"] = decrypt_message(msg.get("content"))
+        _resolve_media_sentinel(msg, media_base, "message")
         messages.append(Message(**msg))
 
     # Marquer les messages reçus comme lus + prévenir l'expéditeur (« Vu »).
