@@ -568,7 +568,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             <button
               onClick={() => setShowTip(true)}
               title={`Envoyer un pourboire à @${displayAuthorName}`}
-              className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105 ml-auto"
+              className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
               style={{ color: C.cyan }}
             >
               <span className="material-symbols-outlined text-lg">volunteer_activism</span>
