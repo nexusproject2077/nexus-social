@@ -9440,6 +9440,46 @@ async def _startup_warmup():
     except Exception as e:
         logger.warning(f"Index posts (tri) non créé (peut déjà exister): {e}")
 
+    # ── Index de PERFORMANCE critiques ──────────────────────────────────────
+    # Sans eux, chaque recherche par `id` (UUID) ou par clé de relation faisait
+    # un SCAN COMPLET de la collection. Or on cherche users/posts par `id` à
+    # CHAQUE requête authentifiée (get_current_user), à chaque enrichissement de
+    # fil, like, notif, story… → ralentissement massif quand les données
+    # grossissent. create_index est idempotent (ne recrée pas un index existant).
+    async def _safe_index(coll, keys, **kw):
+        try:
+            await coll.create_index(keys, **kw)
+        except Exception as e:
+            logger.warning(f"Index {getattr(coll, 'name', '?')} {keys} non créé: {e}")
+
+    # Recherches par identifiant (les plus fréquentes de toute l'app).
+    await _safe_index(db.users, "id", name="by_id")
+    await _safe_index(db.posts, "id", name="by_id")
+    await _safe_index(db.stories, "id", name="by_id")
+    # Éligibilité pourboires / Premium (enrichissement des fils).
+    await _safe_index(db.users, "stripe_account_id", name="by_stripe")
+    await _safe_index(db.users, "is_premium", name="by_premium")
+    # Relations d'abonnement (les deux schémas).
+    await _safe_index(db.follows, "follower_id", name="by_follower")
+    await _safe_index(db.follows, "followed_id", name="by_followed")
+    await _safe_index(db.follows, "following_id", name="by_following")
+    # Likes / commentaires (enrichissement is_liked, compteurs).
+    await _safe_index(db.likes, [("post_id", 1), ("user_id", 1)], name="by_post_user")
+    await _safe_index(db.likes, "user_id", name="by_user")
+    await _safe_index(db.comments, "post_id", name="by_post")
+    # Stories (fil + purge des expirées).
+    await _safe_index(db.stories, [("author_id", 1), ("expires_at", -1)], name="by_author_exp")
+    await _safe_index(db.stories, "expires_at", name="by_exp")
+    await _safe_index(db.story_views, [("story_id", 1), ("user_id", 1)], name="by_story_user")
+    # Notifications, enregistrements, pourboires.
+    await _safe_index(db.notifications, [("user_id", 1), ("created_at", -1)], name="by_user_recent")
+    await _safe_index(db.saved_posts, [("user_id", 1), ("post_id", 1)], name="by_user_post")
+    await _safe_index(db.tips, [("creator_id", 1), ("created_at", -1)], name="by_creator_recent")
+    # Messages directs (fil de conversation).
+    await _safe_index(db.messages, [("recipient_id", 1), ("sender_id", 1), ("created_at", -1)], name="by_convo")
+    await _safe_index(db.messages, [("sender_id", 1), ("recipient_id", 1), ("created_at", -1)], name="by_convo_rev")
+    logger.info("✅ Index de performance (id/relations) vérifiés/créés")
+
 
 async def _keep_alive_loop():
     """Auto-ping toutes les 5 min pour empêcher Render (offre gratuite) d'endormir
