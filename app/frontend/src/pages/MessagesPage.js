@@ -870,6 +870,12 @@ export default function MessagesPage({ user }) {
   const fetchMessages = async (uid) => {
     try {
       setLoading(true);
+      // En-tête INSTANTANÉ : si l'interlocuteur est déjà dans la liste des
+      // conversations (username + avatar connus), on l'affiche tout de suite,
+      // sans attendre la réponse de /users/{uid} → le fil s'ouvre sans écran
+      // d'attente (la réponse complète remplace ensuite ces infos).
+      const known = conversations.find((c) => c.user_id === uid);
+      if (known) setSelectedUser({ id: uid, username: known.username, profile_pic: known.profile_pic });
       const [msgsRes, userRes] = await Promise.all([
         axios.get(`${API}/messages/${uid}`),
         axios.get(`${API}/users/${uid}`)
@@ -2082,8 +2088,18 @@ export default function MessagesPage({ user }) {
             )}
           </div>
         </>
+      ) : hasSelection ? (
+        /* Une conversation EST sélectionnée mais ses infos chargent encore
+           (appel /users/{id}). On affiche un spinner discret — JAMAIS le
+           placeholder « Sélectionnez une conversation », qui serait faux et
+           donnait l'impression d'une app vide/lente à chaque ouverture. */
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-full border-2 animate-spin"
+            style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
+        </div>
       ) : (
-        /* Empty state */
+        /* Empty state — vraiment AUCUNE conversation sélectionnée (colonne
+           droite sur PC ; sur mobile la liste occupe l'écran). */
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
           <div className="w-20 h-20 rounded-2xl flex items-center justify-center" style={{ background: `${C.cyan}12` }}>
             <span className="material-symbols-outlined text-4xl" style={{ color: C.cyan, opacity: 0.6 }}>forum</span>
