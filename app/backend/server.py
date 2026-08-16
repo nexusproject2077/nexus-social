@@ -8665,7 +8665,7 @@ async def _foryou_chronological(request, current_user, limit, skip):
 
 @api_router.get("/feed/foryou", response_model=List[Post])
 async def for_you_feed(request: Request, limit: int = 10, skip: int = 0,
-                       mode: str = "reco", current_user: dict = Depends(get_current_user)):
+                       mode: str = "reco", debug: int = 0, current_user: dict = Depends(get_current_user)):
     """
     Feed « Pour vous » — CONTRÔLABLE par l'utilisateur (transparence de l'algo).
 
@@ -8703,6 +8703,13 @@ async def for_you_feed(request: Request, limit: int = 10, skip: int = 0,
     except Exception as e:
         # Le classement a échoué → repli chronologique (le fil doit TOUJOURS charger).
         logger.exception(f"/feed/foryou (mode={mode}) a échoué, repli chronologique: {e}")
+        if debug:
+            import traceback
+            return JSONResponse(status_code=500, content={
+                "mode": mode,
+                "error": f"{type(e).__name__}: {e}",
+                "trace": traceback.format_exc()[-1800:],
+            })
         return await _foryou_chronological(request, current_user, limit, skip)
 
 
