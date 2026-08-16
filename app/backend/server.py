@@ -8909,6 +8909,7 @@ _MEDIA_TARGETS = [
     ("posts", "media_url"),        # publications + clips (le plus lourd)
     ("stories", "media_url"),
     ("instants", "media_url"),
+    ("messages", "media_url"),     # images/vidéos/vocaux des DM (fil lent sinon)
     ("users", "profile_pic"),
     ("group_chats", "avatar_url"),
 ]
