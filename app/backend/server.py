@@ -2902,21 +2902,45 @@ async def get_posts_feed(request: Request, skip: int = 0, limit: int = 10, curre
     ], allowDiskUse=True).to_list(length=limit)
 
     posts = []
-    saved_ids = await _saved_post_ids(current_user["id"], [p.get("id") for p in posts_raw])
+    direct_ids = [p.get("id") for p in posts_raw]
+    # Reposts : l'engagement (compteurs + is_liked) vit sur la publication D'ORIGINE.
+    orig_ids = [p.get("repost_of") for p in posts_raw if p.get("repost_of")]
+    saved_ids = await _saved_post_ids(current_user["id"], direct_ids)
     premium_ids = await _premium_author_ids([p.get("author_id") for p in posts_raw])
     tip_ids = await _tip_author_ids([p.get("author_id") for p in posts_raw])
+    # BATCH (anti N+1) : un seul find pour tous les likes du spectateur (posts
+    # directs + originaux des reposts), et un seul find pour l'engagement des
+    # originaux — au lieu d'une requête par post dans la boucle.
+    like_targets = list({*(i for i in direct_ids if i), *orig_ids})
+    liked = {l.get("post_id") for l in await db.likes.find(
+        {"post_id": {"$in": like_targets}, "user_id": current_user["id"]}, {"post_id": 1}
+    ).to_list(length=len(like_targets) or 1)} if like_targets else set()
+    orig_by_id = {}
+    if orig_ids:
+        for o in await db.posts.find(
+            {"id": {"$in": list(set(orig_ids))}},
+            {"id": 1, "likes_count": 1, "comments_count": 1, "shares_count": 1, "views": 1},
+        ).to_list(length=len(orig_ids)):
+            orig_by_id[o.get("id")] = o
     for post_raw in posts_raw:
         try:
             post = convert_mongo_doc_to_dict(post_raw)
             _resolve_media_sentinel(post, media_base)
-            like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
-            post["is_liked"] = bool(like_raw)
+            oid = post.get("repost_of")
+            if oid:  # repost → compteurs + is_liked de l'original (façon TikTok)
+                orig = orig_by_id.get(oid)
+                if orig:
+                    post["likes_count"] = orig.get("likes_count", 0) or 0
+                    post["comments_count"] = orig.get("comments_count", 0) or 0
+                    post["shares_count"] = orig.get("shares_count", 0) or 0
+                    post["views"] = orig.get("views", 0) or 0
+                post["is_liked"] = oid in liked
+            else:
+                post["is_liked"] = post["id"] in liked
             post["is_saved"] = post["id"] in saved_ids
             post["author_is_premium"] = post.get("author_id") in premium_ids
             post["author_can_receive_tips"] = post.get("author_id") in tip_ids
             enrich_post_poll(post, current_user["id"])
-            # Repost : l'engagement affiché vient de la publication d'origine.
-            await _hydrate_repost_engagement(post, current_user["id"])
             posts.append(Post(**post))
         except Exception as e:
             logger.warning(f"/posts/feed — post ignoré {post_raw.get('id')}: {e}")
@@ -4230,57 +4254,69 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     prefs = await _conversation_prefs_map(current_user["id"])
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    conversations_dict = {}
+    # 1er passage : messages triés DESC → le premier message VISIBLE rencontré
+    # pour chaque interlocuteur est le plus récent (aperçu + horodatage). On ne
+    # touche PAS la base ici (anti N+1).
+    latest_by_peer = {}
     for msg_raw in messages_raw:
         msg = convert_mongo_doc_to_dict(msg_raw)
         other_user_id = msg["recipient_id"] if msg["sender_id"] == current_user["id"] else msg["sender_id"]
-
-        # Message éphémère expiré → ne compte pas pour l'aperçu.
+        if other_user_id in latest_by_peer:
+            continue  # déjà le plus récent pour cet interlocuteur
         exp = msg.get("expires_at")
         if exp and exp <= now_iso:
-            continue
-
+            continue  # message éphémère expiré → ne compte pas pour l'aperçu
         cleared_at = clears.get(other_user_id)
         if cleared_at and (msg.get("created_at") or "") <= cleared_at:
             continue  # message plus ancien que l'effacement → ignoré
+        latest_by_peer[other_user_id] = msg
 
-        if other_user_id not in conversations_dict:
-            other_user_raw = await db.users.find_one({"id": other_user_id})
-            if other_user_raw:
-                other_user = convert_mongo_doc_to_dict(other_user_raw)
-                unread_count = await db.messages.count_documents({
-                    "sender_id": other_user_id,
-                    "recipient_id": current_user["id"],
-                    "read": False
-                })
+    peer_ids = list(latest_by_peer.keys())
+    if not peer_ids:
+        return []
+    # BATCH (anti N+1) : un seul find pour tous les interlocuteurs, et une seule
+    # agrégation pour tous les compteurs de non-lus — au lieu de 2 requêtes PAR
+    # conversation (find_one utilisateur + count_documents non-lus).
+    users_by_id = {u.get("id"): convert_mongo_doc_to_dict(u) for u in await db.users.find(
+        {"id": {"$in": peer_ids}}, {"id": 1, "username": 1, "profile_pic": 1}
+    ).to_list(length=len(peer_ids))}
+    unread_by_peer = {r.get("_id"): r.get("n", 0) for r in await db.messages.aggregate([
+        {"$match": {"sender_id": {"$in": peer_ids}, "recipient_id": current_user["id"], "read": False}},
+        {"$group": {"_id": "$sender_id", "n": {"$sum": 1}}},
+    ]).to_list(length=len(peer_ids))}
 
-                # Aperçu : texte déchiffré, ou « 📷 Photo » pour un média (ou une
-                # image collée en texte, pour ne pas afficher un pavé de base64).
-                text = decrypt_message(msg.get("content") or "")
-                if image_data_url_from_text(text):
-                    preview = "📷 Photo"
-                elif text:
-                    preview = text[:120]
-                elif msg.get("media_type") == "audio":
-                    preview = "🎤 Message vocal"
-                elif msg.get("media_type"):
-                    preview = "📷 Photo"
-                else:
-                    preview = ""
-                p = prefs.get(other_user_id, {})
-                conversations_dict[other_user_id] = Conversation(
-                    user_id=other_user["id"],
-                    username=other_user["username"],
-                    profile_pic=other_user.get("profile_pic"),
-                    last_message=preview,
-                    last_message_time=msg["created_at"],
-                    unread_count=unread_count,
-                    pinned=p.get("pinned", False),
-                    muted=p.get("muted", False),
-                    marked_unread=p.get("marked_unread", False),
-                )
+    conversations = []
+    for other_user_id, msg in latest_by_peer.items():  # ordre = plus récent d'abord
+        other_user = users_by_id.get(other_user_id)
+        if not other_user:
+            continue
+        # Aperçu : texte déchiffré, ou « 📷 Photo » pour un média (ou une image
+        # collée en texte, pour ne pas afficher un pavé de base64).
+        text = decrypt_message(msg.get("content") or "")
+        if image_data_url_from_text(text):
+            preview = "📷 Photo"
+        elif text:
+            preview = text[:120]
+        elif msg.get("media_type") == "audio":
+            preview = "🎤 Message vocal"
+        elif msg.get("media_type"):
+            preview = "📷 Photo"
+        else:
+            preview = ""
+        p = prefs.get(other_user_id, {})
+        conversations.append(Conversation(
+            user_id=other_user["id"],
+            username=other_user["username"],
+            profile_pic=other_user.get("profile_pic"),
+            last_message=preview,
+            last_message_time=msg["created_at"],
+            unread_count=unread_by_peer.get(other_user_id, 0),
+            pinned=p.get("pinned", False),
+            muted=p.get("muted", False),
+            marked_unread=p.get("marked_unread", False),
+        ))
 
-    return list(conversations_dict.values())
+    return conversations
 
 # ==================== NOTES (statuts éphémères façon Instagram) ====================
 
@@ -5785,6 +5821,14 @@ async def get_stories_feed(request: Request, current_user: dict = Depends(get_cu
         _drop_base64_media_stage(),
     ], allowDiskUse=True).to_list(length=1000)
 
+    # BATCH (anti N+1) : un seul find pour toutes les stories VUES par le
+    # spectateur, au lieu d'une requête par story (jusqu'à 1000 stories → 1000
+    # requêtes). On calcule has_viewed via cet ensemble.
+    all_story_ids = [s.get("id") for s in stories_raw if s.get("id")]
+    viewed_ids = {v.get("story_id") for v in await db.story_views.find(
+        {"story_id": {"$in": all_story_ids}, "user_id": current_user["id"]}, {"story_id": 1}
+    ).to_list(length=len(all_story_ids) or 1)} if all_story_ids else set()
+
     # Groupe les stories par auteur
     stories_by_user = {}
     close_friends_cache = {}
@@ -5808,12 +5852,7 @@ async def get_stories_feed(request: Request, current_user: dict = Depends(get_cu
                 if current_user["id"] not in cf:
                     continue
 
-        # Vérifie si l'utilisateur a vu cette story
-        view_raw = await db.story_views.find_one({
-            "story_id": story["id"],
-            "user_id": current_user["id"]
-        })
-        story["has_viewed"] = bool(view_raw)
+        story["has_viewed"] = story["id"] in viewed_ids
         story["is_mine"] = (author_id == current_user["id"])
 
         if author_id not in stories_by_user:
