@@ -7917,8 +7917,13 @@ async def _ranked_ids(kind, user_id, eu):
             "comments_count": 1, "shares_count": 1, "views": 1, "watch_sessions": 1,
             "completion_sum": 1, "watch_ms_total": 1}
     # Pool : les 400 plus récents + les 200 plus engageants (pépites plus vieilles).
-    recent = await db.posts.find(base, proj).sort("created_at", -1).limit(400).to_list(length=400)
-    top = await db.posts.find(base, proj).sort("likes_count", -1).limit(200).to_list(length=200)
+    # allow_disk_use : le tri par `likes_count` n'est pas couvert par un index de
+    # préfixe ; sans autorisation disque, MongoDB trie EN MÉMOIRE et dépasse la
+    # limite de 32 Mo dès que des médias base64 gonflent les documents (erreur 292).
+    # Résultat : `_ranked_ids` levait → « Pour vous » (reco ET mix, qui appelle
+    # ranked) tombait en repli chronologique → les 3 modes semblaient identiques.
+    recent = await db.posts.find(base, proj).sort("created_at", -1).allow_disk_use(True).limit(400).to_list(length=400)
+    top = await db.posts.find(base, proj).sort("likes_count", -1).allow_disk_use(True).limit(200).to_list(length=200)
     pool, seen = [], set()
     for p in recent + top:
         pid = p.get("id")
@@ -8610,7 +8615,7 @@ async def _mixed_ids(user_id):
     ranked = await _ranked_ids("foryou", user_id, False)
     recent_raw = await db.posts.find(
         {"repost_of": None}, {"id": 1, "_id": 0}
-    ).sort("created_at", -1).limit(600).to_list(length=600)
+    ).sort("created_at", -1).allow_disk_use(True).limit(600).to_list(length=600)
 
     pool, seen = [], set()
     for pid in ranked + [p.get("id") for p in recent_raw]:
@@ -9437,6 +9442,11 @@ async def _startup_warmup():
         await db.posts.create_index([("media_type", 1), ("created_at", -1)], name="by_type_recent")
         await db.posts.create_index([("media_type", 1), ("likes_count", -1)], name="by_type_likes")
         await db.posts.create_index([("created_at", -1)], name="by_recent")
+        # Tri « Pour vous / Recommandé » par engagement : un index likes_count
+        # AUTONOME (pas seulement le compound media_type+likes_count, dont
+        # likes_count n'est pas le préfixe) rend le tri du pool « top » couvert
+        # → plus de tri en mémoire, plus d'erreur 292 sur documents base64.
+        await db.posts.create_index([("likes_count", -1)], name="by_likes")
     except Exception as e:
         logger.warning(f"Index posts (tri) non créé (peut déjà exister): {e}")
 
