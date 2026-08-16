@@ -20,6 +20,7 @@ from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext
 import jwt
 import base64
+import gzip as _gzip
 from bson import ObjectId
 import json
 from collections import defaultdict, deque, OrderedDict
@@ -434,6 +435,47 @@ async def catch_all_errors_with_cors(request, call_next):
             content={"detail": "Erreur interne du serveur."},
             headers=_cors_headers_for(request),
         )
+
+
+# Seuil sous lequel compresser ne vaut pas le coût (petites réponses).
+_GZIP_MIN_SIZE = 600
+
+
+@app.middleware("http")
+async def gzip_json_responses(request: Request, call_next):
+    """Compresse (gzip) UNIQUEMENT les réponses JSON — feed, conversations,
+    notifications… — ce qui allège nettement le transfert sur mobile (réseau
+    lent). On NE touche PAS aux médias (image/vidéo, déjà compressés) ni aux
+    réponses Range (206) du proxy média : elles ont un content-type non-JSON,
+    donc naturellement exclues → aucun risque de casser la lecture/seek vidéo.
+
+    Middleware le plus EXTÉRIEUR : il lit la réponse finale (en-têtes CORS
+    déjà posés) et les recopie tels quels avant d'ajouter Content-Encoding."""
+    response = await call_next(request)
+    try:
+        if (response.status_code != 200
+                or "gzip" not in request.headers.get("accept-encoding", "").lower()
+                or "application/json" not in (response.headers.get("content-type") or "")
+                or response.headers.get("content-encoding")):
+            return response
+        # Réponse JSON standard → corps disponible via body_iterator.
+        body = b""
+        async for chunk in response.body_iterator:
+            body += chunk if isinstance(chunk, (bytes, bytearray)) else str(chunk).encode()
+        headers = dict(response.headers)
+        headers.pop("content-length", None)  # recalculé par Response
+        if len(body) < _GZIP_MIN_SIZE:
+            return Response(content=body, status_code=response.status_code,
+                            headers=headers, background=response.background)
+        compressed = _gzip.compress(body, compresslevel=5)
+        headers["content-encoding"] = "gzip"
+        headers["vary"] = "Accept-Encoding"
+        return Response(content=compressed, status_code=response.status_code,
+                        headers=headers, background=response.background)
+    except Exception:
+        # Toute anomalie → on renvoie la réponse d'origine non compressée.
+        return response
+
 
 # ==================== E2EE HELPER ====================
 # Chiffrement symétrique (Fernet) pour les données sensibles / messages.
