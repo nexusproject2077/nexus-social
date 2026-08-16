@@ -8845,6 +8845,62 @@ async def for_you_feed(request: Request, limit: int = 10, skip: int = 0,
         return await _foryou_chronological(request, current_user, limit, skip)
 
 
+@api_router.get("/admin/cloudinary-status")
+async def cloudinary_status(current_user: dict = Depends(require_admin)):
+    """Diagnostic Cloudinary (admin). Dit si Cloudinary est prêt ET fait un
+    micro-upload de test (pixel 1×1, supprimé aussitôt) pour révéler la VRAIE
+    cause d'un échec — typiquement un couple clé/secret invalide dans
+    CLOUDINARY_URL (« Invalid Signature »). Aucun média utilisateur touché."""
+    info = {
+        "ready": _CLOUDINARY_READY,
+        "has_CLOUDINARY_URL": bool(os.environ.get("CLOUDINARY_URL")),
+        "has_separate_vars": bool(os.environ.get("CLOUDINARY_CLOUD_NAME")),
+    }
+    try:
+        cfg = _cloudinary.config() if _CLOUDINARY_READY else None
+        if cfg:
+            info["cloud_name"] = getattr(cfg, "cloud_name", None)
+            info["api_key_present"] = bool(getattr(cfg, "api_key", None))
+            info["api_secret_present"] = bool(getattr(cfg, "api_secret", None))
+    except Exception as e:
+        info["config_error"] = str(e)
+    # Combien de médias sont encore en base64 (progression de migration).
+    try:
+        rx = {"$regex": "^data:"}
+        info["remaining_base64"] = {
+            f"{c}.{f}": await db[c].count_documents({f: rx}) for c, f in _MEDIA_TARGETS
+        }
+    except Exception:
+        pass
+    if not _CLOUDINARY_READY:
+        info["diagnostic"] = ("Cloudinary NON initialisé : la variable n'est pas lue "
+                              "(absente au démarrage, ou lib non importée). Vérifie que "
+                              "CLOUDINARY_URL existe bien sur la révision Cloud Run ACTIVE.")
+        return info
+    # Micro-upload de test (pixel PNG 1×1 transparent), supprimé aussitôt.
+    tiny = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC"
+            "AAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+    try:
+        res = await asyncio.to_thread(lambda: _cloudinary_uploader.upload(
+            tiny, folder="nexus/_diagnostic", resource_type="image"))
+        pid = res.get("public_id")
+        if pid:
+            try:
+                await asyncio.to_thread(lambda: _cloudinary_uploader.destroy(pid))
+            except Exception:
+                pass
+        info["upload_test"] = "OK"
+        info["diagnostic"] = ("Cloudinary FONCTIONNE ✅ — les nouveaux uploads iront sur "
+                              "Cloudinary. Lance /api/admin/migrate-media pour alléger l'ancien base64.")
+    except Exception as e:
+        info["upload_test"] = "ÉCHEC"
+        info["error"] = str(e)
+        info["diagnostic"] = ("Cloudinary est configuré mais l'upload ÉCHOUE — le plus souvent "
+                              "un couple clé/secret invalide dans CLOUDINARY_URL (format attendu : "
+                              "cloudinary://API_KEY:API_SECRET@CLOUD_NAME, sans guillemets ni espace).")
+    return info
+
+
 # ==================== MIGRATION MÉDIAS base64 → Cloudinary (admin) ====================
 # Migre les médias EXISTANTS (stockés en base64) vers Cloudinary, PAR PETITS LOTS
 # pour ne pas saturer la mémoire. À appeler en boucle (admin) jusqu'à ce que
