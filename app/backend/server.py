@@ -9492,15 +9492,30 @@ async def _startup_warmup():
 
 
 async def _keep_alive_loop():
-    """Auto-ping toutes les 5 min pour empêcher Render (offre gratuite) d'endormir
-    le service → plus de « cold start » de plusieurs minutes au réveil.
+    """Auto-ping régulier pour empêcher l'hébergeur d'endormir le service (scale
+    to zero) → plus de « cold start » de 20-30 s au réveil (status 0 côté front,
+    bannière « Le serveur se réveille… »).
 
-    Utilise l'URL publique fournie par Render (RENDER_EXTERNAL_URL). En local
-    (variable absente), la boucle ne fait rien. Best-effort : les échecs sont
-    ignorés. Intervalle réglable via KEEP_ALIVE_SECONDS (défaut 300 s = 5 min)."""
-    base = (os.environ.get("RENDER_EXTERNAL_URL") or "").rstrip("/")
+    URL publique cherchée dans, par ordre de priorité :
+      • SELF_PING_URL / KEEP_ALIVE_URL / PUBLIC_BASE_URL (générique, ex. Cloud Run)
+      • RENDER_EXTERNAL_URL (fourni automatiquement par Render)
+    En local (aucune variable), la boucle ne fait rien.
+
+    ⚠️ Sur Cloud Run, un self-ping garde chaude une instance DÉJÀ démarrée pendant
+    les périodes d'activité, mais ne réveille pas une instance déjà tombée à zéro.
+    Pour supprimer TOTALEMENT les cold starts : `min-instances=1` (voir README) ou
+    un pinger externe (Cloud Scheduler / UptimeRobot) sur /healthz.
+
+    Best-effort : les échecs sont ignorés. Intervalle réglable via
+    KEEP_ALIVE_SECONDS (défaut 300 s = 5 min)."""
+    base = ""
+    for var in ("SELF_PING_URL", "KEEP_ALIVE_URL", "PUBLIC_BASE_URL", "RENDER_EXTERNAL_URL"):
+        val = (os.environ.get(var) or "").strip()
+        if val:
+            base = val.rstrip("/")
+            break
     if not base:
-        logger.info("ℹ️ Keep-alive désactivé (RENDER_EXTERNAL_URL absente)")
+        logger.info("ℹ️ Keep-alive désactivé (définir SELF_PING_URL avec l'URL publique pour l'activer)")
         return
     ping_url = base + "/healthz"
     try:
