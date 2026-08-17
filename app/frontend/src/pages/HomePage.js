@@ -8,6 +8,7 @@ import StoriesFeed from "../components/StoriesFeed";
 import AdSense from "../components/AdSense";
 import { Skeleton } from "../components/ui/skeleton";
 import PullToRefresh from "../components/PullToRefresh";
+import OnboardingOverlay from "../components/OnboardingOverlay";
 import { buildMutedMatcher } from "@/lib/mutedWords";
 import { toast } from "sonner";
 
@@ -169,6 +170,8 @@ export default function HomePage({ user, setUser }) {
       setUser={setUser}
       onCreatePost={() => setShowCreatePost(true)}
     >
+      {/* Première expérience : guide léger affiché une seule fois. */}
+      <OnboardingOverlay />
       {/* Tirer vers le bas pour rafraîchir le fil (mobile). */}
       <PullToRefresh onRefresh={fetchFeed} />
       <div className="max-w-3xl mx-auto">

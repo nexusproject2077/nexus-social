@@ -213,12 +213,6 @@ export default function AuthPage({ setUser }) {
           </div>
 
           <div className="relative z-10 max-w-lg">
-            <span
-              className="font-label uppercase text-xs mb-6 block tracking-[0.2em]"
-              style={{ color: "#8aebff", letterSpacing: "0.2em" }}
-            >
-              The Kinetic Monolith
-            </span>
             <h2 className="font-headline text-6xl font-bold leading-[1.1] mb-8">
               Rejoignez le{" "}
               <span style={{ color: "rgba(218,226,253,0.5)" }}>
