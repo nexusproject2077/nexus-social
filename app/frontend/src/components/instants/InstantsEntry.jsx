@@ -907,22 +907,23 @@ export default function InstantsEntry({ user, hidden = false }) {
         </div>
       )}
 
-      {/* FAB caméra « + » */}
+      {/* FAB caméra — raccourci de capture instantanée (façon Instagram).
+          Cercle parfait, discret : anthracite semi-transparent + backdrop-blur,
+          icône blanche fine, flottant au-dessus de la navbar sans coller aux bords. */}
       {!hidden && !screen && !viewing && (
         <button onClick={() => setScreen("camera")} aria-label="Nouvel instantané"
-          className="fixed z-[55] active:scale-95 transition-transform"
+          className="fixed z-[55] rounded-full flex items-center justify-center active:scale-95 transition-transform"
           style={{
-            width: 60, height: 60,
-            right: "16px", bottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)",
-            filter: "drop-shadow(0 6px 14px rgba(0,0,0,0.45))",
+            width: 52, height: 52,
+            right: "20px", bottom: "calc(env(safe-area-inset-bottom, 0px) + 92px)",
+            background: "rgba(17,24,39,0.55)",
+            backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 6px 18px rgba(0,0,0,0.4)",
           }}>
-          {/* Fond en SQUIRCLE (l'ombre suit la forme via le drop-shadow du parent) */}
-          <span className="w-full h-full flex items-center justify-center"
-            style={{ ...squircleStyle, background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 30 }}>photo_camera</span>
-          </span>
+          <span className="material-symbols-outlined text-white" style={{ fontSize: 24, fontVariationSettings: "'wght' 300" }}>photo_camera</span>
           {inbox.length > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center text-[11px] font-black"
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-black"
               style={{ background: "#f87171", color: "#fff", border: `2px solid ${C.surface}` }}>{inbox.length}</span>
           )}
         </button>

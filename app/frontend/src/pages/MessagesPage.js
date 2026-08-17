@@ -1422,7 +1422,7 @@ export default function MessagesPage({ user }) {
         onTouchStart={() => startConvLongPress(lp)}
         onTouchEnd={cancelConvLongPress}
         onTouchMove={cancelConvLongPress}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all"
+        className="w-full flex items-center gap-3.5 px-4 py-4 text-left transition-all"
         style={{
           // Nouvelle conversation non lue → surlignage bleu ; sinon état actif/normal.
           background: active
@@ -1475,7 +1475,7 @@ export default function MessagesPage({ user }) {
         onTouchStart={() => startConvLongPress(lp)}
         onTouchEnd={cancelConvLongPress}
         onTouchMove={cancelConvLongPress}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all"
+        className="w-full flex items-center gap-3.5 px-4 py-4 text-left transition-all"
         style={{
           background: active ? `linear-gradient(to right, rgba(139,92,246,0.1), transparent)` : unread ? "rgba(59,130,246,0.10)" : "transparent",
           borderLeft: active ? "2px solid #8b5cf6" : unread ? "2px solid #3b82f6" : "2px solid transparent",
@@ -1483,10 +1483,10 @@ export default function MessagesPage({ user }) {
         }}
       >
         {group.avatar_url ? (
-          <img src={group.avatar_url} alt={group.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+          <img src={group.avatar_url} alt={group.name} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
         ) : (
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0"
-            style={{ background: "linear-gradient(135deg,#8b5cf6,#ec4899)", color: "#fff" }}>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
+            style={{ background: "#28303e", color: "#fff" }}>
             {group.name?.[0]?.toUpperCase()}
           </div>
         )}
@@ -1544,8 +1544,8 @@ export default function MessagesPage({ user }) {
             ref={newMsgSearchRef}
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); if (!e.target.value.trim()) setShowNewMsg(false); else setShowNewMsg(true); }}
-            placeholder="Rechercher ou démarrer une conversation..."
-            className="w-full text-sm pl-9 pr-4 py-2 rounded-xl border-none outline-none placeholder:text-slate-600 select-text"
+            placeholder="Rechercher une conversation…"
+            className="w-full text-sm pl-9 pr-3 py-2.5 rounded-xl border-none outline-none placeholder:text-slate-600 select-text truncate"
             style={{ background: C.high, color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
           />
         </div>
