@@ -1028,12 +1028,40 @@ def _media_public_base(request) -> str:
     return f"https://{host}" if host else ""
 
 
+def _optimize_cloudinary(url):
+    """Insère `f_auto,q_auto` dans une URL Cloudinary → format moderne (WebP/AVIF)
+    + qualité automatique. Les images/vidéos deviennent 50-80 % plus légères,
+    sans perte visible, servies et mises en cache par le CDN Cloudinary → posts
+    qui s'affichent beaucoup plus vite (surtout mobile).
+
+    Idempotent (ne double pas la transformation). Laisse intactes les URL non
+    Cloudinary (proxy média interne, URL externes, None)."""
+    if not isinstance(url, str) or "res.cloudinary.com" not in url:
+        return url
+    # IMAGES uniquement : sur une vidéo, f_auto déclencherait un transcodage
+    # (lent/coûteux au 1er accès). Les vidéos Cloudinary streament très bien
+    # telles quelles → on n'y touche pas.
+    marker = "/image/upload/"
+    i = url.find(marker)
+    if i == -1:
+        return url
+    after = i + len(marker)
+    seg = url[after:].split("/", 1)[0]  # 1er segment après /upload/
+    # Déjà une transformation (préfixe de type "x_...") → on n'ajoute pas.
+    if "f_auto" in seg or "q_auto" in seg or "_" in seg:
+        return url
+    return url[:after] + "f_auto,q_auto/" + url[after:]
+
+
 def _resolve_media_sentinel(post: dict, base: str, kind: str = "post") -> dict:
     """Remplace le sentinel « nexusmedia:<id> » par l'URL absolue du proxy média.
 
     `kind` (post|story|message) choisit la route. Pour un kind PRIVÉ (message),
     l'URL est signée + expirante → le média n'est pas accessible publiquement par
-    simple id. Sans base (pas de requête), on met None (jamais bloquant)."""
+    simple id. Sans base (pas de requête), on met None (jamais bloquant).
+
+    Les URL Cloudinary sont optimisées à la volée (f_auto,q_auto) pour un
+    chargement bien plus rapide."""
     mu = post.get("media_url")
     if isinstance(mu, str) and mu.startswith(_MEDIA_SENTINEL):
         pid = mu[len(_MEDIA_SENTINEL):] or post.get("id") or ""
@@ -1045,6 +1073,8 @@ def _resolve_media_sentinel(post: dict, base: str, kind: str = "post") -> dict:
             post["media_url"] = url
         else:
             post["media_url"] = None
+    else:
+        post["media_url"] = _optimize_cloudinary(mu)
     return post
 
 
