@@ -245,7 +245,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
     { icon: "home",           label: t("home"),          path: "/feed",                 testId: "nav-home" },
     { icon: "play_circle",    label: "Nexus Clips",      path: "/nexus-clips",          testId: "nav-clips" },
     { icon: "sensors",        label: t("nav_live"),      path: "/live",                 testId: "nav-live" },
-    { icon: "explore",        label: t("explore"),       path: "/search",               testId: "nav-search" },
+    { icon: "search",         label: t("search"),        path: "/search",               testId: "nav-search" },
     { icon: "notifications",  label: t("notifications"), path: "/notifications",        testId: "nav-notifications" },
     { icon: "mail",           label: t("messages"),      path: "/messages",             testId: "nav-messages" },
     { icon: "account_circle", label: t("profile"),       path: `/profil/${user.id}`,    testId: "nav-profile" },
@@ -262,39 +262,18 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       <aside
         onMouseEnter={() => setSbExpanded(true)}
         onMouseLeave={() => setSbExpanded(false)}
-        className={`fixed left-0 top-0 h-screen z-40 hidden lg:flex flex-col py-8 gap-4 select-none overflow-hidden transition-[width] duration-200 ease-out ${sbExpanded ? "w-64 px-4 shadow-2xl" : "w-20 px-2"}`}
+        className={`no-scrollbar fixed left-0 top-0 h-screen z-40 hidden lg:flex flex-col py-4 gap-2 select-none overflow-y-auto overscroll-contain transition-[width] duration-200 ease-out ${sbExpanded ? "w-64 px-4 shadow-2xl" : "w-20 px-2"}`}
         style={{ backgroundColor: "#0b1326", borderRight: "1px solid rgba(255,255,255,0.04)" }}
       >
         {/* Logo : « NEXUS » déployé, « N » replié */}
         <div
-          className={`font-headline font-black tracking-tighter mb-4 bg-clip-text whitespace-nowrap ${sbExpanded ? "text-2xl px-4" : "text-2xl text-center"}`}
+          className={`font-headline font-black tracking-tighter mb-2 bg-clip-text whitespace-nowrap flex-shrink-0 ${sbExpanded ? "text-2xl px-4" : "text-2xl text-center"}`}
           style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
         >
           {sbExpanded ? "NEXUS" : "N"}
         </div>
 
-        {/* Recherche : champ déployé, bouton picto replié */}
-        {sbExpanded ? (
-          <div className="px-2 mb-2">
-            <div className="relative">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#859397", fontSize: "18px" }}>search</span>
-              <input
-                className="w-full border-none rounded-xl py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-500"
-                style={{ backgroundColor: "#131b2e", color: "#dae2fd" }}
-                placeholder={`${t("search")}...`}
-                type="text"
-                onKeyDown={(e) => { if (e.key === "Enter" && e.target.value) navigate(`/search?q=${e.target.value}`); }}
-              />
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => navigate("/search")} title={t("search")}
-            className="mb-2 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#131b2e", color: "#859397" }}>
-            <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>search</span>
-          </button>
-        )}
-
-        {/* Navigation */}
+        {/* Navigation (la recherche est désormais un onglet « Recherche » ci-dessous) */}
         <nav className="flex flex-col gap-0.5">
           {navItems.map((item) => {
             const active = isActive(item.path);
@@ -304,7 +283,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
                 data-testid={item.testId}
                 onClick={() => navigate(item.path)}
                 title={item.label}
-                className={`relative flex items-center py-3 rounded-xl transition-all duration-200 text-left ${sbExpanded ? "gap-4 px-4" : "justify-center px-0"}`}
+                className={`relative flex items-center py-2.5 rounded-xl transition-all duration-200 text-left ${sbExpanded ? "gap-4 px-4" : "justify-center px-0"}`}
                 style={{
                   color: active ? "var(--nexus-accent)" : "#859397",
                   fontWeight: active ? "700" : "400",
@@ -342,8 +321,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           )}
         </nav>
 
-        {/* Profil / déconnexion */}
-        <div className={`mt-auto ${sbExpanded ? "px-2" : ""}`}>
+        {/* Profil / déconnexion — épinglé en bas (mt-auto) mais jamais compressé */}
+        <div className={`mt-auto pt-2 flex-shrink-0 ${sbExpanded ? "px-2" : ""}`}>
           <div className={`flex items-center ${sbExpanded ? "gap-3" : "justify-center"}`}>
             {user.profile_pic ? (
               <img src={user.profile_pic} alt="Profile" className="w-10 h-10 rounded-full object-cover cursor-pointer flex-shrink-0" onClick={() => navigate(`/profil/${user.id}`)} />
