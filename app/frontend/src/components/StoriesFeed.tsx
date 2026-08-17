@@ -131,7 +131,7 @@ export default function StoriesFeed() {
           className="flex flex-col items-center gap-2 flex-shrink-0 group"
         >
           <div
-            className="p-0.5 rounded-full"
+            className="p-0.5 lg:p-1 rounded-full"
             style={{
               background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)",
             }}
@@ -182,22 +182,29 @@ export default function StoriesFeed() {
           <button
             key={live.room_id}
             onClick={() => navigate(`/live/${live.room_id}`)}
-            className="flex flex-col items-center gap-2 flex-shrink-0 group relative"
+            className="flex flex-col items-center gap-2 flex-shrink-0 group"
           >
-            <div className="p-0.5 lg:p-1 rounded-full" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)" }}>
-              <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden" style={{ borderColor: "#0b1326", backgroundColor: "#222a3d" }}>
-                {live.host_profile_pic ? (
-                  <img src={live.host_profile_pic} alt={live.host_username} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center font-bold text-sm" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)", color: "#fff" }}>
-                    {live.host_username?.[0]?.toUpperCase() || "?"}
-                  </div>
-                )}
+            <div className="relative">
+              <div className="p-0.5 lg:p-1 rounded-full" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)" }}>
+                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden" style={{ borderColor: "#0b1326", backgroundColor: "#222a3d" }}>
+                  {live.host_profile_pic ? (
+                    <img src={live.host_profile_pic} alt={live.host_username} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center font-bold text-sm" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)", color: "#fff" }}>
+                      {live.host_username?.[0]?.toUpperCase() || "?"}
+                    </div>
+                  )}
+                </div>
               </div>
+              {/* Badge LIVE : pastille rouge nette et brillante, superposée sur le
+                  bas du cercle (façon Instagram/TikTok). Bordure = fond de l'app. */}
+              <span
+                className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 px-1.5 py-[1px] rounded-md text-[8px] font-black tracking-wider"
+                style={{ background: "#ef4444", color: "#fff", boxShadow: "0 0 8px rgba(239,68,68,0.7)", border: "1.5px solid #0b1326" }}
+              >
+                LIVE
+              </span>
             </div>
-            <span className="absolute top-8 lg:top-10 left-1/2 -translate-x-1/2 px-1.5 rounded text-[8px] font-black tracking-wide" style={{ background: "#ef4444", color: "#fff" }}>
-              LIVE
-            </span>
             <span className="text-[9px] lg:text-[10px] max-w-[64px] truncate" style={{ color: "#dae2fd" }}>
               {live.host_username}
             </span>

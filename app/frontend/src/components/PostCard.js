@@ -15,6 +15,7 @@ const C = {
   cyan:       (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
   onPrimary:  "#00363e",
   outline:    "#859397",
+  idleIcon:   "#6b7480",  // gris moyen pour les icônes d'action au repos (plus discret)
   onSurface:  "#dae2fd",
   onVariant:  "#bbc9cd",
 };
@@ -299,19 +300,16 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const isOwnPost = currentUser?.id === post.author_id;
 
   return (
-    <article
-      className="rounded-2xl border overflow-hidden"
-      style={{ backgroundColor: C.container, borderColor: "rgba(255,255,255,0.05)" }}
-    >
-      {/* Repost banner */}
+    <article style={{ borderBottom: "1px solid #1F2937" }}>
+      {/* Repost banner — texte discret (plus de bandeau gris). */}
       {post.repost_of && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b text-xs font-bold" style={{ backgroundColor: C.high, borderColor: "rgba(255,255,255,0.05)", color: C.outline }}>
+        <div className="flex items-center gap-2 pt-3 text-xs font-bold" style={{ color: C.outline }}>
           <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>repeat</span>
           <span><Link to={`/profile/${post.author_id}`} style={{ color: C.cyan }} className="hover:text-cyan-400">@{post.author_username}</Link> a republié</span>
         </div>
       )}
 
-      <div className="p-4 lg:p-5 space-y-4">
+      <div className="py-4 lg:py-5 space-y-4">
         {/* Header */}
         <div className="flex justify-between items-start">
           <Link to={`/profile/${displayAuthorId}`} className="flex gap-3 items-center">
@@ -451,7 +449,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
           >
-            <span className="material-symbols-outlined text-lg">shopping_bag</span>
+            <span className="material-symbols-outlined text-[15px]">shopping_bag</span>
             Shop
           </a>
         )}
@@ -495,9 +493,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             onClick={handleLike}
             title="J'aime"
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-            style={{ color: isLiked ? "#f87171" : C.outline }}
+            style={{ color: isLiked ? "#f87171" : C.idleIcon }}
           >
-            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}>
+            <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}>
               favorite
             </span>
             {likesCount > 0 && <span>{likesCount}</span>}
@@ -508,9 +506,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             onClick={() => setShowComments(!showComments)}
             title="Commenter"
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-            style={{ color: showComments ? C.cyan : C.outline }}
+            style={{ color: showComments ? C.cyan : C.idleIcon }}
           >
-            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: showComments ? "'FILL' 1" : "'FILL' 0" }}>
+            <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: showComments ? "'FILL' 1" : "'FILL' 0" }}>
               chat_bubble
             </span>
             {commentsCount > 0 && <span>{commentsCount}</span>}
@@ -523,19 +521,19 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               disabled={repostLoading}
               title={reposted ? "Annuler la republication" : "Reposter"}
               className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-              style={{ color: reposted ? C.cyan : C.outline, opacity: repostLoading ? 0.6 : 1 }}
+              style={{ color: reposted ? C.cyan : C.idleIcon, opacity: repostLoading ? 0.6 : 1 }}
             >
               {repostLoading ? (
-                <span className="material-symbols-outlined text-lg animate-spin" style={{ animationDuration: "0.7s" }}>refresh</span>
+                <span className="material-symbols-outlined text-[15px] animate-spin" style={{ animationDuration: "0.7s" }}>refresh</span>
               ) : (
-                <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: reposted ? "'FILL' 1" : "'FILL' 0" }}>repeat</span>
+                <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: reposted ? "'FILL' 1" : "'FILL' 0" }}>repeat</span>
               )}
               {sharesCount > 0 && <span>{sharesCount}</span>}
             </button>
           ) : (
             sharesCount > 0 && (
-              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.outline }} title="Republications">
-                <span className="material-symbols-outlined text-lg">repeat</span>
+              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.idleIcon }} title="Republications">
+                <span className="material-symbols-outlined text-[15px]">repeat</span>
                 {sharesCount}
               </span>
             )
@@ -546,9 +544,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             onClick={handleShare}
             title="Partager"
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-            style={{ color: C.outline }}
+            style={{ color: C.idleIcon }}
           >
-            <span className="material-symbols-outlined text-lg">ios_share</span>
+            <span className="material-symbols-outlined text-[15px]">ios_share</span>
           </button>
 
           {/* Save / Enregistrer */}
@@ -556,9 +554,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             onClick={handleSave}
             title={isSaved ? "Retirer des enregistrements" : "Enregistrer"}
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-            style={{ color: isSaved ? C.cyan : C.outline }}
+            style={{ color: isSaved ? C.cyan : C.idleIcon }}
           >
-            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: isSaved ? "'FILL' 1" : "'FILL' 0" }}>
+            <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: isSaved ? "'FILL' 1" : "'FILL' 0" }}>
               bookmark
             </span>
           </button>
@@ -571,7 +569,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
               style={{ color: C.cyan }}
             >
-              <span className="material-symbols-outlined text-lg">volunteer_activism</span>
+              <span className="material-symbols-outlined text-[15px]">volunteer_activism</span>
             </button>
           )}
         </div>

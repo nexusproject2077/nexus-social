@@ -197,38 +197,37 @@ export default function HomePage({ user, setUser }) {
         {/* Sélecteur d'ordonnancement du fil « Pour vous » — contrôle utilisateur
             (transparence de l'algo). Visible mobile ET PC. */}
         {feedType === "foryou" && (
-          <div className="px-4 mt-3 lg:mt-4">
-            <div
-              className="flex items-center gap-1 p-1 rounded-2xl"
-              role="tablist"
-              aria-label="Ordre du fil"
-              style={{ backgroundColor: "#171f33", border: "1px solid rgba(255,255,255,0.05)" }}
-            >
-              {[
-                { key: "reco", label: "Recommandé", icon: "auto_awesome" },
-                { key: "chrono", label: "Chronologique", icon: "schedule" },
-                { key: "mix", label: "Mix", icon: "shuffle" },
-              ].map(({ key, label, icon }) => {
-                const active = feedMode === key;
-                return (
-                  <button
-                    key={key}
-                    role="tab"
-                    aria-selected={active}
-                    data-testid={`feed-mode-${key}`}
-                    onClick={() => selectMode(key)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] sm:text-sm font-bold transition-all active:scale-95"
-                    style={{
-                      backgroundColor: active ? "var(--nexus-accent)" : "transparent",
-                      color: active ? "#00363e" : "#859397",
-                    }}
-                  >
-                    <span className="material-symbols-outlined hidden sm:inline" style={{ fontSize: 18 }}>{icon}</span>
-                    <span className="truncate">{label}</span>
-                  </button>
-                );
-              })}
-            </div>
+          <div
+            className="flex items-center gap-5 sm:gap-6 px-4 mt-3 lg:mt-4"
+            role="tablist"
+            aria-label="Ordre du fil"
+          >
+            {[
+              { key: "reco", label: "Recommandé" },
+              { key: "chrono", label: "Chronologique" },
+              { key: "mix", label: "Mix" },
+            ].map(({ key, label }) => {
+              const active = feedMode === key;
+              return (
+                <button
+                  key={key}
+                  role="tab"
+                  aria-selected={active}
+                  data-testid={`feed-mode-${key}`}
+                  onClick={() => selectMode(key)}
+                  className="relative py-1 text-[13px] sm:text-sm font-bold transition-colors"
+                  style={{ color: active ? "var(--nexus-accent)" : "#6b7686" }}
+                >
+                  {label}
+                  {active && (
+                    <span
+                      className="absolute left-0 right-0 -bottom-0.5 h-[2px] rounded-full"
+                      style={{ background: "var(--nexus-accent)" }}
+                    />
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -259,8 +258,8 @@ export default function HomePage({ user, setUser }) {
           })}
         </div>
 
-        {/* Feed */}
-        <div className="px-4 py-4 lg:py-6 space-y-4 lg:space-y-6">
+        {/* Feed — cartes sans fond, séparées par une fine ligne (effet premium). */}
+        <div className="px-4 pt-2">
           {loading ? (
             <div className="space-y-4 lg:space-y-6" data-testid="feed-skeleton">
               {serverWaking && (
