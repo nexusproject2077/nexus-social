@@ -186,6 +186,13 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   });
   const [paused, setPaused]         = useState(false);
   const [saved, setSaved]           = useState(post.is_saved || false);
+  // Suivi de l'auteur (bouton « + » façon TikTok) : masqué si c'est mon clip ou
+  // si je suis déjà abonné. `followDone` déclenche l'animation de disparition.
+  const isOwnClip = currentUser?.id === post.author_id;
+  const [following, setFollowing]   = useState(post.author_is_following || false);
+  const [followDone, setFollowDone] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [showOptions, setShowOptions] = useState(false); // menu « … » du clip
   const [progress, setProgress]     = useState(0);
   const [duration, setDuration]     = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -481,6 +488,41 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     } catch { toast.error("Erreur"); }
   };
 
+  // Suivre l'auteur depuis le fil : sur confirmation serveur, le « + » disparaît
+  // avec une animation (zoom-out + fondu). Gère compte public (following) et
+  // privé (pending → demande envoyée).
+  const handleFollow = async (e) => {
+    e.stopPropagation();
+    if (followBusy || following || isOwnClip) return;
+    setFollowBusy(true);
+    try {
+      const res = await axios.post(`${API}/users/${post.author_id}/follow`);
+      const status = res.data?.status;
+      if (status === "following" || status === "pending") {
+        setFollowDone(true);                 // lance l'animation de disparition
+        setTimeout(() => setFollowing(true), 380);
+        toast.success(status === "pending" ? "Demande d'abonnement envoyée" : `Abonné à @${post.author_username}`);
+      }
+    } catch {
+      toast.error("Impossible de s'abonner");
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+
+  // Menu « … » : supprimer (auteur) ou signaler (autres).
+  const handleReport = async () => {
+    setShowOptions(false);
+    try {
+      await axios.post(`${API}/reports`, {
+        reported_content_id: post.id,
+        content_type: "clip",
+        reason: "inappropriate",
+      });
+      toast.success("Signalement envoyé. Merci.");
+    } catch { toast.error("Impossible d'envoyer le signalement"); }
+  };
+
   const handleSendComment = async () => {
     if (!commentText.trim()) return;
     try {
@@ -648,9 +690,28 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
               {post.author_username?.[0]?.toUpperCase()}
             </div>
           )}
-          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full flex items-center justify-center text-white" style={{ background: C.cyan }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 12, fontVariationSettings: "'FILL' 1" }}>add</span>
-          </div>
+          {/* Bouton « + » de suivi : fonctionnel, disparaît en douceur une fois
+              l'abonnement confirmé par le serveur. Masqué sur son propre clip. */}
+          {!isOwnClip && !following && (
+            <span
+              role="button"
+              aria-label={`S'abonner à ${post.author_username}`}
+              data-testid="clip-follow"
+              onClick={handleFollow}
+              className="absolute -bottom-1.5 left-1/2 w-4 h-4 rounded-full flex items-center justify-center"
+              style={{
+                background: C.cyan,
+                color: C.onPrimary,
+                boxShadow: "0 1px 5px rgba(0,0,0,0.45)",
+                transform: followDone ? "translateX(-50%) scale(0)" : "translateX(-50%) scale(1)",
+                opacity: followDone ? 0 : 1,
+                transition: "transform 0.36s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s ease",
+                cursor: "pointer",
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 12, fontVariationSettings: "'FILL' 1, 'wght' 600" }}>add</span>
+            </span>
+          )}
         </button>
 
         {/* Like */}
@@ -682,17 +743,16 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
           </button>
         )}
 
-        {/* Supprimer (auteur uniquement) */}
-        {currentUser?.id === post.author_id && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete?.(post.id); }}
-            data-testid="delete-clip"
-            title="Supprimer ce clip"
-            className="flex flex-col items-center"
-          >
-            <span className="material-symbols-outlined text-[26px]" style={{ color: "#f87171", fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>delete</span>
-          </button>
-        )}
+        {/* Options « … » — discret, blanc. Ouvre un menu (supprimer / signaler). */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowOptions(true); }}
+          data-testid="clip-options"
+          title="Options"
+          aria-label="Options du clip"
+          className="flex flex-col items-center"
+        >
+          <span className="material-symbols-outlined text-[28px] text-white" style={{ fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>more_horiz</span>
+        </button>
       </div>
 
       {/* Bottom info (relevé pour laisser la place à la barre de progression) */}
@@ -753,6 +813,57 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
             />
             <button onClick={handleSendComment} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
               <span className="material-symbols-outlined text-sm">send</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Menu d'options « … » — feuille du bas épurée. */}
+      {showOptions && (
+        <div
+          className="absolute inset-0 z-40 flex items-end"
+          style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)" }}
+          onClick={(e) => { e.stopPropagation(); setShowOptions(false); }}
+        >
+          <div
+            className="w-full rounded-t-3xl p-2 pb-3"
+            style={{ background: "rgba(17,25,44,0.98)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.08)", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 rounded-full mx-auto my-2.5" style={{ background: "rgba(255,255,255,0.22)" }} />
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowOptions(false); handleShare(e); }}
+              className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-white text-[15px] font-medium active:bg-white/5"
+            >
+              <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'wght' 300" }}>share</span>
+              Partager le clip
+            </button>
+            {isOwnClip ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowOptions(false); onDelete?.(post.id); }}
+                data-testid="delete-clip"
+                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-[15px] font-medium active:bg-white/5"
+                style={{ color: "#f87171" }}
+              >
+                <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'wght' 300" }}>delete</span>
+                Supprimer le clip
+              </button>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleReport(); }}
+                data-testid="report-clip"
+                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-[15px] font-medium active:bg-white/5"
+                style={{ color: "#f87171" }}
+              >
+                <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'wght' 300" }}>flag</span>
+                Signaler le clip
+              </button>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowOptions(false); }}
+              className="w-full text-center px-4 py-3.5 mt-1 rounded-2xl text-white/60 text-[15px] font-medium active:bg-white/5"
+            >
+              Annuler
             </button>
           </div>
         </div>
@@ -1159,6 +1270,7 @@ export default function ClipsPage({ user, setUser }) {
         >
           <style>{`
             [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
+            @keyframes clipSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
           `}</style>
           {clips.map((clip, idx) => (
             <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100dvh" }}>

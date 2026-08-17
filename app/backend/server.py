@@ -1264,6 +1264,7 @@ class Post(BaseModel):
     author_is_verified: bool = False
     author_is_premium: bool = False  # badge Premium sur la publication (avantage réel)
     author_can_receive_tips: bool = False  # auteur a un compte Stripe → bouton Pourboire
+    author_is_following: bool = False  # l'utilisateur courant suit-il déjà l'auteur ? (bouton « + » Clips)
     is_pinned: bool = False          # post épinglé en haut du profil (créateur Premium)
     content: str
     media_type: Optional[str] = None
@@ -8151,6 +8152,21 @@ async def _fetch_posts_in_order(ids, user_id, media_base=""):
     liked = {l.get("post_id") for l in await db.likes.find(
         {"post_id": {"$in": ids}, "user_id": user_id}, {"post_id": 1}
     ).to_list(length=len(ids))}
+    # Abonnements : quels auteurs le viewer suit-il déjà ? (pour masquer le « + »
+    # de suivi dans le fil Clips). Un seul batch, deux formats de champ tolérés.
+    uniq_authors = list({a for a in author_ids if a and a != user_id})
+    followed_authors = set()
+    if uniq_authors:
+        followed_authors = {
+            (f.get("followed_id") or f.get("following_id"))
+            for f in await db.follows.find(
+                {"follower_id": user_id, "$or": [
+                    {"followed_id": {"$in": uniq_authors}},
+                    {"following_id": {"$in": uniq_authors}},
+                ]},
+                {"followed_id": 1, "following_id": 1},
+            ).to_list(length=len(uniq_authors))
+        }
     out = []
     for pid in ids:
         pr = by_id.get(pid)
@@ -8162,6 +8178,7 @@ async def _fetch_posts_in_order(ids, user_id, media_base=""):
         post["is_saved"] = pid in saved_ids
         post["author_is_premium"] = post.get("author_id") in premium_ids
         post["author_can_receive_tips"] = post.get("author_id") in tip_ids
+        post["author_is_following"] = post.get("author_id") in followed_authors
         try:
             enrich_post_poll(post, user_id)
             out.append(Post(**post))
