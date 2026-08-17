@@ -194,11 +194,11 @@ export default function HomePage({ user, setUser }) {
         {/* Stories */}
         <StoriesFeed />
 
-        {/* Sélecteur d'ordonnancement du fil « Pour vous » — contrôle utilisateur
-            (transparence de l'algo). Visible mobile ET PC. */}
+        {/* Sélecteur d'ordonnancement du fil « Pour vous » — MOBILE uniquement
+            (sur PC, l'ordre est intégré à la ligne d'onglets X ci-dessous). */}
         {feedType === "foryou" && (
           <div
-            className="flex items-center gap-5 sm:gap-6 px-4 mt-3 lg:mt-4"
+            className="flex lg:hidden items-center gap-5 sm:gap-6 px-4 mt-3"
             role="tablist"
             aria-label="Ordre du fil"
           >
@@ -231,31 +231,36 @@ export default function HomePage({ user, setUser }) {
           </div>
         )}
 
-        {/* Switch Feed (PC uniquement) — sur mobile ces onglets sont dans le header.
-            La box de création « Quoi de neuf ? » a été retirée : on publie via le
-            bouton « + ». */}
-        <div className="hidden lg:flex items-center gap-2 mx-4 mt-4">
+        {/* Onglets du fil — PC uniquement : une SEULE ligne d'onglets textuels
+            épurés façon X (fin soulignement sous l'onglet actif). Remplace la
+            grosse box « Pour vous / Abonnements » et la ligne de filtres.
+            Sur mobile, ces onglets sont dans le header + la ligne d'ordre ci-dessus. */}
+        <div
+          className="hidden lg:flex items-center gap-8 mx-4 mt-4 border-b"
+          style={{ borderColor: "rgba(255,255,255,0.06)" }}
+          role="tablist"
+          aria-label="Fil"
+        >
           {[
-            { key: "foryou", label: "Pour vous" },
-            { key: "following", label: "Abonnements" },
-          ].map(({ key, label }) => {
-            const active = feedType === key;
-            return (
-              <button
-                key={key}
-                data-testid={`feed-toggle-${key}`}
-                onClick={() => selectFeed(key)}
-                className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
-                style={{
-                  backgroundColor: active ? "var(--nexus-accent)" : "#171f33",
-                  color: active ? "#00363e" : "#859397",
-                  border: "1px solid rgba(255,255,255,0.05)",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
+            { key: "foryou",    label: "Pour vous",     active: feedType === "foryou" && feedMode !== "chrono", onClick: () => { selectFeed("foryou"); selectMode("reco"); } },
+            { key: "following", label: "Abonnements",   active: feedType === "following",                        onClick: () => selectFeed("following") },
+            { key: "chrono",    label: "Chronologique", active: feedType === "foryou" && feedMode === "chrono",  onClick: () => { selectFeed("foryou"); selectMode("chrono"); } },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              role="tab"
+              aria-selected={tab.active}
+              data-testid={`feed-tab-${tab.key}`}
+              onClick={tab.onClick}
+              className="relative py-3 text-[15px] font-bold transition-colors"
+              style={{ color: tab.active ? "#e7ecf6" : "#6b7686" }}
+            >
+              {tab.label}
+              {tab.active && (
+                <span className="absolute left-0 right-0 -bottom-px h-[3px] rounded-full" style={{ background: "var(--nexus-accent)" }} />
+              )}
+            </button>
+          ))}
         </div>
 
         {/* Feed — cartes sans fond, séparées par une fine ligne (effet premium). */}

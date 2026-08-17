@@ -324,22 +324,23 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
               </button>
             );
           })}
-        </nav>
 
-        {/* Créer une publication — page d'accueil uniquement. */}
-        {(location.pathname === "/feed" || location.pathname === "/") && (
-          <div className={`mt-2 ${sbExpanded ? "px-2" : ""}`}>
+          {/* Créer une publication — intégré au BAS de la nav (façon X) : juste
+              sous « Paramètres », centré dans le même axe vertical que les autres
+              icônes (plus de « + » flottant isolé au milieu de la sidebar). */}
+          {(location.pathname === "/feed" || location.pathname === "/") && (
             <button
               data-testid="create-post-button"
               onClick={handleCreatePost}
               title={t("create_post")}
-              className={`font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm flex items-center justify-center ${sbExpanded ? "w-full py-3.5" : "w-11 h-11 mx-auto"}`}
+              className={`mt-2 font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm flex items-center ${sbExpanded ? "w-full py-3.5 px-4 gap-3 justify-start" : "w-11 h-11 mx-auto justify-center"}`}
               style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 8px 20px rgba(34,211,238,0.2)" }}
             >
-              {sbExpanded ? t("create_post") : <span className="material-symbols-outlined">add</span>}
+              <span className="material-symbols-outlined flex-shrink-0">add</span>
+              {sbExpanded && <span className="whitespace-nowrap">{t("create_post")}</span>}
             </button>
-          </div>
-        )}
+          )}
+        </nav>
 
         {/* Profil / déconnexion */}
         <div className={`mt-auto ${sbExpanded ? "px-2" : ""}`}>

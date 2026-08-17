@@ -137,7 +137,7 @@ export default function StoriesFeed() {
             }}
           >
             <div
-              className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden relative flex items-center justify-center"
+              className="w-14 h-14 lg:w-[52px] lg:h-[52px] rounded-full border-2 overflow-hidden relative flex items-center justify-center"
               style={{
                 backgroundColor: "#171f33",
                 borderColor: "#0b1326",
@@ -166,7 +166,7 @@ export default function StoriesFeed() {
         >
           <div className="p-0.5 rounded-full" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)" }}>
             <div
-              className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden flex items-center justify-center"
+              className="w-14 h-14 lg:w-[52px] lg:h-[52px] rounded-full border-2 overflow-hidden flex items-center justify-center"
               style={{ backgroundColor: "#171f33", borderColor: "#0b1326" }}
             >
               <span className="material-symbols-outlined text-2xl transition-transform group-hover:scale-110" style={{ color: "#ef4444" }}>
@@ -186,7 +186,7 @@ export default function StoriesFeed() {
           >
             <div className="relative">
               <div className="p-0.5 lg:p-1 rounded-full" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)" }}>
-                <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden" style={{ borderColor: "#0b1326", backgroundColor: "#222a3d" }}>
+                <div className="w-14 h-14 lg:w-[52px] lg:h-[52px] rounded-full border-2 overflow-hidden" style={{ borderColor: "#0b1326", backgroundColor: "#222a3d" }}>
                   {live.host_profile_pic ? (
                     <img src={live.host_profile_pic} alt={live.host_username} className="w-full h-full object-cover" />
                   ) : (
@@ -231,7 +231,7 @@ export default function StoriesFeed() {
                   }}
                 >
                   <div
-                    className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden"
+                    className="w-14 h-14 lg:w-[52px] lg:h-[52px] rounded-full border-2 overflow-hidden"
                     style={{
                       borderColor: "#0b1326",
                       backgroundColor: "#222a3d",
