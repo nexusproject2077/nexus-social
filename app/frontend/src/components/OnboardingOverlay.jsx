@@ -36,12 +36,19 @@ export default function OnboardingOverlay() {
 
   useEffect(() => {
     try {
-      if (!localStorage.getItem(STORAGE_KEY)) setShow(true);
+      // `nexus_show_onboarding` est posé juste après une INSCRIPTION → le guide
+      // s'affiche à coup sûr pour les nouveaux comptes, même si l'appareil a déjà
+      // vu le guide. Sinon, 1re fois seulement (drapeau « déjà vu » absent).
+      const forced = localStorage.getItem("nexus_show_onboarding") === "1";
+      if (forced || !localStorage.getItem(STORAGE_KEY)) setShow(true);
     } catch { /* localStorage indisponible → on n'affiche rien */ }
   }, []);
 
   const finish = () => {
-    try { localStorage.setItem(STORAGE_KEY, "1"); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(STORAGE_KEY, "1");
+      localStorage.removeItem("nexus_show_onboarding");
+    } catch { /* ignore */ }
     setShow(false);
   };
 

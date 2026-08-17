@@ -133,6 +133,12 @@ export default function AuthPage({ setUser }) {
 
       const response = await axios.post(`${API}${endpoint}`, payload);
 
+      // Inscription → on force l'affichage du guide de bienvenue à l'arrivée sur
+      // le fil (même si le drapeau « déjà vu » existe sur cet appareil).
+      if (!isLogin) {
+        try { localStorage.setItem("nexus_show_onboarding", "1"); } catch { /* ignore */ }
+      }
+
       // Double authentification : le backend ne renvoie pas de token, il attend
       // un code de connexion envoyé par email.
       if (response.data?.twofa_required) {
@@ -214,18 +220,18 @@ export default function AuthPage({ setUser }) {
 
           <div className="relative z-10 max-w-lg">
             <h2 className="font-headline text-6xl font-bold leading-[1.1] mb-8">
-              Rejoignez le{" "}
+              Ton réseau social,{" "}
               <span style={{ color: "rgba(218,226,253,0.5)" }}>
-                futur de l'interaction
-              </span>{" "}
-              digitale.
+                à ta façon.
+              </span>
             </h2>
             <p
               className="text-lg leading-relaxed font-light"
               style={{ color: "#bbc9cd" }}
             >
-              Une architecture conçue pour la rapidité, l'élégance et la
-              clarté. Redéfinissez votre présence sociale.
+              Ta vie privée d'abord, tes créateurs mis en avant, et la liberté de
+              t'exprimer. Poste, filme, discute et soutiens ta communauté — sans
+              suivi caché ni bruit inutile.
             </p>
           </div>
         </section>
