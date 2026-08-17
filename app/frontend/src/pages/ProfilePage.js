@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
@@ -49,7 +49,48 @@ export default function ProfilePage({ user, setUser }) {
   const [followModal, setFollowModal] = useState(null); // { kind: "followers"|"following" }
   const [showTip, setShowTip] = useState(false); // sélecteur de montant de pourboire
 
+  // Épinglage ROBUSTE des onglets (position: sticky s'avère non fiable ici sur
+  // iOS). On bascule les onglets en position: fixed dès qu'ils atteignent le haut,
+  // via un repère (anchor) resté dans le flux. Mobile uniquement (< lg).
+  const tabsAnchorRef = useRef(null);
+  const tabsBarRef    = useRef(null);
+  const [tabsPinned, setTabsPinned] = useState(false);
+  const [tabsBarH, setTabsBarH]     = useState(0);
+
   const isOwnProfile = user && userId && user.id === userId;
+
+  useEffect(() => {
+    const anchor = tabsAnchorRef.current;
+    if (!anchor) return;
+    const isMobile = () => window.matchMedia("(max-width: 1023px)").matches;
+    // Hauteur de la barre Paramètres (fixe) = 48px + zone sûre iOS, mesurée via un
+    // petit probe (calc(env(...)) illisible directement en JS).
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;height:calc(env(safe-area-inset-top) + 48px);";
+    document.body.appendChild(probe);
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      if (!isMobile()) { setTabsPinned(false); return; }
+      const pinTop = isOwnProfile ? probe.getBoundingClientRect().height : 0;
+      setTabsPinned(anchor.getBoundingClientRect().top <= pinTop + 0.5);
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
+    const measure = () => {
+      if (tabsBarRef.current) setTabsBarH(tabsBarRef.current.offsetHeight);
+      update();
+    };
+    measure();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", measure);
+      if (raf) cancelAnimationFrame(raf);
+      probe.remove();
+    };
+    // profile en dépendance : l'anchor n'existe qu'une fois le profil rendu.
+  }, [isOwnProfile, profile]);
 
   // Retour de Stripe après un pourboire (?tip=success|cancel).
   useEffect(() => {
@@ -468,17 +509,22 @@ export default function ProfilePage({ user, setUser }) {
         })}
       </div>
 
-      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
-      <div
-        className="sticky z-30 mt-6"
-        style={{
-          // Collé sous la barre Paramètres (fixe) : on inclut la zone sûre iOS,
-          // sinon les onglets se collaient à 48px et passaient DERRIÈRE la barre
-          // (hauteur 48 + encoche) → ils « disparaissaient » au scroll sur iPhone.
-          top: isOwnProfile ? "calc(env(safe-area-inset-top) + 48px)" : "env(safe-area-inset-top)",
-          background: `${C.surface}d9`, backdropFilter: "blur(16px)", borderTop: `1px solid ${C.outlineVariant}18`, borderBottom: `1px solid ${C.outlineVariant}18`,
-        }}
-      >
+      {/* ── Tabs — épinglés en haut au scroll (position: fixed piloté en JS,
+             car sticky CSS non fiable ici sur iOS). L'anchor reste dans le flux
+             et réserve la hauteur quand les onglets passent en fixed. ────────── */}
+      <div ref={tabsAnchorRef} className="mt-6" style={{ height: tabsPinned ? tabsBarH : undefined }}>
+        <div
+          ref={tabsBarRef}
+          className={`z-[55] ${tabsPinned ? "fixed left-0 right-0 lg:static" : "lg:sticky lg:top-0"}`}
+          style={{
+            top: tabsPinned ? "calc(env(safe-area-inset-top) + 48px)" : undefined,
+            // Opaque une fois épinglé (masque le contenu qui défile dessous) ;
+            // légèrement translucide dans le flux.
+            background: tabsPinned ? C.surface : `${C.surface}d9`,
+            backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+            borderTop: `1px solid ${C.outlineVariant}18`, borderBottom: `1px solid ${C.outlineVariant}18`,
+          }}
+        >
         <div className="max-w-5xl mx-auto flex">
           {tabs.map(({ id, label, icon }) => {
             const active = activeTab === id;
@@ -509,6 +555,7 @@ export default function ProfilePage({ user, setUser }) {
               </button>
             );
           })}
+        </div>
         </div>
       </div>
 
