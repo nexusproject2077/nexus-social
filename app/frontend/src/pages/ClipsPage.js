@@ -459,8 +459,9 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
 
   const handleShare = async (e) => {
     e.stopPropagation();
-    // URL partageable du clip : /nexus-clips/:clipId ouvre directement la vidéo.
-    const url = `${window.location.origin}/nexus-clips/${post.id}`;
+    // Lien MIROIR servi par le backend (/clip/:id) → aperçu Open Graph riche
+    // (miniature + titre + vidéo) sur WhatsApp/Discord/X + CTA « Ouvrir dans Nexus ».
+    const url = `${API.replace(/\/api\/?$/, "")}/clip/${post.id}`;
     try {
       if (navigator.share) await navigator.share({ title: "Nexus Clips", url });
       else { await navigator.clipboard.writeText(url); toast.success("Lien copié"); }

@@ -8,7 +8,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse, RedirectResponse
+from starlette.responses import JSONResponse, RedirectResponse, HTMLResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import InvalidURI, ConnectionFailure
 import os
@@ -32,6 +32,7 @@ import hmac
 import random
 import math
 import re
+import html as _html
 
 # E2EE (chiffrement des messages / données sensibles)
 from cryptography.fernet import Fernet
@@ -8251,6 +8252,164 @@ async def serve_media(kind: str, media_id: str, request: Request, exp: int = 0, 
     # charger plusieurs médias d'un coup. Best-effort (ne fait rien sans Cloudinary).
     schedule_lazy_media_migration(collection, {"id": media_id, field: url}, field=field)
     return _ranged_media_response(request, data, content_type)
+
+
+# ==================== PAGES MIROIR DE PARTAGE (Open Graph) ====================
+# Boucle de viralité : un lien /clip/:id ou /post/:id est servi par le backend
+# (Cloud Run) avec des balises Open Graph générées dynamiquement depuis MongoDB,
+# pour un aperçu riche sur WhatsApp/Discord/iMessage/X, + une page miroir noire
+# épurée avec un gros bouton « Ouvrir dans Nexus ». Les robots sociaux
+# n'exécutent pas de JS → l'HTML initial DOIT déjà contenir l'OG (SSR ici).
+
+def _public_media_url_for_post(post: dict, base: str) -> Optional[str]:
+    """URL média absolue et publiquement lisible (pas de data: ni de sentinel)."""
+    mu = post.get("media_url")
+    if not isinstance(mu, str) or not mu:
+        return None
+    if mu.startswith(_MEDIA_SENTINEL) or mu.startswith("data:"):
+        pid = post.get("id") or ""
+        return f"{base}/api/media/post/{pid}" if (base and pid) else None
+    return _optimize_cloudinary(mu)
+
+
+def _video_poster_url(media_url: Optional[str], base: str, post_id: str) -> Optional[str]:
+    """Image d'aperçu (og:image) pour une vidéo. Cloudinary : 1re image extraite
+    en JPG. Sinon on ne devine pas de poster (l'appelant retombe sur l'avatar)."""
+    if not isinstance(media_url, str) or not media_url:
+        return None
+    if "res.cloudinary.com" in media_url and "/video/upload/" in media_url:
+        head, _, rest = media_url.partition("/video/upload/")
+        last = rest.rsplit("/", 1)[-1]
+        if "." in last:
+            rest = rest.rsplit(".", 1)[0]
+        return f"{head}/video/upload/so_0/{rest}.jpg"
+    return None
+
+
+def _render_mirror_page(post: dict, base: str, kind: str) -> str:
+    """Construit la page miroir HTML (OG + rendu épuré). kind ∈ {clip, post}."""
+    pid = post.get("id") or ""
+    author = post.get("author_username") or "quelqu'un"
+    raw_caption = (post.get("content") or "").strip()
+    is_video = post.get("media_type") == "video"
+    media_url = _public_media_url_for_post(post, base)
+    avatar = safe_http_url(post.get("author_profile_pic"))
+
+    # og:image — pour une vidéo : poster Cloudinary sinon l'avatar (jamais l'URL
+    # vidéo, qui ne s'afficherait pas comme miniature). Pour une image : elle-même.
+    if is_video:
+        og_image = _video_poster_url(post.get("media_url"), base, pid) or avatar
+    else:
+        og_image = media_url or avatar
+
+    app_path = f"/nexus-clips/{pid}" if kind == "clip" else f"/post/{pid}"
+    app_url = f"{FRONTEND_URL.rstrip('/')}{app_path}"
+
+    noun = "clip" if kind == "clip" else "publication"
+    title = f"@{author} sur Nexus"
+    desc = raw_caption[:180] if raw_caption else f"Découvre ce {noun} sur Nexus — le réseau social où tu es à ta place."
+
+    e = _html.escape
+    ea = lambda s: _html.escape(s or "", quote=True)
+
+    og_tags = [
+        f'<meta property="og:site_name" content="Nexus">',
+        f'<meta property="og:type" content="{ "video.other" if is_video else "article" }">',
+        f'<meta property="og:title" content="{ea(title)}">',
+        f'<meta property="og:description" content="{ea(desc)}">',
+        f'<meta property="og:url" content="{ea(base + "/" + kind + "/" + pid)}">',
+        '<meta name="twitter:card" content="summary_large_image">',
+        f'<meta name="twitter:title" content="{ea(title)}">',
+        f'<meta name="twitter:description" content="{ea(desc)}">',
+    ]
+    if og_image:
+        og_tags.append(f'<meta property="og:image" content="{ea(og_image)}">')
+        og_tags.append(f'<meta name="twitter:image" content="{ea(og_image)}">')
+    if is_video and media_url:
+        og_tags.append(f'<meta property="og:video" content="{ea(media_url)}">')
+        og_tags.append(f'<meta property="og:video:secure_url" content="{ea(media_url)}">')
+        og_tags.append('<meta property="og:video:type" content="video/mp4">')
+        og_tags.append('<meta name="twitter:card" content="player">')
+
+    # Média affiché dans la page miroir.
+    if media_url and is_video:
+        media_html = (
+            f'<video src="{ea(media_url)}" controls autoplay loop muted playsinline '
+            f'poster="{ea(og_image or "")}" style="width:100%;max-height:70vh;border-radius:20px;background:#000;object-fit:contain"></video>'
+        )
+    elif media_url:
+        media_html = f'<img src="{ea(media_url)}" alt="" style="width:100%;max-height:70vh;border-radius:20px;object-fit:contain">'
+    else:
+        media_html = ""
+
+    avatar_html = (
+        f'<img src="{ea(avatar)}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover">'
+        if avatar else
+        f'<div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;background:linear-gradient(135deg,#22d3ee,#3b82f6);color:#00363e">{e(author[:1].upper())}</div>'
+    )
+    caption_html = f'<p style="color:#c7d0e0;font-size:15px;line-height:1.5;margin:16px 0 0;text-align:left">{e(raw_caption)}</p>' if raw_caption else ""
+
+    return f"""<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{ea(title)} · Nexus</title>
+{chr(10).join(og_tags)}
+<style>
+  * {{ box-sizing:border-box; }}
+  html,body {{ margin:0; padding:0; background:#05070d; color:#e7ecf6; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }}
+  .wrap {{ min-height:100dvh; display:flex; flex-direction:column; align-items:center; }}
+  .card {{ width:100%; max-width:520px; padding:20px 18px calc(env(safe-area-inset-bottom,0px) + 120px); }}
+  .brand {{ display:flex; align-items:center; gap:8px; font-weight:900; font-size:20px; letter-spacing:-0.02em; padding:14px 2px 18px; }}
+  .brand .dot {{ width:10px; height:10px; border-radius:50%; background:linear-gradient(135deg,#22d3ee,#3b82f6); box-shadow:0 0 12px rgba(34,211,238,.6); }}
+  .author {{ display:flex; align-items:center; gap:10px; margin-top:16px; }}
+  .author b {{ font-size:15px; }}
+  .cta {{ position:fixed; left:0; right:0; bottom:0; padding:16px 18px calc(env(safe-area-inset-bottom,0px) + 16px); background:linear-gradient(to top,#05070d 60%,transparent); display:flex; justify-content:center; }}
+  .cta a {{ width:100%; max-width:484px; text-align:center; text-decoration:none; padding:16px; border-radius:18px; font-weight:800; font-size:16px; color:#00363e; background:linear-gradient(135deg,#22d3ee,#3b82f6); box-shadow:0 8px 24px rgba(34,211,238,.35); }}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="brand"><span class="dot"></span>Nexus</div>
+      {media_html}
+      <div class="author">{avatar_html}<b>@{e(author)}</b></div>
+      {caption_html}
+    </div>
+  </div>
+  <div class="cta"><a href="{ea(app_url)}">Ouvrir dans Nexus · Rejoindre la communauté</a></div>
+</body>
+</html>"""
+
+
+async def _serve_mirror(kind: str, post_id: str, request: Request) -> HTMLResponse:
+    base = _media_public_base(request)
+    try:
+        post = await db.posts.find_one({"id": post_id})
+    except Exception:
+        post = None
+    if not post:
+        # Lien mort → on renvoie vers l'app (feed) plutôt qu'une page vide.
+        return HTMLResponse(
+            f'<!doctype html><meta charset="utf-8">'
+            f'<meta http-equiv="refresh" content="0; url={_html.escape(FRONTEND_URL, quote=True)}/feed">'
+            f'<title>Nexus</title>', status_code=404)
+    post = convert_mongo_doc_to_dict(post)
+    html_page = _render_mirror_page(post, base, kind)
+    return HTMLResponse(html_page, headers={"Cache-Control": "public, max-age=300"})
+
+
+@app.get("/clip/{post_id}")
+async def mirror_clip(post_id: str, request: Request):
+    """Page miroir d'un clip (Open Graph + rendu épuré + CTA)."""
+    return await _serve_mirror("clip", post_id, request)
+
+
+@app.get("/post/{post_id}")
+async def mirror_post(post_id: str, request: Request):
+    """Page miroir d'une publication (Open Graph + rendu épuré + CTA)."""
+    return await _serve_mirror("post", post_id, request)
 
 
 @api_router.get("/clips")

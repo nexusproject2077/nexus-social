@@ -127,7 +127,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
   const handleShare = async () => {
     // Un repost partage la publication d'ORIGINE (URL canonique).
-    const url = `${window.location.origin}/post/${originalId}`;
+    // Lien MIROIR servi par le backend → aperçu Open Graph riche
+    // (WhatsApp/Discord/iMessage) + CTA « Ouvrir dans Nexus ».
+    const url = `${API.replace(/\/api\/?$/, "")}/post/${originalId}`;
     const shareData = {
       title: `${displayAuthorName} sur Nexus`,
       text: post.content ? post.content.slice(0, 120) : "Découvre cette publication sur Nexus",
