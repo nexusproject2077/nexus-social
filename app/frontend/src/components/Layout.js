@@ -509,8 +509,15 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {(!hideMobileChrome || bottomNav) && (
       <>
       <nav
-        className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4 select-none"
-        style={{ backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
+        className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 select-none"
+        style={{
+          // Hauteur = 4rem de contenu + zone sûre iOS (indicateur d'accueil) :
+          // les icônes ne tombent plus dans la zone de geste du bas. Sur les
+          // appareils sans encoche (safe-area = 0), reste exactement 4rem.
+          height: "calc(4rem + env(safe-area-inset-bottom))",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)",
+        }}
       >
         {/* Le bouton « + » n'est plus au centre : il flotte en bas à droite (FAB,
             page d'accueil uniquement). Recherche = pictogramme entre Messages et Profil. */}
