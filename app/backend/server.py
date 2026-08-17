@@ -8302,8 +8302,11 @@ def _render_mirror_page(post: dict, base: str, kind: str) -> str:
     else:
         og_image = media_url or avatar
 
+    # CTA → deep-link dans l'app avec ?connect=1 : un membre connecté ouvre
+    # directement le contenu ; un visiteur anonyme est mené vers l'inscription
+    # (le front lit ce drapeau). Pas de boucle avec la page miroir.
     app_path = f"/nexus-clips/{pid}" if kind == "clip" else f"/post/{pid}"
-    app_url = f"{FRONTEND_URL.rstrip('/')}{app_path}"
+    app_url = f"{FRONTEND_URL.rstrip('/')}{app_path}?connect=1"
 
     noun = "clip" if kind == "clip" else "publication"
     title = f"@{author} sur Nexus"

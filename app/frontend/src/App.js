@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
@@ -39,6 +39,33 @@ import FaqPage from './pages/content/FaqPage';
 // L'URL WebSocket (temps réel + lives) est dérivée de API → suit automatiquement.
 const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "https://nexus-social-4k3v.onrender.com").replace(/\/$/, "");
 export const API = `${BACKEND_URL}/api`;
+
+// Base publique du backend (sans /api) — sert à construire les liens miroir
+// /clip/:id et /post/:id (pages publiques Open Graph servies côté serveur).
+export const PUBLIC_BASE = API.replace(/\/api\/?$/, "");
+
+// Lien public partagé (post/clip) ouvert par un visiteur NON connecté : on ne
+// le renvoie JAMAIS vers /auth. On charge la page miroir PUBLIQUE servie par le
+// backend (Open Graph + lecture seule + CTA « Ouvrir dans Nexus »).
+function MirrorRedirect({ kind, param }) {
+  const params = useParams();
+  const id = params[param];
+  useEffect(() => {
+    if (!id) return;
+    // Le CTA de la page miroir renvoie ici avec ?connect=1 → l'anonyme est alors
+    // dirigé vers l'inscription/connexion (l'objectif : rejoindre la communauté).
+    // Sinon (lien ouvert directement en anonyme) → on charge la page miroir
+    // publique servie par le backend (lecture seule + Open Graph), jamais /auth.
+    const connect = new URLSearchParams(window.location.search).get("connect") === "1";
+    if (connect) window.location.replace(`${window.location.origin}/auth`);
+    else window.location.replace(`${PUBLIC_BASE}/${kind}/${id}`);
+  }, [kind, id]);
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-slate-950">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500" />
+    </div>
+  );
+}
 
 // INTERCEPTOR AXIOS – ENVOIE LE TOKEN À CHAQUE REQUÊTE (LA CLÉ DE LA VICTOIRE)
 axios.interceptors.request.use(
@@ -213,9 +240,11 @@ function App() {
             path="/search"
             element={user ? <SearchPage user={user} /> : <Navigate to="/auth" />}
           />
+          {/* Lien PUBLIC (partage) : connecté → détail dans l'app ; visiteur
+              anonyme → page miroir publique (jamais /auth). */}
           <Route
             path="/post/:postId"
-            element={user ? <PostDetailPage user={user} /> : <Navigate to="/auth" />}
+            element={user ? <PostDetailPage user={user} /> : <MirrorRedirect kind="post" param="postId" />}
           />
           {/* Pages de CONTENU — PUBLIQUES (accessibles sans connexion, pensées
               pour l'information des visiteurs et le référencement). */}
@@ -266,9 +295,11 @@ function App() {
             path="/nexus-clips"
             element={user ? <ClipsPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
+          {/* Lien PUBLIC (partage clip) : connecté → lecteur dans l'app ;
+              visiteur anonyme → page miroir publique (jamais /auth). */}
           <Route
             path="/nexus-clips/:clipId"
-            element={user ? <ClipsPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
+            element={user ? <ClipsPage user={user} setUser={setUser} /> : <MirrorRedirect kind="clip" param="clipId" />}
           />
           <Route
             path="/clips"

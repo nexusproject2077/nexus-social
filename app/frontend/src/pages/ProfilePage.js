@@ -347,7 +347,7 @@ export default function ProfilePage({ user, setUser }) {
 
         {/* Profile overlay */}
         <div className="absolute bottom-0 left-0 w-full px-5 sm:px-8 pb-6" style={{ zIndex: 2 }}>
-          <div className="flex flex-col sm:flex-row items-end gap-5 sm:gap-8 max-w-5xl mx-auto">
+          <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-8 max-w-5xl mx-auto">
 
             {/* Avatar */}
             <div className="relative flex-shrink-0 group">
@@ -373,9 +373,10 @@ export default function ProfilePage({ user, setUser }) {
               </div>
             </div>
 
-            {/* Meta */}
-            <div className="flex-1 min-w-0 mb-1">
-              <div className="flex flex-wrap items-center gap-3 mb-2">
+            {/* Meta — centré sur mobile (avatar/pseudo/boutons alignés au milieu),
+                aligné à gauche sur PC. */}
+            <div className="w-full sm:flex-1 min-w-0 mb-1 text-center sm:text-left">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mb-2">
                 <h1
                   className="text-3xl sm:text-[2.8rem] font-black tracking-tighter leading-none text-white"
                   style={{ fontFamily: "Space Grotesk, sans-serif", textShadow: "0 0 28px rgba(34,211,238,0.38)" }}
@@ -394,9 +395,9 @@ export default function ProfilePage({ user, setUser }) {
                   </span>
                 )}
                 {profile.is_private && <Lock size={18} color={C.outline} />}
-                {/* Groupe d'actions soudé : le bouton Partager reste collé à
-                    Modifier le profil / Enregistrés au lieu de tomber seul. */}
-                <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Groupe d'actions soudé : sur mobile il occupe sa propre ligne
+                    centrée sous le pseudo ; sur PC il reste inline à droite. */}
+                <div className="flex items-center justify-center gap-2 flex-shrink-0 w-full sm:w-auto mt-1 sm:mt-0">
                 <FollowButton />
                 {/* Pourboire (Tip) — seulement pour les créateurs ayant activé Stripe Connect. */}
                 {!isOwnProfile && profile.can_receive_tips && (
@@ -447,7 +448,7 @@ export default function ProfilePage({ user, setUser }) {
                 </div>
               </div>
               {profile.bio && (
-                <p className="text-sm leading-relaxed max-w-md" style={{ color: C.outline }}>
+                <p className="text-sm leading-relaxed max-w-md mx-auto sm:mx-0" style={{ color: C.outline }}>
                   {profile.bio}
                 </p>
               )}
@@ -484,8 +485,8 @@ export default function ProfilePage({ user, setUser }) {
         </div>
       </div>
 
-      {/* Stats — mobile : chiffres épurés alignés (façon X/Instagram), sans blocs gris. */}
-      <div className="sm:hidden flex items-center gap-6 px-5 pt-3">
+      {/* Stats — mobile : chiffres épurés centrés (cohérent avec le hero centré). */}
+      <div className="sm:hidden flex items-center justify-center gap-7 px-5 pt-3">
         {[
           { label: "Publications", value: fmt(stats.posts), kind: null },
           { label: "Abonnés",      value: fmt(stats.followers), kind: "followers" },
