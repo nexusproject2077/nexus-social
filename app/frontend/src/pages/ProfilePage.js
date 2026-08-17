@@ -333,11 +333,15 @@ export default function ProfilePage({ user, setUser }) {
 
       {/* ── Cinematic Hero ───────────────────────────────────────────────── */}
       <div className="relative w-full overflow-hidden" style={{ height: 290 }}>
-        {/* Gradient banner */}
+        {/* Gradient banner (repli quand aucune bannière de couverture) */}
         <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #0a1628 0%, #0d1e3d 35%, #071525 65%, #0b1326 100%)" }} />
         {/* Ambient glows */}
         <div className="absolute rounded-full blur-3xl" style={{ width: 320, height: 320, top: -40, left: "20%", background: "radial-gradient(circle, rgba(34,211,238,0.12), transparent)" }} />
         <div className="absolute rounded-full blur-3xl" style={{ width: 240, height: 240, top: 0, right: "25%", background: "radial-gradient(circle, rgba(59,130,246,0.10), transparent)" }} />
+        {/* Bannière de couverture (façon X) — recouvre le dégradé si définie */}
+        {profile.cover_pic && (
+          <img src={profile.cover_pic} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        )}
         {/* Fade to surface */}
         <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 0%, ${C.surface}80 60%, ${C.surface} 100%)`, zIndex: 1 }} />
 
@@ -449,8 +453,8 @@ export default function ProfilePage({ user, setUser }) {
               )}
             </div>
 
-            {/* Stats — desktop */}
-            <div className="hidden sm:flex gap-3 flex-shrink-0 mb-1">
+            {/* Stats — desktop : chiffres épurés alignés (façon X), sans blocs. */}
+            <div className="hidden sm:flex items-baseline gap-6 flex-shrink-0 mb-2">
               {[
                 { label: "Publications", value: fmt(stats.posts), kind: null },
                 { label: "Abonnés",      value: fmt(stats.followers), kind: "followers" },
@@ -463,14 +467,13 @@ export default function ProfilePage({ user, setUser }) {
                     type="button"
                     disabled={!clickable}
                     onClick={() => clickable && setFollowModal({ kind: s.kind })}
-                    className={`text-center px-5 py-3 rounded-2xl ${clickable ? "hover:brightness-125 transition-all cursor-pointer" : "cursor-default"}`}
-                    style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}
+                    className={`flex items-baseline gap-1.5 ${clickable ? "hover:opacity-80 transition-opacity cursor-pointer" : "cursor-default"}`}
                   >
-                    <span className="block text-[10px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
-                      {s.label}
-                    </span>
                     <span className="text-xl font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
                       {s.value}
+                    </span>
+                    <span className="text-sm font-medium" style={{ color: C.outline }}>
+                      {s.label}
                     </span>
                   </button>
                 );
@@ -481,8 +484,8 @@ export default function ProfilePage({ user, setUser }) {
         </div>
       </div>
 
-      {/* Stats — mobile : compactes, réparties sur toute la largeur (pas de scroll). */}
-      <div className="sm:hidden flex gap-2 px-4 pt-3">
+      {/* Stats — mobile : chiffres épurés alignés (façon X/Instagram), sans blocs gris. */}
+      <div className="sm:hidden flex items-center gap-6 px-5 pt-3">
         {[
           { label: "Publications", value: fmt(stats.posts), kind: null },
           { label: "Abonnés",      value: fmt(stats.followers), kind: "followers" },
@@ -495,13 +498,12 @@ export default function ProfilePage({ user, setUser }) {
               type="button"
               disabled={!clickable}
               onClick={() => clickable && setFollowModal({ kind: s.kind })}
-              className={`flex-1 min-w-0 text-center px-2 py-2 rounded-xl ${clickable ? "active:brightness-125" : ""}`}
-              style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}
+              className={`flex items-baseline gap-1.5 ${clickable ? "active:opacity-70" : ""}`}
             >
-              <span className="block text-base font-black text-white leading-tight" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+              <span className="text-base font-black text-white leading-tight" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
                 {s.value}
               </span>
-              <span className="block text-[9px] uppercase tracking-wide font-bold truncate" style={{ color: C.outline }}>
+              <span className="text-[13px] font-medium" style={{ color: C.outline }}>
                 {s.label}
               </span>
             </button>

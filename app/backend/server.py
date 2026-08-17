@@ -1187,6 +1187,7 @@ class User(BaseModel):
     email: str
     bio: str = ""
     profile_pic: Optional[str] = None
+    cover_pic: Optional[str] = None     # bannière de couverture (façon X)
     followers_count: int = 0
     following_count: int = 0
     is_verified: bool = False           # badge « identité vérifiée » (pièce validée)
@@ -1213,6 +1214,7 @@ class UserProfile(BaseModel):
     username: str
     bio: str = ""
     profile_pic: Optional[str] = None
+    cover_pic: Optional[str] = None     # bannière de couverture (façon X)
     followers_count: int = 0
     following_count: int = 0
     is_following: bool = False
@@ -2313,19 +2315,26 @@ async def stripe_webhook(request: Request):
 async def update_profile(
     bio: Optional[str] = Form(None),
     profile_pic: Optional[UploadFile] = File(None),
+    cover_pic: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
     """Met à jour le profil de l'utilisateur"""
     update_data = {}
-   
+
     if bio is not None:
         update_data["bio"] = bio
-   
+
     if profile_pic:
         contents = await profile_pic.read()
         data_url = f"data:{profile_pic.content_type};base64,{base64.b64encode(contents).decode('utf-8')}"
         # Décharge l'avatar vers Cloudinary (URL légère au lieu de base64 en base).
         update_data["profile_pic"] = await store_media(data_url, folder="avatars")
+
+    if cover_pic:
+        contents = await cover_pic.read()
+        data_url = f"data:{cover_pic.content_type};base64,{base64.b64encode(contents).decode('utf-8')}"
+        # Bannière de couverture → Cloudinary (dossier dédié).
+        update_data["cover_pic"] = await store_media(data_url, folder="covers")
 
     if update_data:
         await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
@@ -3559,6 +3568,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         username=user["username"],
         bio=user.get("bio", ""),
         profile_pic=user.get("profile_pic"),
+        cover_pic=user.get("cover_pic"),
         followers_count=user.get("followers_count", 0),
         following_count=user.get("following_count", 0),
         is_following=is_following,

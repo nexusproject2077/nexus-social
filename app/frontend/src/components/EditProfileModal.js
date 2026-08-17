@@ -19,6 +19,8 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
   const [bio, setBio] = useState(user.bio || "");
   const [profilePic, setProfilePic] = useState(null);
   const [profilePicPreview, setProfilePicPreview] = useState(user.profile_pic);
+  const [coverPic, setCoverPic] = useState(null);
+  const [coverPicPreview, setCoverPicPreview] = useState(user.cover_pic);
   const [loading, setLoading] = useState(false);
 
   const handleProfilePicChange = (e) => {
@@ -33,6 +35,18 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
     reader.readAsDataURL(file);
   };
 
+  const handleCoverPicChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setCoverPic(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setCoverPicPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -42,6 +56,9 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
       formData.append('bio', bio);
       if (profilePic) {
         formData.append('profile_pic', profilePic);
+      }
+      if (coverPic) {
+        formData.append('cover_pic', coverPic);
       }
 
       const response = await axios.put(`${API}/auth/profile`, formData, {
@@ -67,30 +84,57 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="flex flex-col items-center">
-            <div className="relative">
-              <Avatar className="w-24 h-24">
-                <AvatarImage src={profilePicPreview} />
-                <AvatarFallback className="bg-slate-700 text-2xl">
-                  {user.username[0].toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
+          {/* Bannière de couverture (façon X) + avatar chevauchant */}
+          <div className="relative -mx-6 -mt-2">
+            <div className="relative h-32 overflow-hidden bg-slate-800"
+              style={{ background: coverPicPreview ? undefined : "linear-gradient(135deg,#0d1e3d,#0b1326)" }}>
+              {coverPicPreview && (
+                <img src={coverPicPreview} alt="Bannière" className="w-full h-full object-cover" />
+              )}
+              <div className="absolute inset-0" style={{ background: "rgba(2,6,23,0.25)" }} />
               <Label
-                htmlFor="profile-pic-upload"
-                className="absolute bottom-0 right-0 bg-cyan-500 hover:bg-cyan-600 rounded-full p-2 cursor-pointer"
+                htmlFor="cover-pic-upload"
+                className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 backdrop-blur rounded-full p-2 cursor-pointer"
               >
                 <Camera className="w-4 h-4 text-white" />
               </Label>
               <Input
-                id="profile-pic-upload"
-                data-testid="profile-pic-input"
+                id="cover-pic-upload"
+                data-testid="cover-pic-input"
                 type="file"
                 accept="image/*"
-                onChange={handleProfilePicChange}
+                onChange={handleCoverPicChange}
                 className="hidden"
               />
             </div>
+            {/* Avatar chevauchant la bannière */}
+            <div className="absolute left-6 -bottom-10">
+              <div className="relative">
+                <Avatar className="w-24 h-24 border-4 border-slate-900">
+                  <AvatarImage src={profilePicPreview} />
+                  <AvatarFallback className="bg-slate-700 text-2xl">
+                    {user.username[0].toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <Label
+                  htmlFor="profile-pic-upload"
+                  className="absolute bottom-0 right-0 bg-cyan-500 hover:bg-cyan-600 rounded-full p-2 cursor-pointer"
+                >
+                  <Camera className="w-4 h-4 text-white" />
+                </Label>
+                <Input
+                  id="profile-pic-upload"
+                  data-testid="profile-pic-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfilePicChange}
+                  className="hidden"
+                />
+              </div>
+            </div>
           </div>
+          {/* Espace réservé sous l'avatar chevauchant */}
+          <div className="h-12" aria-hidden />
 
           <div>
             <Label htmlFor="bio">Bio</Label>
