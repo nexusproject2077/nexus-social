@@ -4116,13 +4116,28 @@ async def stop_live(current_user: dict = Depends(get_current_user)):
     return {"success": True}
 
 
+# Durée MAX d'un direct : au-delà, une session encore marquée « active » est
+# considérée comme FANTÔME (l'hôte a fermé l'app sans appeler /live/stop). On la
+# filtre et on la nettoie → plus de « vous êtes en live » qui reste bloqué.
+LIVE_MAX_HOURS = 3
+
+
 @api_router.get("/live/active")
 async def active_lives(current_user: dict = Depends(get_current_user)):
-    """Directs en cours parmi les comptes suivis (abonnements) + soi-même."""
+    """Directs EN COURS parmi les comptes suivis (abonnements) + soi-même.
+
+    Anti-live-fantôme : une session « active » plus vieille que LIVE_MAX_HOURS est
+    ignorée ET remise à active=False (nettoyage opportuniste)."""
     allowed = set(await _followed_ids(current_user["id"]))
     allowed.add(current_user["id"])
-    out = []
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=LIVE_MAX_HOURS)).isoformat()
+    out, stale = [], []
     async for s in db.live_sessions.find({"active": True}):
+        started = s.get("started_at") or ""
+        # started_at est une chaîne ISO UTC → comparaison lexicographique = chrono.
+        if not started or started < cutoff:
+            stale.append(s.get("host_id"))
+            continue
         if s.get("host_id") in allowed:
             out.append({
                 "host_id": s.get("host_id"),
@@ -4131,6 +4146,10 @@ async def active_lives(current_user: dict = Depends(get_current_user)):
                 "room_id": s.get("room_id"),
                 "started_at": s.get("started_at"),
             })
+    if stale:
+        await db.live_sessions.update_many(
+            {"host_id": {"$in": [h for h in stale if h]}}, {"$set": {"active": False}}
+        )
     return out
 
 
@@ -8344,7 +8363,10 @@ async def clips_search(q: str, type: str = "top", skip: int = 0, limit: int = 20
 
     async def lives():
         out = []
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=LIVE_MAX_HOURS)).isoformat()
         async for s in db.live_sessions.find({"active": True}).limit(50):
+            if (s.get("started_at") or "") < cutoff:
+                continue  # session fantôme (trop vieille) → ignorée
             uname = s.get("host_username") or ""
             if re.search(re.escape(term), uname, re.I):
                 out.append({"host_id": s.get("host_id"), "host_username": uname,
