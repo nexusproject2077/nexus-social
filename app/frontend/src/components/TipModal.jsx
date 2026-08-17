@@ -1,6 +1,7 @@
-// Pourboire (Tip) — sélecteur de montant + moyens de paiement.
-// Le créateur peut proposer : carte (Stripe Checkout), PayPal.me, crypto.
-// On n'affiche QUE les moyens réellement activés par le créateur.
+// Pourboire (Tip) — montant + moyen de paiement.
+// Le créateur peut proposer : carte (Stripe), PayPal (paiement automatique avec
+// commission), lien PayPal.me (sans commission) et/ou crypto. On n'affiche que
+// les moyens réellement activés par le créateur.
 import { useState } from "react";
 import axios from "axios";
 import { API } from "@/App";
@@ -8,25 +9,37 @@ import { toast } from "sonner";
 
 const PRESETS = [1, 2, 5, 10];
 
-export default function TipModal({ userId, username, canReceiveTips = true, paypalLink = "", cryptoWallet = "", onClose }) {
+export default function TipModal({
+  userId, username,
+  canReceiveTips = false, paypalReceivable = false, paypalLink = "", cryptoWallet = "",
+  onClose,
+}) {
+  const [amount, setAmount] = useState(2);   // montant sélectionné (€)
   const [custom, setCustom] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const send = async (euros) => {
-    const amount = Number(euros);
-    if (!amount || amount < 1) { toast.error("Montant minimum : 1 €"); return; }
-    if (amount > 1000) { toast.error("Montant maximum : 1 000 €"); return; }
+  const value = custom ? Number(custom) : amount;
+  const amountOk = value >= 1 && value <= 1000;
+  const hasAmountMethod = canReceiveTips || paypalReceivable;
+
+  const payStripe = async () => {
+    if (!amountOk) { toast.error("Montant entre 1 € et 1 000 €"); return; }
     setLoading(true);
     try {
-      const res = await axios.post(`${API}/users/${userId}/tip-checkout`, {
-        amount_cents: Math.round(amount * 100),
-      });
+      const res = await axios.post(`${API}/users/${userId}/tip-checkout`, { amount_cents: Math.round(value * 100) });
       if (res.data?.url) window.location.href = res.data.url;
       else { toast.error("Pourboire momentanément indisponible"); setLoading(false); }
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Pourboire momentanément indisponible");
-      setLoading(false);
-    }
+    } catch (e) { toast.error(e.response?.data?.detail || "Pourboire momentanément indisponible"); setLoading(false); }
+  };
+
+  const payPaypal = async () => {
+    if (!amountOk) { toast.error("Montant entre 1 € et 1 000 €"); return; }
+    setLoading(true);
+    try {
+      const res = await axios.post(`${API}/users/${userId}/paypal-tip`, { amount_cents: Math.round(value * 100) });
+      if (res.data?.url) window.location.href = res.data.url;
+      else { toast.error("PayPal momentanément indisponible"); setLoading(false); }
+    } catch (e) { toast.error(e.response?.data?.detail || "PayPal momentanément indisponible"); setLoading(false); }
   };
 
   const copyCrypto = async () => {
@@ -34,12 +47,22 @@ export default function TipModal({ userId, username, canReceiveTips = true, payp
     catch { toast.info(cryptoWallet); }
   };
 
+  const presetBtn = (v) => (
+    <button key={v} onClick={() => { setAmount(v); setCustom(""); }} disabled={loading}
+      className="py-3 rounded-xl font-black text-sm active:scale-95 transition-all disabled:opacity-50"
+      style={{
+        background: !custom && amount === v ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : "#222a3d",
+        color: !custom && amount === v ? "#00363e" : "#dae2fd",
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}>
+      {v} €
+    </button>
+  );
+
   return (
-    <div
-      className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center sm:p-4"
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center sm:p-4"
       style={{ background: "rgba(2,6,20,0.8)" }}
-      onMouseDown={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}
-    >
+      onMouseDown={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}>
       <div className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5"
         style={{ background: "#171f33", border: "1px solid rgba(255,255,255,0.08)" }}>
         <div className="flex items-center gap-2 mb-1">
@@ -50,51 +73,50 @@ export default function TipModal({ userId, username, canReceiveTips = true, payp
           Un petit geste pour l'encourager. Choisis un montant et un moyen de paiement.
         </p>
 
-        {/* ── Carte bancaire (Stripe) ── */}
-        {canReceiveTips && (
+        {/* Montant partagé (carte + PayPal) */}
+        {hasAmountMethod && (
           <>
-            <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: "#859397" }}>Par carte</p>
-            <div className="grid grid-cols-4 gap-2 mb-3">
-              {PRESETS.map((v) => (
-                <button key={v} onClick={() => send(v)} disabled={loading}
-                  className="py-3 rounded-xl font-black text-sm active:scale-95 transition-all disabled:opacity-50"
-                  style={{ background: "#222a3d", color: "#dae2fd", border: "1px solid rgba(255,255,255,0.08)" }}>
-                  {v} €
+            <div className="grid grid-cols-4 gap-2 mb-2">{PRESETS.map(presetBtn)}</div>
+            <div className="flex items-center rounded-xl px-3 mb-3"
+              style={{ background: "#222a3d", border: `1px solid ${custom ? "var(--nexus-accent)" : "rgba(255,255,255,0.08)"}` }}>
+              <input type="number" min="1" max="1000" step="1" inputMode="decimal"
+                value={custom} onChange={(e) => setCustom(e.target.value)}
+                placeholder="Autre montant"
+                className="flex-1 bg-transparent outline-none py-3 text-sm text-white" />
+              <span className="text-sm font-bold" style={{ color: "#859397" }}>€</span>
+            </div>
+
+            <div className="space-y-2">
+              {canReceiveTips && (
+                <button onClick={payStripe} disabled={loading || !amountOk}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm active:scale-95 transition-all disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}>
+                  <span className="material-symbols-outlined text-lg">credit_card</span>
+                  Payer {amountOk ? `${value} € ` : ""}par carte
                 </button>
-              ))}
+              )}
+              {paypalReceivable && (
+                <button onClick={payPaypal} disabled={loading || !amountOk}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm active:scale-95 transition-all disabled:opacity-50"
+                  style={{ background: "#ffc439", color: "#0a1628" }}>
+                  <span className="material-symbols-outlined text-lg">account_balance_wallet</span>
+                  Payer {amountOk ? `${value} € ` : ""}avec PayPal
+                </button>
+              )}
             </div>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="flex-1 flex items-center rounded-xl px-3"
-                style={{ background: "#222a3d", border: "1px solid rgba(255,255,255,0.08)" }}>
-                <input
-                  type="number" min="1" max="1000" step="1" inputMode="decimal"
-                  value={custom} onChange={(e) => setCustom(e.target.value)}
-                  placeholder="Autre montant"
-                  className="flex-1 bg-transparent outline-none py-3 text-sm text-white"
-                />
-                <span className="text-sm font-bold" style={{ color: "#859397" }}>€</span>
-              </div>
-              <button onClick={() => send(custom)} disabled={loading || !custom}
-                className="px-4 py-3 rounded-xl font-bold text-sm active:scale-95 transition-all disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}>
-                Envoyer
-              </button>
-            </div>
-            <p className="text-[11px] mb-3" style={{ color: "#859397" }}>
-              Paiement sécurisé via Stripe.
-            </p>
+            <p className="text-[11px] mt-2 mb-1" style={{ color: "#859397" }}>Paiement sécurisé. Le créateur reçoit le montant après commission.</p>
           </>
         )}
 
-        {/* ── Autres moyens (PayPal / crypto) — sans commission Nexus ── */}
-        {(paypalLink || cryptoWallet) && (
+        {/* Moyens par lien (sans montant prédéfini) */}
+        {((paypalLink && !paypalReceivable) || cryptoWallet) && (
           <>
-            {canReceiveTips && <div className="h-px my-1" style={{ background: "rgba(255,255,255,0.08)" }} />}
-            <p className="text-[11px] font-bold uppercase tracking-widest mt-3 mb-2" style={{ color: "#859397" }}>
-              {canReceiveTips ? "Autres moyens" : "Moyens disponibles"}
+            {hasAmountMethod && <div className="h-px my-3" style={{ background: "rgba(255,255,255,0.08)" }} />}
+            <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: "#859397" }}>
+              {hasAmountMethod ? "Autres moyens" : "Moyens disponibles"}
             </p>
             <div className="space-y-2">
-              {paypalLink && (
+              {paypalLink && !paypalReceivable && (
                 <a href={paypalLink} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-3 px-4 py-3 rounded-xl active:scale-95 transition-all"
                   style={{ background: "#222a3d", border: "1px solid rgba(255,255,255,0.08)" }}>

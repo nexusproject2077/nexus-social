@@ -585,6 +585,69 @@ def _v2_transfers_active(account) -> bool:
     return _v2_deep(account, "configuration", "recipient", "capabilities",
                     "stripe_balance", "stripe_transfers", "status") == "active"
 
+
+# ══════════════ PayPal Commerce Platform (marketplace, commission auto) ══════════════
+# Modèle « 100 % automatique » façon Stripe Connect : le payeur paie le CRÉATEUR,
+# la plateforme prélève sa commission (platform_fees) au passage — Nexus ne
+# détient jamais les fonds. Nécessite un compte PARTENAIRE PayPal (Commerce
+# Platform) + variables d'environnement. Tout est inactif tant que non configuré.
+import requests as _requests  # client HTTP synchrone (exécuté via asyncio.to_thread)
+
+PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
+PAYPAL_SECRET = os.environ.get("PAYPAL_SECRET", "").strip()
+PAYPAL_ENV = os.environ.get("PAYPAL_ENV", "sandbox").strip().lower()
+PAYPAL_PARTNER_ID = os.environ.get("PAYPAL_PARTNER_ID", "").strip()   # merchant-id du partenaire (Nexus)
+PAYPAL_BN_CODE = os.environ.get("PAYPAL_BN_CODE", "").strip()          # PayPal-Partner-Attribution-Id (BN code)
+PAYPAL_WEBHOOK_ID = os.environ.get("PAYPAL_WEBHOOK_ID", "").strip()
+PAYPAL_BASE = "https://api-m.paypal.com" if PAYPAL_ENV == "live" else "https://api-m.sandbox.paypal.com"
+PAYPAL_ENABLED = bool(PAYPAL_CLIENT_ID and PAYPAL_SECRET)
+if PAYPAL_ENABLED:
+    print(f"✅ PayPal Commerce activé ({PAYPAL_ENV})")
+else:
+    print("ℹ️ PayPal désactivé (PAYPAL_CLIENT_ID/PAYPAL_SECRET absents) — pourboires PayPal via lien PayPal.me uniquement")
+
+_paypal_token_cache = {"token": None, "exp": 0}
+
+
+def _paypal_token_sync():
+    now = time.time()
+    if _paypal_token_cache["token"] and _paypal_token_cache["exp"] > now + 30:
+        return _paypal_token_cache["token"]
+    r = _requests.post(
+        f"{PAYPAL_BASE}/v1/oauth2/token",
+        auth=(PAYPAL_CLIENT_ID, PAYPAL_SECRET),
+        data={"grant_type": "client_credentials"},
+        headers={"Accept": "application/json"}, timeout=20,
+    )
+    r.raise_for_status()
+    d = r.json()
+    _paypal_token_cache["token"] = d["access_token"]
+    _paypal_token_cache["exp"] = now + int(d.get("expires_in", 3000))
+    return d["access_token"]
+
+
+def _paypal_auth_assertion(merchant_id: str) -> str:
+    """En-tête PayPal-Auth-Assertion (JWT non signé) : autorise la plateforme à
+    agir POUR LE COMPTE du vendeur (nécessaire pour les platform_fees en tiers)."""
+    def b64(d):
+        return base64.urlsafe_b64encode(json.dumps(d, separators=(",", ":")).encode()).decode().rstrip("=")
+    header = b64({"alg": "none"})
+    payload = b64({"iss": PAYPAL_CLIENT_ID, "payer_id": merchant_id})
+    return f"{header}.{payload}."
+
+
+def _paypal_call_sync(method: str, path: str, json_body=None, extra_headers=None):
+    headers = {"Authorization": f"Bearer {_paypal_token_sync()}", "Content-Type": "application/json"}
+    if PAYPAL_BN_CODE:
+        headers["PayPal-Partner-Attribution-Id"] = PAYPAL_BN_CODE
+    if extra_headers:
+        headers.update(extra_headers)
+    return _requests.request(method, f"{PAYPAL_BASE}{path}", headers=headers, json=json_body, timeout=25)
+
+
+async def _paypal_call(method: str, path: str, json_body=None, extra_headers=None):
+    return await asyncio.to_thread(_paypal_call_sync, method, path, json_body, extra_headers)
+
 # ==================== ADMINISTRATION ====================
 # ADMIN_EMAILS (emails séparés par des virgules) identifie les comptes
 # administrateurs, exposés via is_admin sur /auth/me. Optionnel : réservé à
@@ -1243,7 +1306,8 @@ class UserProfile(BaseModel):
     is_verified: bool = False
     is_premium: bool = False  # membre Nexus Premium (badge + avantages)
     can_receive_tips: bool = False  # a un compte Stripe Connect → pourboire par carte
-    paypal_link: Optional[str] = None  # lien PayPal.me pour recevoir des pourboires
+    paypal_receivable: bool = False  # PayPal Commerce activé → pourboire PayPal avec commission
+    paypal_link: Optional[str] = None  # lien PayPal.me (repli sans commission)
     crypto_wallet: Optional[str] = None  # adresse de tips crypto (Solana/USDT…)
     created_at: str
 
@@ -2217,6 +2281,160 @@ async def connect_onboard(current_user: dict = Depends(get_current_user)):
         return {"url": _v2d(link).get("url") or getattr(link, "url", None)}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
+
+
+# ── PayPal Commerce Platform : reversement direct au créateur + commission ──
+@api_router.get("/billing/paypal/status")
+async def paypal_status(current_user: dict = Depends(get_current_user)):
+    """État de l'activation PayPal (Commerce Platform) du créateur : peut-il
+    encaisser des pourboires ? Rafraîchit depuis PayPal si un Partner ID est
+    configuré, sinon se fie au drapeau stocké."""
+    if not PAYPAL_ENABLED:
+        return {"enabled": False, "connected": False, "receivable": False}
+    merchant_id = current_user.get("paypal_merchant_id")
+    if PAYPAL_PARTNER_ID:
+        try:
+            r = await _paypal_call("GET", f"/v1/customer/partners/{PAYPAL_PARTNER_ID}/merchant-integrations?tracking_id={current_user['id']}")
+            if r.ok:
+                d = r.json()
+                merchant_id = d.get("merchant_id") or merchant_id
+                receivable = bool(d.get("payments_receivable"))
+                await db.users.update_one({"id": current_user["id"]}, {"$set": {
+                    "paypal_merchant_id": merchant_id, "paypal_payments_receivable": receivable}})
+                return {"enabled": True, "connected": bool(merchant_id), "receivable": receivable,
+                        "email_confirmed": bool(d.get("primary_email_confirmed")), "fee_percent": PLATFORM_FEE_PERCENT}
+        except Exception:
+            pass
+    return {"enabled": True, "connected": bool(merchant_id),
+            "receivable": bool(current_user.get("paypal_payments_receivable")), "fee_percent": PLATFORM_FEE_PERCENT}
+
+
+@api_router.post("/billing/paypal/onboard")
+async def paypal_onboard(current_user: dict = Depends(get_current_user)):
+    """Lien d'onboarding PayPal (Partner Referrals) : le créateur connecte son
+    compte PayPal à Nexus pour encaisser directement (commission auto)."""
+    if not PAYPAL_ENABLED:
+        raise HTTPException(status_code=503, detail="PayPal n'est pas configuré")
+    body = {
+        "tracking_id": current_user["id"],
+        "partner_config_override": {"return_url": f"{FRONTEND_URL}/settings?paypal=done"},
+        "operations": [{"operation": "API_INTEGRATION", "api_integration_preference": {"rest_api_integration": {
+            "integration_method": "PAYPAL", "integration_type": "THIRD_PARTY",
+            "third_party_details": {"features": ["PAYMENT", "REFUND", "PARTNER_FEE"]}}}}],
+        "products": ["EXPRESS_CHECKOUT"],
+        "legal_consents": [{"type": "SHARE_DATA_CONSENT", "granted": True}],
+    }
+    try:
+        r = await _paypal_call("POST", "/v2/customer/partner-referrals", body)
+        if not r.ok:
+            raise HTTPException(status_code=502, detail=f"PayPal: {r.text[:300]}")
+        links = r.json().get("links", [])
+        action = next((l.get("href") for l in links if l.get("rel") == "action_url"), None)
+        if not action:
+            raise HTTPException(status_code=502, detail="Lien d'onboarding PayPal indisponible")
+        return {"url": action}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur PayPal: {e}")
+
+
+@api_router.post("/users/{user_id}/paypal-tip")
+async def paypal_tip_create(user_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Crée une commande PayPal (pourboire) : le créateur est le bénéficiaire,
+    Nexus prélève sa commission via platform_fees. Renvoie le lien d'approbation."""
+    if not PAYPAL_ENABLED:
+        raise HTTPException(status_code=503, detail="PayPal n'est pas configuré")
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Vous ne pouvez pas vous envoyer un pourboire")
+    creator = await db.users.find_one({"id": user_id})
+    if not creator:
+        raise HTTPException(status_code=404, detail="Créateur introuvable")
+    merchant_id = creator.get("paypal_merchant_id")
+    if not (merchant_id and creator.get("paypal_payments_receivable")):
+        raise HTTPException(status_code=400, detail="Ce créateur n'a pas encore activé PayPal")
+    cents = int(data.get("amount_cents") or 0)
+    if cents < 100 or cents > 100000:
+        raise HTTPException(status_code=400, detail="Montant entre 1 € et 1 000 €")
+    amount = cents / 100.0
+    fee = round(amount * PLATFORM_FEE_PERCENT / 100.0, 2)
+    body = {
+        "intent": "CAPTURE",
+        "purchase_units": [{
+            "amount": {"currency_code": "EUR", "value": f"{amount:.2f}"},
+            "payee": {"merchant_id": merchant_id},
+            "description": (f"Pourboire à @{creator.get('username')} sur Nexus")[:127],
+            "custom_id": (f"tip:{user_id}:{current_user['id']}")[:127],
+            "payment_instruction": {"disbursement_mode": "INSTANT",
+                                    "platform_fees": [{"amount": {"currency_code": "EUR", "value": f"{fee:.2f}"}}]},
+        }],
+        "application_context": {
+            "brand_name": "Nexus", "user_action": "PAY_NOW", "shipping_preference": "NO_SHIPPING",
+            "return_url": f"{FRONTEND_URL}/profil/{user_id}?paypal_tip=capture",
+            "cancel_url": f"{FRONTEND_URL}/profil/{user_id}?paypal_tip=cancel",
+        },
+    }
+    try:
+        r = await _paypal_call("POST", "/v2/checkout/orders", body,
+                               extra_headers={"PayPal-Auth-Assertion": _paypal_auth_assertion(merchant_id)})
+        if not r.ok:
+            raise HTTPException(status_code=502, detail=f"PayPal: {r.text[:300]}")
+        d = r.json()
+        approve = next((l.get("href") for l in d.get("links", []) if l.get("rel") in ("approve", "payer-action")), None)
+        if not approve:
+            raise HTTPException(status_code=502, detail="Lien de paiement PayPal indisponible")
+        return {"url": approve, "order_id": d.get("id")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur PayPal: {e}")
+
+
+@api_router.post("/billing/paypal/capture")
+async def paypal_capture(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Capture une commande PayPal approuvée (au retour du payeur) et enregistre
+    le pourboire. Idempotent (un même capture n'est jamais compté deux fois)."""
+    order_id = (data.get("order_id") or "").strip()
+    if not (PAYPAL_ENABLED and order_id):
+        raise HTTPException(status_code=400, detail="Commande PayPal invalide")
+    try:
+        r = await _paypal_call("POST", f"/v2/checkout/orders/{order_id}/capture", {})
+        if not r.ok:
+            raise HTTPException(status_code=502, detail=f"PayPal: {r.text[:300]}")
+        d = r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur PayPal: {e}")
+    try:
+        pu = d["purchase_units"][0]
+        cap = pu["payments"]["captures"][0]
+        value = cap["amount"]["value"]; currency = cap["amount"]["currency_code"]
+        custom = cap.get("custom_id") or pu.get("custom_id") or ""
+        cap_id = cap.get("id")
+    except Exception:
+        return {"status": d.get("status")}
+    parts = custom.split(":")
+    creator_id = parts[1] if (len(parts) >= 3 and parts[0] == "tip") else None
+    amount_total = int(round(float(value) * 100))
+    if creator_id and cap_id and not await db.tips.find_one({"paypal_capture_id": cap_id}):
+        await db.tips.insert_one({
+            "id": str(uuid.uuid4()), "creator_id": creator_id,
+            "from_user_id": current_user["id"], "from_username": current_user.get("username"),
+            "amount_total": amount_total, "currency": (currency or "eur").lower(),
+            "method": "paypal", "paypal_capture_id": cap_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        try:
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()), "type": "tip", "user_id": creator_id,
+                "from_user_id": current_user["id"], "from_username": current_user.get("username"),
+                "message": f"@{current_user.get('username')} vous a envoyé un pourboire de {amount_total/100:.2f} € via PayPal",
+                "read": False, "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+    return {"status": d.get("status"), "amount": value, "currency": currency}
 
 
 @app.post("/api/billing/webhook")
@@ -3608,6 +3826,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         is_verified=user.get("is_verified", False),
         is_premium=user.get("is_premium", False),
         can_receive_tips=bool(user.get("stripe_account_id")),
+        paypal_receivable=bool(user.get("paypal_merchant_id") and user.get("paypal_payments_receivable")),
         paypal_link=normalize_paypal(user.get("paypal_link")),
         crypto_wallet=user.get("crypto_wallet"),
         created_at=user["created_at"]

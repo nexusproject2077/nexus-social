@@ -233,6 +233,24 @@ export default function SettingsPage({ user, setUser }) {
     }
   };
 
+  // PayPal Commerce (pourboires PayPal avec commission automatique).
+  const [paypalStatus, setPaypalStatus] = useState(null); // { enabled, connected, receivable }
+  const [paypalBusy, setPaypalBusy] = useState(false);
+  useEffect(() => {
+    axios.get(`${API}/billing/paypal/status`).then((r) => setPaypalStatus(r.data)).catch(() => setPaypalStatus(null));
+  }, []);
+  const connectPaypal = async () => {
+    setPaypalBusy(true);
+    try {
+      const r = await axios.post(`${API}/billing/paypal/onboard`);
+      if (r.data?.url) window.location.href = r.data.url;
+      else { toast.error("Activation PayPal indisponible"); setPaypalBusy(false); }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Activation PayPal indisponible");
+      setPaypalBusy(false);
+    }
+  };
+
   const startSubscription = async () => {
     try {
       const res = await axios.post(`${API}/billing/create-checkout-session`);
@@ -504,26 +522,55 @@ export default function SettingsPage({ user, setUser }) {
             )}
           </div>
 
-          {/* 2) PayPal.me */}
+          {/* 2) PayPal — Commerce (commission auto) si configuré, sinon lien PayPal.me */}
           <div className="p-5 space-y-3 border-t" style={{ borderColor: C.outlineVariant + "22" }}>
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined" style={{ color: C.cyan }}>account_balance_wallet</span>
               <div className="flex-1">
                 <p className="text-sm font-bold" style={{ color: C.onSurface }}>PayPal</p>
-                <p className="text-xs" style={{ color: C.outline }}>Renseigne ton pseudo PayPal.me — tes abonnés te paient directement, sans commission Nexus.</p>
+                <p className="text-xs" style={{ color: C.outline }}>
+                  {paypalStatus?.enabled
+                    ? "Connecte ton compte PayPal : tu es payé directement, la commission est prélevée automatiquement."
+                    : "Renseigne ton pseudo PayPal.me — tes abonnés te paient directement, sans commission Nexus."}
+                </p>
               </div>
+              {paypalStatus?.receivable && (
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1" style={{ background: "#22c55e22", color: "#22c55e" }}>
+                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>Activé
+                </span>
+              )}
             </div>
-            <InputField
-              label="Pseudo ou lien PayPal.me"
-              value={profileData.paypal_link}
-              onChange={(e) => setProfileData((p) => ({ ...p, paypal_link: e.target.value }))}
-              placeholder="Ex : moncompte  (ou paypal.me/moncompte)"
-            />
-            <button onClick={savePaypal} data-testid="save-paypal"
-              className="px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
-              style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
-              Enregistrer PayPal
-            </button>
+
+            {paypalStatus?.enabled ? (
+              paypalStatus.receivable ? (
+                <button onClick={connectPaypal} disabled={paypalBusy}
+                  className="text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+                  style={{ background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}>
+                  Gérer mon compte PayPal
+                </button>
+              ) : (
+                <button onClick={connectPaypal} disabled={paypalBusy}
+                  data-testid="connect-paypal"
+                  className="text-sm font-bold px-5 py-2.5 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+                  style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+                  {paypalBusy ? "Redirection…" : (paypalStatus.connected ? "Terminer la connexion PayPal" : "Connecter PayPal (paiements automatiques)")}
+                </button>
+              )
+            ) : (
+              <>
+                <InputField
+                  label="Pseudo ou lien PayPal.me"
+                  value={profileData.paypal_link}
+                  onChange={(e) => setProfileData((p) => ({ ...p, paypal_link: e.target.value }))}
+                  placeholder="Ex : moncompte  (ou paypal.me/moncompte)"
+                />
+                <button onClick={savePaypal} data-testid="save-paypal"
+                  className="px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
+                  style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+                  Enregistrer PayPal
+                </button>
+              </>
+            )}
           </div>
 
           {/* 3) Crypto */}

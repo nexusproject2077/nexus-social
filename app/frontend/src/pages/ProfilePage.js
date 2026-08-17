@@ -108,6 +108,22 @@ export default function ProfilePage({ user, setUser }) {
     if (p) window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
+  // Retour de PayPal après approbation (?paypal_tip=capture&token=<orderID>) :
+  // on capture la commande côté serveur (la commission est prélevée par PayPal).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const flow = params.get("paypal_tip");
+    if (!flow) return;
+    const orderId = params.get("token");
+    window.history.replaceState({}, "", window.location.pathname);
+    if (flow === "cancel") { toast("Pourboire PayPal annulé"); return; }
+    if (flow === "capture" && orderId) {
+      axios.post(`${API}/billing/paypal/capture`, { order_id: orderId })
+        .then(() => toast.success("Merci pour votre pourboire PayPal 💸"))
+        .catch((e) => toast.error(e.response?.data?.detail || "Le paiement PayPal n'a pas pu être finalisé"));
+    }
+  }, []);
+
   useEffect(() => {
     if (userId) {
       fetchProfile();
@@ -410,7 +426,7 @@ export default function ProfilePage({ user, setUser }) {
                 {/* Pourboire (Tip) — dès qu'AU MOINS un moyen est activé (carte
                     Stripe, PayPal ou crypto). Le choix du moyen se fait dans la
                     fenêtre de pourboire. Bouton bien visible (plein dégradé). */}
-                {!isOwnProfile && (profile.can_receive_tips || profile.paypal_link || profile.crypto_wallet) && (
+                {!isOwnProfile && (profile.can_receive_tips || profile.paypal_receivable || profile.paypal_link || profile.crypto_wallet) && (
                   <button
                     data-testid="tip-button"
                     title="Envoyer un pourboire"
@@ -718,6 +734,7 @@ export default function ProfilePage({ user, setUser }) {
           userId={userId}
           username={profile.username}
           canReceiveTips={!!profile.can_receive_tips}
+          paypalReceivable={!!profile.paypal_receivable}
           paypalLink={profile.paypal_link || ""}
           cryptoWallet={profile.crypto_wallet || ""}
           onClose={() => setShowTip(false)}
