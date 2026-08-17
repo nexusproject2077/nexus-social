@@ -38,7 +38,7 @@ export default function AdminMetrics({ user, setUser }) {
 
   // "YYYY-MM-DD" → "DD/MM" pour l'axe des graphiques.
   const shortDay = (d) => (d ? d.slice(8, 10) + "/" + d.slice(5, 7) : "");
-  const pct = (v) => (v === null || v === undefined ? "—" : `${v}%`);
+  const pct = (v) => (v === null || v === undefined ? "n/d" : `${v}%`);
 
   if (loading) {
     return (
@@ -85,7 +85,7 @@ export default function AdminMetrics({ user, setUser }) {
             <h1 className="text-xl sm:text-2xl font-bold text-white mb-0.5" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
               Santé de l'app
             </h1>
-            <p className="text-slate-400 text-xs sm:text-sm">Métriques clés — réservé aux administrateurs</p>
+            <p className="text-slate-400 text-xs sm:text-sm">Métriques clés, réservé aux administrateurs</p>
           </div>
           <span className="text-[10px] text-slate-500 flex items-center gap-1 flex-shrink-0 mt-1">
             <TrendingUp className="h-3 w-3" /> maj auto

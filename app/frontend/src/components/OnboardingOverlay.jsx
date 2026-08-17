@@ -11,7 +11,7 @@ const SLIDES = [
   {
     icon: "waving_hand",
     title: "Bienvenue sur Nexus",
-    text: "Ton réseau social tout-en-un : publications, vidéos courtes, messages et soutien aux créateurs — au même endroit.",
+    text: "Ton réseau social tout-en-un : publications, vidéos courtes, messages et soutien aux créateurs, au même endroit.",
   },
   {
     icon: "shield",
@@ -21,7 +21,7 @@ const SLIDES = [
   {
     icon: "play_circle",
     title: "Nexus Clips",
-    text: "Des vidéos courtes en plein écran, façon TikTok. Publie, scrolle, découvre — l'onglet Clips en bas.",
+    text: "Des vidéos courtes en plein écran, façon TikTok. Publie, scrolle et découvre depuis l'onglet Clips, en bas.",
   },
   {
     icon: "volunteer_activism",

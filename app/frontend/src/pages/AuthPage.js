@@ -230,7 +230,7 @@ export default function AuthPage({ setUser }) {
               style={{ color: "#bbc9cd" }}
             >
               Ta vie privée d'abord, tes créateurs mis en avant, et la liberté de
-              t'exprimer. Poste, filme, discute et soutiens ta communauté — sans
+              t'exprimer. Poste, filme, discute et soutiens ta communauté, sans
               suivi caché ni bruit inutile.
             </p>
           </div>
