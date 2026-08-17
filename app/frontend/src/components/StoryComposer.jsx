@@ -57,6 +57,16 @@ const BACKGROUNDS = [
 ];
 const LAYOUTS = [2, 3, 4, 6];
 
+// Formats de capture Nexus Clips (sélecteur coulissant façon TikTok).
+// Les durées pilotent la limite d'enregistrement (clipDurRef). Nexus Clips est
+// un format VIDÉO → on ne propose que des durées (pas de photo/texte, qui
+// n'auraient pas leur place dans le fil Clips et finiraient en impasse).
+const CLIP_FORMATS = [
+  { key: "3min", label: "3 min", ms: 180000 },
+  { key: "60s",  label: "60 s",  ms: 60000 },
+  { key: "15s",  label: "15 s",  ms: 15000 },
+];
+
 function Avatar({ username, pic, size = 32 }) {
   const s = `${size}px`;
   return pic ? (
@@ -156,6 +166,41 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
   const layoutFileRef = useRef(null);
   const layoutTargetRef = useRef(0);
 
+  // ── Capture Nexus Clips (interface façon TikTok) ──
+  const [clipFmt, setClipFmt] = useState("60s");   // format sélectionné
+  const [beauty, setBeauty]   = useState(false);   // retouche (filtre doux live)
+  const [timerSec, setTimerSec] = useState(0);     // 0 | 3 | 10 (minuteur)
+  const [countdown, setCountdown] = useState(0);   // décompte en cours
+  const clipDurRef = useRef(60000);                // limite d'enreg. selon le format
+  const countdownRef = useRef(null);
+
+  // Choix d'un format : met à jour la limite d'enregistrement (vidéo).
+  const pickFormat = (f) => {
+    if (recordingRef.current) return;
+    setClipFmt(f.key);
+    if (f.ms) clipDurRef.current = f.ms;
+  };
+  // Minuteur : off → 3 s → 10 s → off.
+  const cycleTimer = () => setTimerSec((s) => (s === 0 ? 3 : s === 3 ? 10 : 0));
+  // Exécute une action après le décompte du minuteur (ou immédiatement si off).
+  const runTimer = (fn) => {
+    if (!timerSec) { fn(); return; }
+    let n = timerSec;
+    setCountdown(n);
+    clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      n -= 1;
+      if (n <= 0) { clearInterval(countdownRef.current); setCountdown(0); fn(); }
+      else setCountdown(n);
+    }, 1000);
+  };
+  // Bouton d'obturation Clips : tap = démarrer / arrêter l'enregistrement.
+  const onClipShutter = () => {
+    if (!ready) return;
+    if (recordingRef.current) { stopRec(); return; }
+    runTimer(startRec);
+  };
+
   // Applique une musique : passage de départ (start) + style d'affichage
   // ("title" = sticker titre, "cover" = pochette+titre, "none" = son seul).
   const applyMusic = (track, start, style) => {
@@ -225,6 +270,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
   useEffect(() => () => {
     stopStream();
     clearTimeout(maxRef.current); clearInterval(progressRef.current); clearTimeout(pressRef.current.timer);
+    clearInterval(countdownRef.current);
     cancelAnimationFrame(rafRef.current);
     const r = recorderRef.current; if (r && r.state !== "inactive") { try { r.stop(); } catch { /* noop */ } }
     try { audioRef.current?.destroy(); } catch { /* noop */ }
@@ -293,9 +339,10 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     };
     recorderRef.current = r; recordingRef.current = true; setRecording(true); setRecordPct(0);
     try { r.start(); } catch { recordingRef.current = false; setRecording(false); return; }
+    const limitMs = isClip ? clipDurRef.current : MAX_VIDEO_MS;
     const t0 = Date.now();
-    progressRef.current = setInterval(() => setRecordPct(Math.min(100, ((Date.now() - t0) / MAX_VIDEO_MS) * 100)), 80);
-    maxRef.current = setTimeout(stopRec, MAX_VIDEO_MS);
+    progressRef.current = setInterval(() => setRecordPct(Math.min(100, ((Date.now() - t0) / limitMs) * 100)), 80);
+    maxRef.current = setTimeout(stopRec, limitMs);
   };
 
   const onShutterDown = (e) => {
@@ -819,6 +866,128 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
 
   // ══════════════════════════════════════ CAMÉRA ══════════════════════════════
   if (mode === "camera") {
+    // ─────────── Interface de capture Nexus Clips (façon TikTok) ───────────
+    if (isClip) {
+      const activeCss = FILTERS.find((f) => f.key === filter)?.css || "none";
+      const beautyCss = "brightness(1.06) contrast(1.03) saturate(1.06)";
+      const liveFilter = [activeCss !== "none" ? activeCss : "", beauty ? beautyCss : ""].filter(Boolean).join(" ") || "none";
+      const tool = (icon, label, active, onClick) => (
+        <button onClick={onClick} className="flex flex-col items-center gap-1" aria-label={label}>
+          <span className="material-symbols-outlined text-white" style={{ fontSize: 27, fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))", opacity: active ? 1 : 0.95 }}>{icon}</span>
+          <span className="text-white text-[10px] font-medium" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)", color: active ? C.accent : "#fff" }}>{label}</span>
+        </button>
+      );
+      return (
+        <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
+          <video ref={videoRef} muted playsInline autoPlay className="absolute inset-0 w-full h-full object-cover"
+            style={{ transform: facing === "user" ? "scaleX(-1)" : "none", filter: liveFilter }} />
+          {!ready && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <div className="animate-spin rounded-full h-9 w-9 border-b-2" style={{ borderColor: C.accent }} />
+              <span className="text-[12px] text-white/70">Initialisation de la caméra…</span>
+            </div>
+          )}
+
+          {/* Décompte du minuteur */}
+          {countdown > 0 && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <span className="text-white font-black" style={{ fontSize: 96, textShadow: "0 2px 20px rgba(0,0,0,0.5)" }}>{countdown}</span>
+            </div>
+          )}
+
+          {/* Barre supérieure : fermer + capsule « Ajouter un son » */}
+          <div className="absolute top-0 left-0 right-0 flex items-center px-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
+            <button onClick={onClose} className="w-10 h-10 flex items-center justify-center" aria-label="Fermer">
+              <span className="material-symbols-outlined text-white" style={{ fontSize: 30, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }}>close</span>
+            </button>
+            <button onClick={() => setMusicOpen(true)}
+              className="mx-auto flex items-center gap-1.5 px-4 h-9 rounded-full active:scale-95 transition-transform"
+              style={{ background: "rgba(0,0,0,0.42)", backdropFilter: "blur(6px)" }}>
+              <span className="material-symbols-outlined text-white" style={{ fontSize: 18 }}>music_note</span>
+              <span className="text-white text-[13px] font-semibold truncate max-w-[46vw]">{music ? music.title : "Ajouter un son"}</span>
+            </button>
+            <div className="w-10 h-10" aria-hidden />
+          </div>
+
+          {/* Barre d'outils verticale (droite) */}
+          <div className="absolute right-2.5 flex flex-col gap-5 items-center" style={{ top: "calc(max(env(safe-area-inset-top), 14px) + 64px)" }}>
+            {tool("cameraswitch", "Retourner", false, () => setFacing((f) => (f === "user" ? "environment" : "user")))}
+            {tool("auto_fix_high", "Filtres", showFilters, () => setShowFilters((v) => !v))}
+            {tool("face_retouching_natural", "Retouche", beauty, () => setBeauty((v) => !v))}
+            {tool("timer", timerSec ? `${timerSec}s` : "Minuteur", timerSec > 0, cycleTimer)}
+          </div>
+
+          {/* Indicateur d'enregistrement */}
+          {recording && (
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-bold text-white" style={{ background: "rgba(239,68,68,0.9)" }}>
+              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              {Math.ceil((recordPct / 100) * (clipDurRef.current / 1000))}s
+            </div>
+          )}
+
+          {/* Carrousel de filtres (miniatures) */}
+          {showFilters && (
+            <div className="absolute left-0 right-0 flex gap-2.5 px-4 overflow-x-auto pb-2" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 12.5rem)", scrollbarWidth: "none" }}>
+              {FILTERS.map((f) => (
+                <button key={f.key} onClick={() => setFilter(f.key)} className="flex flex-col items-center gap-1 shrink-0">
+                  <span className="w-12 h-12 rounded-full border-2 overflow-hidden" style={{ borderColor: filter === f.key ? C.accent : "rgba(255,255,255,0.5)", filter: f.css === "none" ? "none" : f.css, background: "linear-gradient(135deg,#22d3ee,#3b82f6)" }} />
+                  <span className="text-white text-[10px]" style={{ opacity: filter === f.key ? 1 : 0.75 }}>{f.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Bas : sélecteur de format + galerie + obturateur + effets */}
+          <div className="absolute bottom-0 left-0 right-0" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 22px)" }}>
+            {!recording && countdown === 0 && (
+              <div className="flex items-center justify-center gap-6 mb-5 px-6 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+                {CLIP_FORMATS.map((f) => (
+                  <button key={f.key} onClick={() => pickFormat(f)}
+                    className="shrink-0 text-[13px] font-bold tracking-wide transition-all"
+                    style={{ color: clipFmt === f.key ? "#fff" : "rgba(255,255,255,0.55)", textShadow: "0 1px 3px rgba(0,0,0,0.6)", transform: clipFmt === f.key ? "scale(1.06)" : "scale(1)" }}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-between px-9">
+              {/* Galerie (bas-gauche) */}
+              <button onClick={() => fileRef.current?.click()} className="w-11 h-11 rounded-xl flex items-center justify-center border-2 border-white/70" style={{ background: "rgba(255,255,255,0.12)", visibility: recording ? "hidden" : "visible" }} aria-label="Galerie">
+                <span className="material-symbols-outlined text-white" style={{ fontSize: 24 }}>photo_library</span>
+              </button>
+              <input ref={fileRef} type="file" accept="image/*,video/*" onChange={onImport} className="hidden" />
+
+              {/* Obturateur double-cercle */}
+              <button onClick={onClipShutter} disabled={!ready}
+                className="relative w-[84px] h-[84px] rounded-full active:scale-95 transition-transform disabled:opacity-40"
+                aria-label={recording ? "Arrêter" : "Enregistrer"}>
+                <span className="absolute inset-0 rounded-full border-[5px]" style={{ borderColor: recording ? "#ef4444" : "rgba(255,255,255,0.9)" }} />
+                {recording
+                  ? <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-red-500" style={{ width: 30, height: 30 }} />
+                  : <span className="absolute inset-[8px] rounded-full" style={{ background: "#ef4444" }} />}
+                {recording && (
+                  <svg className="absolute inset-0 -rotate-90" viewBox="0 0 84 84" style={{ pointerEvents: "none" }}>
+                    <circle cx="42" cy="42" r="39" fill="none" stroke={C.accent} strokeWidth="5" strokeLinecap="round"
+                      strokeDasharray={2 * Math.PI * 39} strokeDashoffset={(1 - recordPct / 100) * 2 * Math.PI * 39} />
+                  </svg>
+                )}
+              </button>
+
+              {/* Effets (miniature façon carrousel) */}
+              <button onClick={() => setShowFilters((v) => !v)} className="w-11 h-11 rounded-xl flex items-center justify-center border-2 border-white/70" style={{ background: "rgba(255,255,255,0.12)", visibility: recording ? "hidden" : "visible" }} aria-label="Effets">
+                <span className="material-symbols-outlined text-white" style={{ fontSize: 24, color: showFilters ? C.accent : "#fff" }}>auto_awesome</span>
+              </button>
+            </div>
+          </div>
+
+          {musicOpen && (
+            <MusicSearch onClose={() => setMusicOpen(false)} onAdd={applyMusic} current={music}
+              onRemove={() => { setMusic(null); stopMusicPreview(); setMusicOpen(false); }} />
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="fixed inset-0 z-[80] select-none" style={{ background: "#000", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
         <video ref={videoRef} muted playsInline autoPlay className="absolute inset-0 w-full h-full object-cover"
