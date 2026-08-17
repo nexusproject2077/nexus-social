@@ -186,6 +186,8 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   });
   const [paused, setPaused]         = useState(false);
   const [saved, setSaved]           = useState(post.is_saved || false);
+  const [reposted, setReposted]     = useState(post.is_reposted || false);
+  const [repostBusy, setRepostBusy] = useState(false);
   // Suivi de l'auteur (bouton « + » façon TikTok) : masqué si c'est mon clip ou
   // si je suis déjà abonné. `followDone` déclenche l'animation de disparition.
   const isOwnClip = currentUser?.id === post.author_id;
@@ -510,6 +512,29 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     }
   };
 
+  // Republier le clip (viralité). Réutilise l'API repost des publications.
+  const handleRepost = async (e) => {
+    e.stopPropagation();
+    if (repostBusy) return;
+    if (isOwnClip) { toast.error("Vous ne pouvez pas reposter votre propre clip"); return; }
+    setRepostBusy(true);
+    try {
+      if (reposted) {
+        await axios.delete(`${API}/posts/${post.id}/repost`);
+        setReposted(false);
+        toast.success("Republication annulée");
+      } else {
+        await axios.post(`${API}/posts/${post.id}/repost`);
+        setReposted(true);
+        toast.success("Clip republié !");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erreur lors du repost");
+    } finally {
+      setRepostBusy(false);
+    }
+  };
+
   // Menu « … » : supprimer (auteur) ou signaler (autres).
   const handleReport = async () => {
     setShowOptions(false);
@@ -724,6 +749,11 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         <button onClick={(e) => { e.stopPropagation(); openComments(); }} className="flex flex-col items-center gap-0.5">
           <span className="material-symbols-outlined text-[30px] text-white" style={{ fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>chat_bubble</span>
           <span className="text-white text-xs font-semibold" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>{fmt(comments)}</span>
+        </button>
+
+        {/* Republier (viralité) — icône fine, cohérente avec le reste de la colonne */}
+        <button onClick={handleRepost} disabled={repostBusy} title={reposted ? "Annuler la republication" : "Reposter"} className="flex flex-col items-center" data-testid="repost-clip">
+          <span className="material-symbols-outlined text-[30px]" style={{ color: reposted ? C.cyan : "#fff", fontVariationSettings: `'FILL' ${reposted ? 1 : 0}, 'wght' 300`, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))", opacity: repostBusy ? 0.6 : 1 }}>repeat</span>
         </button>
 
         {/* Save (sans libellé) */}
