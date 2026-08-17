@@ -3069,10 +3069,16 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
         raise HTTPException(status_code=404, detail="Post not found")
 
     post = convert_mongo_doc_to_dict(post_raw)
+    author_id = post.get("author_id")
+    author = await db.users.find_one({"id": author_id}, {"is_premium": 1, "is_private": 1}) if author_id else None
+    # Confidentialité : une publication d'un compte privé n'est lisible que par
+    # ses abonnés approuvés (et par l'auteur lui-même).
+    if author and author.get("is_private") and author_id != current_user["id"]:
+        if not await check_is_following(current_user["id"], author_id):
+            raise HTTPException(status_code=403, detail="Ce compte est privé. Vous devez être abonné pour voir cette publication.")
     like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
     post["is_liked"] = bool(like_raw)
     post["is_saved"] = bool(await db.saved_posts.find_one({"post_id": post["id"], "user_id": current_user["id"]}))
-    author = await db.users.find_one({"id": post.get("author_id")}, {"is_premium": 1})
     post["author_is_premium"] = bool(author and author.get("is_premium"))
     enrich_post_poll(post, current_user["id"])
     return Post(**post)
@@ -3886,11 +3892,16 @@ async def get_time_stats(current_user: dict = Depends(get_current_user)):
     }
 
 async def _do_follow(follower: dict, user_id: str):
-    """Crée l'abonnement effectif (comptes publics ou requête acceptée)."""
+    """Crée l'abonnement effectif (comptes publics ou requête acceptée).
+
+    `status: "following"` est OBLIGATOIRE : plusieurs fils (Abonnements, Pour
+    vous, Clips) et le calcul des abonnements filtrent dessus. Sans lui, un
+    abonnement créé ici serait invisible pour tout le reste du système."""
     await db.follows.insert_one({
         "id": str(uuid.uuid4()),
         "follower_id": follower["id"],
         "followed_id": user_id,
+        "status": "following",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     await db.users.update_one({"id": follower["id"]}, {"$inc": {"following_count": 1}})
@@ -6024,6 +6035,12 @@ async def get_user_stories(user_id: str, request: Request, current_user: dict = 
     if not user_raw:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Confidentialité : les stories d'un compte privé sont réservées à ses
+    # abonnés approuvés (et à lui-même).
+    if user_id != current_user["id"] and user_raw.get("is_private", False):
+        if not await check_is_following(current_user["id"], user_id):
+            raise HTTPException(status_code=403, detail="Ce compte est privé. Vous devez être abonné pour voir ses stories.")
+
     stories_raw = await db.stories.aggregate([
         {"$match": {"author_id": user_id, "expires_at": {"$gt": now}}},
         {"$sort": {"created_at": 1}},
@@ -7659,8 +7676,15 @@ async def search_posts(q: str, current_user: dict = Depends(get_current_user)):
         {"content": regex}
     ).sort("created_at", -1).limit(50).to_list(length=50)
 
+    # Confidentialité : la recherche n'expose pas les publications des comptes
+    # privés non suivis.
+    blocked_private = await _private_blocked_authors(
+        [p.get("author_id") for p in posts_raw], current_user["id"])
+
     posts = []
     for post_raw in posts_raw:
+        if post_raw.get("author_id") in blocked_private:
+            continue
         try:
             post = convert_mongo_doc_to_dict(post_raw)
             like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
@@ -7749,8 +7773,14 @@ async def get_posts_by_hashtag(tag: str, current_user: dict = Depends(get_curren
 
     posts_raw = await db.posts.find({"content": regex}).sort("created_at", -1).allow_disk_use(True).limit(50).to_list(length=50)
 
+    # Confidentialité : pas de publications de comptes privés non suivis.
+    blocked_private = await _private_blocked_authors(
+        [p.get("author_id") for p in posts_raw], current_user["id"])
+
     posts = []
     for post_raw in posts_raw:
+        if post_raw.get("author_id") in blocked_private:
+            continue
         try:
             post = convert_mongo_doc_to_dict(post_raw)
             like_raw = await db.likes.find_one({"post_id": post["id"], "user_id": current_user["id"]})
@@ -8081,8 +8111,12 @@ RANK_TTL = 180  # 3 min
 
 
 async def _followed_ids(user_id):
+    # La collection `follows` ne contient QUE des abonnements actifs (les demandes
+    # en attente vivent dans `follow_requests`). On tolère donc les documents
+    # hérités sans champ `status` (≠ "pending") pour ne jamais masquer à tort un
+    # abonnement réel — décision critique pour la confidentialité.
     follows_raw = await db.follows.find(
-        {"follower_id": user_id, "status": "following"}
+        {"follower_id": user_id, "status": {"$ne": "pending"}}
     ).to_list(length=2000)
     out = set()
     for f in follows_raw:
@@ -8090,6 +8124,28 @@ async def _followed_ids(user_id):
         if fid:
             out.add(fid)
     return out
+
+
+async def _private_blocked_authors(author_ids, viewer_id, followed=None):
+    """Parmi `author_ids`, l'ensemble des auteurs au compte PRIVÉ que `viewer_id`
+    ne suit PAS activement (et qui ne sont pas lui-même).
+
+    Règle de confidentialité (façon Instagram/X/TikTok) : le contenu d'un compte
+    privé n'apparaît JAMAIS dans les fils algorithmiques (Pour vous, Clips) ni
+    dans la recherche pour quelqu'un qui n'est pas un abonné approuvé. On calcule
+    ici l'ensemble à EXCLURE, en une seule lecture users (bornée aux auteurs
+    réellement présents)."""
+    ids = list({a for a in author_ids if a and a != viewer_id})
+    if not ids:
+        return set()
+    private_ids = {u["id"] for u in await db.users.find(
+        {"id": {"$in": ids}, "is_private": True}, {"id": 1, "_id": 0}
+    ).to_list(length=len(ids))}
+    if not private_ids:
+        return set()
+    if followed is None:
+        followed = await _followed_ids(viewer_id)
+    return {a for a in private_ids if a not in followed}
 
 
 async def _ranked_ids(kind, user_id, eu):
@@ -8128,6 +8184,11 @@ async def _ranked_ids(kind, user_id, eu):
             pool.append(p)
 
     followed = await _followed_ids(user_id)
+    # Confidentialité : on retire du pool le contenu des comptes PRIVÉS que
+    # l'utilisateur ne suit pas (jamais recommandé à un non-abonné).
+    blocked_private = await _private_blocked_authors([p.get("author_id") for p in pool], user_id, followed)
+    if blocked_private:
+        pool = [p for p in pool if p.get("author_id") not in blocked_private]
     aff = await _user_affinity(user_id)
     premium = {u["id"] for u in await db.users.find({"is_premium": True}, {"id": 1}).to_list(length=5000)}
     now_ts = time.time()
@@ -8157,6 +8218,10 @@ async def _fetch_posts_in_order(ids, user_id, media_base=""):
     ).to_list(length=len(ids))
     by_id = {p.get("id"): p for p in raw}
     author_ids = [by_id[i].get("author_id") for i in ids if i in by_id]
+    # Confidentialité (défense en profondeur, couvre aussi les replis
+    # chronologiques des Clips) : on exclut le contenu des comptes privés non
+    # suivis avant tout enrichissement/rendu.
+    blocked_private = await _private_blocked_authors(author_ids, user_id)
     saved_ids = await _saved_post_ids(user_id, ids)
     premium_ids = await _premium_author_ids(author_ids)
     tip_ids = await _tip_author_ids(author_ids)
@@ -8183,6 +8248,8 @@ async def _fetch_posts_in_order(ids, user_id, media_base=""):
         pr = by_id.get(pid)
         if not pr:
             continue
+        if pr.get("author_id") in blocked_private:
+            continue  # compte privé non suivi → jamais dans un fil algorithmique
         post = convert_mongo_doc_to_dict(pr)
         _resolve_media_sentinel(post, media_base)
         post["is_liked"] = pid in liked
@@ -8399,6 +8466,24 @@ async def _serve_mirror(kind: str, post_id: str, request: Request) -> HTMLRespon
             f'<meta http-equiv="refresh" content="0; url={_html.escape(FRONTEND_URL, quote=True)}/feed">'
             f'<title>Nexus</title>', status_code=404)
     post = convert_mongo_doc_to_dict(post)
+    # Confidentialité : le contenu d'un compte PRIVÉ n'est JAMAIS exposé
+    # publiquement via le miroir (ni média, ni légende, ni balise OG d'aperçu).
+    author = await db.users.find_one({"id": post.get("author_id")}, {"is_private": 1})
+    if author and author.get("is_private"):
+        home = f"{FRONTEND_URL.rstrip('/')}/auth"
+        return HTMLResponse(
+            f"""<!doctype html><html lang="fr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contenu privé · Nexus</title>
+<meta property="og:title" content="Contenu privé · Nexus">
+<meta property="og:description" content="Ce contenu provient d'un compte privé sur Nexus.">
+<style>html,body{{margin:0;background:#05070d;color:#e7ecf6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;height:100dvh;display:flex;align-items:center;justify-content:center;text-align:center}}
+.box{{padding:24px;max-width:360px}}.b{{font-weight:900;font-size:22px;margin-bottom:8px}}
+a{{display:inline-block;margin-top:22px;padding:14px 22px;border-radius:16px;text-decoration:none;font-weight:800;color:#00363e;background:linear-gradient(135deg,#22d3ee,#3b82f6)}}</style>
+</head><body><div class="box"><div class="b">🔒 Contenu privé</div>
+<p style="color:#9fb0c8;line-height:1.5">Ce contenu provient d'un compte privé. Connecte-toi et abonne-toi pour le voir.</p>
+<a href="{_html.escape(home, quote=True)}">Ouvrir dans Nexus</a></div></body></html>""",
+            status_code=403, headers={"Cache-Control": "private, no-store"})
     html_page = _render_mirror_page(post, base, kind)
     return HTMLResponse(html_page, headers={"Cache-Control": "public, max-age=300"})
 
@@ -8461,6 +8546,10 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
 async def _enrich_posts_for_user(raw, user_id):
     """Enrichit une liste de posts bruts (is_liked / is_saved / author_is_premium)
     en batch, puis renvoie une liste d'objets Post. Utilisé par la recherche."""
+    # Confidentialité : exclut le contenu des comptes privés non suivis.
+    blocked_private = await _private_blocked_authors([p.get("author_id") for p in raw], user_id)
+    if blocked_private:
+        raw = [p for p in raw if p.get("author_id") not in blocked_private]
     saved_ids = await _saved_post_ids(user_id, [p.get("id") for p in raw])
     premium_ids = await _premium_author_ids([p.get("author_id") for p in raw])
     liked = {l.get("post_id") for l in await db.likes.find(
@@ -9986,6 +10075,26 @@ async def _startup_warmup():
         await db.posts.create_index([("likes_count", -1)], name="by_likes")
     except Exception as e:
         logger.warning(f"Index posts (tri) non créé (peut déjà exister): {e}")
+
+    # ── Abonnements : rétro-compatibilité + index ────────────────────────────
+    # Anciens abonnements créés sans champ `status` → "following". Plusieurs fils
+    # (Abonnements, Pour vous, Clips) et le calcul des abonnements filtrent sur
+    # status="following" ; sans ce champ, un abonnement existant serait invisible
+    # (fil vide) et un compte privé suivi resterait masqué à tort. Idempotent :
+    # ne modifie que les documents dépourvus du champ.
+    try:
+        res = await db.follows.update_many(
+            {"status": {"$exists": False}}, {"$set": {"status": "following"}}
+        )
+        if getattr(res, "modified_count", 0):
+            logger.info(f"Backfill follows.status → following : {res.modified_count} document(s)")
+    except Exception as e:
+        logger.warning(f"Backfill follows.status ignoré: {e}")
+    try:
+        await db.follows.create_index([("follower_id", 1), ("status", 1)], name="by_follower_status")
+        await db.follows.create_index([("followed_id", 1), ("status", 1)], name="by_followed_status")
+    except Exception as e:
+        logger.warning(f"Index follows non créé (peut déjà exister): {e}")
 
     # ── Index de PERFORMANCE critiques ──────────────────────────────────────
     # Sans eux, chaque recherche par `id` (UUID) ou par clé de relation faisait
