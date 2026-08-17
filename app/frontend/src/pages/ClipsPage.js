@@ -378,7 +378,20 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         likeHeart(); triggerHeart();
       }
     } else {
-      tapTimer.current = setTimeout(() => { tapTimer.current = null; togglePlay(); }, 260);
+      tapTimer.current = setTimeout(() => {
+        tapTimer.current = null;
+        const v = videoRef.current;
+        // Plus de bouton volume (design épuré) : un simple tap sur un clip muet
+        // (mis en sourdine par la politique d'autoplay) RÉACTIVE le son. Sinon,
+        // tap = lecture/pause. La préférence est mémorisée pour les clips suivants.
+        if (v && v.muted) {
+          v.muted = false;
+          setMuted(false);
+          try { localStorage.setItem("nexus_clips_muted", "0"); } catch { /* ignore */ }
+        } else {
+          togglePlay();
+        }
+      }, 260);
     }
   };
 
@@ -509,10 +522,10 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         crossOrigin={CLIP_CORS_SAFE(post.media_url) ? "anonymous" : undefined}
         // Pas de bascule AirPlay/lecture à distance (évite l'indication système).
         disableRemotePlayback
-        // Jamais de crop du contenu large : vidéos paysage/16:9 en `contain`
-        // (letterbox, entièrement visibles) ; vidéos verticales en `cover` (plein
-        // cadre, façon TikTok). Sur PC le conteneur est déjà en colonne 9:16.
-        className={`w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
+        // 100 % IMMERSIF façon TikTok : la vidéo remplit tout l'écran (object-cover),
+        // plus de bandes noires. Les vidéos paysage restent visibles en entier via
+        // le bouton plein écran 16:9.
+        className="w-full h-full object-cover"
         loop
         muted={muted}
         playsInline
@@ -577,33 +590,23 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         </div>
       )}
 
-      {/* Barre de progression MANIPULABLE + durée visible (au-dessus de la barre
-          de navigation). Glisser pour avancer/reculer ; touch-none évite que le
-          geste déclenche le défilement vertical des clips. Masquée en plein écran
-          (l'overlay 16:9 a sa propre barre). */}
+      {/* Barre de progression ÉPURÉE : une ligne blanche ultra-fine (1px) collée
+          juste au-dessus de la barre de navigation. Pas de chrono, pas de curseur
+          rond. Reste manipulable (glisser pour avancer) via une zone tactile plus
+          haute que la ligne. Masquée en plein écran (l'overlay 16:9 a sa barre). */}
       {!isFs && (
-        <div className="absolute left-0 right-0 px-4 z-20" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)" }}>
-          <div className="flex items-center gap-2.5">
-            <div
-              ref={barRef}
-              onPointerDown={onScrubDown}
-              onPointerMove={onScrubMove}
-              onPointerUp={onScrubUp}
-              onPointerCancel={onScrubUp}
-              onClick={(e) => e.stopPropagation()}
-              className="relative flex-1 h-6 flex items-center cursor-pointer touch-none"
-            >
-              <div className="w-full rounded-full" style={{ height: scrubbing ? 6 : 4, background: "rgba(255,255,255,0.28)", transition: "height 0.1s" }}>
-                <div className="h-full rounded-full" style={{ width: `${progress}%`, background: C.cyan }} />
-              </div>
-              <div
-                className="absolute rounded-full bg-white shadow"
-                style={{ left: `${progress}%`, top: "50%", transform: "translate(-50%,-50%)", width: scrubbing ? 14 : 10, height: scrubbing ? 14 : 10, transition: "width 0.1s, height 0.1s" }}
-              />
-            </div>
-            <span className="text-white text-[11px] font-semibold tabular-nums flex-shrink-0" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>
-              {fmtTime(currentTime)} / {fmtTime(duration)}
-            </span>
+        <div
+          ref={barRef}
+          onPointerDown={onScrubDown}
+          onPointerMove={onScrubMove}
+          onPointerUp={onScrubUp}
+          onPointerCancel={onScrubUp}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 right-0 z-20 flex items-end touch-none cursor-pointer"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4rem)", height: 18 }}
+        >
+          <div className="w-full" style={{ height: scrubbing ? 3 : 1.5, background: "rgba(255,255,255,0.25)", transition: "height 0.12s" }}>
+            <div className="h-full" style={{ width: `${progress}%`, background: "#fff" }} />
           </div>
         </div>
       )}
@@ -632,72 +635,50 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         </div>
       )}
 
-      {/* Right action bar */}
-      <div className="absolute right-3 bottom-28 flex flex-col gap-4 items-center">
-        {/* Avatar */}
-        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="relative">
+      {/* Right action bar — épurée façon TikTok/Reels : icônes fines SANS bulle
+          (ombre portée pour la lisibilité), compteurs centrés sous les icônes,
+          plus de libellés « Enreg. » / « Partager » ni d'icône de volume. */}
+      <div className="absolute right-3 bottom-28 flex flex-col gap-5 items-center">
+        {/* Avatar (réduit ~30 %, vraie photo de profil) */}
+        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="relative mb-1">
           {post.author_profile_pic ? (
-            <img src={post.author_profile_pic} alt="" className="w-12 h-12 rounded-full object-cover border-2" style={{ borderColor: C.cyan }} />
+            <img src={post.author_profile_pic} alt="" className="w-9 h-9 rounded-full object-cover border-2" style={{ borderColor: "#fff" }} />
           ) : (
-            <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm border-2" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary, borderColor: "#fff" }}>
               {post.author_username?.[0]?.toUpperCase()}
             </div>
           )}
-          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full flex items-center justify-center text-white" style={{ background: C.cyan }}>
-            <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
+          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full flex items-center justify-center text-white" style={{ background: C.cyan }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 12, fontVariationSettings: "'FILL' 1" }}>add</span>
           </div>
         </button>
 
         {/* Like */}
-        <button onClick={handleLike} className="flex flex-col items-center gap-1">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-            <span className="material-symbols-outlined text-2xl" style={{ color: isLiked ? "#f87171" : "#fff", fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}>
-              favorite
-            </span>
-          </div>
-          <span className="text-white text-xs font-bold">{fmt(likes)}</span>
+        <button onClick={handleLike} className="flex flex-col items-center gap-0.5">
+          <span className="material-symbols-outlined text-[30px]" style={{ color: isLiked ? "#f87171" : "#fff", fontVariationSettings: `'FILL' ${isLiked ? 1 : 0}, 'wght' 300`, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>favorite</span>
+          <span className="text-white text-xs font-semibold" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>{fmt(likes)}</span>
         </button>
 
         {/* Comment */}
-        <button onClick={(e) => { e.stopPropagation(); openComments(); }} className="flex flex-col items-center gap-1">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-            <span className="material-symbols-outlined text-2xl text-white">chat_bubble</span>
-          </div>
-          <span className="text-white text-xs font-bold">{fmt(comments)}</span>
+        <button onClick={(e) => { e.stopPropagation(); openComments(); }} className="flex flex-col items-center gap-0.5">
+          <span className="material-symbols-outlined text-[30px] text-white" style={{ fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>chat_bubble</span>
+          <span className="text-white text-xs font-semibold" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>{fmt(comments)}</span>
         </button>
 
-        {/* Save (enregistrer) */}
-        <button onClick={toggleSave} className="flex flex-col items-center gap-1">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-            <span className="material-symbols-outlined text-2xl" style={{ color: saved ? C.cyan : "#fff", fontVariationSettings: saved ? "'FILL' 1" : "'FILL' 0" }}>bookmark</span>
-          </div>
-          <span className="text-white text-xs font-bold">Enreg.</span>
+        {/* Save (sans libellé) */}
+        <button onClick={toggleSave} className="flex flex-col items-center">
+          <span className="material-symbols-outlined text-[30px]" style={{ color: saved ? C.cyan : "#fff", fontVariationSettings: `'FILL' ${saved ? 1 : 0}, 'wght' 300`, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>bookmark</span>
         </button>
 
-        {/* Share (partager) */}
-        <button onClick={handleShare} className="flex flex-col items-center gap-1">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-            <span className="material-symbols-outlined text-2xl text-white">share</span>
-          </div>
-          <span className="text-white text-xs font-bold">Partager</span>
+        {/* Share (sans libellé) */}
+        <button onClick={handleShare} className="flex flex-col items-center">
+          <span className="material-symbols-outlined text-[30px] text-white" style={{ fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>share</span>
         </button>
 
-        {/* Plein écran — uniquement pour les vidéos publiées en 16:9 (paysage) */}
+        {/* Plein écran — paysage uniquement, icône seule */}
         {isLandscape && (
-          <button onClick={toggleFullscreen} className="flex flex-col items-center gap-1" data-testid="clip-fullscreen">
-            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-              <span className="material-symbols-outlined text-2xl text-white">{isFs ? "fullscreen_exit" : "fullscreen"}</span>
-            </div>
-            <span className="text-white text-xs font-bold">Plein écran</span>
-          </button>
-        )}
-
-        {/* Mute */}
-        {post.media_type === "video" && (
-          <button onClick={(e) => { e.stopPropagation(); setMuted(p => !p); }} className="flex flex-col items-center gap-1">
-            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-              <span className="material-symbols-outlined text-2xl text-white">{muted ? "volume_off" : "volume_up"}</span>
-            </div>
+          <button onClick={toggleFullscreen} className="flex flex-col items-center" data-testid="clip-fullscreen">
+            <span className="material-symbols-outlined text-[28px] text-white" style={{ fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>{isFs ? "fullscreen_exit" : "fullscreen"}</span>
           </button>
         )}
 
@@ -707,11 +688,9 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
             onClick={(e) => { e.stopPropagation(); onDelete?.(post.id); }}
             data-testid="delete-clip"
             title="Supprimer ce clip"
-            className="flex flex-col items-center gap-1"
+            className="flex flex-col items-center"
           >
-            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-              <span className="material-symbols-outlined text-2xl" style={{ color: "#f87171" }}>delete</span>
-            </div>
+            <span className="material-symbols-outlined text-[26px]" style={{ color: "#f87171", fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>delete</span>
           </button>
         )}
       </div>
