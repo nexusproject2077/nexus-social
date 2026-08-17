@@ -452,33 +452,35 @@ export default function ProfilePage({ user, setUser }) {
                   {profile.bio}
                 </p>
               )}
-            </div>
 
-            {/* Stats — desktop : chiffres épurés alignés (façon X), sans blocs. */}
-            <div className="hidden sm:flex items-baseline gap-6 flex-shrink-0 mb-2">
-              {[
-                { label: "Publications", value: fmt(stats.posts), kind: null },
-                { label: "Abonnés",      value: fmt(stats.followers), kind: "followers" },
-                { label: "Abonnements",  value: fmt(stats.following), kind: "following" },
-              ].map((s) => {
-                const clickable = s.kind && canViewContent;
-                return (
-                  <button
-                    key={s.label}
-                    type="button"
-                    disabled={!clickable}
-                    onClick={() => clickable && setFollowModal({ kind: s.kind })}
-                    className={`flex items-baseline gap-1.5 ${clickable ? "hover:opacity-80 transition-opacity cursor-pointer" : "cursor-default"}`}
-                  >
-                    <span className="text-xl font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-                      {s.value}
-                    </span>
-                    <span className="text-sm font-medium" style={{ color: C.outline }}>
-                      {s.label}
-                    </span>
-                  </button>
-                );
-              })}
+              {/* Stats — desktop : chiffres épurés alignés JUSTE SOUS le pseudo /
+                  boutons (façon X), à droite de l'avatar. Masqués sur mobile
+                  (bloc mobile centré dédié plus bas). */}
+              <div className="hidden sm:flex items-baseline gap-6 mt-4">
+                {[
+                  { label: "Publications", value: fmt(stats.posts), kind: null },
+                  { label: "Abonnés",      value: fmt(stats.followers), kind: "followers" },
+                  { label: "Abonnements",  value: fmt(stats.following), kind: "following" },
+                ].map((s) => {
+                  const clickable = s.kind && canViewContent;
+                  return (
+                    <button
+                      key={s.label}
+                      type="button"
+                      disabled={!clickable}
+                      onClick={() => clickable && setFollowModal({ kind: s.kind })}
+                      className={`flex items-baseline gap-1.5 ${clickable ? "hover:opacity-80 transition-opacity cursor-pointer" : "cursor-default"}`}
+                    >
+                      <span className="text-xl font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+                        {s.value}
+                      </span>
+                      <span className="text-sm font-medium" style={{ color: C.outline }}>
+                        {s.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
           </div>
@@ -622,8 +624,8 @@ export default function ProfilePage({ user, setUser }) {
                   {mediaPosts.map((post) => (
                     <div
                       key={post.id}
-                      className="group relative rounded-2xl overflow-hidden cursor-pointer"
-                      style={{ aspectRatio: "1 / 1", background: C.surfaceLow }}
+                      className="group relative aspect-square rounded-2xl overflow-hidden cursor-pointer"
+                      style={{ background: C.surfaceLow }}
                     >
                       {post.media_type === "video" ? (
                         <video src={post.media_url} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" muted playsInline preload="metadata" />
