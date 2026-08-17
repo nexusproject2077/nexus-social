@@ -5825,9 +5825,14 @@ async def create_story(
         "mirror": (mirror in ("1", "true", "True")),
         "views_count": 0,
         "created_at": now.isoformat(),
-        "expires_at": expires_at.isoformat()
+        "expires_at": expires_at.isoformat(),
+        # Champ Date (BSON) dédié à l'index TTL Mongo : les stories expirées sont
+        # purgées automatiquement (l'index TTL ne marche PAS sur `expires_at` qui
+        # est une chaîne ISO). Les requêtes du fil continuent d'utiliser
+        # `expires_at` (string) — ce champ ne sert QU'À la suppression auto.
+        "expire_dt": expires_at,
     }
-    
+
     await db.stories.insert_one(story_to_insert)
 
     if _stverdict and _stverdict["action"] == "flag":
@@ -5841,6 +5846,7 @@ async def create_story(
     ))
 
     story = convert_mongo_doc_to_dict(story_to_insert)
+    story.pop("expire_dt", None)  # champ interne (TTL) — non exposé dans la réponse
     story["has_viewed"] = False
     return Story(**story)
 
@@ -9677,6 +9683,10 @@ async def _startup_warmup():
     # Stories (fil + purge des expirées).
     await _safe_index(db.stories, [("author_id", 1), ("expires_at", -1)], name="by_author_exp")
     await _safe_index(db.stories, "expires_at", name="by_exp")
+    # TTL : purge automatique des stories expirées (Mongo supprime le document dès
+    # que `expire_dt` <= maintenant). Champ Date dédié (le string `expires_at` ne
+    # peut pas servir de TTL). expireAfterSeconds=0 → suppression à l'échéance.
+    await _safe_index(db.stories, "expire_dt", name="ttl_expire", expireAfterSeconds=0)
     await _safe_index(db.story_views, [("story_id", 1), ("user_id", 1)], name="by_story_user")
     # Notifications, enregistrements, pourboires.
     await _safe_index(db.notifications, [("user_id", 1), ("created_at", -1)], name="by_user_recent")
