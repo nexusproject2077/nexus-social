@@ -56,6 +56,8 @@ export default function ProfilePage({ user, setUser }) {
   const tabsBarRef    = useRef(null);
   const [tabsPinned, setTabsPinned] = useState(false);
   const [tabsBarH, setTabsBarH]     = useState(0);
+  const [barHidden, setBarHidden]   = useState(false); // barre Paramètres auto-masquée au scroll
+  const lastYRef = useRef(0);
 
   const isOwnProfile = user && userId && user.id === userId;
 
@@ -71,6 +73,12 @@ export default function ProfilePage({ user, setUser }) {
     let raf = 0;
     const update = () => {
       raf = 0;
+      // Auto-masquage de la barre Paramètres façon en-tête du feed : on la cache
+      // en défilant vers le BAS, on la réaffiche en remontant.
+      const y = window.scrollY || 0;
+      if (y > lastYRef.current && y > 60) setBarHidden(true);
+      else if (y < lastYRef.current - 4) setBarHidden(false);
+      lastYRef.current = y;
       if (!isMobile()) { setTabsPinned(false); return; }
       const pinTop = isOwnProfile ? probe.getBoundingClientRect().height : 0;
       setTabsPinned(anchor.getBoundingClientRect().top <= pinTop + 0.5);
@@ -314,8 +322,8 @@ export default function ProfilePage({ user, setUser }) {
       {isOwnProfile && (
         <>
           <div
-            className={`lg:hidden fixed top-0 left-0 w-full z-[56] flex items-center justify-end px-3 ${tabsPinned ? "" : "pointer-events-none"}`}
-            style={{ minHeight: 48, paddingTop: "env(safe-area-inset-top)", background: tabsPinned ? C.surface : "transparent", transition: "background 0.15s" }}
+            className={`lg:hidden fixed top-0 left-0 w-full z-[56] flex items-center justify-end px-3 ${tabsPinned && !barHidden ? "" : "pointer-events-none"}`}
+            style={{ minHeight: 48, paddingTop: "env(safe-area-inset-top)", background: tabsPinned ? C.surface : "transparent", transform: barHidden ? "translateY(-100%)" : "translateY(0)", transition: "background 0.15s, transform 0.3s ease" }}
           >
             <button
               onClick={() => navigate("/settings")}
@@ -522,7 +530,11 @@ export default function ProfilePage({ user, setUser }) {
           ref={tabsBarRef}
           className={`z-[55] ${tabsPinned ? "fixed left-0 right-0 lg:static" : "lg:sticky lg:top-0"}`}
           style={{
-            top: tabsPinned ? "calc(env(safe-area-inset-top) + 48px)" : undefined,
+            // Quand la barre Paramètres s'auto-masque au scroll, les onglets
+            // remontent tout en haut (pas de bande vide) ; ils redescendent
+            // sous la barre quand elle réapparaît.
+            top: tabsPinned ? (barHidden ? "env(safe-area-inset-top)" : "calc(env(safe-area-inset-top) + 48px)") : undefined,
+            transition: "top 0.3s ease",
             // Opaque une fois épinglé (masque le contenu qui défile dessous) ;
             // légèrement translucide dans le flux.
             background: tabsPinned ? C.surface : `${C.surface}d9`,

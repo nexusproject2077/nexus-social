@@ -262,7 +262,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       <aside
         onMouseEnter={() => setSbExpanded(true)}
         onMouseLeave={() => setSbExpanded(false)}
-        className={`no-scrollbar fixed left-0 top-0 h-screen z-40 hidden lg:flex flex-col py-4 gap-2 select-none overflow-y-auto overscroll-contain transition-[width] duration-200 ease-out ${sbExpanded ? "w-64 px-4 shadow-2xl" : "w-20 px-2"}`}
+        className={`no-scrollbar fixed left-0 top-0 h-screen z-[60] hidden lg:flex flex-col py-4 gap-2 select-none overflow-y-auto overscroll-contain transition-[width] duration-200 ease-out ${sbExpanded ? "w-64 px-4 shadow-2xl" : "w-20 px-2"}`}
         style={{ backgroundColor: "#0b1326", borderRight: "1px solid rgba(255,255,255,0.04)" }}
       >
         {/* Logo : « NEXUS » déployé, « N » replié */}
