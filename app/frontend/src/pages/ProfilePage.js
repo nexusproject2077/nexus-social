@@ -265,24 +265,29 @@ export default function ProfilePage({ user, setUser }) {
       {/* Tirer vers le bas pour rafraîchir le profil (mobile). */}
       <PullToRefresh onRefresh={refreshProfile} />
 
-      {/* Header collant mobile (mon profil) : contient le bouton Paramètres,
-          fond translucide (blur). Reste toujours accessible au scroll ; les
-          onglets se collent juste en dessous, sans espace vide. */}
+      {/* Bouton Paramètres (mon profil, mobile) : VRAIMENT fixe (position: fixed),
+          fond transparent (pas de blur). Reste toujours visible en haut à droite,
+          ne défile jamais avec le contenu. La barre est `pointer-events-none`
+          (transparente) pour ne pas bloquer les taps derrière ; seul le bouton
+          capte les clics. Un spacer réserve sa hauteur pour ne pas décaler le hero. */}
       {isOwnProfile && (
-        <div
-          className="lg:hidden sticky top-0 z-[56] flex items-center justify-end px-3"
-          style={{ minHeight: 48, paddingTop: "env(safe-area-inset-top)", background: "rgba(11,19,38,0.5)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}
-        >
-          <button
-            onClick={() => navigate("/settings")}
-            data-testid="profile-settings-button"
-            className="w-10 h-10 flex items-center justify-center rounded-full transition-transform active:scale-90"
-            style={{ color: "#dae2fd", background: "transparent", textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}
-            title="Paramètres"
+        <>
+          <div
+            className="lg:hidden fixed top-0 left-0 w-full z-[56] flex items-center justify-end px-3 pointer-events-none"
+            style={{ minHeight: 48, paddingTop: "env(safe-area-inset-top)", background: "transparent" }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 26 }}>settings</span>
-          </button>
-        </div>
+            <button
+              onClick={() => navigate("/settings")}
+              data-testid="profile-settings-button"
+              className="pointer-events-auto w-10 h-10 flex items-center justify-center rounded-full transition-transform active:scale-90"
+              style={{ color: "#dae2fd", background: "transparent", textShadow: "0 1px 6px rgba(0,0,0,0.7)" }}
+              title="Paramètres"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 26 }}>settings</span>
+            </button>
+          </div>
+          <div className="lg:hidden" aria-hidden="true" style={{ height: "calc(env(safe-area-inset-top) + 48px)" }} />
+        </>
       )}
 
       {/* ── Cinematic Hero ───────────────────────────────────────────────── */}
@@ -344,6 +349,9 @@ export default function ProfilePage({ user, setUser }) {
                   </span>
                 )}
                 {profile.is_private && <Lock size={18} color={C.outline} />}
+                {/* Groupe d'actions soudé : le bouton Partager reste collé à
+                    Modifier le profil / Enregistrés au lieu de tomber seul. */}
+                <div className="flex items-center gap-2 flex-shrink-0">
                 <FollowButton />
                 {/* Pourboire (Tip) — seulement pour les créateurs ayant activé Stripe Connect. */}
                 {!isOwnProfile && profile.can_receive_tips && (
@@ -391,6 +399,7 @@ export default function ProfilePage({ user, setUser }) {
                     Tip crypto
                   </button>
                 )}
+                </div>
               </div>
               {profile.bio && (
                 <p className="text-sm leading-relaxed max-w-md" style={{ color: C.outline }}>
@@ -431,8 +440,8 @@ export default function ProfilePage({ user, setUser }) {
         </div>
       </div>
 
-      {/* Stats — mobile */}
-      <div className="sm:hidden flex gap-3 px-5 pt-4 overflow-x-auto pb-1">
+      {/* Stats — mobile : compactes, réparties sur toute la largeur (pas de scroll). */}
+      <div className="sm:hidden flex gap-2 px-4 pt-3">
         {[
           { label: "Publications", value: fmt(stats.posts), kind: null },
           { label: "Abonnés",      value: fmt(stats.followers), kind: "followers" },
@@ -445,14 +454,14 @@ export default function ProfilePage({ user, setUser }) {
               type="button"
               disabled={!clickable}
               onClick={() => clickable && setFollowModal({ kind: s.kind })}
-              className={`flex-shrink-0 text-center px-4 py-2.5 rounded-xl ${clickable ? "active:brightness-125" : ""}`}
+              className={`flex-1 min-w-0 text-center px-2 py-2 rounded-xl ${clickable ? "active:brightness-125" : ""}`}
               style={{ ...glass, border: `1px solid ${C.outlineVariant}18` }}
             >
-              <span className="block text-[9px] uppercase tracking-widest font-bold mb-0.5" style={{ color: C.outline }}>
-                {s.label}
-              </span>
-              <span className="text-lg font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+              <span className="block text-base font-black text-white leading-tight" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
                 {s.value}
+              </span>
+              <span className="block text-[9px] uppercase tracking-wide font-bold truncate" style={{ color: C.outline }}>
+                {s.label}
               </span>
             </button>
           );
@@ -462,7 +471,13 @@ export default function ProfilePage({ user, setUser }) {
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
       <div
         className="sticky z-30 mt-6"
-        style={{ top: isOwnProfile ? 48 : 0, background: `${C.surface}d9`, backdropFilter: "blur(16px)", borderTop: `1px solid ${C.outlineVariant}18`, borderBottom: `1px solid ${C.outlineVariant}18` }}
+        style={{
+          // Collé sous la barre Paramètres (fixe) : on inclut la zone sûre iOS,
+          // sinon les onglets se collaient à 48px et passaient DERRIÈRE la barre
+          // (hauteur 48 + encoche) → ils « disparaissaient » au scroll sur iPhone.
+          top: isOwnProfile ? "calc(env(safe-area-inset-top) + 48px)" : "env(safe-area-inset-top)",
+          background: `${C.surface}d9`, backdropFilter: "blur(16px)", borderTop: `1px solid ${C.outlineVariant}18`, borderBottom: `1px solid ${C.outlineVariant}18`,
+        }}
       >
         <div className="max-w-5xl mx-auto flex">
           {tabs.map(({ id, label, icon }) => {
