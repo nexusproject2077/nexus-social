@@ -47,11 +47,14 @@ function FeedVideo({ src }) {
   }, []);
 
   return (
-    <div className="relative rounded-xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+    <div className="relative rounded-2xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
       <video
         ref={ref}
         src={src}
-        className="w-full max-h-[560px] bg-black"
+        // rounded-2xl DIRECTEMENT sur la vidéo : sur iOS, le <video> ne se
+        // découpe pas selon le border-radius du parent (coins du haut « pointus »).
+        // L'arrondir lui-même corrige les 4 coins.
+        className="w-full max-h-[560px] bg-black rounded-2xl"
         muted={muted}
         loop
         playsInline
@@ -309,7 +312,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         </div>
       )}
 
-      <div className="py-4 lg:py-5 space-y-4">
+      <div className="pt-4 pb-6 lg:pt-5 lg:pb-7 space-y-4">
         {/* Header */}
         <div className="flex justify-between items-start">
           <Link to={`/profile/${displayAuthorId}`} className="flex gap-3 items-center">
@@ -457,12 +460,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         {/* Media */}
         {post.media_url && post.media_type === "image" && (
           <div
-            className="relative rounded-xl overflow-hidden border select-none"
+            className="relative rounded-2xl overflow-hidden border select-none"
             style={{ borderColor: "rgba(255,255,255,0.06)" }}
             onClick={onMediaTap}
             onDoubleClick={doubleTapLike}
           >
-            <img src={post.media_url} alt="Post media" className="w-full h-auto object-contain max-h-[560px]" loading="lazy" draggable={false} />
+            <img src={post.media_url} alt="Post media" className="w-full h-auto object-contain max-h-[560px] rounded-2xl" loading="lazy" draggable={false} />
             {/* Cœur animé au double-tap */}
             {heartBurst && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
