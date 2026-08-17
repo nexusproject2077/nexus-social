@@ -486,8 +486,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           <FeedVideo src={post.media_url} />
         )}
 
-        {/* Action bar — réparti (pas serré) : J'aime · Commentaire · Repost · Partage · Enregistrer */}
-        <div className="flex items-center justify-between pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+        {/* Action bar — façon X : icônes espacées (justify-between), sans ligne
+            au-dessus. L'espace vient du space-y du conteneur (pas collé au texte). */}
+        <div className="flex items-center justify-between pt-1">
           {/* Like */}
           <button
             onClick={handleLike}
