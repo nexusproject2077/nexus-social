@@ -306,16 +306,16 @@ export default function ProfilePage({ user, setUser }) {
       {/* Tirer vers le bas pour rafraîchir le profil (mobile). */}
       <PullToRefresh onRefresh={refreshProfile} />
 
-      {/* Bouton Paramètres (mon profil, mobile) : VRAIMENT fixe (position: fixed),
-          fond transparent (pas de blur). Reste toujours visible en haut à droite,
-          ne défile jamais avec le contenu. La barre est `pointer-events-none`
-          (transparente) pour ne pas bloquer les taps derrière ; seul le bouton
-          capte les clics. Un spacer réserve sa hauteur pour ne pas décaler le hero. */}
+      {/* Barre Paramètres (mon profil, mobile) : VRAIMENT fixe (position: fixed),
+          ne défile JAMAIS. En haut du profil (banni​ère visible) → fond transparent.
+          Dès qu'on scrolle (onglets épinglés) → fond OPAQUE : la barre + les onglets
+          forment un header solide, le contenu défile proprement DESSOUS sans
+          transparaître. La barre absorbe les taps quand elle est opaque. */}
       {isOwnProfile && (
         <>
           <div
-            className="lg:hidden fixed top-0 left-0 w-full z-[56] flex items-center justify-end px-3 pointer-events-none"
-            style={{ minHeight: 48, paddingTop: "env(safe-area-inset-top)", background: "transparent" }}
+            className={`lg:hidden fixed top-0 left-0 w-full z-[56] flex items-center justify-end px-3 ${tabsPinned ? "" : "pointer-events-none"}`}
+            style={{ minHeight: 48, paddingTop: "env(safe-area-inset-top)", background: tabsPinned ? C.surface : "transparent", transition: "background 0.15s" }}
           >
             <button
               onClick={() => navigate("/settings")}
