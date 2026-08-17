@@ -1436,7 +1436,7 @@ export default function MessagesPage({ user }) {
           <UserAvatar username={conv.username} pic={conv.profile_pic} size={10} />
           {unread && <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full" style={{ background: "#3b82f6", border: `2px solid ${C.surface}` }} />}
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex flex-col justify-center">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm truncate flex items-center gap-1" style={{ color: active ? C.cyan : C.onSurface, fontWeight: unread ? 800 : 700 }}>
               <span className="truncate">{conv.username}</span>
@@ -1490,7 +1490,7 @@ export default function MessagesPage({ user }) {
             {group.name?.[0]?.toUpperCase()}
           </div>
         )}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex flex-col justify-center">
           <p className="text-sm font-bold truncate flex items-center gap-1" style={{ color: active ? "#a78bfa" : C.onSurface }}>
             <span className="truncate">{group.name}</span>
             {group.pinned && <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 13, color: C.outline }}>keep</span>}
@@ -1523,14 +1523,18 @@ export default function MessagesPage({ user }) {
       {/* Header — pas de trait de séparation, même fond que la liste.
           Plus de bouton retour : le footer mobile gère la navigation. */}
       <div className="px-5 pt-[calc(1.25rem_+_env(safe-area-inset-top))] pb-3 flex items-center gap-2">
+        {/* Espaceur gauche = largeur exacte du bouton droit → le pseudo est
+            centré MATHÉMATIQUEMENT au milieu du header (façon Instagram).
+            Masqué sur PC, où le pseudo s'aligne à gauche. */}
+        <div className="w-9 flex-shrink-0 sm:hidden" aria-hidden />
         {/* Nom d'utilisateur : centré sur mobile, aligné à gauche sur PC */}
-        <h2 className="font-black text-xl tracking-tight flex-1 text-center sm:text-left truncate"
+        <h2 className="font-black text-xl tracking-tight flex-1 min-w-0 text-center sm:text-left truncate"
           style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>
           {user?.username || "Messages"}
         </h2>
         {/* Un seul bouton « Nouveau message » (façon Insta : DM ou groupe). */}
         <button onClick={openNewMessageModal} title="Nouveau message"
-          className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
+          className="w-9 h-9 flex-shrink-0 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
           style={{ background: `${C.cyan}18`, color: C.cyan }}>
           <span className="material-symbols-outlined text-lg">edit_square</span>
         </button>
@@ -1624,12 +1628,12 @@ export default function MessagesPage({ user }) {
         {/* Nexus AI — épinglé tout en haut, toujours accessible. */}
         {!showNewMsg && (
           <button onClick={() => setShowAI(true)}
-            className="w-full flex items-center gap-3 px-4 py-3 transition-all hover:bg-white/5 text-left">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
+            className="w-full flex items-center gap-3.5 px-4 py-4 transition-all hover:bg-white/5 text-left">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ background: `linear-gradient(135deg, ${C.cyan}, #3b82f6)` }}>
-              <span className="material-symbols-outlined" style={{ color: C.onPrimary }}>auto_awesome</span>
+              <span className="material-symbols-outlined text-xl" style={{ color: C.onPrimary }}>auto_awesome</span>
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 flex flex-col justify-center">
               <p className="font-bold flex items-center gap-1" style={{ color: C.onSurface }}>
                 Nexus AI
                 <span className="material-symbols-outlined text-base" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}>verified</span>
