@@ -8894,6 +8894,99 @@ async def for_you_feed(request: Request, limit: int = 10, skip: int = 0,
         return await _foryou_chronological(request, current_user, limit, skip)
 
 
+@api_router.get("/admin/metrics")
+async def admin_metrics(current_user: dict = Depends(require_admin)):
+    """Tableau de bord SANTÉ de l'app (admin uniquement) : total utilisateurs,
+    nouveaux inscrits (jour / 7 j), DAU (utilisateurs actifs/jour) et rétention
+    J+1 / J+7 / J+30. Basé sur les données déjà présentes :
+      • users.created_at  → inscriptions
+      • users.last_active → dernière activité (rétention)
+      • sessions.started_at → activité par jour (DAU)
+
+    Best-effort mais fiable : les comptes en Mode Confidentialité stricte (pas de
+    suivi de session) n'apparaissent pas dans le DAU / la rétention — ils comptent
+    quand même dans le total d'utilisateurs."""
+    now = datetime.now(timezone.utc)
+    DAYS = 14
+
+    def day_str(dt):
+        return dt.strftime("%Y-%m-%d")
+
+    def parse(s):
+        try:
+            dt = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+
+    since = (now - timedelta(days=DAYS - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since_iso = since.isoformat()
+
+    total_users = await db.users.count_documents({})
+
+    # Nouveaux inscrits par jour (created_at est une chaîne ISO → on prend "YYYY-MM-DD").
+    signup_rows = await db.users.aggregate([
+        {"$match": {"created_at": {"$gte": since_iso}}},
+        {"$project": {"day": {"$substrCP": [{"$ifNull": ["$created_at", ""]}, 0, 10]}}},
+        {"$group": {"_id": "$day", "n": {"$sum": 1}}},
+    ], allowDiskUse=True).to_list(length=1000)
+    signup_by_day = {r["_id"]: r["n"] for r in signup_rows if r.get("_id")}
+
+    # DAU par jour : utilisateurs DISTINCTS ayant une session ce jour-là.
+    dau_rows = await db.sessions.aggregate([
+        {"$match": {"started_at": {"$gte": since_iso}}},
+        {"$project": {"user_id": 1, "day": {"$substrCP": [{"$ifNull": ["$started_at", ""]}, 0, 10]}}},
+        {"$group": {"_id": {"day": "$day", "u": "$user_id"}}},
+        {"$group": {"_id": "$_id.day", "dau": {"$sum": 1}}},
+    ], allowDiskUse=True).to_list(length=1000)
+    dau_by_day = {r["_id"]: r["dau"] for r in dau_rows if r.get("_id")}
+
+    # Séries alignées sur les 14 jours (jours sans donnée = 0).
+    signups_series, dau_series = [], []
+    for i in range(DAYS):
+        d = day_str(since + timedelta(days=i))
+        signups_series.append({"day": d, "count": signup_by_day.get(d, 0)})
+        dau_series.append({"day": d, "dau": dau_by_day.get(d, 0)})
+
+    today = day_str(now)
+    new_signups_today = signup_by_day.get(today, 0)
+    dau_today = dau_by_day.get(today, 0)
+    new_signups_7d = sum(signup_by_day.get(day_str(now - timedelta(days=k)), 0) for k in range(7))
+
+    # Rétention J+N : parmi les inscrits d'il y a AU MOINS N jours (ils ont eu le
+    # temps de revenir), part de ceux dont la dernière activité date d'AU MOINS
+    # N jours après l'inscription (= revenus au moins N jours plus tard).
+    users = await db.users.find({}, {"created_at": 1, "last_active": 1, "_id": 0}).to_list(length=500000)
+    retention = {}
+    for label, N in (("j1", 1), ("j7", 7), ("j30", 30)):
+        threshold = now - timedelta(days=N)
+        cohort = retained = 0
+        for u in users:
+            c = parse(u.get("created_at"))
+            if not c or c > threshold:
+                continue
+            cohort += 1
+            la = parse(u.get("last_active"))
+            if la and (la - c) >= timedelta(days=N):
+                retained += 1
+        retention[label] = {
+            "rate": round(100.0 * retained / cohort, 1) if cohort else None,
+            "cohort": cohort,
+            "retained": retained,
+        }
+
+    return {
+        "generated_at": now.isoformat(),
+        "total_users": total_users,
+        "new_signups_today": new_signups_today,
+        "new_signups_7d": new_signups_7d,
+        "dau_today": dau_today,
+        "signups_series": signups_series,
+        "dau_series": dau_series,
+        "retention": retention,
+    }
+
+
 @api_router.get("/admin/cloudinary-status")
 async def cloudinary_status(current_user: dict = Depends(require_admin)):
     """Diagnostic Cloudinary (admin). Dit si Cloudinary est prêt ET fait un

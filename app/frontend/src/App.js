@@ -22,6 +22,7 @@ import PremiumPage from "./pages/PremiumPage";
 import SavedPage from "./pages/SavedPage";
 import SettingsPage from "./pages/SettingsPage";
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
+import AdminMetrics from './pages/AdminMetrics';
 import PrivacyCenter from './pages/PrivacyCenter';
 import ClipsPage from './pages/ClipsPage';
 import ClipsSearchPage from './pages/ClipsSearchPage';
@@ -236,9 +237,15 @@ function App() {
             path="/saved"
             element={user ? <SavedPage user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
-          <Route 
-            path="/analytics" 
-           element={<AnalyticsDashboard user={user} setUser={setUser} />} 
+          <Route
+            path="/analytics"
+           element={<AnalyticsDashboard user={user} setUser={setUser} />}
+          />
+          {/* Tableau de bord santé de l'app — réservé aux admins (le backend
+              renvoie 403 si non-admin ; ici on redirige les non-connectés). */}
+          <Route
+            path="/admin"
+            element={user ? <AdminMetrics user={user} setUser={setUser} /> : <Navigate to="/auth" />}
           />
           <Route
             path="/privacy-center"

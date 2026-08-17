@@ -2,6 +2,7 @@
 // Chaque utilisateur voit uniquement les statistiques de SON PROPRE compte.
 
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
@@ -134,6 +135,17 @@ export default function AnalyticsDashboard({ user, setUser }) {
           <p className="text-slate-400 text-xs sm:text-sm">
             Les performances de votre compte @{user?.username}
           </p>
+          {/* Accès admin : tableau de bord « santé de l'app » (DAU, rétention…). */}
+          {user?.is_admin && (
+            <Link
+              to="/admin"
+              className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:opacity-90"
+              style={{ background: "rgba(34,211,238,0.12)", color: "#22d3ee" }}
+            >
+              <span className="material-symbols-outlined text-sm">monitoring</span>
+              Santé de l'app (admin)
+            </Link>
+          )}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
