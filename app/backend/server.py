@@ -1108,6 +1108,27 @@ def _ranged_media_response(request, data: bytes, content_type: str) -> Response:
     return Response(content=data, status_code=200, media_type=content_type, headers=headers)
 
 
+def normalize_paypal(value: Optional[str]) -> Optional[str]:
+    """Normalise une entrée PayPal en lien PayPal.me sûr.
+
+    Accepte : « pseudo », « @pseudo », « paypal.me/pseudo », une URL complète
+    paypal.me/… ou paypal.com/paypalme/… → renvoie « https://paypal.me/<pseudo> ».
+    Renvoie None pour une entrée vide (permet d'effacer le lien)."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    v = re.sub(r"^https?://", "", v, flags=re.I).strip("/")
+    v = re.sub(r"^(www\.)?paypal\.me/", "", v, flags=re.I)
+    v = re.sub(r"^(www\.)?paypal\.com/paypalme/", "", v, flags=re.I)
+    handle = v.lstrip("@").split("/")[0].split("?")[0].strip()
+    # Pseudo PayPal : lettres/chiffres, 1–30 caractères.
+    if not re.fullmatch(r"[A-Za-z0-9]{1,30}", handle):
+        return None
+    return f"https://paypal.me/{handle}"
+
+
 def safe_http_url(url: Optional[str]) -> Optional[str]:
     """N'accepte qu'une URL http(s) (évite javascript: et autres schémas dangereux)."""
     if isinstance(url, str):
@@ -1221,7 +1242,8 @@ class UserProfile(BaseModel):
     is_following: bool = False
     is_verified: bool = False
     is_premium: bool = False  # membre Nexus Premium (badge + avantages)
-    can_receive_tips: bool = False  # a un compte Stripe Connect → bouton Pourboire
+    can_receive_tips: bool = False  # a un compte Stripe Connect → pourboire par carte
+    paypal_link: Optional[str] = None  # lien PayPal.me pour recevoir des pourboires
     crypto_wallet: Optional[str] = None  # adresse de tips crypto (Solana/USDT…)
     created_at: str
 
@@ -2415,14 +2437,17 @@ async def update_profile_details(
     try:
         allowed_fields = [
             "first_name", "last_name", "bio", "location",
-            "phone", "birthdate", "gender", "website", "crypto_wallet"
+            "phone", "birthdate", "gender", "website", "crypto_wallet", "paypal_link"
         ]
-        
+
         update_data = {
-            k: v for k, v in profile_data.items() 
+            k: v for k, v in profile_data.items()
             if k in allowed_fields and v is not None
         }
-        
+        # PayPal : on stocke un lien PayPal.me normalisé (ou vide pour effacer).
+        if "paypal_link" in update_data:
+            update_data["paypal_link"] = normalize_paypal(update_data["paypal_link"]) or ""
+
         if not update_data:
             raise HTTPException(status_code=400, detail="Aucune donnée valide")
         
@@ -2491,7 +2516,8 @@ async def get_user_settings(current_user: dict = Depends(get_current_user)):
                 "birthdate": user_dict.get("birthdate", ""),
                 "gender": user_dict.get("gender", ""),
                 "website": user_dict.get("website", ""),
-                "crypto_wallet": user_dict.get("crypto_wallet", "")
+                "crypto_wallet": user_dict.get("crypto_wallet", ""),
+                "paypal_link": user_dict.get("paypal_link", "")
             },
             "account": {
                 "username": user_dict.get("username"),
@@ -3582,6 +3608,7 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         is_verified=user.get("is_verified", False),
         is_premium=user.get("is_premium", False),
         can_receive_tips=bool(user.get("stripe_account_id")),
+        paypal_link=normalize_paypal(user.get("paypal_link")),
         crypto_wallet=user.get("crypto_wallet"),
         created_at=user["created_at"]
     )

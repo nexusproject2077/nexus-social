@@ -407,17 +407,19 @@ export default function ProfilePage({ user, setUser }) {
                     centrée sous le pseudo ; sur PC il reste inline à droite. */}
                 <div className="flex items-center justify-center gap-2 flex-shrink-0 w-full sm:w-auto mt-1 sm:mt-0">
                 <FollowButton />
-                {/* Pourboire (Tip) — seulement pour les créateurs ayant activé Stripe Connect. */}
-                {!isOwnProfile && profile.can_receive_tips && (
+                {/* Pourboire (Tip) — dès qu'AU MOINS un moyen est activé (carte
+                    Stripe, PayPal ou crypto). Le choix du moyen se fait dans la
+                    fenêtre de pourboire. Bouton bien visible (plein dégradé). */}
+                {!isOwnProfile && (profile.can_receive_tips || profile.paypal_link || profile.crypto_wallet) && (
                   <button
                     data-testid="tip-button"
                     title="Envoyer un pourboire"
                     onClick={() => setShowTip(true)}
                     style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-black text-sm transition-all active:scale-95 hover:opacity-90"
                   >
-                    <span className="material-symbols-outlined text-lg">volunteer_activism</span>
-                    Pourboire
+                    <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>volunteer_activism</span>
+                    Soutenir
                   </button>
                 )}
                 {/* Partager le profil : copie l'URL /profil/:userId (ou partage natif). */}
@@ -436,23 +438,6 @@ export default function ProfilePage({ user, setUser }) {
                 >
                   <Share2 size={16} />
                 </button>
-                {!isOwnProfile && profile.crypto_wallet && (
-                  <button
-                    data-testid="tip-crypto"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(profile.crypto_wallet).then(
-                        () => toast.success("Adresse wallet copiée — envoyez votre tip 🙌"),
-                        () => toast.info(profile.crypto_wallet)
-                      );
-                    }}
-                    title={profile.crypto_wallet}
-                    className="flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
-                    style={{ background: "rgba(34,211,238,0.12)", color: C.primary, border: `1px solid ${C.primaryContainer}33` }}
-                  >
-                    <span className="material-symbols-outlined text-base">volunteer_activism</span>
-                    Tip crypto
-                  </button>
-                )}
                 </div>
               </div>
               {profile.bio && (
@@ -729,7 +714,14 @@ export default function ProfilePage({ user, setUser }) {
 
       {/* Sélecteur de montant de pourboire */}
       {showTip && (
-        <TipModal userId={userId} username={profile.username} onClose={() => setShowTip(false)} />
+        <TipModal
+          userId={userId}
+          username={profile.username}
+          canReceiveTips={!!profile.can_receive_tips}
+          paypalLink={profile.paypal_link || ""}
+          cryptoWallet={profile.crypto_wallet || ""}
+          onClose={() => setShowTip(false)}
+        />
       )}
 
       {followModal && (

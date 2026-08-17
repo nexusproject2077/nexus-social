@@ -196,7 +196,7 @@ export default function SettingsPage({ user, setUser }) {
 
   const [profileData, setProfileData] = useState({
     first_name: "", last_name: "", bio: "",
-    location: "", website: "", phone: "", birthdate: "", gender: "", crypto_wallet: ""
+    location: "", website: "", phone: "", birthdate: "", gender: "", crypto_wallet: "", paypal_link: ""
   });
 
   const saveCryptoWallet = async () => {
@@ -204,6 +204,33 @@ export default function SettingsPage({ user, setUser }) {
       await axios.put(`${API}/users/me/profile-details`, { crypto_wallet: profileData.crypto_wallet });
       toast.success("Wallet enregistré");
     } catch { toast.error("Erreur"); }
+  };
+
+  const savePaypal = async () => {
+    try {
+      const res = await axios.put(`${API}/users/me/profile-details`, { paypal_link: profileData.paypal_link });
+      const saved = res.data?.user?.paypal_link ?? "";
+      setProfileData((p) => ({ ...p, paypal_link: saved }));
+      toast.success(saved ? "Lien PayPal enregistré" : "Lien PayPal retiré");
+    } catch { toast.error("Lien PayPal invalide"); }
+  };
+
+  // Stripe Connect (pourboires par carte) : état + activation.
+  const [connect, setConnect] = useState(null); // { connected, charges_enabled, enabled }
+  const [connectBusy, setConnectBusy] = useState(false);
+  useEffect(() => {
+    axios.get(`${API}/billing/connect/status`).then((r) => setConnect(r.data)).catch(() => setConnect(null));
+  }, []);
+  const activateStripe = async () => {
+    setConnectBusy(true);
+    try {
+      const r = await axios.post(`${API}/billing/connect/onboard`);
+      if (r.data?.url) window.location.href = r.data.url;
+      else { toast.error("Activation indisponible"); setConnectBusy(false); }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Activation indisponible");
+      setConnectBusy(false);
+    }
   };
 
   const startSubscription = async () => {
@@ -222,9 +249,6 @@ export default function SettingsPage({ user, setUser }) {
     else if (sub === "cancel") toast.info("Abonnement annulé");
   }, []);
   const [creatorStats, setCreatorStats] = useState(null);
-  const [monetization, setMonetization] = useState(
-    () => localStorage.getItem("creator_monetization") === "1"
-  );
 
   useEffect(() => { fetchSettings(); fetchCreatorStats(); }, []);
 
@@ -242,16 +266,6 @@ export default function SettingsPage({ user, setUser }) {
       const res = await axios.get(`${API}/users/me/stats`);
       setCreatorStats(res.data);
     } catch { /* stats optionnelles */ }
-  };
-
-  const toggleMonetization = (value) => {
-    setMonetization(value);
-    localStorage.setItem("creator_monetization", value ? "1" : "0");
-    toast.info(
-      value
-        ? "Monétisation activée — la configuration des paiements arrive bientôt"
-        : "Monétisation désactivée"
-    );
   };
 
   const updatePrivacy = async (key, value) => {
@@ -447,39 +461,89 @@ export default function SettingsPage({ user, setUser }) {
         </Card>
 
         {/* Monétisation */}
+        {/* ── Recevoir des pourboires ─────────────────────────────────────
+            Une seule section claire, 3 moyens au choix (le créateur peut en
+            activer un ou plusieurs). Le bouton « Pourboire » apparaît sur ton
+            profil dès qu'au moins un moyen est actif. */}
         <Card>
-          <CardHeader title="Monétisation" icon="paid" />
-          <ToggleRow
-            icon="toll"
-            label="Activer la monétisation"
-            sublabel="Recevez des revenus de vos contenus — la configuration des paiements arrive bientôt"
-            checked={monetization}
-            onChange={toggleMonetization}
-          />
-          <div className="px-5 py-4 text-xs" style={{ color: C.outline }}>
-            Les versements nécessitent la configuration d'un prestataire de paiement, bientôt disponible.
+          <CardHeader title="Recevoir des pourboires" icon="volunteer_activism" />
+          <div className="px-5 pt-3 pb-1 text-sm" style={{ color: C.outline }}>
+            Active un ou plusieurs moyens ci-dessous. Un bouton <b style={{ color: C.onSurface }}>Pourboire</b> apparaîtra
+            alors sur ton profil pour que tes abonnés puissent te soutenir.
           </div>
-        </Card>
 
-        {/* Tips crypto */}
-        <Card>
-          <CardHeader title="Tips crypto" icon="currency_bitcoin" />
-          <div className="p-5 space-y-3">
-            <p className="text-sm" style={{ color: C.outline }}>
-              Ajoutez votre adresse (Solana, USDT, BTC…) pour recevoir des tips directement, sans intermédiaire ni frais de plateforme.
-            </p>
+          {/* 1) Carte bancaire via Stripe */}
+          <div className="p-5 space-y-3 border-t" style={{ borderColor: C.outlineVariant + "22" }}>
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined" style={{ color: C.cyan }}>credit_card</span>
+              <div className="flex-1">
+                <p className="text-sm font-bold" style={{ color: C.onSurface }}>Carte bancaire (Stripe)</p>
+                <p className="text-xs" style={{ color: C.outline }}>Le plus simple pour tes abonnés — paiement sécurisé, versé sur ton compte.</p>
+              </div>
+              {connect?.charges_enabled && (
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1" style={{ background: "#22c55e22", color: "#22c55e" }}>
+                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>Activé
+                </span>
+              )}
+            </div>
+            {connect && connect.enabled === false ? (
+              <p className="text-xs" style={{ color: C.outline }}>Les paiements par carte ne sont pas encore configurés sur la plateforme.</p>
+            ) : connect?.charges_enabled ? (
+              <button onClick={activateStripe} disabled={connectBusy}
+                className="text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+                style={{ background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}>
+                Gérer mon compte Stripe
+              </button>
+            ) : (
+              <button onClick={activateStripe} disabled={connectBusy}
+                data-testid="activate-stripe-tips"
+                className="text-sm font-bold px-5 py-2.5 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+                style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+                {connectBusy ? "Redirection…" : (connect?.connected ? "Terminer l'activation" : "Activer les pourboires par carte")}
+              </button>
+            )}
+          </div>
+
+          {/* 2) PayPal.me */}
+          <div className="p-5 space-y-3 border-t" style={{ borderColor: C.outlineVariant + "22" }}>
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined" style={{ color: C.cyan }}>account_balance_wallet</span>
+              <div className="flex-1">
+                <p className="text-sm font-bold" style={{ color: C.onSurface }}>PayPal</p>
+                <p className="text-xs" style={{ color: C.outline }}>Renseigne ton pseudo PayPal.me — tes abonnés te paient directement, sans commission Nexus.</p>
+              </div>
+            </div>
+            <InputField
+              label="Pseudo ou lien PayPal.me"
+              value={profileData.paypal_link}
+              onChange={(e) => setProfileData((p) => ({ ...p, paypal_link: e.target.value }))}
+              placeholder="Ex : moncompte  (ou paypal.me/moncompte)"
+            />
+            <button onClick={savePaypal} data-testid="save-paypal"
+              className="px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
+              style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+              Enregistrer PayPal
+            </button>
+          </div>
+
+          {/* 3) Crypto */}
+          <div className="p-5 space-y-3 border-t" style={{ borderColor: C.outlineVariant + "22" }}>
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined" style={{ color: C.cyan }}>currency_bitcoin</span>
+              <div className="flex-1">
+                <p className="text-sm font-bold" style={{ color: C.onSurface }}>Crypto</p>
+                <p className="text-xs" style={{ color: C.outline }}>Adresse Solana / USDT / BTC — sans intermédiaire ni frais de plateforme.</p>
+              </div>
+            </div>
             <InputField
               label="Adresse wallet"
               value={profileData.crypto_wallet}
               onChange={(e) => setProfileData((p) => ({ ...p, crypto_wallet: e.target.value }))}
               placeholder="Ex : 7xKX…（Solana / USDT / BTC）"
             />
-            <button
-              onClick={saveCryptoWallet}
-              data-testid="save-wallet"
+            <button onClick={saveCryptoWallet} data-testid="save-wallet"
               className="px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
-              style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
-            >
+              style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
               Enregistrer le wallet
             </button>
           </div>

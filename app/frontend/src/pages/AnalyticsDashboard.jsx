@@ -208,8 +208,17 @@ export default function AnalyticsDashboard({ user, setUser }) {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 mt-4 pt-4 border-t border-slate-800">Aucun pourboire reçu pour l'instant. Active les pourboires dans les Paramètres (Stripe) pour permettre à ta communauté de te soutenir.</p>
+                  <p className="text-xs text-slate-400 mt-4 pt-4 border-t border-slate-800">Aucun pourboire reçu pour l'instant. Active un moyen de pourboire (carte, PayPal ou crypto) pour permettre à ta communauté de te soutenir.</p>
                 )}
+
+                {/* Raccourci utile : gérer ses moyens de pourboire */}
+                <Link
+                  to="/settings"
+                  className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-cyan-400 hover:text-cyan-300 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">settings</span>
+                  Gérer mes moyens de pourboire (carte · PayPal · crypto)
+                </Link>
               </CardContent>
             </Card>
 
