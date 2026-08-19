@@ -7817,8 +7817,11 @@ def _espn_fetch_league(slug: str, fallback_name: str):
             out.append({
                 "id": str(ev.get("id") or ""),
                 "league": league_name,
+                "league_slug": slug,
                 "home": (home.get("team") or {}).get("shortDisplayName") or (home.get("team") or {}).get("displayName") or "",
                 "away": (away.get("team") or {}).get("shortDisplayName") or (away.get("team") or {}).get("displayName") or "",
+                "home_id": str((home.get("team") or {}).get("id") or ""),
+                "away_id": str((away.get("team") or {}).get("id") or ""),
                 "home_logo": (home.get("team") or {}).get("logo"),
                 "away_logo": (away.get("team") or {}).get("logo"),
                 "home_score": home.get("score"),
@@ -7869,13 +7872,66 @@ async def get_cached_live_scores():
 
 @api_router.get("/livescores")
 async def livescores(current_user: dict = Depends(get_current_user)):
-    """Scores de foot en direct (ESPN), servis depuis le cache mémoire."""
+    """Scores de foot en direct (ESPN), servis depuis le cache mémoire GLOBAL puis
+    triés PAR UTILISATEUR : ses ligues/équipes favorites d'abord, puis le reste
+    (matchs en cours prioritaires dans chaque groupe)."""
     try:
         data = await get_cached_live_scores()
     except Exception as e:
         logger.warning(f"/livescores a échoué: {e}")
         data = _livescores_cache.get("data", [])
-    return {"matches": data[:40], "updated_at": _livescores_cache.get("ts", 0)}
+    fav_leagues = set(current_user.get("favorite_leagues") or [])
+    fav_teams = set(current_user.get("favorite_teams") or [])
+    order = {"in": 0, "pre": 1, "post": 2}
+
+    def is_fav(m):
+        return (m.get("league_slug") in fav_leagues) or (m.get("home_id") in fav_teams) or (m.get("away_id") in fav_teams)
+
+    ranked = sorted(data, key=lambda m: (0 if is_fav(m) else 1, order.get(m.get("state"), 3), m.get("date") or ""))
+    return {
+        "matches": ranked[:40],
+        "updated_at": _livescores_cache.get("ts", 0),
+        "favorites": {"leagues": sorted(fav_leagues), "teams": sorted(fav_teams)},
+    }
+
+
+@api_router.get("/users/me/sports-favorites")
+async def get_sports_favorites(current_user: dict = Depends(get_current_user)):
+    """Ligues et équipes favorites (scores de foot) de l'utilisateur."""
+    return {
+        "leagues": current_user.get("favorite_leagues") or [],
+        "teams": current_user.get("favorite_teams") or [],
+    }
+
+
+@api_router.put("/users/me/sports-favorites")
+async def set_sports_favorites(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Remplace les listes de favoris (utilisé par la modale de filtres)."""
+    def clean(v):
+        return [str(x)[:40] for x in v if isinstance(x, (str, int))][:100] if isinstance(v, list) else []
+    leagues = clean(data.get("leagues"))
+    teams = clean(data.get("teams"))
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"favorite_leagues": leagues, "favorite_teams": teams}})
+    return {"leagues": leagues, "teams": teams}
+
+
+@api_router.post("/users/me/sports-favorites/toggle")
+async def toggle_sports_favorite(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Bascule un favori (clic sur l'étoile). kind ∈ {league, team}."""
+    kind = (data.get("kind") or "").strip()
+    fav_id = str(data.get("id") or "").strip()[:40]
+    if kind not in ("league", "team") or not fav_id:
+        raise HTTPException(status_code=400, detail="kind (league|team) et id requis")
+    field = "favorite_leagues" if kind == "league" else "favorite_teams"
+    current = list(current_user.get(field) or [])
+    if fav_id in current:
+        current.remove(fav_id)
+        active = False
+    else:
+        current = (current + [fav_id])[:100]
+        active = True
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {field: current}})
+    return {"kind": kind, "id": fav_id, "active": active, field: current}
 
 
 # ==================== PRIVACY ENDPOINTS ====================
