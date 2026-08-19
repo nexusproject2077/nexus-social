@@ -5,6 +5,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 import CallManager from "@/components/CallManager";
+import LiveScores from "@/components/LiveScores";
 
 export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome, hideMobileHeader, bottomNav }) {
   const navigate = useNavigate();
@@ -353,6 +354,9 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           className="fixed right-0 top-0 h-screen w-80 z-40 hidden lg:flex flex-col py-8 px-6 gap-8 overflow-y-auto"
           style={{ backgroundColor: "#0b1326", borderLeft: "1px solid rgba(255,255,255,0.04)" }}
         >
+          {/* Scores de foot en direct — tout en haut de la colonne. */}
+          <LiveScores variant="sidebar" />
+
           {/* Trending — carte au fond gris très sombre (façon X) */}
           <section className="rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
             <h2 className="font-headline font-bold text-lg mb-5 tracking-tight" style={{ color: "#dae2fd" }}>{t("trending")}</h2>

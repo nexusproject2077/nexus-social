@@ -7770,6 +7770,114 @@ async def get_user_level(current_user: dict = Depends(get_current_user)):
     user = await db.users.find_one({"id": current_user["id"]})
     return {"success": True, "level": user.get("level", 1), "xp": user.get("xp", 0)}
 
+# ==================== SCORES DE FOOT EN DIRECT (ESPN, sans clé) ====================
+# API publique JSON d'ESPN (site.api.espn.com) — pas de clé, pas de compte.
+# Cache MÉMOIRE paresseux : on ne rafraîchit QUE lorsqu'un client demande et que
+# le cache est périmé (60 s si un match est en cours, 1 h sinon). Pas de boucle
+# de fond → compatible « scale-to-zero » (coût quasi nul).
+
+ESPN_SOCCER_LEAGUES = [
+    ("uefa.champions", "Ligue des Champions"),
+    ("uefa.europa", "Ligue Europa"),
+    ("eng.1", "Premier League"),
+    ("esp.1", "LaLiga"),
+    ("ita.1", "Serie A"),
+    ("ger.1", "Bundesliga"),
+    ("fra.1", "Ligue 1"),
+    ("fifa.world", "Coupe du Monde"),
+    ("uefa.euro", "Euro"),
+    ("usa.1", "MLS"),
+]
+
+_livescores_cache = {"data": [], "ts": 0.0}
+_livescores_lock = asyncio.Lock()
+
+
+def _espn_fetch_league(slug: str, fallback_name: str):
+    """Récupère (synchrone) les matchs d'une compétition ESPN → liste normalisée."""
+    out = []
+    try:
+        r = _requests.get(
+            f"https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard",
+            timeout=8, headers={"User-Agent": "NexusSocial/1.0"},
+        )
+        if not r.ok:
+            return out
+        data = r.json()
+        league_name = (data.get("leagues") or [{}])[0].get("name") or fallback_name
+        for ev in data.get("events", []) or []:
+            comp = (ev.get("competitions") or [{}])[0]
+            status = ev.get("status") or comp.get("status") or {}
+            stype = status.get("type") or {}
+            comps = comp.get("competitors") or []
+            home = next((c for c in comps if c.get("homeAway") == "home"), None)
+            away = next((c for c in comps if c.get("homeAway") == "away"), None)
+            if not (home and away):
+                continue
+            out.append({
+                "id": str(ev.get("id") or ""),
+                "league": league_name,
+                "home": (home.get("team") or {}).get("shortDisplayName") or (home.get("team") or {}).get("displayName") or "",
+                "away": (away.get("team") or {}).get("shortDisplayName") or (away.get("team") or {}).get("displayName") or "",
+                "home_logo": (home.get("team") or {}).get("logo"),
+                "away_logo": (away.get("team") or {}).get("logo"),
+                "home_score": home.get("score"),
+                "away_score": away.get("score"),
+                "state": stype.get("state"),               # pre | in | post
+                "clock": status.get("displayClock") or "",  # ex : « 43' »
+                "detail": stype.get("shortDetail") or stype.get("description") or "",
+                "date": ev.get("date"),
+            })
+    except Exception:
+        pass
+    return out
+
+
+async def get_live_scores():
+    """Scores de foot en direct (toutes compétitions suivies), triés : matchs EN
+    COURS d'abord, puis à venir, puis terminés."""
+    tasks = [asyncio.to_thread(_espn_fetch_league, slug, name) for slug, name in ESPN_SOCCER_LEAGUES]
+    matches = []
+    for res in await asyncio.gather(*tasks, return_exceptions=True):
+        if isinstance(res, list):
+            matches.extend(res)
+    order = {"in": 0, "pre": 1, "post": 2}
+    matches.sort(key=lambda m: (order.get(m.get("state"), 3), m.get("date") or ""))
+    return matches
+
+
+async def get_cached_live_scores():
+    """Cache paresseux : rafraîchit si périmé. TTL = 60 s si un match est en
+    cours, 1 h sinon. Un seul rafraîchissement concurrent (verrou)."""
+    now = time.time()
+    data = _livescores_cache["data"]
+    has_live = any(m.get("state") == "in" for m in data)
+    ttl = 60 if has_live else 3600
+    if _livescores_cache["ts"] > 0 and (now - _livescores_cache["ts"]) < ttl:
+        return data
+    async with _livescores_lock:
+        # Un autre appel a pu rafraîchir pendant l'attente du verrou.
+        now = time.time()
+        if _livescores_cache["ts"] > 0 and (now - _livescores_cache["ts"]) < ttl:
+            return _livescores_cache["data"]
+        fresh = await get_live_scores()
+        if fresh or _livescores_cache["ts"] == 0:
+            _livescores_cache["data"] = fresh
+            _livescores_cache["ts"] = now
+        return _livescores_cache["data"]
+
+
+@api_router.get("/livescores")
+async def livescores(current_user: dict = Depends(get_current_user)):
+    """Scores de foot en direct (ESPN), servis depuis le cache mémoire."""
+    try:
+        data = await get_cached_live_scores()
+    except Exception as e:
+        logger.warning(f"/livescores a échoué: {e}")
+        data = _livescores_cache.get("data", [])
+    return {"matches": data[:40], "updated_at": _livescores_cache.get("ts", 0)}
+
+
 # ==================== PRIVACY ENDPOINTS ====================
 
 @api_router.get("/privacy/settings")

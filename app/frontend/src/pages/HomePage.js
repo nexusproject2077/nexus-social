@@ -5,6 +5,7 @@ import Layout from "../components/Layout";
 import PostCard from "../components/PostCard";
 import CreatePostModal from "../components/CreatePostModal";
 import StoriesFeed from "../components/StoriesFeed";
+import LiveScores from "../components/LiveScores";
 import AdSense from "../components/AdSense";
 import { Skeleton } from "../components/ui/skeleton";
 import PullToRefresh from "../components/PullToRefresh";
@@ -193,6 +194,12 @@ export default function HomePage({ user, setUser }) {
 
         {/* Stories */}
         <StoriesFeed />
+
+        {/* Scores de foot en direct — carrousel horizontal (mobile ; sur PC ils
+            sont dans la colonne Tendances à droite). */}
+        <div className="lg:hidden">
+          <LiveScores variant="mobile" />
+        </div>
 
         {/* Sélecteur d'ordonnancement du fil « Pour vous » — MOBILE uniquement
             (sur PC, l'ordre est intégré à la ligne d'onglets X ci-dessous). */}
