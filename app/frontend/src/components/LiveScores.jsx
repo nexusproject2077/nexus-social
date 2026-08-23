@@ -37,6 +37,45 @@ export function sortMatches(list, favL, favT) {
     || String(a.date || "").localeCompare(String(b.date || "")));
 }
 
+// Sélection à afficher : priorité ABSOLUE aux matchs EN DIRECT. S'il n'y en a
+// aucun, on montre les 3 PROCHAINS à venir (chronologiques, favoris d'abord).
+export function displayMatches(list, favL, favT) {
+  const sorted = sortMatches(list, favL, favT);
+  if (sorted.some((m) => m.state === "in")) return sorted;          // direct prioritaire
+  const pre = sorted.filter((m) => m.state === "pre");
+  if (pre.length) return pre.slice(0, 3);                            // sinon 3 prochains
+  return sorted.slice(0, 3);                                        // repli : récents terminés
+}
+
+// Heure + jour du coup d'envoi, format ultra-court (ex : « Dim. 15:00 »,
+// « Auj. 21:00 », « Dem. 18:30 »).
+export function formatKickoff(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "À venir";
+  const now = new Date();
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  let day;
+  if (d.toDateString() === now.toDateString()) day = "Auj.";
+  else if (d.toDateString() === tomorrow.toDateString()) day = "Dem.";
+  else { day = d.toLocaleDateString("fr-FR", { weekday: "short" }); day = day.charAt(0).toUpperCase() + day.slice(1); }
+  return `${day} ${time}`;
+}
+
+// Badge « À VENIR » discret (gris anthracite) — remplace le badge LIVE.
+const UpcomingBadge = () => (
+  <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-black tracking-wide"
+    style={{ background: "#232c3a", color: "#9fb0c8" }}>À VENIR</span>
+);
+
+// Badge LIVE néon (match en cours).
+const LiveBadge = () => (
+  <span className="flex items-center gap-1 flex-shrink-0">
+    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: NEON, boxShadow: `0 0 6px ${NEON}` }} />
+    <span className="text-[9px] font-black" style={{ color: NEON }}>LIVE</span>
+  </span>
+);
+
 // Étoile favori (SVG premium via material-symbols) — remplie/allumée si actif.
 const StarBtn = ({ active, onClick, size = 15 }) => (
   <button
@@ -54,7 +93,7 @@ const StarBtn = ({ active, onClick, size = 15 }) => (
   </button>
 );
 
-const Team = ({ id, logo, name, score, live, flash, favT, onToggleTeam }) => (
+const Team = ({ id, logo, name, score, live, upcoming, flash, favT, onToggleTeam }) => (
   <div className="flex items-center gap-1.5 min-w-0">
     {logo ? (
       <img src={logo} alt="" className="w-4 h-4 object-contain flex-shrink-0" loading="lazy" />
@@ -62,11 +101,14 @@ const Team = ({ id, logo, name, score, live, flash, favT, onToggleTeam }) => (
       <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ background: "#2a3446" }} />
     )}
     <span className="text-xs truncate flex-1" style={{ color: "#c7d0e0" }}>{name}</span>
-    <span className={`text-sm font-black tabular-nums ${flash ? "nexus-score-flash" : ""}`} style={{
-      color: live ? NEON : BRIGHT,
-      textShadow: live ? `0 0 8px ${NEON}66` : "none",
-      minWidth: 14, textAlign: "right",
-    }}>{score ?? "-"}</span>
+    {/* Match à venir : pas de score (remplacé par l'heure/date dans le pied). */}
+    {!upcoming && (
+      <span className={`text-sm font-black tabular-nums ${flash ? "nexus-score-flash" : ""}`} style={{
+        color: live ? NEON : BRIGHT,
+        textShadow: live ? `0 0 8px ${NEON}66` : "none",
+        minWidth: 14, textAlign: "right",
+      }}>{score ?? "-"}</span>
+    )}
     {!!id && <StarBtn active={favT.has(id)} onClick={() => onToggleTeam(id)} size={13} />}
   </div>
 );
@@ -74,9 +116,11 @@ const Team = ({ id, logo, name, score, live, flash, favT, onToggleTeam }) => (
 export function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onToggleTeam, onOpen }) {
   const live = m.state === "in";
   const done = m.state === "post";
+  const upcoming = !live && !done;
+  // Match à venir : on affiche l'heure + la date à la place du score.
   const status = live ? (m.clock || m.detail || "En direct")
     : done ? (m.detail || "Terminé")
-    : (m.detail || "À venir");
+    : formatKickoff(m.date);
   return (
     <div
       onClick={() => onOpen?.(m)}
@@ -93,19 +137,17 @@ export function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onTog
           <StarBtn active={favL.has(m.league_slug)} onClick={() => onToggleLeague(m.league_slug)} size={13} />
           <span className="text-[10px] font-bold uppercase tracking-wider truncate" style={{ color: "#6b7686" }}>{m.league}</span>
         </div>
-        {live && (
-          <span className="flex items-center gap-1 flex-shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: NEON, boxShadow: `0 0 6px ${NEON}` }} />
-            <span className="text-[9px] font-black" style={{ color: NEON }}>LIVE</span>
-          </span>
-        )}
+        {live ? <LiveBadge /> : upcoming ? <UpcomingBadge /> : null}
       </div>
       <div className="space-y-1.5">
-        <Team id={m.home_id} logo={m.home_logo} name={m.home} score={m.home_score} live={live} flash={flash} favT={favT} onToggleTeam={onToggleTeam} />
-        <Team id={m.away_id} logo={m.away_logo} name={m.away} score={m.away_score} live={live} flash={flash} favT={favT} onToggleTeam={onToggleTeam} />
+        <Team id={m.home_id} logo={m.home_logo} name={m.home} score={m.home_score} live={live} upcoming={upcoming} flash={flash} favT={favT} onToggleTeam={onToggleTeam} />
+        <Team id={m.away_id} logo={m.away_logo} name={m.away} score={m.away_score} live={live} upcoming={upcoming} flash={flash} favT={favT} onToggleTeam={onToggleTeam} />
       </div>
       <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-        <span className="text-[10px] font-bold" style={{ color: live ? NEON : "#6b7686" }}>{status}</span>
+        <span className="text-[10px] font-bold flex items-center gap-1" style={{ color: live ? NEON : upcoming ? "#9fb0c8" : "#6b7686" }}>
+          {upcoming && <span className="material-symbols-outlined" style={{ fontSize: 12 }}>schedule</span>}
+          {status}
+        </span>
       </div>
     </div>
   );
@@ -133,9 +175,10 @@ function MmaFighter({ f, winner, done }) {
 export function MmaCard({ m, compact, flash }) {
   const live = m.state === "in";
   const done = m.state === "post";
+  const upcoming = !live && !done;
   const status = live ? `R${m.round || "?"}${m.clock ? " · " + m.clock : ""}`
     : done ? (m.method || "Terminé")
-    : (m.detail || "À venir");
+    : formatKickoff(m.date);
   const w1 = done && m.winner && m.f1?.name === m.winner;
   const w2 = done && m.winner && m.f2?.name === m.winner;
   return (
@@ -145,19 +188,17 @@ export function MmaCard({ m, compact, flash }) {
         <span className="text-[10px] font-bold uppercase tracking-wider truncate flex items-center gap-1" style={{ color: "#6b7686" }}>
           <span className="material-symbols-outlined" style={{ fontSize: 12, color: "#ef4444" }}>sports_mma</span>{m.event}
         </span>
-        {live && (
-          <span className="flex items-center gap-1 flex-shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: NEON, boxShadow: `0 0 6px ${NEON}` }} />
-            <span className="text-[9px] font-black" style={{ color: NEON }}>LIVE</span>
-          </span>
-        )}
+        {live ? <LiveBadge /> : upcoming ? <UpcomingBadge /> : null}
       </div>
       <div className="space-y-1.5">
         <MmaFighter f={m.f1} winner={w1} done={done} />
         <MmaFighter f={m.f2} winner={w2} done={done} />
       </div>
       <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-        <span className={`text-[10px] font-bold ${flash ? "nexus-score-flash" : ""}`} style={{ color: live ? NEON : "#6b7686" }}>{status}</span>
+        <span className={`text-[10px] font-bold flex items-center gap-1 ${flash ? "nexus-score-flash" : ""}`} style={{ color: live ? NEON : upcoming ? "#9fb0c8" : "#6b7686" }}>
+          {upcoming && <span className="material-symbols-outlined" style={{ fontSize: 12 }}>schedule</span>}
+          {status}
+        </span>
       </div>
     </div>
   );
@@ -298,9 +339,9 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   if (!matches.length) return null;
   const cardProps = { favL, favT, onToggleLeague, onToggleTeam, onOpen: setOpenMatch };
 
-  // Foot (re-trié favoris d'abord, instantané) + MMA, ALTERNÉS si les deux existent.
-  const footItems = sortMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
-  const mmaItems = matches.filter((m) => m.sport === "mma");
+  // Foot + MMA : direct prioritaire, sinon 3 prochains à venir (par sport).
+  const footItems = displayMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
+  const mmaItems = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
   let arranged;
   if (footItems.length && mmaItems.length) {
     arranged = [];

@@ -7927,13 +7927,41 @@ ESPN_SOCCER_LEAGUES = [
 _livescores_cache = {"data": [], "ts": 0.0}
 _livescores_lock = asyncio.Lock()
 
+# Fenêtre de récupération ESPN : aujourd'hui + 2 jours (couvre les prochaines
+# 48 h). ESPN accepte une plage `dates=YYYYMMDD-YYYYMMDD` sur les scoreboards.
+ESPN_UPCOMING_HOURS = 48
+
+
+def _espn_dates_param(days_ahead: int = 2) -> str:
+    now = datetime.now(timezone.utc)
+    return f"{now.strftime('%Y%m%d')}-{(now + timedelta(days=days_ahead)).strftime('%Y%m%d')}"
+
+
+def _espn_keep_event(state, date_str) -> bool:
+    """Garde : les matchs EN COURS (in) ; les À VENIR (pre) dans les 48 h ; les
+    TERMINÉS (post) récents (< 12 h) pour laisser le score final s'afficher."""
+    if state == "in":
+        return True
+    try:
+        dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+    except Exception:
+        return state == "in"
+    now = datetime.now(timezone.utc)
+    if state == "pre":
+        return dt <= now + timedelta(hours=ESPN_UPCOMING_HOURS)
+    if state == "post":
+        return dt >= now - timedelta(hours=12)
+    return False
+
 
 def _espn_fetch_league(slug: str, fallback_name: str):
-    """Récupère (synchrone) les matchs d'une compétition ESPN → liste normalisée."""
+    """Récupère (synchrone) les matchs d'une compétition ESPN → liste normalisée.
+    Inclut les matchs EN COURS + À VENIR (48 h) + terminés récents."""
     out = []
     try:
         r = _requests.get(
             f"https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard",
+            params={"dates": _espn_dates_param()},
             timeout=8, headers={"User-Agent": "NexusSocial/1.0"},
         )
         if not r.ok:
@@ -7949,6 +7977,9 @@ def _espn_fetch_league(slug: str, fallback_name: str):
             away = next((c for c in comps if c.get("homeAway") == "away"), None)
             if not (home and away):
                 continue
+            state = stype.get("state")               # pre | in | post
+            if not _espn_keep_event(state, ev.get("date")):
+                continue
             out.append({
                 "id": str(ev.get("id") or ""),
                 "sport": "foot",
@@ -7962,7 +7993,7 @@ def _espn_fetch_league(slug: str, fallback_name: str):
                 "away_logo": (away.get("team") or {}).get("logo"),
                 "home_score": home.get("score"),
                 "away_score": away.get("score"),
-                "state": stype.get("state"),               # pre | in | post
+                "state": state,                            # pre | in | post
                 "clock": status.get("displayClock") or "",  # ex : « 43' »
                 "detail": stype.get("shortDetail") or stype.get("description") or "",
                 "date": ev.get("date"),
@@ -8189,6 +8220,7 @@ def _espn_fetch_mma_sync():
     try:
         r = _requests.get(
             "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard",
+            params={"dates": _espn_dates_param()},
             timeout=8, headers={"User-Agent": "NexusSocial/1.0"},
         )
         if not r.ok:
@@ -8211,6 +8243,9 @@ def _espn_fetch_mma_sync():
             comps = comp.get("competitors") or []
             if len(comps) < 2:
                 continue
+            mstate = ctype.get("state")                      # pre | in | post
+            if not _espn_keep_event(mstate, comp.get("date") or ev.get("date")):
+                continue
             f1, f2 = fighter(comps[0]), fighter(comps[1])
             result = cs.get("result") or {}
             method = result.get("shortDisplayName") or result.get("description") or ctype.get("detail") or ""
@@ -8220,7 +8255,7 @@ def _espn_fetch_mma_sync():
                 "sport": "mma",
                 "event": event_name,
                 "f1": f1, "f2": f2,
-                "state": ctype.get("state"),                 # pre | in | post
+                "state": mstate,                             # pre | in | post
                 "round": cs.get("period"),                    # round en cours
                 "clock": cs.get("displayClock") or "",
                 "method": method,                             # KO/TKO, Décision…

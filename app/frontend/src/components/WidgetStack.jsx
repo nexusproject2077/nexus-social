@@ -8,7 +8,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
-import { MatchCard, MmaCard, sortMatches } from "@/components/LiveScores";
+import { MatchCard, MmaCard, displayMatches } from "@/components/LiveScores";
 
 const NEON = "#4ade80";
 const STACK_H = 150;
@@ -366,8 +366,8 @@ export default function WidgetStack({ user, setUser }) {
     axios.put(`${API}/users/me/widget-stack`, patch).catch(() => {});
   };
 
-  const footItems = sortMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
-  const mmaItems = matches.filter((m) => m.sport === "mma");
+  const footItems = displayMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
+  const mmaItems = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
   const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
   const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, finance: finance.length > 0, trends: true };
