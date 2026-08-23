@@ -7895,6 +7895,119 @@ async def livescores(current_user: dict = Depends(get_current_user)):
     }
 
 
+# ── Match Center : chronologie détaillée d'un match (ESPN summary, sans clé) ──
+_match_cache = {}  # "slug:event" -> {"data": ..., "ts": ...}
+
+
+def _espn_map_event_type(text: str, ev: dict) -> str:
+    t = (text or "").lower()
+    if ev.get("ownGoal"):
+        return "own_goal"
+    if "goal" in t:
+        return "penalty_goal" if ev.get("penaltyKick") else "goal"
+    if "yellow" in t:
+        return "yellow"
+    if "red" in t:
+        return "red"
+    if "substitution" in t or "sub " in t or t == "sub":
+        return "sub"
+    if "var" in t:
+        return "var"
+    if "penalty" in t:
+        return "penalty"
+    if "injur" in t:
+        return "injury"
+    return "other"
+
+
+def _espn_fetch_match_sync(event_id: str, slug: str):
+    try:
+        r = _requests.get(
+            f"https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/summary?event={event_id}",
+            timeout=9, headers={"User-Agent": "NexusSocial/1.0"},
+        )
+        if not r.ok:
+            return None
+        data = r.json()
+    except Exception:
+        return None
+    # team.id -> "home"/"away"
+    side_map = {}
+    header = {}
+    try:
+        comp = ((data.get("header") or {}).get("competitions") or [{}])[0]
+        comps = comp.get("competitors") or []
+        for c in comps:
+            tid = str((c.get("team") or {}).get("id") or c.get("id") or "")
+            if tid:
+                side_map[tid] = c.get("homeAway")
+        h = next((x for x in comps if x.get("homeAway") == "home"), {})
+        a = next((x for x in comps if x.get("homeAway") == "away"), {})
+        st = comp.get("status") or {}
+        stype = st.get("type") or {}
+
+        def _logo(team):
+            logos = (team or {}).get("logos") or []
+            return (logos[0].get("href") if logos else None) or (team or {}).get("logo")
+        header = {
+            "home": (h.get("team") or {}).get("displayName") or (h.get("team") or {}).get("shortDisplayName"),
+            "away": (a.get("team") or {}).get("displayName") or (a.get("team") or {}).get("shortDisplayName"),
+            "home_logo": _logo(h.get("team")), "away_logo": _logo(a.get("team")),
+            "home_score": h.get("score"), "away_score": a.get("score"),
+            "state": stype.get("state"), "clock": st.get("displayClock") or "",
+            "detail": stype.get("shortDetail") or stype.get("description") or "",
+        }
+    except Exception:
+        pass
+    events = []
+    for ev in (data.get("keyEvents") or []):
+        typ = ev.get("type") or {}
+        text = typ.get("text") or typ.get("name") or ""
+        team_id = str((ev.get("team") or {}).get("id") or "")
+        players = [(a.get("displayName") or a.get("shortName") or "").strip()
+                   for a in (ev.get("athletesInvolved") or []) if a]
+        events.append({
+            "minute": (ev.get("clock") or {}).get("displayValue") or "",
+            "type": _espn_map_event_type(text, ev),
+            "side": side_map.get(team_id),
+            "text": text,
+            "players": [p for p in players if p],
+            "penalty": bool(ev.get("penaltyKick")),
+            "own_goal": bool(ev.get("ownGoal")),
+        })
+    return {"header": header, "events": events}
+
+
+async def get_match_details(event_id: str, slug: str):
+    key = f"{slug}:{event_id}"
+    now = time.time()
+    hit = _match_cache.get(key)
+    if hit and (now - hit["ts"]) < 30:
+        return hit["data"]
+    data = await asyncio.to_thread(_espn_fetch_match_sync, event_id, slug)
+    if data is not None:
+        _match_cache[key] = {"data": data, "ts": now}
+        if len(_match_cache) > 500:
+            _match_cache.clear()
+        return data
+    return (hit or {}).get("data") or {"header": {}, "events": []}
+
+
+@api_router.get("/livescores/match")
+async def livescores_match(event: str, league: str, current_user: dict = Depends(get_current_user)):
+    """Détails d'un match (chronologie des événements) via l'API ESPN summary."""
+    slug = (league or "").strip().lower()
+    eid = (event or "").strip()
+    # Validation stricte (ces valeurs entrent dans l'URL ESPN → anti-injection).
+    if not re.fullmatch(r"[a-z0-9.\-]{2,30}", slug) or not re.fullmatch(r"[0-9]{3,20}", eid):
+        raise HTTPException(status_code=400, detail="Paramètres invalides")
+    try:
+        return await get_match_details(eid, slug)
+    except Exception as e:
+        logger.warning(f"/livescores/match a échoué: {e}")
+        return {"header": {}, "events": []}
+
+
 @api_router.get("/users/me/sports-favorites")
 async def get_sports_favorites(current_user: dict = Depends(get_current_user)):
     """Ligues et équipes favorites (scores de foot) de l'utilisateur."""

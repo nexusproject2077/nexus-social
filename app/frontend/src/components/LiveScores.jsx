@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
+import MatchCenter from "@/components/MatchCenter";
 
 const NEON = "#4ade80";      // vert néon (match en cours)
 const BRIGHT = "#f4f8ff";    // blanc brillant
@@ -70,7 +71,7 @@ const Team = ({ id, logo, name, score, live, favT, onToggleTeam }) => (
   </div>
 );
 
-function MatchCard({ m, compact, favL, favT, onToggleLeague, onToggleTeam }) {
+function MatchCard({ m, compact, favL, favT, onToggleLeague, onToggleTeam, onOpen }) {
   const live = m.state === "in";
   const done = m.state === "post";
   const status = live ? (m.clock || m.detail || "En direct")
@@ -78,7 +79,9 @@ function MatchCard({ m, compact, favL, favT, onToggleLeague, onToggleTeam }) {
     : (m.detail || "À venir");
   return (
     <div
-      className={`rounded-2xl p-3 flex flex-col justify-between ${compact ? "" : "flex-shrink-0"}`}
+      onClick={() => onOpen?.(m)}
+      role="button"
+      className={`rounded-2xl p-3 flex flex-col justify-between cursor-pointer active:scale-[0.98] transition-transform ${compact ? "" : "flex-shrink-0"}`}
       style={{
         background: "#111827",
         border: `1px solid ${live ? NEON + "33" : "rgba(255,255,255,0.06)"}`,
@@ -158,6 +161,7 @@ export default function LiveScores({ variant = "mobile" }) {
   const [favL, setFavL] = useState(() => new Set());
   const [favT, setFavT] = useState(() => new Set());
   const [showFilter, setShowFilter] = useState(false);
+  const [openMatch, setOpenMatch] = useState(null);
 
   const load = useCallback(() => {
     axios.get(`${API}/livescores`).then((r) => {
@@ -202,7 +206,7 @@ export default function LiveScores({ variant = "mobile" }) {
 
   if (!matches.length) return null;
   const sorted = sortMatches(matches, favL, favT);
-  const cardProps = { favL, favT, onToggleLeague, onToggleTeam };
+  const cardProps = { favL, favT, onToggleLeague, onToggleTeam, onOpen: setOpenMatch };
 
   const header = (big) => (
     <div className="flex items-center justify-between gap-2">
@@ -229,6 +233,7 @@ export default function LiveScores({ variant = "mobile" }) {
           {sorted.slice(0, 6).map((m) => <MatchCard key={m.id} m={m} compact {...cardProps} />)}
         </div>
         {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
+        {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
       </section>
     );
   }
@@ -240,6 +245,7 @@ export default function LiveScores({ variant = "mobile" }) {
         {sorted.map((m) => <MatchCard key={m.id} m={m} {...cardProps} />)}
       </div>
       {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
+      {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
     </div>
   );
 }
