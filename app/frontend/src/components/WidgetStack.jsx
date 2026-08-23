@@ -17,8 +17,49 @@ const WIDGETS = {
   football: { label: "Football", icon: "sports_soccer", color: NEON },
   mma: { label: "MMA / UFC", icon: "sports_mma", color: "#ef4444" },
   trends: { label: "Tendances", icon: "trending_up", color: "#22d3ee" },
+  weather: { label: "Météo", icon: "partly_cloudy_day", color: "#fbbf24" },
 };
-const DEFAULT_ORDER = ["trends", "football", "mma"];
+const DEFAULT_ORDER = ["trends", "weather", "football", "mma"];
+
+// ─────────────────────── Icônes météo SVG (fines, épurées) ────────────────────
+// Traits fins (stroke=currentColor), minimalistes, adaptées à chaque état WMO.
+function WeatherIcon({ cond, isDay = true, size = 56 }) {
+  const p = { width: size, height: size, viewBox: "0 0 48 48", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round" };
+  const Sun = (cx = 18, cy = 16, r = 7) => (
+    <g>
+      <circle cx={cx} cy={cy} r={r} />
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => {
+        const rad = (a * Math.PI) / 180, r1 = r + 3, r2 = r + 6.5;
+        return <line key={a} x1={cx + r1 * Math.cos(rad)} y1={cy + r1 * Math.sin(rad)} x2={cx + r2 * Math.cos(rad)} y2={cy + r2 * Math.sin(rad)} />;
+      })}
+    </g>
+  );
+  const Cloud = (dy = 0) => <path d={`M14,${30 + dy} a6,6 0 0 1 1,-11.9 a8.5,8.5 0 0 1 16.4,2.4 a5.5,5.5 0 0 1 -1.4,10.8 z`} />;
+  const Moon = <path d="M31,26 a11,11 0 1 1 -9,-17 a9,9 0 0 0 9,17 z" />;
+  const drops = (ys) => ys.map((x, i) => <line key={i} x1={x} y1={33} x2={x - 2} y2={39} />);
+  const snow = (xs) => xs.map((x, i) => <g key={i}><line x1={x} y1={34} x2={x} y2={40} /><line x1={x - 3} y1={37} x2={x + 3} y2={37} /></g>);
+
+  switch (cond) {
+    case "clear":
+      return <svg {...p}>{isDay ? Sun(24, 22, 9) : Moon}</svg>;
+    case "partly":
+      return <svg {...p}>{isDay ? Sun(30, 13, 5.5) : <path d="M34,20 a7,7 0 1 1 -6,-11 a6,6 0 0 0 6,11 z" />}{Cloud(2)}</svg>;
+    case "cloudy":
+      return <svg {...p}>{Cloud(0)}<path d="M20,36 a5,5 0 0 1 0.8,-9.9 a7,7 0 0 1 13.5,2 a4.6,4.6 0 0 1 -1.2,8.9 z" opacity="0.5" /></svg>;
+    case "fog":
+      return <svg {...p}>{Cloud(-2)}<line x1={12} y1={34} x2={30} y2={34} /><line x1={16} y1={38} x2={34} y2={38} /></svg>;
+    case "drizzle":
+      return <svg {...p}>{Cloud(-2)}{drops([18, 26])}</svg>;
+    case "rain":
+      return <svg {...p}>{Cloud(-2)}{drops([15, 22, 29])}</svg>;
+    case "snow":
+      return <svg {...p}>{Cloud(-2)}{snow([16, 24, 32])}</svg>;
+    case "storm":
+      return <svg {...p}>{Cloud(-2)}<path d="M23,32 l-4,6 h4 l-3,6" /></svg>;
+    default:
+      return <svg {...p}>{Cloud(0)}</svg>;
+  }
+}
 
 // ─────────────────────────── Éditeur (bottom sheet) ───────────────────────────
 function StackEditor({ order, smartRotate, onChange, onClose }) {
@@ -174,6 +215,7 @@ export default function WidgetStack({ user, setUser }) {
   const [favL, setFavL] = useState(() => new Set());
   const [favT, setFavT] = useState(() => new Set());
   const [trends, setTrends] = useState([]);
+  const [weather, setWeather] = useState(null);
   const [flashing, setFlashing] = useState({});
   const [openMatch, setOpenMatch] = useState(null);
   const [active, setActive] = useState(0);
@@ -220,6 +262,21 @@ export default function WidgetStack({ user, setUser }) {
 
   useEffect(() => { hasLiveRef.current = matches.some((m) => m.state === "in"); }, [matches]);
 
+  // Météo : géoloc du navigateur → GET /weather (rafraîchi toutes les 10 min).
+  const wantWeather = configOrder.includes("weather");
+  useEffect(() => {
+    if (!wantWeather || !navigator.geolocation) return;
+    let alive = true;
+    const fetchW = (pos) => {
+      axios.get(`${API}/weather`, { params: { lat: pos.coords.latitude, lon: pos.coords.longitude } })
+        .then((r) => { if (alive) setWeather(r.data?.weather || null); }).catch(() => {});
+    };
+    const opts = { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 };
+    navigator.geolocation.getCurrentPosition(fetchW, () => {}, opts);
+    const iv = setInterval(() => navigator.geolocation.getCurrentPosition(fetchW, () => {}, opts), 600000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [wantWeather]);
+
   const toggleFav = (kind, id) => {
     if (!id) return;
     const setFav = kind === "league" ? setFavL : setFavT;
@@ -243,7 +300,7 @@ export default function WidgetStack({ user, setUser }) {
   const footItems = sortMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
   const mmaItems = matches.filter((m) => m.sport === "mma");
   const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id));
-  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, trends: true };
+  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, trends: true };
   const pages = configOrder.filter((id) => avail[id]);
 
   // Rotation intelligente.
@@ -253,8 +310,11 @@ export default function WidgetStack({ user, setUser }) {
   const manualUntilRef = useRef(0);
   const rotateAtRef = useRef(Date.now());
   const initRef = useRef(false);
+  const mountedAtRef = useRef(Date.now());
+  const wantWeatherRef = useRef(wantWeather);
   pagesRef.current = pages;
   smartRef.current = smartRotate;
+  wantWeatherRef.current = wantWeather;
   urgentRef.current = smartRotate
     ? (footItems.some(isFavLive) ? "football" : (mmaItems.some((m) => m.state === "in") ? "mma" : null))
     : null;
@@ -266,7 +326,19 @@ export default function WidgetStack({ user, setUser }) {
       if (Date.now() < manualUntilRef.current) return;
       const u = urgentRef.current;
       if (u && ps.includes(u)) { setActive(ps.indexOf(u)); rotateAtRef.current = Date.now(); return; }
-      if (!initRef.current) { initRef.current = true; setActive(ps.indexOf("trends") >= 0 ? ps.indexOf("trends") : 0); rotateAtRef.current = Date.now(); return; }
+      if (!initRef.current) {
+        const hour = new Date().getHours();
+        const morning = hour >= 6 && hour < 10;
+        // Le matin (6 h–10 h) sans direct favori : la météo passe par défaut. Si
+        // la géoloc n'a pas encore répondu, on patiente jusqu'à 5 s avant d'ouvrir.
+        if (morning && wantWeatherRef.current && !ps.includes("weather") && Date.now() - mountedAtRef.current < 5000) return;
+        initRef.current = true;
+        let dflt = ps.indexOf("trends");
+        if (morning && ps.includes("weather")) dflt = ps.indexOf("weather");
+        setActive(dflt >= 0 ? dflt : 0);
+        rotateAtRef.current = Date.now();
+        return;
+      }
       if (Date.now() - rotateAtRef.current >= 10000) {
         rotateAtRef.current = Date.now();
         setActive((a) => (a + 1) % ps.length);
@@ -336,6 +408,36 @@ export default function WidgetStack({ user, setUser }) {
         <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar items-center">
           {mmaItems.map((m) => <MmaCard key={m.id} m={m} flash={!!flashing[`mma-${m.id}`]} />)}
         </div>
+      </div>
+    );
+    if (id === "weather") return (
+      <div className="h-full flex flex-col px-4 py-2.5">
+        <PageHeader id="weather" />
+        {weather ? (
+          <div className="flex-1 flex items-center gap-3">
+            <div style={{ color: weather.is_day ? "#fbbf24" : "#93c5fd", flexShrink: 0 }}>
+              <WeatherIcon cond={weather.cond} isDay={weather.is_day} size={58} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start">
+                <span className="font-extralight leading-none text-white" style={{ fontSize: 46, textShadow: "0 0 18px rgba(255,255,255,0.25)" }}>
+                  {weather.temp != null ? weather.temp : "--"}
+                </span>
+                <span className="text-white/70 font-light mt-1" style={{ fontSize: 20 }}>°</span>
+              </div>
+              <p className="text-sm font-semibold truncate mt-0.5" style={{ color: "#dae2fd" }}>{weather.location || "Ma position"}</p>
+              <p className="text-[11px] truncate" style={{ color: "#8b96a8" }}>
+                {weather.label}
+                {weather.feels_like != null && ` · ressenti ${weather.feels_like}°`}
+                {weather.humidity != null && ` · ${weather.humidity}%`}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-xs" style={{ color: "#6b7686" }}>Autorise la localisation pour la météo.</p>
+          </div>
+        )}
       </div>
     );
     return (

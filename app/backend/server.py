@@ -7895,6 +7895,100 @@ async def get_cached_live_scores():
 _mma_cache = {"data": [], "ts": 0.0}
 _mma_lock = asyncio.Lock()
 
+# ── Météo en direct (Open-Meteo, gratuit / sans clé) ──────────────────────────
+# Cache mémoire par coordonnées arrondies (~11 km) pour éviter de spammer l'API.
+_weather_cache = {}  # "lat,lon" -> {"data": {...}, "ts": float}
+_weather_lock = asyncio.Lock()
+
+# Décodage des codes météo WMO → état du ciel (catégorie + libellé FR).
+# `cond` sert au frontend pour choisir l'icône SVG ; `label` est affiché.
+def _wmo_decode(code, is_day=True):
+    c = int(code) if code is not None else -1
+    if c == 0:
+        return ("clear", "Ensoleillé" if is_day else "Ciel dégagé")
+    if c in (1, 2):
+        return ("partly", "Peu nuageux")
+    if c == 3:
+        return ("cloudy", "Nuageux")
+    if c in (45, 48):
+        return ("fog", "Brouillard")
+    if c in (51, 53, 55, 56, 57):
+        return ("drizzle", "Bruine")
+    if c in (61, 63, 65, 66, 67):
+        return ("rain", "Pluie")
+    if c in (80, 81, 82):
+        return ("rain", "Averses")
+    if c in (71, 73, 75, 77, 85, 86):
+        return ("snow", "Neige")
+    if c in (95, 96, 99):
+        return ("storm", "Orage")
+    return ("cloudy", "Nuageux")
+
+
+def _weather_fetch_sync(lat: float, lon: float):
+    """Appelle Open-Meteo (conditions actuelles) + un reverse-geocoding gratuit
+    et sans clé pour le nom de la localisation. Best-effort, fail-open."""
+    out = None
+    try:
+        r = _requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": lat, "longitude": lon,
+                "current": "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code",
+                "timezone": "auto",
+            },
+            timeout=8, headers={"User-Agent": "NexusSocial/1.0"},
+        )
+        if not r.ok:
+            return None
+        cur = (r.json() or {}).get("current") or {}
+        is_day = bool(cur.get("is_day", 1))
+        cond, label = _wmo_decode(cur.get("weather_code"), is_day)
+        out = {
+            "temp": round(float(cur.get("temperature_2m"))) if cur.get("temperature_2m") is not None else None,
+            "feels_like": round(float(cur.get("apparent_temperature"))) if cur.get("apparent_temperature") is not None else None,
+            "humidity": cur.get("relative_humidity_2m"),
+            "is_day": is_day,
+            "code": cur.get("weather_code"),
+            "cond": cond,
+            "label": label,
+            "location": None,
+        }
+    except Exception:
+        return None
+
+    # Nom de la localité (facultatif) — reverse-geocoding keyless BigDataCloud.
+    try:
+        g = _requests.get(
+            "https://api.bigdatacloud.net/data/reverse-geocode-client",
+            params={"latitude": lat, "longitude": lon, "localityLanguage": "fr"},
+            timeout=6, headers={"User-Agent": "NexusSocial/1.0"},
+        )
+        if g.ok:
+            gj = g.json() or {}
+            out["location"] = gj.get("city") or gj.get("locality") or gj.get("principalSubdivision") or gj.get("countryName")
+    except Exception:
+        pass
+    return out
+
+
+async def get_weather_live(lat: float, lon: float):
+    """Conditions météo actuelles pour des coordonnées, servies depuis un cache
+    mémoire (TTL 10 min) ; arrondi des coordonnées pour regrouper les appels."""
+    key = f"{round(float(lat), 1)},{round(float(lon), 1)}"
+    now = time.time()
+    entry = _weather_cache.get(key)
+    if entry and (now - entry["ts"]) < 600:
+        return entry["data"]
+    async with _weather_lock:
+        entry = _weather_cache.get(key)
+        if entry and (time.time() - entry["ts"]) < 600:
+            return entry["data"]
+        fresh = await asyncio.to_thread(_weather_fetch_sync, float(lat), float(lon))
+        if fresh:
+            _weather_cache[key] = {"data": fresh, "ts": time.time()}
+        return fresh
+
 
 def _espn_fetch_mma_sync():
     out = []
@@ -8176,7 +8270,21 @@ def _sport_alerts_of(user: dict) -> dict:
     return {"goals": a.get("goals", True), "match": a.get("match", False), "mma": a.get("mma", True)}
 
 
-WIDGET_STACK_IDS = ["trends", "football", "mma"]
+@api_router.get("/weather")
+async def weather(lat: float, lon: float, current_user: dict = Depends(get_current_user)):
+    """Météo en direct (Open-Meteo, gratuit / sans clé) pour les coordonnées
+    fournies par le navigateur. Renvoie null si l'API est injoignable (fail-open)."""
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise HTTPException(status_code=400, detail="Coordonnées invalides")
+    try:
+        data = await get_weather_live(lat, lon)
+    except Exception as e:
+        logger.warning(f"/weather a échoué: {e}")
+        data = None
+    return {"weather": data}
+
+
+WIDGET_STACK_IDS = ["trends", "weather", "football", "mma"]
 
 
 def _widget_stack_of(user: dict) -> dict:
