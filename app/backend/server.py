@@ -8007,8 +8007,6 @@ def _espn_fetch_league(slug: str, fallback_name: str):
             if not (home and away):
                 continue
             state = stype.get("state")               # pre | in | post
-            if not _espn_keep_event(state, ev.get("date")):
-                continue
             out.append({
                 "id": str(ev.get("id") or ""),
                 "sport": "foot",
@@ -8277,8 +8275,6 @@ def _espn_fetch_mma_sync():
             if len(comps) < 2:
                 continue
             mstate = ctype.get("state")                      # pre | in | post
-            if not _espn_keep_event(mstate, comp.get("date") or ev.get("date")):
-                continue
             f1, f2 = fighter(comps[0]), fighter(comps[1])
             result = cs.get("result") or {}
             method = result.get("shortDisplayName") or result.get("description") or ctype.get("detail") or ""
