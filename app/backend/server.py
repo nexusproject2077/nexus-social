@@ -8162,6 +8162,150 @@ async def toggle_sports_favorite(data: dict = Body(...), current_user: dict = De
     return {"kind": kind, "id": fav_id, "active": active, field: current}
 
 
+# ── Alertes sportives push (buts foot / résultats MMA) ──────────────────────
+# Détection par DIFF d'état persistée en base (survit au scale-to-zero) : un
+# déclencheur externe (Cloud Scheduler / UptimeRobot) appelle /internal/sports-poll
+# ~toutes les minutes. On compare le scoreboard courant à l'état précédent, on
+# envoie les push aux abonnés concernés, puis on mémorise le nouvel état.
+SPORTS_POLL_KEY = os.environ.get("SPORTS_POLL_KEY", "").strip()
+
+
+def _sport_alerts_of(user: dict) -> dict:
+    a = user.get("sport_alerts") or {}
+    return {"goals": a.get("goals", True), "match": a.get("match", False), "mma": a.get("mma", True)}
+
+
+@api_router.get("/users/me/sport-alerts")
+async def get_sport_alerts(current_user: dict = Depends(get_current_user)):
+    return _sport_alerts_of(current_user)
+
+
+@api_router.put("/users/me/sport-alerts")
+async def set_sport_alerts(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    cur = current_user.get("sport_alerts") or {}
+    for k in ("goals", "match", "mma"):
+        if k in data:
+            cur[k] = bool(data[k])
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"sport_alerts": cur}})
+    return _sport_alerts_of({"sport_alerts": cur})
+
+
+async def _notify_users(query: dict, title: str, body: str, url: str, tag: str) -> int:
+    """Envoie un push (best-effort) à tous les utilisateurs correspondant au filtre.
+    send_web_push est un no-op si l'utilisateur n'a pas d'abonnement."""
+    users = await db.users.find(query, {"id": 1, "_id": 0}).to_list(length=5000)
+    for u in users:
+        try:
+            await send_web_push(u["id"], title, body, url=url, tag=tag)
+        except Exception:
+            pass
+    return len(users)
+
+
+async def detect_and_notify_sports() -> int:
+    """Un cycle de détection : buts de foot + fins de combats MMA → push. Renvoie
+    le nombre d'événements notifiés. Sur le PREMIER passage (état vide), on
+    n'envoie rien (on mémorise seulement) pour ne pas spammer l'existant."""
+    doc = await db.sports_alert_state.find_one({"_id": "state"}) or {}
+    prev_m, prev_f = (doc.get("matches") or {}), (doc.get("fights") or {})
+    first_run = not prev_m and not prev_f
+    new_m, new_f, events = {}, {}, 0
+
+    # ── FOOT : diff de score ──
+    try:
+        foot = await get_live_scores()
+    except Exception:
+        foot = []
+    for m in foot:
+        mid = m.get("id")
+        if not mid:
+            continue
+        try:
+            hs, aw = int(m.get("home_score") or 0), int(m.get("away_score") or 0)
+        except Exception:
+            hs, aw = 0, 0
+        new_m[mid] = {"h": hs, "a": aw, "s": m.get("state")}
+        p = prev_m.get(mid)
+        team_ids = [x for x in [m.get("home_id"), m.get("away_id")] if x]
+        fav_or = [{"favorite_leagues": m.get("league_slug")}, {"favorite_teams": {"$in": team_ids}}]
+        if first_run or not p:
+            continue
+        # But (score en hausse pendant un match en cours)
+        if m.get("state") == "in" and (hs + aw) > (p.get("h", 0) + p.get("a", 0)):
+            side = "home" if hs > p.get("h", 0) else "away"
+            team = m.get("home") if side == "home" else m.get("away")
+            scorer, minute = None, (m.get("clock") or "")
+            try:
+                det = await asyncio.to_thread(_espn_fetch_match_sync, mid, m.get("league_slug"))
+                for ev in reversed((det or {}).get("events") or []):
+                    if ev.get("type") in ("goal", "penalty_goal", "own_goal") and ev.get("side") == side:
+                        scorer = (ev.get("players") or [None])[0]
+                        minute = ev.get("minute") or minute
+                        break
+            except Exception:
+                pass
+            who = f" {scorer} ({minute})" if scorer else ""
+            body = f"⚽ BUT pour {team} !{who} Le score est de {hs}-{aw}."
+            await _notify_users(
+                {"sport_alerts.goals": {"$ne": False}, "$or": fav_or},
+                "But en direct", body, "/", f"goal-{mid}-{hs}-{aw}")
+            events += 1
+        # Début / fin de match
+        if p.get("s") != m.get("state"):
+            if m.get("state") == "in" and p.get("s") == "pre":
+                await _notify_users({"sport_alerts.match": True, "$or": fav_or},
+                                    "Coup d'envoi", f"\U0001f7e2 Coup d'envoi : {m.get('home')} - {m.get('away')}.", "/", f"start-{mid}")
+            elif m.get("state") == "post":
+                await _notify_users({"sport_alerts.match": True, "$or": fav_or},
+                                    "Match terminé", f"⏱️ Fin du match : {m.get('home')} {hs}-{aw} {m.get('away')}.", "/", f"end-{mid}")
+
+    # ── MMA : transition vers 'post' (combat terminé) ──
+    try:
+        mma = await asyncio.to_thread(_espn_fetch_mma_sync)
+    except Exception:
+        mma = []
+    for f in mma:
+        fid = f.get("id")
+        if not fid:
+            continue
+        new_f[fid] = {"s": f.get("state")}
+        p = prev_f.get(fid)
+        if first_run or not p:
+            continue
+        if f.get("state") == "post" and p.get("s") != "post" and f.get("winner"):
+            f1n, f2n = (f.get("f1") or {}).get("name"), (f.get("f2") or {}).get("name")
+            loser = f1n if f2n == f.get("winner") else f2n
+            rnd = f.get("round") or "?"
+            body = f"\U0001f3c6 FIN DE COMBAT ! {f.get('winner')} s'impose par {f.get('method') or 'décision'} au Round {rnd} face à {loser}."
+            await _notify_users({"sport_alerts.mma": {"$ne": False}}, "Résultat UFC", body, "/", f"mma-{fid}")
+            events += 1
+
+    await db.sports_alert_state.update_one(
+        {"_id": "state"},
+        {"$set": {"matches": new_m, "fights": new_f, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return events
+
+
+@api_router.post("/internal/sports-poll")
+async def sports_poll(request: Request):
+    """Déclencheur externe (Cloud Scheduler / UptimeRobot) — protégé par une clé.
+    Fait UN cycle de détection + envoi. Idéal ~toutes les 60 s. Compatible
+    scale-to-zero : pas de boucle permanente côté serveur."""
+    if not SPORTS_POLL_KEY:
+        raise HTTPException(status_code=503, detail="Alertes sportives non configurées")
+    key = request.headers.get("x-poll-key", "") or request.query_params.get("key", "")
+    if not hmac.compare_digest(key, SPORTS_POLL_KEY):
+        raise HTTPException(status_code=403, detail="Clé invalide")
+    try:
+        n = await detect_and_notify_sports()
+    except Exception as e:
+        logger.warning(f"sports-poll a échoué: {e}")
+        n = 0
+    return {"events": n}
+
+
 # ==================== PRIVACY ENDPOINTS ====================
 
 @api_router.get("/privacy/settings")

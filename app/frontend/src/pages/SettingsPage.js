@@ -243,6 +243,29 @@ export default function SettingsPage({ user, setUser }) {
     }
   };
 
+  // Alertes sportives push (buts foot / résultats MMA).
+  const [sportAlerts, setSportAlerts] = useState({ goals: true, match: false, mma: true });
+  useEffect(() => {
+    axios.get(`${API}/users/me/sport-alerts`).then((r) => setSportAlerts(r.data)).catch(() => {});
+  }, []);
+  const toggleSportAlert = async (key, value) => {
+    setSportAlerts((prev) => ({ ...prev, [key]: value }));
+    // Activer une alerte suppose l'autorisation des notifications push.
+    if (value && !pushOn) {
+      try {
+        const res = await enablePush({ interactive: true });
+        setPushOn(res.ok);
+        if (!res.ok) toast.error("Autorise les notifications pour recevoir les alertes");
+      } catch { /* noop */ }
+    }
+    try {
+      await axios.put(`${API}/users/me/sport-alerts`, { [key]: value });
+    } catch {
+      setSportAlerts((prev) => ({ ...prev, [key]: !value }));
+      toast.error("Erreur");
+    }
+  };
+
   // Stripe Connect (pourboires par carte) : état + activation.
   const [connect, setConnect] = useState(null); // { connected, charges_enabled, enabled }
   const [connectBusy, setConnectBusy] = useState(false);
@@ -876,6 +899,33 @@ export default function SettingsPage({ user, setUser }) {
           checked={showMma}
           onChange={toggleShowMma}
         />
+      </Card>
+      <Card>
+        <CardHeader title="Alertes sportives (notifications)" icon="notifications_active" />
+        <ToggleRow
+          icon="sports_soccer"
+          label="Buts de foot"
+          sublabel="Une notif à chaque but de tes ligues / équipes favorites"
+          checked={sportAlerts.goals}
+          onChange={(v) => toggleSportAlert("goals", v)}
+        />
+        <ToggleRow
+          icon="schedule"
+          label="Début et fin de match"
+          sublabel="Coup d'envoi et coup de sifflet final (favoris)"
+          checked={sportAlerts.match}
+          onChange={(v) => toggleSportAlert("match", v)}
+        />
+        <ToggleRow
+          icon="sports_mma"
+          label="Résultats MMA / UFC"
+          sublabel="Le vainqueur et la méthode dès la fin du combat"
+          checked={sportAlerts.mma}
+          onChange={(v) => toggleSportAlert("mma", v)}
+        />
+        <div className="px-5 pb-4 pt-1 text-xs" style={{ color: C.outline }}>
+          {pushOn ? "Notifications activées sur cet appareil." : "Active une alerte pour autoriser les notifications."}
+        </div>
       </Card>
       <Card>
         <CardHeader title="Filtre de contenu" icon="filter_alt" />
