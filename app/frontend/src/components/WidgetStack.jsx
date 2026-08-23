@@ -9,6 +9,7 @@ import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
 import { MatchCard, MmaCard, displayMatches } from "@/components/LiveScores";
+import { getTodayMinutes } from "@/lib/screenTime";
 
 const NEON = "#4ade80";
 const STACK_H = 150;
@@ -19,8 +20,9 @@ const WIDGETS = {
   trends: { label: "Tendances", icon: "trending_up", color: "#22d3ee" },
   weather: { label: "Météo", icon: "partly_cloudy_day", color: "#fbbf24" },
   finance: { label: "Finance", icon: "monitoring", color: "#a78bfa" },
+  screentime: { label: "Temps d'écran", icon: "hourglass_top", color: "#34d399" },
 };
-const DEFAULT_ORDER = ["trends", "weather", "finance", "football", "mma"];
+const DEFAULT_ORDER = ["trends", "screentime", "weather", "finance", "football", "mma"];
 
 // Catalogue crypto (aligné sur le backend) : id CoinGecko → ticker + nom.
 const FINANCE_CATALOG = {
@@ -271,6 +273,7 @@ export default function WidgetStack({ user, setUser }) {
   const [trends, setTrends] = useState([]);
   const [weather, setWeather] = useState(null);
   const [finance, setFinance] = useState([]);
+  const [screenMin, setScreenMin] = useState(() => getTodayMinutes());
   const [flashing, setFlashing] = useState({});
   const [openMatch, setOpenMatch] = useState(null);
   const [active, setActive] = useState(0);
@@ -345,6 +348,12 @@ export default function WidgetStack({ user, setUser }) {
     return () => { alive = false; clearInterval(iv); };
   }, [wantFinance, financeKey]);
 
+  // Temps d'écran : rafraîchit le compteur local (bien-être) toutes les 30 s.
+  useEffect(() => {
+    const iv = setInterval(() => setScreenMin(getTodayMinutes()), 30000);
+    return () => clearInterval(iv);
+  }, []);
+
   const toggleFav = (kind, id) => {
     if (!id) return;
     const setFav = kind === "league" ? setFavL : setFavT;
@@ -370,7 +379,7 @@ export default function WidgetStack({ user, setUser }) {
   const mmaItems = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
   const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
-  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, finance: finance.length > 0, trends: true };
+  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true };
   const pages = configOrder.filter((id) => avail[id]);
 
   // Rotation intelligente.
@@ -426,35 +435,60 @@ export default function WidgetStack({ user, setUser }) {
   const idx = Math.min(active, Math.max(0, pages.length - 1));
 
   // Gestes : swipe vertical (changer de widget) + appui long 2 s (mode Édition).
+  // FIX iOS/Android : les écouteurs tactiles de React sont PASSIFS par défaut →
+  // e.preventDefault() y est ignoré et la PAGE défile derrière la pile. On attache
+  // donc des écouteurs NATIFS non passifs ({ passive:false }) sur le conteneur
+  // (via ref) et on preventDefault + stopPropagation le geste vertical : le fil
+  // d'arrière-plan (et son pull-to-refresh) reste figé pendant la manipulation.
+  // Le geste HORIZONTAL n'est pas bloqué → les rangées de cartes restent
+  // défilables, et les taps (clicks) continuent de fonctionner (pas de
+  // preventDefault au touchstart).
+  const containerRef = useRef(null);
   const touch = useRef({ x: 0, y: 0, active: false });
   const lpRef = useRef(null);
-  // Isolation stricte du geste : on stoppe la propagation vers les parents
-  // (notamment le pull-to-refresh du fil) pour que SEULE la pile réagisse. Le
-  // défilement vertical natif de la PAGE est déjà coupé par `touchAction: pan-x`
-  // sur le conteneur (les rangées horizontales internes restent défilables).
-  const onTouchStart = (e) => {
-    e.stopPropagation();
-    const t = e.touches[0];
-    touch.current = { x: t.clientX, y: t.clientY, active: true };
-    clearTimeout(lpRef.current);
-    lpRef.current = setTimeout(() => setEditing(true), 2000);
-  };
-  const onTouchMove = (e) => {
-    e.stopPropagation();
-    const t = e.touches[0];
-    if (Math.abs(t.clientX - touch.current.x) > 12 || Math.abs(t.clientY - touch.current.y) > 12) clearTimeout(lpRef.current);
-  };
-  const onTouchEnd = (e) => {
-    e.stopPropagation();
-    clearTimeout(lpRef.current);
-    if (!touch.current.active) return;
-    touch.current.active = false;
-    const dy = (e.changedTouches[0]?.clientY ?? touch.current.y) - touch.current.y;
-    const dx = (e.changedTouches[0]?.clientX ?? touch.current.x) - touch.current.x;
-    if (Math.abs(dy) < 30 || Math.abs(dx) > Math.abs(dy)) return; // vrai swipe vertical uniquement
-    manualUntilRef.current = Date.now() + 15000;
-    setActive((a) => Math.max(0, Math.min(pages.length - 1, a + (dy < 0 ? 1 : -1))));
-  };
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onStart = (e) => {
+      e.stopPropagation();
+      const t = e.touches[0];
+      touch.current = { x: t.clientX, y: t.clientY, active: true };
+      clearTimeout(lpRef.current);
+      lpRef.current = setTimeout(() => setEditing(true), 2000);
+    };
+    const onMove = (e) => {
+      e.stopPropagation();
+      const t = e.touches[0];
+      const dx = t.clientX - touch.current.x;
+      const dy = t.clientY - touch.current.y;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(lpRef.current);
+      // Geste vertical dominant → on NEUTRALISE le scroll de la page (force brute).
+      if (Math.abs(dy) >= Math.abs(dx)) e.preventDefault();
+    };
+    const onEnd = (e) => {
+      e.stopPropagation();
+      clearTimeout(lpRef.current);
+      if (!touch.current.active) return;
+      touch.current.active = false;
+      const ct = e.changedTouches[0];
+      const dy = (ct?.clientY ?? touch.current.y) - touch.current.y;
+      const dx = (ct?.clientX ?? touch.current.x) - touch.current.x;
+      if (Math.abs(dy) < 30 || Math.abs(dx) > Math.abs(dy)) return; // vrai swipe vertical
+      manualUntilRef.current = Date.now() + 15000;
+      const n = pagesRef.current.length;
+      setActive((a) => Math.max(0, Math.min(n - 1, a + (dy < 0 ? 1 : -1))));
+    };
+    el.addEventListener("touchstart", onStart, { passive: false });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: false });
+    el.addEventListener("touchcancel", onEnd, { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, []);  // refs stables (pagesRef, manualUntilRef, lpRef, touch) ; setActive/setEditing stables
 
   const cardProps = {
     favL, favT,
@@ -493,6 +527,39 @@ export default function WidgetStack({ user, setUser }) {
         </div>
       </div>
     );
+    if (id === "screentime") {
+      const mins = Math.max(0, Math.floor(screenMin));
+      const h = Math.floor(mins / 60), mm = mins % 60;
+      const big = h ? `${h}h${String(mm).padStart(2, "0")}` : `${mm}`;
+      const unit = h ? "" : " min";
+      const limit = Number(user?.daily_time_limit) || 0;
+      const pct = limit ? Math.min(100, Math.round((mins / limit) * 100)) : 0;
+      const over = limit && mins >= limit;
+      return (
+        <div className="h-full flex flex-col px-4 py-2.5">
+          <PageHeader id="screentime" />
+          <div className="flex-1 flex flex-col justify-center">
+            <div className="flex items-baseline gap-1">
+              <span className="font-extralight leading-none text-white" style={{ fontSize: 40, textShadow: "0 0 16px rgba(52,211,153,0.25)" }}>{big}</span>
+              <span className="text-white/60 font-light" style={{ fontSize: 16 }}>{unit}</span>
+              <span className="text-[11px] ml-1.5" style={{ color: "#8b96a8" }}>aujourd'hui</span>
+            </div>
+            {limit > 0 ? (
+              <div className="mt-2.5">
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#1a2234" }}>
+                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: over ? "#f87171" : "linear-gradient(90deg,#34d399,#22d3ee)", transition: "width 0.4s ease" }} />
+                </div>
+                <p className="text-[11px] mt-1" style={{ color: over ? "#f87171" : "#6b7686" }}>
+                  {over ? "Limite du jour atteinte" : `sur ${limit} min · limite quotidienne`}
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] mt-2" style={{ color: "#6b7686" }}>Fixe une limite dans Réglages → Bien-être numérique.</p>
+            )}
+          </div>
+        </div>
+      );
+    }
     if (id === "finance") return (
       <div className="h-full flex flex-col px-4 py-2.5">
         <PageHeader id="finance" />
@@ -570,9 +637,8 @@ export default function WidgetStack({ user, setUser }) {
 
   return (
     <div className="px-4 pt-1 pb-2">
-      <div className="relative rounded-2xl overflow-hidden select-none"
-        style={{ height: STACK_H, background: "#0d1424", border: "1px solid rgba(255,255,255,0.06)", touchAction: "pan-x" }}
-        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      <div ref={containerRef} className="relative rounded-2xl overflow-hidden select-none"
+        style={{ height: STACK_H, background: "#0d1424", border: "1px solid rgba(255,255,255,0.06)", touchAction: "pan-x" }}>
         <div style={{ height: STACK_H * pages.length, transform: `translateY(-${idx * STACK_H}px)`, transition: "transform 0.4s cubic-bezier(0.22,1,0.36,1)" }}>
           {pages.map((id) => (<div key={id} style={{ height: STACK_H }}>{pageNode(id)}</div>))}
         </div>

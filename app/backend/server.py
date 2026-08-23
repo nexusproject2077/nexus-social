@@ -8531,7 +8531,7 @@ async def finance(ids: str = "", current_user: dict = Depends(get_current_user))
     return {"assets": data, "catalog": FINANCE_ASSETS}
 
 
-WIDGET_STACK_IDS = ["trends", "weather", "finance", "football", "mma"]
+WIDGET_STACK_IDS = ["trends", "screentime", "weather", "finance", "football", "mma"]
 
 
 def _widget_stack_of(user: dict) -> dict:
