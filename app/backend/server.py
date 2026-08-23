@@ -1287,6 +1287,7 @@ class User(BaseModel):
     twofa_enabled: bool = False         # double authentification (code email à la connexion)
     is_private: bool = False            # compte privé (abonnés approuvés uniquement)
     show_sports: bool = True            # widget scores de foot en direct (désactivable)
+    show_mma: bool = True               # cartes de combat MMA/UFC (désactivable)
     privacy_strict: bool = False        # Mode Confidentialité stricte : coupe les
                                         # analytics non essentiels + les pubs ciblées
     muted_words: List[str] = []         # mots/phrases masqués (filtrés du fil + notifs)
@@ -1996,10 +1997,19 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 
 @api_router.put("/users/me/show-sports")
 async def update_show_sports(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
-    """Active/désactive le widget scores de foot en direct pour l'utilisateur."""
-    show = bool(data.get("show_sports"))
-    await db.users.update_one({"id": current_user["id"]}, {"$set": {"show_sports": show}})
-    return {"show_sports": show}
+    """Active/désactive les widgets sportifs (foot et/ou MMA). Ne modifie que les
+    champs présents dans la requête."""
+    update = {}
+    if "show_sports" in data:
+        update["show_sports"] = bool(data.get("show_sports"))
+    if "show_mma" in data:
+        update["show_mma"] = bool(data.get("show_mma"))
+    if update:
+        await db.users.update_one({"id": current_user["id"]}, {"$set": update})
+    return {
+        "show_sports": update.get("show_sports", current_user.get("show_sports") is not False),
+        "show_mma": update.get("show_mma", current_user.get("show_mma") is not False),
+    }
 
 
 @api_router.put("/users/me/appearance")
@@ -7825,6 +7835,7 @@ def _espn_fetch_league(slug: str, fallback_name: str):
                 continue
             out.append({
                 "id": str(ev.get("id") or ""),
+                "sport": "foot",
                 "league": league_name,
                 "league_slug": slug,
                 "home": (home.get("team") or {}).get("shortDisplayName") or (home.get("team") or {}).get("displayName") or "",
@@ -7879,27 +7890,122 @@ async def get_cached_live_scores():
         return _livescores_cache["data"]
 
 
+# ── MMA / UFC (même API ESPN gratuite, même cache paresseux) ──
+_mma_cache = {"data": [], "ts": 0.0}
+_mma_lock = asyncio.Lock()
+
+
+def _espn_fetch_mma_sync():
+    out = []
+    try:
+        r = _requests.get(
+            "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard",
+            timeout=8, headers={"User-Agent": "NexusSocial/1.0"},
+        )
+        if not r.ok:
+            return out
+        data = r.json()
+    except Exception:
+        return out
+
+    def fighter(c):
+        a = c.get("athlete") or {}
+        hs = a.get("headshot")
+        avatar = hs.get("href") if isinstance(hs, dict) else (hs if isinstance(hs, str) else None)
+        return {"name": a.get("displayName") or a.get("shortName") or "?", "avatar": avatar, "winner": bool(c.get("winner"))}
+
+    for ev in (data.get("events") or []):
+        event_name = ev.get("shortName") or ev.get("name") or "UFC"
+        for comp in (ev.get("competitions") or []):
+            cs = comp.get("status") or {}
+            ctype = cs.get("type") or {}
+            comps = comp.get("competitors") or []
+            if len(comps) < 2:
+                continue
+            f1, f2 = fighter(comps[0]), fighter(comps[1])
+            result = cs.get("result") or {}
+            method = result.get("shortDisplayName") or result.get("description") or ctype.get("detail") or ""
+            winner = f1["name"] if f1["winner"] else (f2["name"] if f2["winner"] else None)
+            out.append({
+                "id": str(comp.get("id") or ev.get("id") or ""),
+                "sport": "mma",
+                "event": event_name,
+                "f1": f1, "f2": f2,
+                "state": ctype.get("state"),                 # pre | in | post
+                "round": cs.get("period"),                    # round en cours
+                "clock": cs.get("displayClock") or "",
+                "method": method,                             # KO/TKO, Décision…
+                "winner": winner,
+                "detail": ctype.get("shortDetail") or ctype.get("detail") or "",
+                "date": comp.get("date") or ev.get("date"),
+            })
+    return out
+
+
+async def get_cached_mma():
+    now = time.time()
+    data = _mma_cache["data"]
+    has_live = any(m.get("state") == "in" for m in data)
+    ttl = 60 if has_live else 3600
+    if _mma_cache["ts"] > 0 and (now - _mma_cache["ts"]) < ttl:
+        return data
+    async with _mma_lock:
+        now = time.time()
+        if _mma_cache["ts"] > 0 and (now - _mma_cache["ts"]) < ttl:
+            return _mma_cache["data"]
+        fresh = await asyncio.to_thread(_espn_fetch_mma_sync)
+        if fresh or _mma_cache["ts"] == 0:
+            _mma_cache["data"] = fresh
+            _mma_cache["ts"] = now
+        return _mma_cache["data"]
+
+
 @api_router.get("/livescores")
 async def livescores(current_user: dict = Depends(get_current_user)):
     """Scores de foot en direct (ESPN), servis depuis le cache mémoire GLOBAL puis
     triés PAR UTILISATEUR : ses ligues/équipes favorites d'abord, puis le reste
     (matchs en cours prioritaires dans chaque groupe)."""
-    try:
-        data = await get_cached_live_scores()
-    except Exception as e:
-        logger.warning(f"/livescores a échoué: {e}")
-        data = _livescores_cache.get("data", [])
+    show_foot = current_user.get("show_sports") is not False
+    show_mma = current_user.get("show_mma") is not False
+    order = {"in": 0, "pre": 1, "post": 2}
     fav_leagues = set(current_user.get("favorite_leagues") or [])
     fav_teams = set(current_user.get("favorite_teams") or [])
-    order = {"in": 0, "pre": 1, "post": 2}
 
-    def is_fav(m):
-        return (m.get("league_slug") in fav_leagues) or (m.get("home_id") in fav_teams) or (m.get("away_id") in fav_teams)
+    foot, mma = [], []
+    if show_foot:
+        try:
+            foot = await get_cached_live_scores()
+        except Exception as e:
+            logger.warning(f"/livescores (foot) a échoué: {e}")
+            foot = _livescores_cache.get("data", [])
 
-    ranked = sorted(data, key=lambda m: (0 if is_fav(m) else 1, order.get(m.get("state"), 3), m.get("date") or ""))
+        def is_fav(m):
+            return (m.get("league_slug") in fav_leagues) or (m.get("home_id") in fav_teams) or (m.get("away_id") in fav_teams)
+        foot = sorted(foot, key=lambda m: (0 if is_fav(m) else 1, order.get(m.get("state"), 3), m.get("date") or ""))
+    if show_mma:
+        try:
+            mma = await get_cached_mma()
+        except Exception as e:
+            logger.warning(f"/livescores (mma) a échoué: {e}")
+            mma = _mma_cache.get("data", [])
+        mma = sorted(mma, key=lambda m: (order.get(m.get("state"), 3), m.get("date") or ""))
+
+    # Fusion : si les deux sports sont actifs, on ALTERNE foot / MMA ; sinon on
+    # renvoie simplement la liste du sport actif.
+    if foot and mma:
+        items = []
+        i = j = 0
+        while i < len(foot) or j < len(mma):
+            if i < len(foot):
+                items.append(foot[i]); i += 1
+            if j < len(mma):
+                items.append(mma[j]); j += 1
+    else:
+        items = foot or mma
+
     return {
-        "matches": ranked[:40],
-        "updated_at": _livescores_cache.get("ts", 0),
+        "matches": items[:50],
+        "updated_at": max(_livescores_cache.get("ts", 0), _mma_cache.get("ts", 0)),
         "favorites": {"leagues": sorted(fav_leagues), "teams": sorted(fav_teams)},
     }
 

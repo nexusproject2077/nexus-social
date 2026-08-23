@@ -215,17 +215,30 @@ export default function SettingsPage({ user, setUser }) {
     } catch { toast.error("Lien PayPal invalide"); }
   };
 
-  // Widget scores de sport en direct : préférence utilisateur (défaut affiché).
+  // Widgets sportifs : préférences utilisateur (foot + MMA, défaut affiché).
   const [showSports, setShowSports] = useState(user?.show_sports !== false);
+  const [showMma, setShowMma] = useState(user?.show_mma !== false);
   const toggleShowSports = async (value) => {
     setShowSports(value);
     setUser?.((prev) => (prev ? { ...prev, show_sports: value } : prev));
     try {
       await axios.put(`${API}/users/me/show-sports`, { show_sports: value });
-      toast.success(value ? "Scores de sport affichés" : "Scores de sport masqués");
+      toast.success(value ? "Scores de foot affichés" : "Scores de foot masqués");
     } catch {
       setShowSports(!value);
       setUser?.((prev) => (prev ? { ...prev, show_sports: !value } : prev));
+      toast.error("Erreur");
+    }
+  };
+  const toggleShowMma = async (value) => {
+    setShowMma(value);
+    setUser?.((prev) => (prev ? { ...prev, show_mma: value } : prev));
+    try {
+      await axios.put(`${API}/users/me/show-sports`, { show_mma: value });
+      toast.success(value ? "Combats MMA affichés" : "Combats MMA masqués");
+    } catch {
+      setShowMma(!value);
+      setUser?.((prev) => (prev ? { ...prev, show_mma: !value } : prev));
       toast.error("Erreur");
     }
   };
@@ -851,10 +864,17 @@ export default function SettingsPage({ user, setUser }) {
         <CardHeader title="Widgets du fil" icon="widgets" />
         <ToggleRow
           icon="sports_soccer"
-          label="Afficher les scores de sport en direct"
+          label="Scores de foot en direct"
           sublabel="Le widget football en haut du fil (mobile) et dans la colonne de droite (PC)"
           checked={showSports}
           onChange={toggleShowSports}
+        />
+        <ToggleRow
+          icon="sports_mma"
+          label="Combats MMA / UFC"
+          sublabel="Les cartes de combat UFC dans le même widget sportif"
+          checked={showMma}
+          onChange={toggleShowMma}
         />
       </Card>
       <Card>

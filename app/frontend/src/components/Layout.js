@@ -356,7 +356,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         >
           {/* Scores de foot en direct — tout en haut de la colonne. Optionnel :
               masqué si l'utilisateur a désactivé les scores. */}
-          {user?.show_sports !== false && <LiveScores variant="sidebar" setUser={setUser} />}
+          {(user?.show_sports !== false || user?.show_mma !== false) && <LiveScores variant="sidebar" setUser={setUser} />}
 
           {/* Trending — carte au fond gris très sombre (façon X) */}
           <section className="rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>

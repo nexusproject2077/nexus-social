@@ -111,6 +111,58 @@ function MatchCard({ m, compact, favL, favT, onToggleLeague, onToggleTeam, onOpe
   );
 }
 
+// Carte de combat MMA / UFC.
+function MmaFighter({ f, winner, done }) {
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      {f?.avatar ? (
+        <img src={f.avatar} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0" style={{ background: "#2a3446" }} loading="lazy" />
+      ) : (
+        <span className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center" style={{ background: "#2a3446" }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 14, color: "#5b6577" }}>person</span>
+        </span>
+      )}
+      <span className="text-xs truncate flex-1" style={{ color: winner ? "#f4f8ff" : "#c7d0e0", fontWeight: winner ? 700 : 400 }}>{f?.name}</span>
+      {done && winner && (
+        <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 16, color: "#fbbf24", filter: "drop-shadow(0 0 4px rgba(251,191,36,0.55))", fontVariationSettings: "'FILL' 1" }}>emoji_events</span>
+      )}
+    </div>
+  );
+}
+
+function MmaCard({ m, compact }) {
+  const live = m.state === "in";
+  const done = m.state === "post";
+  const status = live ? `R${m.round || "?"}${m.clock ? " · " + m.clock : ""}`
+    : done ? (m.method || "Terminé")
+    : (m.detail || "À venir");
+  const w1 = done && m.winner && m.f1?.name === m.winner;
+  const w2 = done && m.winner && m.f2?.name === m.winner;
+  return (
+    <div className={`rounded-2xl p-3 flex flex-col justify-between ${compact ? "" : "flex-shrink-0"}`}
+      style={{ background: "#111827", border: `1px solid ${live ? NEON + "33" : "rgba(255,255,255,0.06)"}`, width: compact ? "auto" : 178, minHeight: 98 }}>
+      <div className="flex items-center justify-between gap-1.5 mb-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider truncate flex items-center gap-1" style={{ color: "#6b7686" }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 12, color: "#ef4444" }}>sports_mma</span>{m.event}
+        </span>
+        {live && (
+          <span className="flex items-center gap-1 flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: NEON, boxShadow: `0 0 6px ${NEON}` }} />
+            <span className="text-[9px] font-black" style={{ color: NEON }}>LIVE</span>
+          </span>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <MmaFighter f={m.f1} winner={w1} done={done} />
+        <MmaFighter f={m.f2} winner={w2} done={done} />
+      </div>
+      <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <span className="text-[10px] font-bold" style={{ color: live ? NEON : "#6b7686" }}>{status}</span>
+      </div>
+    </div>
+  );
+}
+
 // Modale de filtres : cocher les ligues majeures (Toggles).
 function FilterModal({ favL, onSave, onClose }) {
   const [sel, setSel] = useState(new Set(favL));
@@ -206,19 +258,35 @@ export default function LiveScores({ variant = "mobile", setUser }) {
     } catch { toast.error("Erreur d'enregistrement"); }
   };
 
-  // Masquer définitivement le widget : persistance MongoDB + fondu + maj du user.
+  // Masquer TOUT le widget (foot + MMA) : persistance MongoDB + fondu + maj user.
   const doHide = () => {
     setConfirmHide(false);
     setFading(true);
     setTimeout(() => {
-      axios.put(`${API}/users/me/show-sports`, { show_sports: false }).catch(() => {});
-      setUser?.((prev) => (prev ? { ...prev, show_sports: false } : prev));
+      axios.put(`${API}/users/me/show-sports`, { show_sports: false, show_mma: false }).catch(() => {});
+      setUser?.((prev) => (prev ? { ...prev, show_sports: false, show_mma: false } : prev));
     }, 340);
   };
 
   if (!matches.length) return null;
-  const sorted = sortMatches(matches, favL, favT);
   const cardProps = { favL, favT, onToggleLeague, onToggleTeam, onOpen: setOpenMatch };
+
+  // Foot (re-trié favoris d'abord, instantané) + MMA, ALTERNÉS si les deux existent.
+  const footItems = sortMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
+  const mmaItems = matches.filter((m) => m.sport === "mma");
+  let arranged;
+  if (footItems.length && mmaItems.length) {
+    arranged = [];
+    for (let i = 0; i < Math.max(footItems.length, mmaItems.length); i++) {
+      if (i < footItems.length) arranged.push(footItems[i]);
+      if (i < mmaItems.length) arranged.push(mmaItems[i]);
+    }
+  } else {
+    arranged = footItems.length ? footItems : mmaItems;
+  }
+  const renderCard = (m, compact) => (m.sport === "mma"
+    ? <MmaCard key={`mma-${m.id}`} m={m} compact={compact} />
+    : <MatchCard key={`foot-${m.id}`} m={m} compact={compact} {...cardProps} />);
   const fadeStyle = { opacity: fading ? 0 : 1, transition: "opacity 0.34s ease" };
 
   const iconBtn = (icon, onClick, label) => (
@@ -273,7 +341,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
       <section className="rounded-2xl p-4" style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.05)", ...fadeStyle }}>
         <div className="mb-3">{header(true)}</div>
         <div className="space-y-2">
-          {sorted.slice(0, 6).map((m) => <MatchCard key={m.id} m={m} compact {...cardProps} />)}
+          {arranged.slice(0, 6).map((m) => renderCard(m, true))}
         </div>
         {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
@@ -286,7 +354,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
     <div className="pt-1 pb-2" style={fadeStyle}>
       <div className="px-4 mb-1.5">{header(false)}</div>
       <div className="flex gap-3 overflow-x-auto no-scrollbar px-4">
-        {sorted.map((m) => <MatchCard key={m.id} m={m} {...cardProps} />)}
+        {arranged.map((m) => renderCard(m, false))}
       </div>
       {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
       {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}

@@ -198,7 +198,7 @@ export default function HomePage({ user, setUser }) {
         {/* Scores de foot en direct — carrousel horizontal (mobile ; sur PC ils
             sont dans la colonne Tendances à droite). Optionnel : masqué si
             l'utilisateur a désactivé les scores (show_sports === false). */}
-        {user?.show_sports !== false && (
+        {(user?.show_sports !== false || user?.show_mma !== false) && (
           <div className="lg:hidden">
             <LiveScores variant="mobile" setUser={setUser} />
           </div>
