@@ -38,7 +38,7 @@ import FaqPage from './pages/content/FaqPage';
 // (REACT_APP_BACKEND_URL) pour pouvoir changer d'hébergeur sans toucher au code
 // — ex. pointer vers Google Cloud Run. À défaut, on garde l'URL Render actuelle.
 // L'URL WebSocket (temps réel + lives) est dérivée de API → suit automatiquement.
-const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "https://nexus-social-4k3v.onrender.com").replace(/\/$/, "");
+const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "https://nexus-ai-api-qvmulegbyq-ew.a.run.app").replace(/\/$/, "");
 export const API = `${BACKEND_URL}/api`;
 
 // Base publique du backend (sans /api) — sert à construire les liens miroir
