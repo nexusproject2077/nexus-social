@@ -12,6 +12,18 @@ import MatchCenter from "@/components/MatchCenter";
 const NEON = "#4ade80";      // vert néon (match en cours)
 const BRIGHT = "#f4f8ff";    // blanc brillant
 
+// Mode DÉMO (opt-in : ?demo=1 ou localStorage) — affiche des cartes de test
+// étiquetées « DÉMO » quand l'API ne renvoie aucun match. Jamais présenté comme réel.
+const demoScoresOn = () => {
+  try { return new URLSearchParams(window.location.search).get("demo") === "1" || localStorage.getItem("nexus_demo_scores") === "1"; }
+  catch { return false; }
+};
+const DEMO_SCORES = [
+  { id: "demo-ren-psg", sport: "foot", league: "Ligue 1", league_slug: "fra.1", home: "Rennes", away: "PSG", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: "0", away_score: "0", state: "in", clock: "1'", detail: "1'", date: new Date().toISOString(), demo: true },
+  { id: "demo-om-ol", sport: "foot", league: "Ligue 1", league_slug: "fra.1", home: "Marseille", away: "Lyon", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: null, away_score: null, state: "pre", clock: "", detail: "À venir", date: new Date(Date.now() + 2 * 3600 * 1000).toISOString(), demo: true },
+  { id: "demo-ufc", sport: "mma", event: "UFC 300", f1: { name: "Jon Jones", avatar: null, winner: false }, f2: { name: "Tom Aspinall", avatar: null, winner: false }, state: "in", round: 3, clock: "02:15", method: "", winner: null, detail: "R3 · 02:15", date: new Date().toISOString(), demo: true },
+];
+
 // Ligues majeures proposées dans la modale de filtres (slugs ESPN).
 export const MAJOR_LEAGUES = [
   { id: "uefa.champions", name: "Ligue des Champions" },
@@ -344,12 +356,14 @@ export default function LiveScores({ variant = "mobile", setUser }) {
     }, 340);
   };
 
-  if (!matches.length) return null;
+  // Repli DÉMO (opt-in) quand l'API ne renvoie aucun match → permet de voir le widget.
+  const src = matches.length ? matches : (demoScoresOn() ? DEMO_SCORES : []);
+  if (!src.length) return null;
   const cardProps = { favL, favT, onToggleLeague, onToggleTeam, onOpen: setOpenMatch };
 
   // Foot + MMA : direct prioritaire, sinon 3 prochains à venir (par sport).
-  const footItems = displayMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
-  const mmaItems = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
+  const footItems = displayMatches(src.filter((m) => m.sport !== "mma"), favL, favT);
+  const mmaItems = displayMatches(src.filter((m) => m.sport === "mma"), favL, favT);
   let arranged;
   if (footItems.length && mmaItems.length) {
     arranged = [];
