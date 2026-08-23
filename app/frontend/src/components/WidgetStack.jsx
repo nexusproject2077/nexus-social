@@ -8,7 +8,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
-import { MatchCard, MmaCard, displayMatches } from "@/components/LiveScores";
+import { MatchCard, MmaCard, displayMatches, MAJOR_LEAGUES } from "@/components/LiveScores";
 import { getTodayMinutes } from "@/lib/screenTime";
 
 const NEON = "#4ade80";
@@ -40,6 +40,18 @@ const FINANCE_CATALOG = {
   "matic-network": { symbol: "MATIC", name: "Polygon" },
 };
 const DEFAULT_FINANCE_ASSETS = ["bitcoin", "ethereum", "solana"];
+
+// Données de DÉMO (opt-in) : n'apparaissent QUE si le foot réel est vide ET que
+// le mode démo est activé (?demo=1 ou localStorage nexus_demo_scores=1). Toujours
+// étiquetées « DÉMO » → jamais présentées comme de vrais scores en direct.
+const DEMO_FOOT = [
+  { id: "demo-rma-bar", sport: "foot", league: "LaLiga", league_slug: "esp.1", home: "Real Madrid", away: "Barcelone", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: "2", away_score: "1", state: "in", clock: "74'", detail: "74' · But Mbappé (54')", date: new Date().toISOString(), demo: true },
+  { id: "demo-mci-ars", sport: "foot", league: "Premier League", league_slug: "eng.1", home: "Manchester City", away: "Arsenal", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: "0", away_score: "0", state: "in", clock: "12'", detail: "12'", date: new Date().toISOString(), demo: true },
+];
+const demoScoresOn = () => {
+  try { return new URLSearchParams(window.location.search).get("demo") === "1" || localStorage.getItem("nexus_demo_scores") === "1"; }
+  catch { return false; }
+};
 
 // Prix EUR avec décimales adaptatives (gros montants entiers, micro-prix précis).
 const fmtEur = (v) => {
@@ -257,6 +269,134 @@ function StackEditor({ order, smartRotate, financeAssets, onChange, onClose }) {
   );
 }
 
+// ─────────────── Personnalisation par widget (bottom sheet « ... ») ────────────
+// Ouvert par les 3 points d'un widget : formulaire adapté au widget actif
+// (ligues pour le Foot, cryptos pour la Finance, ville pour la Météo).
+function WidgetConfig({ widgetId, favL, financeAssets, weatherCity, onSaveFav, onSaveFinance, onSaveCity, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const [leagues, setLeagues] = useState(() => new Set(favL));                 // Foot
+  const [assets, setAssets] = useState(() => (financeAssets || []).slice());   // Finance
+  const [q, setQ] = useState(weatherCity?.name || "");                          // Météo
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [picked, setPicked] = useState(weatherCity || null);
+  const label = WIDGETS[widgetId]?.label || "Widget";
+
+  const toggleLeague = (id) => setLeagues((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAsset = (id) => setAssets((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const searchCity = async () => {
+    const term = q.trim();
+    if (term.length < 2) return;
+    setSearching(true);
+    try {
+      // Géocodage keyless Open-Meteo (fetch brut : ne pas fuiter notre jeton).
+      const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(term)}&count=6&language=fr&format=json`);
+      const d = await r.json();
+      setResults(Array.isArray(d.results) ? d.results : []);
+    } catch { setResults([]); }
+    setSearching(false);
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      if (widgetId === "football") await onSaveFav([...leagues]);
+      else if (widgetId === "finance") { if (assets.length) await onSaveFinance(assets); }
+      else if (widgetId === "weather") await onSaveCity(picked);
+    } finally { setBusy(false); onClose(); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center"
+      style={{ background: "rgba(2,6,20,0.82)" }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full sm:max-w-md rounded-t-3xl p-5"
+        style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.08)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
+        <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.22)" }} />
+        <div className="flex items-center gap-2 mb-4">
+          <span className="material-symbols-outlined" style={{ color: WIDGETS[widgetId]?.color }}>{WIDGETS[widgetId]?.icon}</span>
+          <h3 className="text-white font-black text-lg">Personnaliser · {label}</h3>
+        </div>
+
+        {/* Foot : cocher les ligues favorites */}
+        {widgetId === "football" && (
+          <div className="max-h-[46vh] overflow-y-auto no-scrollbar space-y-1.5">
+            {MAJOR_LEAGUES.map((l) => {
+              const on = leagues.has(l.id);
+              return (
+                <button key={l.id} onClick={() => toggleLeague(l.id)}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl"
+                  style={{ background: on ? NEON + "14" : "#1a2234" }}>
+                  <span className="text-sm font-semibold" style={{ color: on ? "#eaf7ee" : "#c7d0e0" }}>{l.name}</span>
+                  <span className="relative flex-shrink-0" style={{ width: 40, height: 22, borderRadius: 999, background: on ? NEON : "#333d52", transition: "background 0.2s" }}>
+                    <span className="absolute top-0.5 rounded-full bg-white" style={{ width: 18, height: 18, left: on ? 20 : 2, transition: "left 0.2s" }} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Finance : cocher les actifs suivis */}
+        {widgetId === "finance" && (
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(FINANCE_CATALOG).map(([id, a]) => {
+              const on = assets.includes(id);
+              return (
+                <button key={id} onClick={() => toggleAsset(id)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
+                  style={{ background: on ? "#a78bfa22" : "#1a2234", color: on ? "#c4b5fd" : "#8b96a8", border: `1px solid ${on ? "#a78bfa66" : "rgba(255,255,255,0.08)"}` }}>
+                  <span className="material-symbols-outlined text-base">{on ? "check_circle" : "radio_button_unchecked"}</span>
+                  {a.symbol}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Météo : changer de ville (ou revenir à la localisation auto) */}
+        {widgetId === "weather" && (
+          <div>
+            <div className="flex gap-2">
+              <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && searchCity()}
+                placeholder="Rechercher une ville…"
+                className="flex-1 px-4 py-2.5 rounded-2xl text-sm text-white outline-none"
+                style={{ background: "#1a2234", border: "1px solid rgba(255,255,255,0.08)" }} />
+              <button onClick={searchCity} className="px-4 rounded-2xl font-bold text-sm" style={{ background: "#232c40", color: "#c7d0e0" }}>
+                <span className="material-symbols-outlined">search</span>
+              </button>
+            </div>
+            {picked && (
+              <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-2xl" style={{ background: "#fbbf2414" }}>
+                <span className="material-symbols-outlined" style={{ color: "#fbbf24", fontSize: 18 }}>location_on</span>
+                <span className="text-sm font-bold text-white flex-1">{picked.name}</span>
+                <button onClick={() => { setPicked(null); setResults([]); setQ(""); }} className="text-xs font-bold" style={{ color: "#8b96a8" }}>Localisation auto</button>
+              </div>
+            )}
+            <div className="mt-2 max-h-[34vh] overflow-y-auto no-scrollbar">
+              {searching && <p className="text-xs py-2" style={{ color: "#6b7686" }}>Recherche…</p>}
+              {results.map((r) => (
+                <button key={`${r.id}`} onClick={() => { setPicked({ name: [r.name, r.admin1, r.country_code].filter(Boolean).join(", "), lat: r.latitude, lon: r.longitude }); setResults([]); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left" style={{ color: "#dae2fd" }}>
+                  <span className="material-symbols-outlined text-base" style={{ color: "#6b7686" }}>place</span>
+                  <span className="text-sm truncate">{[r.name, r.admin1, r.country_code].filter(Boolean).join(", ")}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button onClick={save} disabled={busy}
+          className="w-full mt-5 py-3 rounded-2xl font-black text-sm disabled:opacity-60"
+          style={{ background: `linear-gradient(135deg,${NEON},#22d3ee)`, color: "#04250f" }}>
+          {busy ? "Enregistrement…" : "Enregistrer"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────── Pile principale ──────────────────────────────
 export default function WidgetStack({ user, setUser }) {
   const navigate = useNavigate();
@@ -266,6 +406,7 @@ export default function WidgetStack({ user, setUser }) {
   const smartRotate = cfg.smart_rotate !== false;
   const configOrder = (Array.isArray(cfg.order) && cfg.order.length) ? cfg.order : DEFAULT_ORDER;
   const financeAssets = (Array.isArray(cfg.finance_assets) && cfg.finance_assets.length) ? cfg.finance_assets : DEFAULT_FINANCE_ASSETS;
+  const weatherCity = (cfg.weather_city && typeof cfg.weather_city === "object") ? cfg.weather_city : null;
 
   const [matches, setMatches] = useState([]);
   const [favL, setFavL] = useState(() => new Set());
@@ -278,6 +419,7 @@ export default function WidgetStack({ user, setUser }) {
   const [openMatch, setOpenMatch] = useState(null);
   const [active, setActive] = useState(0);
   const [editing, setEditing] = useState(false);
+  const [configWidget, setConfigWidget] = useState(null);  // id du widget en cours de personnalisation
 
   const sigRef = useRef({});
   const hasLiveRef = useRef(false);
@@ -320,20 +462,26 @@ export default function WidgetStack({ user, setUser }) {
 
   useEffect(() => { hasLiveRef.current = matches.some((m) => m.state === "in"); }, [matches]);
 
-  // Météo : géoloc du navigateur → GET /weather (rafraîchi toutes les 10 min).
+  // Météo : ville choisie par l'utilisateur si définie, sinon géoloc du navigateur.
+  // GET /weather (rafraîchi toutes les 10 min).
   const wantWeather = configOrder.includes("weather");
+  const cityKey = weatherCity ? `${weatherCity.lat},${weatherCity.lon}` : "";
   useEffect(() => {
-    if (!wantWeather || !navigator.geolocation) return;
+    if (!wantWeather) return;
     let alive = true;
-    const fetchW = (pos) => {
-      axios.get(`${API}/weather`, { params: { lat: pos.coords.latitude, lon: pos.coords.longitude } })
+    const fetchW = (lat, lon) => {
+      axios.get(`${API}/weather`, { params: { lat, lon } })
         .then((r) => { if (alive) setWeather(r.data?.weather || null); }).catch(() => {});
     };
     const opts = { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 };
-    navigator.geolocation.getCurrentPosition(fetchW, () => {}, opts);
-    const iv = setInterval(() => navigator.geolocation.getCurrentPosition(fetchW, () => {}, opts), 600000);
+    const run = () => {
+      if (weatherCity) fetchW(weatherCity.lat, weatherCity.lon);            // ville forcée
+      else if (navigator.geolocation) navigator.geolocation.getCurrentPosition((p) => fetchW(p.coords.latitude, p.coords.longitude), () => {}, opts);
+    };
+    run();
+    const iv = setInterval(run, 600000);
     return () => { alive = false; clearInterval(iv); };
-  }, [wantWeather]);
+  }, [wantWeather, cityKey]);
 
   // Finance : cours crypto en direct (CoinGecko via backend), rafraîchi 60 s.
   const wantFinance = configOrder.includes("finance");
@@ -370,12 +518,24 @@ export default function WidgetStack({ user, setUser }) {
         smart_rotate: patch.smart_rotate ?? (cur.smart_rotate !== false),
         order: patch.order ?? (cur.order || DEFAULT_ORDER),
         finance_assets: patch.finance_assets ?? (cur.finance_assets || DEFAULT_FINANCE_ASSETS),
+        weather_city: "weather_city" in patch ? patch.weather_city : (cur.weather_city ?? null),
       } };
     });
     axios.put(`${API}/users/me/widget-stack`, patch).catch(() => {});
   };
 
-  const footItems = displayMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
+  // Sauvegardes déclenchées par le bouton « ... » de chaque widget.
+  const saveLeagues = async (leagues) => {
+    setFavL(new Set(leagues));
+    try { await axios.put(`${API}/users/me/sports-favorites`, { leagues, teams: Array.from(favT) }); }
+    finally { load(); }
+  };
+  const saveFinance = (list) => applyConfig({ finance_assets: list });
+  const saveCity = (city) => applyConfig({ weather_city: city });
+
+  const footBase = displayMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
+  // Repli DÉMO (opt-in) quand le foot réel est vide → permet de tester le widget.
+  const footItems = footBase.length ? footBase : (demoScoresOn() ? DEMO_FOOT : []);
   const mmaItems = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
   const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
@@ -497,6 +657,12 @@ export default function WidgetStack({ user, setUser }) {
     onOpen: setOpenMatch,
   };
 
+  // Clic sur « ... » : ouvre la personnalisation du widget (ligues/cryptos/ville).
+  // Pour les widgets sans réglage propre (tendances, MMA, temps d'écran), on
+  // ouvre le mode Édition global de la pile.
+  const CONFIGURABLE = { football: 1, finance: 1, weather: 1 };
+  const openWidgetMenu = (id) => { if (CONFIGURABLE[id]) setConfigWidget(id); else setEditing(true); };
+
   const PageHeader = ({ id }) => {
     const w = WIDGETS[id];
     return (
@@ -505,7 +671,10 @@ export default function WidgetStack({ user, setUser }) {
           <span className="material-symbols-outlined" style={{ color: w.color, fontSize: 15 }}>{w.icon}</span>
           <span className="text-[11px] font-black uppercase tracking-wider" style={{ color: "#8b96a8" }}>{w.label}</span>
         </div>
-        <span className="material-symbols-outlined" style={{ color: "#3b475e", fontSize: 15 }} title="Appui long pour éditer">more_horiz</span>
+        <button onClick={() => openWidgetMenu(id)} aria-label="Personnaliser ce widget"
+          className="flex items-center justify-center -m-1 p-1 rounded-lg active:scale-90 transition-transform">
+          <span className="material-symbols-outlined" style={{ color: "#6b7686", fontSize: 16 }} title="Personnaliser">more_horiz</span>
+        </button>
       </div>
     );
   };
@@ -654,6 +823,18 @@ export default function WidgetStack({ user, setUser }) {
       {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
       {editing && (
         <StackEditor order={configOrder} smartRotate={smartRotate} financeAssets={financeAssets} onChange={applyConfig} onClose={() => setEditing(false)} />
+      )}
+      {configWidget && (
+        <WidgetConfig
+          widgetId={configWidget}
+          favL={favL}
+          financeAssets={financeAssets}
+          weatherCity={weatherCity}
+          onSaveFav={saveLeagues}
+          onSaveFinance={saveFinance}
+          onSaveCity={saveCity}
+          onClose={() => setConfigWidget(null)}
+        />
       )}
     </div>
   );

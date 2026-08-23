@@ -8547,10 +8547,20 @@ def _widget_stack_of(user: dict) -> dict:
     for a in fin:
         if a not in fin_seen:
             fin_seen.add(a); fin_clean.append(a)
+    wc = cfg.get("weather_city")
+    weather_city = None
+    if isinstance(wc, dict):
+        try:
+            lat, lon = float(wc.get("lat")), float(wc.get("lon"))
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                weather_city = {"name": str(wc.get("name") or "")[:80], "lat": lat, "lon": lon}
+        except (TypeError, ValueError):
+            weather_city = None
     return {
         "smart_rotate": cfg.get("smart_rotate", True),
         "order": clean or list(WIDGET_STACK_IDS),
         "finance_assets": fin_clean or list(DEFAULT_FINANCE_ASSETS),
+        "weather_city": weather_city,
     }
 
 
@@ -8578,6 +8588,17 @@ async def set_widget_stack(data: dict = Body(...), current_user: dict = Depends(
             if a in FINANCE_ASSETS and a not in seen:
                 seen.add(a); fin.append(a)
         cfg["finance_assets"] = fin
+    if "weather_city" in data:
+        wc = data.get("weather_city")
+        if wc is None:
+            cfg["weather_city"] = None  # retour à la géolocalisation auto
+        elif isinstance(wc, dict):
+            try:
+                lat, lon = float(wc.get("lat")), float(wc.get("lon"))
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    cfg["weather_city"] = {"name": str(wc.get("name") or "")[:80], "lat": lat, "lon": lon}
+            except (TypeError, ValueError):
+                pass
     await db.users.update_one({"id": current_user["id"]}, {"$set": {"widget_stack_config": cfg}})
     return _widget_stack_of({"widget_stack_config": cfg})
 

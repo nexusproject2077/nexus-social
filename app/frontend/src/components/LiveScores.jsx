@@ -13,7 +13,7 @@ const NEON = "#4ade80";      // vert néon (match en cours)
 const BRIGHT = "#f4f8ff";    // blanc brillant
 
 // Ligues majeures proposées dans la modale de filtres (slugs ESPN).
-const MAJOR_LEAGUES = [
+export const MAJOR_LEAGUES = [
   { id: "uefa.champions", name: "Ligue des Champions" },
   { id: "fra.1",          name: "Ligue 1" },
   { id: "eng.1",          name: "Premier League" },
@@ -68,6 +68,12 @@ const UpcomingBadge = () => (
     style={{ background: "#232c3a", color: "#9fb0c8" }}>À VENIR</span>
 );
 
+// Badge DÉMO (données de simulation, jamais présentées comme réelles).
+const DemoBadge = () => (
+  <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-black tracking-wide"
+    style={{ background: "#f59e0b22", color: "#fbbf24" }}>DÉMO</span>
+);
+
 // Badge LIVE néon (match en cours).
 const LiveBadge = () => (
   <span className="flex items-center gap-1 flex-shrink-0">
@@ -117,6 +123,7 @@ export function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onTog
   const live = m.state === "in";
   const done = m.state === "post";
   const upcoming = !live && !done;
+  const demo = !!m.demo;
   // Match à venir : on affiche l'heure + la date à la place du score.
   const status = live ? (m.clock || m.detail || "En direct")
     : done ? (m.detail || "Terminé")
@@ -137,7 +144,7 @@ export function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onTog
           <StarBtn active={favL.has(m.league_slug)} onClick={() => onToggleLeague(m.league_slug)} size={13} />
           <span className="text-[10px] font-bold uppercase tracking-wider truncate" style={{ color: "#6b7686" }}>{m.league}</span>
         </div>
-        {live ? <LiveBadge /> : upcoming ? <UpcomingBadge /> : null}
+        {demo ? <DemoBadge /> : live ? <LiveBadge /> : upcoming ? <UpcomingBadge /> : null}
       </div>
       <div className="space-y-1.5">
         <Team id={m.home_id} logo={m.home_logo} name={m.home} score={m.home_score} live={live} upcoming={upcoming} flash={flash} favT={favT} onToggleTeam={onToggleTeam} />
