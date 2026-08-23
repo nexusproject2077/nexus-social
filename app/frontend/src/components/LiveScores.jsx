@@ -49,14 +49,19 @@ export function sortMatches(list, favL, favT) {
     || String(a.date || "").localeCompare(String(b.date || "")));
 }
 
-// Sélection à afficher : priorité ABSOLUE aux matchs EN DIRECT. S'il n'y en a
-// aucun, on montre les 3 PROCHAINS à venir (chronologiques, favoris d'abord).
+// Sélection à afficher, dans l'ordre : EN DIRECT (priorité absolue) → les
+// prochains À VENIR (chronologiques) → les derniers TERMINÉS avec leur score
+// final (plus récents d'abord, ~24 h). Favoris remontés dans chaque groupe.
 export function displayMatches(list, favL, favT) {
-  const sorted = sortMatches(list, favL, favT);
-  if (sorted.some((m) => m.state === "in")) return sorted;          // direct prioritaire
-  const pre = sorted.filter((m) => m.state === "pre");
-  if (pre.length) return pre.slice(0, 3);                            // sinon 3 prochains
-  return sorted.slice(0, 3);                                        // repli : récents terminés
+  const isFav = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id);
+  const favFirst = (arr) => [...arr].sort((a, b) => (isFav(a) ? 0 : 1) - (isFav(b) ? 0 : 1));
+  const asc = (a, b) => String(a.date || "").localeCompare(String(b.date || ""));
+  const desc = (a, b) => String(b.date || "").localeCompare(String(a.date || ""));
+  const live = favFirst(list.filter((m) => m.state === "in"));
+  const pre = favFirst(list.filter((m) => m.state === "pre").sort(asc)).slice(0, 3);
+  const post = favFirst(list.filter((m) => m.state === "post").sort(desc)).slice(0, 2); // derniers scores finals
+  const out = [...live, ...pre, ...post];
+  return out.length ? out : list.slice(0, 3);
 }
 
 // Heure + jour du coup d'envoi, format ultra-court (ex : « Dim. 15:00 »,
