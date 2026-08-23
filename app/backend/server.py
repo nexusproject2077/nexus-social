@@ -7978,15 +7978,24 @@ def _espn_fetch_league(slug: str, fallback_name: str):
     """Récupère (synchrone) les matchs d'une compétition ESPN → liste normalisée.
     Inclut les matchs EN COURS + À VENIR (48 h) + terminés récents."""
     out = []
+    base_url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard"
+
+    def _fetch(params):
+        try:
+            r = _requests.get(base_url, params=params, timeout=8, headers={"User-Agent": "NexusSocial/1.0"})
+            return r.json() if r.ok else None
+        except Exception:
+            return None
+
+    # 1) plage hier→+2 j (matchs à venir + résultats récents). 2) REPLI sur le
+    #    scoreboard DU JOUR si la plage ne renvoie rien — ESPN renvoie parfois une
+    #    liste vide sur une plage de dates, alors que le scoreboard courant marche.
+    data = _fetch({"dates": _espn_dates_param()})
+    if not (data and data.get("events")):
+        data = _fetch(None)
+    if not data:
+        return out
     try:
-        r = _requests.get(
-            f"https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard",
-            params={"dates": _espn_dates_param()},
-            timeout=8, headers={"User-Agent": "NexusSocial/1.0"},
-        )
-        if not r.ok:
-            return out
-        data = r.json()
         league_name = (data.get("leagues") or [{}])[0].get("name") or fallback_name
         for ev in data.get("events", []) or []:
             comp = (ev.get("competitions") or [{}])[0]
@@ -8237,16 +8246,20 @@ async def get_finance_live(ids=None):
 
 def _espn_fetch_mma_sync():
     out = []
-    try:
-        r = _requests.get(
-            "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard",
-            params={"dates": _espn_dates_param()},
-            timeout=8, headers={"User-Agent": "NexusSocial/1.0"},
-        )
-        if not r.ok:
-            return out
-        data = r.json()
-    except Exception:
+    mma_url = "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard"
+
+    def _fetch(params):
+        try:
+            r = _requests.get(mma_url, params=params, timeout=8, headers={"User-Agent": "NexusSocial/1.0"})
+            return r.json() if r.ok else None
+        except Exception:
+            return None
+
+    # Plage hier→+2 j, avec repli sur le scoreboard courant si vide.
+    data = _fetch({"dates": _espn_dates_param()})
+    if not (data and data.get("events")):
+        data = _fetch(None)
+    if not data:
         return out
 
     def fighter(c):
