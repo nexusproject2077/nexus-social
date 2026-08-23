@@ -8,6 +8,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 import MatchCenter from "@/components/MatchCenter";
+import { fetchLiveScoresFromEspn } from "@/lib/espnClient";
 
 const NEON = "#4ade80";      // vert néon (match en cours)
 const BRIGHT = "#f4f8ff";    // blanc brillant
@@ -291,9 +292,13 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   // Récupère les scores + DÉTECTE les changements (score foot, résultat MMA) pour
   // déclencher le flash néon sur le nouveau chiffre.
   const load = useCallback(() => {
-    axios.get(`${API}/livescores`).then((r) => {
-      const d = r.data || {};
-      const items = Array.isArray(d.matches) ? d.matches : [];
+    // Scores : ESPN DIRECT (navigateur) car ESPN bloque l'IP Cloud Run (403).
+    // Favoris : backend (/livescores renvoie aussi les favoris de l'utilisateur).
+    const favP = axios.get(`${API}/livescores`).then((r) => r.data || {}).catch(() => ({}));
+    const espnP = fetchLiveScoresFromEspn().catch(() => []);
+    Promise.all([favP, espnP]).then(([d, espn]) => {
+      const backendItems = Array.isArray(d.matches) ? d.matches : [];
+      const items = espn.length ? espn : backendItems; // ESPN direct prioritaire
       const changed = [];
       for (const m of items) {
         const key = `${m.sport}-${m.id}`;
@@ -309,7 +314,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
         changed.forEach((k) => setTimeout(() =>
           setFlashing((f) => { const n = { ...f }; delete n[k]; return n; }), 3000));
       }
-    }).catch(() => {});
+    });
   }, []);
 
   // Rythme ADAPTATIF (temps réel « à la Flashscore » sans SSE) : 15 s si un match

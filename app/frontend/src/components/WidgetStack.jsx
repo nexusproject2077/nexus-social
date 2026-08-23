@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
 import { MatchCard, MmaCard, displayMatches, MAJOR_LEAGUES } from "@/components/LiveScores";
 import { getTodayMinutes } from "@/lib/screenTime";
+import { fetchLiveScoresFromEspn } from "@/lib/espnClient";
 
 const NEON = "#4ade80";
 const STACK_H = 150;
@@ -430,9 +431,13 @@ export default function WidgetStack({ user, setUser }) {
   const hasLiveRef = useRef(false);
 
   const load = useCallback(() => {
-    axios.get(`${API}/livescores`).then((r) => {
-      const d = r.data || {};
-      const items = Array.isArray(d.matches) ? d.matches : [];
+    // Scores : ESPN DIRECT (navigateur) car ESPN bloque l'IP Cloud Run (403).
+    // Favoris : backend (/livescores renvoie aussi les favoris de l'utilisateur).
+    const favP = axios.get(`${API}/livescores`).then((r) => r.data || {}).catch(() => ({}));
+    const espnP = fetchLiveScoresFromEspn({ foot: showFoot, mma: showMma }).catch(() => []);
+    Promise.all([favP, espnP]).then(([d, espn]) => {
+      const backendItems = Array.isArray(d.matches) ? d.matches : [];
+      const items = espn.length ? espn : backendItems; // ESPN direct prioritaire
       const changed = [];
       for (const m of items) {
         const key = `${m.sport}-${m.id}`;
@@ -447,8 +452,8 @@ export default function WidgetStack({ user, setUser }) {
         setFlashing((f) => { const n = { ...f }; changed.forEach((k) => (n[k] = true)); return n; });
         changed.forEach((k) => setTimeout(() => setFlashing((f) => { const n = { ...f }; delete n[k]; return n; }), 3000));
       }
-    }).catch(() => {});
-  }, []);
+    });
+  }, [showFoot, showMma]);
 
   useEffect(() => {
     axios.get(`${API}/trending/hashtags?limit=6`).then((r) => setTrends(Array.isArray(r.data?.trending) ? r.data.trending : [])).catch(() => {});
