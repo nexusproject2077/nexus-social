@@ -157,14 +157,29 @@ app = FastAPI(title="Nexus Social API", version="1.0.0")
 _CORS_ORIGINS = [
     "https://nexus-social-3ta5.onrender.com",
     "https://nexus-social-4k3v.onrender.com",
+    "https://nexus-social.merickoken54.workers.dev",
     "http://localhost:3000",
     "http://localhost:5173",
     "http://localhost:5174",
 ]
 _CORS_ORIGINS += [o.strip() for o in os.environ.get("CORS_EXTRA_ORIGINS", "").split(",") if o.strip()]
+# Autorise en plus, sans avoir à lister chaque sous-domaine, tout front hébergé
+# sur Cloudflare (*.workers.dev / *.pages.dev) — l'app Nexus est déployée là.
+_CORS_ORIGIN_REGEX = r"https://([a-z0-9-]+\.)*(workers\.dev|pages\.dev)$"
+
+
+def _origin_allowed(origin: str) -> bool:
+    if not origin:
+        return False
+    if "*" in _CORS_ORIGINS or origin in _CORS_ORIGINS:
+        return True
+    return bool(re.match(_CORS_ORIGIN_REGEX, origin))
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
+    allow_origin_regex=_CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -409,7 +424,7 @@ def _cors_headers_for(request) -> dict:
     """
     origin = request.headers.get("origin")
     headers = {"Vary": "Origin"}
-    if origin and (origin in _CORS_ORIGINS or "*" in _CORS_ORIGINS):
+    if _origin_allowed(origin):
         headers["Access-Control-Allow-Origin"] = origin
         headers["Access-Control-Allow-Credentials"] = "true"
     return headers
