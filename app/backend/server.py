@@ -7974,6 +7974,17 @@ def _espn_keep_event(state, date_str) -> bool:
     return False
 
 
+# En-têtes « navigateur » : l'API ESPN peut renvoyer vide / bloquer les
+# User-Agent non navigateur ou certaines IP datacenter. On imite un vrai
+# navigateur pour maximiser le taux de succès depuis Cloud Run.
+_ESPN_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://www.espn.com/",
+    "Origin": "https://www.espn.com",
+}
+
+
 def _espn_fetch_league(slug: str, fallback_name: str):
     """Récupère (synchrone) les matchs d'une compétition ESPN → liste normalisée.
     Inclut les matchs EN COURS + À VENIR (48 h) + terminés récents."""
@@ -7982,9 +7993,13 @@ def _espn_fetch_league(slug: str, fallback_name: str):
 
     def _fetch(params):
         try:
-            r = _requests.get(base_url, params=params, timeout=8, headers={"User-Agent": "NexusSocial/1.0"})
-            return r.json() if r.ok else None
-        except Exception:
+            r = _requests.get(base_url, params=params, timeout=10, headers=_ESPN_HEADERS)
+            if not r.ok:
+                logger.warning(f"ESPN {slug}: HTTP {r.status_code}")
+                return None
+            return r.json()
+        except Exception as e:
+            logger.warning(f"ESPN {slug}: exception {type(e).__name__}: {e}")
             return None
 
     # Scoreboard DU JOUR (sans paramètre de dates) : source fiable des matchs du
@@ -7992,6 +8007,7 @@ def _espn_fetch_league(slug: str, fallback_name: str):
     # parfois vide.)
     data = _fetch(None)
     if not data:
+        logger.info(f"ESPN {slug}: 0 match (fetch vide/échoué)")
         return out
     try:
         league_name = (data.get("leagues") or [{}])[0].get("name") or fallback_name
@@ -8250,14 +8266,19 @@ def _espn_fetch_mma_sync():
 
     def _fetch(params):
         try:
-            r = _requests.get(mma_url, params=params, timeout=8, headers={"User-Agent": "NexusSocial/1.0"})
-            return r.json() if r.ok else None
-        except Exception:
+            r = _requests.get(mma_url, params=params, timeout=10, headers=_ESPN_HEADERS)
+            if not r.ok:
+                logger.warning(f"ESPN mma/ufc: HTTP {r.status_code}")
+                return None
+            return r.json()
+        except Exception as e:
+            logger.warning(f"ESPN mma/ufc: exception {type(e).__name__}: {e}")
             return None
 
     # Scoreboard UFC du jour (source fiable, sans plage de dates).
     data = _fetch(None)
     if not data:
+        logger.info("ESPN mma/ufc: 0 combat (fetch vide/échoué)")
         return out
 
     def fighter(c):
@@ -8292,6 +8313,7 @@ def _espn_fetch_mma_sync():
                 "detail": ctype.get("shortDetail") or ctype.get("detail") or "",
                 "date": comp.get("date") or ev.get("date"),
             })
+    logger.info(f"ESPN mma/ufc: events={len((data or {}).get('events', []))} → gardés={len(out)}")
     return out
 
 
