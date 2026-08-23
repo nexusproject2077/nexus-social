@@ -7990,6 +7990,85 @@ async def get_weather_live(lat: float, lon: float):
         return fresh
 
 
+# ── Finance / Crypto en direct (CoinGecko, gratuit / sans clé) ────────────────
+# Catalogue des actifs proposés (id CoinGecko → ticker + nom). Sert à la fois de
+# liste de choix en mode Édition et de garde-fou (on n'interroge que ces ids).
+FINANCE_ASSETS = {
+    "bitcoin": {"symbol": "BTC", "name": "Bitcoin"},
+    "ethereum": {"symbol": "ETH", "name": "Ethereum"},
+    "solana": {"symbol": "SOL", "name": "Solana"},
+    "binancecoin": {"symbol": "BNB", "name": "BNB"},
+    "ripple": {"symbol": "XRP", "name": "XRP"},
+    "cardano": {"symbol": "ADA", "name": "Cardano"},
+    "dogecoin": {"symbol": "DOGE", "name": "Dogecoin"},
+    "polkadot": {"symbol": "DOT", "name": "Polkadot"},
+    "chainlink": {"symbol": "LINK", "name": "Chainlink"},
+    "avalanche-2": {"symbol": "AVAX", "name": "Avalanche"},
+    "litecoin": {"symbol": "LTC", "name": "Litecoin"},
+    "matic-network": {"symbol": "MATIC", "name": "Polygon"},
+}
+DEFAULT_FINANCE_ASSETS = ["bitcoin", "ethereum", "solana"]
+_finance_cache = {}  # "id,id,..." -> {"data": [...], "ts": float}
+_finance_lock = asyncio.Lock()
+
+
+def _finance_fetch_sync(ids):
+    """Prix (EUR) + variation 24 h des actifs via l'API publique CoinGecko."""
+    try:
+        r = _requests.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={
+                "ids": ",".join(ids),
+                "vs_currencies": "eur",
+                "include_24hr_change": "true",
+            },
+            timeout=8, headers={"User-Agent": "NexusSocial/1.0"},
+        )
+        if not r.ok:
+            return None
+        data = r.json() or {}
+    except Exception:
+        return None
+    out = []
+    for cid in ids:  # conserve l'ordre demandé
+        row = data.get(cid)
+        if not isinstance(row, dict):
+            continue
+        meta = FINANCE_ASSETS.get(cid, {})
+        price = row.get("eur")
+        change = row.get("eur_24h_change")
+        out.append({
+            "id": cid,
+            "symbol": meta.get("symbol") or cid[:4].upper(),
+            "name": meta.get("name") or cid,
+            "price": round(float(price), 2) if price is not None else None,
+            "change_24h": round(float(change), 2) if change is not None else None,
+        })
+    return out
+
+
+async def get_finance_live(ids=None):
+    """Cours des actifs demandés (Bitcoin, Ethereum, Solana par défaut), servis
+    depuis un cache mémoire (TTL 60 s). Ne garde que des ids connus/valides."""
+    ids = [i for i in (ids or DEFAULT_FINANCE_ASSETS) if i in FINANCE_ASSETS]
+    if not ids:
+        ids = list(DEFAULT_FINANCE_ASSETS)
+    key = ",".join(ids)
+    now = time.time()
+    entry = _finance_cache.get(key)
+    if entry and (now - entry["ts"]) < 60:
+        return entry["data"]
+    async with _finance_lock:
+        entry = _finance_cache.get(key)
+        if entry and (time.time() - entry["ts"]) < 60:
+            return entry["data"]
+        fresh = await asyncio.to_thread(_finance_fetch_sync, ids)
+        if fresh is not None:
+            _finance_cache[key] = {"data": fresh, "ts": time.time()}
+            return fresh
+        return (entry or {}).get("data", [])
+
+
 def _espn_fetch_mma_sync():
     out = []
     try:
@@ -8284,7 +8363,25 @@ async def weather(lat: float, lon: float, current_user: dict = Depends(get_curre
     return {"weather": data}
 
 
-WIDGET_STACK_IDS = ["trends", "weather", "football", "mma"]
+@api_router.get("/finance")
+async def finance(ids: str = "", current_user: dict = Depends(get_current_user)):
+    """Cours crypto/bourse en direct (CoinGecko, gratuit / sans clé). `ids` =
+    liste d'identifiants CoinGecko séparés par des virgules ; à défaut, on prend
+    les actifs suivis par l'utilisateur (ou BTC/ETH/SOL)."""
+    if ids.strip():
+        want = [x.strip() for x in ids.split(",") if x.strip()]
+    else:
+        cfg = current_user.get("widget_stack_config") or {}
+        want = cfg.get("finance_assets") or DEFAULT_FINANCE_ASSETS
+    try:
+        data = await get_finance_live(want)
+    except Exception as e:
+        logger.warning(f"/finance a échoué: {e}")
+        data = []
+    return {"assets": data, "catalog": FINANCE_ASSETS}
+
+
+WIDGET_STACK_IDS = ["trends", "weather", "finance", "football", "mma"]
 
 
 def _widget_stack_of(user: dict) -> dict:
@@ -8295,7 +8392,16 @@ def _widget_stack_of(user: dict) -> dict:
     for x in order:
         if x not in seen:
             seen.add(x); clean.append(x)
-    return {"smart_rotate": cfg.get("smart_rotate", True), "order": clean or list(WIDGET_STACK_IDS)}
+    fin = [a for a in (cfg.get("finance_assets") or DEFAULT_FINANCE_ASSETS) if a in FINANCE_ASSETS]
+    fin_seen, fin_clean = set(), []
+    for a in fin:
+        if a not in fin_seen:
+            fin_seen.add(a); fin_clean.append(a)
+    return {
+        "smart_rotate": cfg.get("smart_rotate", True),
+        "order": clean or list(WIDGET_STACK_IDS),
+        "finance_assets": fin_clean or list(DEFAULT_FINANCE_ASSETS),
+    }
 
 
 @api_router.get("/users/me/widget-stack")
@@ -8315,6 +8421,13 @@ async def set_widget_stack(data: dict = Body(...), current_user: dict = Depends(
             if x in WIDGET_STACK_IDS and x not in seen:
                 seen.add(x); order.append(x)
         cfg["order"] = order
+    if "finance_assets" in data and isinstance(data.get("finance_assets"), list):
+        seen, fin = set(), []
+        for a in data["finance_assets"]:
+            a = str(a)
+            if a in FINANCE_ASSETS and a not in seen:
+                seen.add(a); fin.append(a)
+        cfg["finance_assets"] = fin
     await db.users.update_one({"id": current_user["id"]}, {"$set": {"widget_stack_config": cfg}})
     return _widget_stack_of({"widget_stack_config": cfg})
 

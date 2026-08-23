@@ -18,8 +18,33 @@ const WIDGETS = {
   mma: { label: "MMA / UFC", icon: "sports_mma", color: "#ef4444" },
   trends: { label: "Tendances", icon: "trending_up", color: "#22d3ee" },
   weather: { label: "Météo", icon: "partly_cloudy_day", color: "#fbbf24" },
+  finance: { label: "Finance", icon: "monitoring", color: "#a78bfa" },
 };
-const DEFAULT_ORDER = ["trends", "weather", "football", "mma"];
+const DEFAULT_ORDER = ["trends", "weather", "finance", "football", "mma"];
+
+// Catalogue crypto (aligné sur le backend) : id CoinGecko → ticker + nom.
+const FINANCE_CATALOG = {
+  bitcoin: { symbol: "BTC", name: "Bitcoin" },
+  ethereum: { symbol: "ETH", name: "Ethereum" },
+  solana: { symbol: "SOL", name: "Solana" },
+  binancecoin: { symbol: "BNB", name: "BNB" },
+  ripple: { symbol: "XRP", name: "XRP" },
+  cardano: { symbol: "ADA", name: "Cardano" },
+  dogecoin: { symbol: "DOGE", name: "Dogecoin" },
+  polkadot: { symbol: "DOT", name: "Polkadot" },
+  chainlink: { symbol: "LINK", name: "Chainlink" },
+  "avalanche-2": { symbol: "AVAX", name: "Avalanche" },
+  litecoin: { symbol: "LTC", name: "Litecoin" },
+  "matic-network": { symbol: "MATIC", name: "Polygon" },
+};
+const DEFAULT_FINANCE_ASSETS = ["bitcoin", "ethereum", "solana"];
+
+// Prix EUR avec décimales adaptatives (gros montants entiers, micro-prix précis).
+const fmtEur = (v) => {
+  if (v == null) return "—";
+  const d = v >= 100 ? 0 : v >= 1 ? 2 : 4;
+  return v.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }) + " €";
+};
 
 // ─────────────────────── Icônes météo SVG (fines, épurées) ────────────────────
 // Traits fins (stroke=currentColor), minimalistes, adaptées à chaque état WMO.
@@ -62,13 +87,21 @@ function WeatherIcon({ cond, isDay = true, size = 56 }) {
 }
 
 // ─────────────────────────── Éditeur (bottom sheet) ───────────────────────────
-function StackEditor({ order, smartRotate, onChange, onClose }) {
+function StackEditor({ order, smartRotate, financeAssets, onChange, onClose }) {
   const [list, setList] = useState(order);
   const [smart, setSmart] = useState(smartRotate);
+  const [fin, setFin] = useState(financeAssets);
   const [drag, setDrag] = useState(null);        // { index, hover, dy }
   const [swiped, setSwiped] = useState(null);    // id dont la suppression est révélée
   const dragRef = useRef(null);
   const removed = Object.keys(WIDGETS).filter((id) => !list.includes(id));
+
+  // Actifs crypto suivis (cases à cocher) — au moins un doit rester sélectionné.
+  const toggleAsset = (id) => {
+    const next = fin.includes(id) ? fin.filter((x) => x !== id) : [...fin, id];
+    if (!next.length) return;
+    setFin(next); onChange({ finance_assets: next });
+  };
 
   const commit = (next) => { setList(next); onChange({ order: next }); };
 
@@ -194,6 +227,26 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
           </div>
         )}
 
+        {/* Actifs suivis (visible si le widget Finance est dans la pile) */}
+        {list.includes("finance") && (
+          <div className="mt-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#6b7686" }}>Actifs suivis</p>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(FINANCE_CATALOG).map(([id, a]) => {
+                const on = fin.includes(id);
+                return (
+                  <button key={id} onClick={() => toggleAsset(id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-colors"
+                    style={{ background: on ? "#a78bfa22" : "#1a2234", color: on ? "#c4b5fd" : "#8b96a8", border: `1px solid ${on ? "#a78bfa66" : "rgba(255,255,255,0.08)"}` }}>
+                    <span className="material-symbols-outlined text-base">{on ? "check_circle" : "radio_button_unchecked"}</span>
+                    {a.symbol}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <button onClick={onClose} className="w-full mt-5 py-3 rounded-2xl font-black text-sm" style={{ background: `linear-gradient(135deg,${NEON},#22d3ee)`, color: "#04250f" }}>
           Terminé
         </button>
@@ -210,12 +263,14 @@ export default function WidgetStack({ user, setUser }) {
   const cfg = user?.widget_stack_config || {};
   const smartRotate = cfg.smart_rotate !== false;
   const configOrder = (Array.isArray(cfg.order) && cfg.order.length) ? cfg.order : DEFAULT_ORDER;
+  const financeAssets = (Array.isArray(cfg.finance_assets) && cfg.finance_assets.length) ? cfg.finance_assets : DEFAULT_FINANCE_ASSETS;
 
   const [matches, setMatches] = useState([]);
   const [favL, setFavL] = useState(() => new Set());
   const [favT, setFavT] = useState(() => new Set());
   const [trends, setTrends] = useState([]);
   const [weather, setWeather] = useState(null);
+  const [finance, setFinance] = useState([]);
   const [flashing, setFlashing] = useState({});
   const [openMatch, setOpenMatch] = useState(null);
   const [active, setActive] = useState(0);
@@ -277,6 +332,19 @@ export default function WidgetStack({ user, setUser }) {
     return () => { alive = false; clearInterval(iv); };
   }, [wantWeather]);
 
+  // Finance : cours crypto en direct (CoinGecko via backend), rafraîchi 60 s.
+  const wantFinance = configOrder.includes("finance");
+  const financeKey = financeAssets.join(",");
+  useEffect(() => {
+    if (!wantFinance) return;
+    let alive = true;
+    const loadFin = () => axios.get(`${API}/finance`, { params: { ids: financeKey } })
+      .then((r) => { if (alive) setFinance(Array.isArray(r.data?.assets) ? r.data.assets : []); }).catch(() => {});
+    loadFin();
+    const iv = setInterval(loadFin, 60000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [wantFinance, financeKey]);
+
   const toggleFav = (kind, id) => {
     if (!id) return;
     const setFav = kind === "league" ? setFavL : setFavT;
@@ -292,6 +360,7 @@ export default function WidgetStack({ user, setUser }) {
       return { ...prev, widget_stack_config: {
         smart_rotate: patch.smart_rotate ?? (cur.smart_rotate !== false),
         order: patch.order ?? (cur.order || DEFAULT_ORDER),
+        finance_assets: patch.finance_assets ?? (cur.finance_assets || DEFAULT_FINANCE_ASSETS),
       } };
     });
     axios.put(`${API}/users/me/widget-stack`, patch).catch(() => {});
@@ -300,7 +369,8 @@ export default function WidgetStack({ user, setUser }) {
   const footItems = sortMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
   const mmaItems = matches.filter((m) => m.sport === "mma");
   const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id));
-  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, trends: true };
+  const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
+  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, finance: finance.length > 0, trends: true };
   const pages = configOrder.filter((id) => avail[id]);
 
   // Rotation intelligente.
@@ -315,9 +385,15 @@ export default function WidgetStack({ user, setUser }) {
   pagesRef.current = pages;
   smartRef.current = smartRotate;
   wantWeatherRef.current = wantWeather;
-  urgentRef.current = smartRotate
-    ? (footItems.some(isFavLive) ? "football" : (mmaItems.some((m) => m.state === "in") ? "mma" : null))
-    : null;
+  // Urgence (rotation forcée) : direct favori foot > combat MMA en cours >
+  // secousse crypto (±5 % sur 24 h) d'un actif suivi.
+  let urgent = null;
+  if (smartRotate) {
+    if (footItems.some(isFavLive)) urgent = "football";
+    else if (mmaItems.some((m) => m.state === "in")) urgent = "mma";
+    else if (financeSwing) urgent = "finance";
+  }
+  urgentRef.current = urgent;
 
   useEffect(() => {
     const iv = setInterval(() => {
@@ -410,6 +486,31 @@ export default function WidgetStack({ user, setUser }) {
         </div>
       </div>
     );
+    if (id === "finance") return (
+      <div className="h-full flex flex-col px-4 py-2.5">
+        <PageHeader id="finance" />
+        <div className="flex-1 overflow-y-auto no-scrollbar">
+          {finance.length === 0 ? (
+            <p className="text-xs pt-2" style={{ color: "#6b7686" }}>Chargement des cours…</p>
+          ) : finance.map((a) => {
+            const chg = a.change_24h;
+            const up = (chg || 0) >= 0;
+            return (
+              <div key={a.id} className="flex items-center gap-2 py-1">
+                <span className="text-sm font-black text-white w-12 flex-shrink-0">{a.symbol}</span>
+                <span className="text-sm font-semibold flex-1 text-center tabular-nums truncate" style={{ color: "#dae2fd" }}>{fmtEur(a.price)}</span>
+                <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-[11px] font-bold tabular-nums"
+                  style={up
+                    ? { background: NEON + "22", color: NEON, boxShadow: `0 0 8px ${NEON}44` }
+                    : { background: "#ef444418", color: "#f87171" }}>
+                  {chg == null ? "—" : `${up ? "+" : ""}${chg.toFixed(2)}%`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
     if (id === "weather") return (
       <div className="h-full flex flex-col px-4 py-2.5">
         <PageHeader id="weather" />
@@ -478,7 +579,7 @@ export default function WidgetStack({ user, setUser }) {
       </div>
       {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
       {editing && (
-        <StackEditor order={configOrder} smartRotate={smartRotate} onChange={applyConfig} onClose={() => setEditing(false)} />
+        <StackEditor order={configOrder} smartRotate={smartRotate} financeAssets={financeAssets} onChange={applyConfig} onClose={() => setEditing(false)} />
       )}
     </div>
   );
