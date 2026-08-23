@@ -1288,6 +1288,7 @@ class User(BaseModel):
     is_private: bool = False            # compte privé (abonnés approuvés uniquement)
     show_sports: bool = True            # widget scores de foot en direct (désactivable)
     show_mma: bool = True               # cartes de combat MMA/UFC (désactivable)
+    widget_stack_config: Optional[dict] = None  # pile de widgets : {smart_rotate, order}
     privacy_strict: bool = False        # Mode Confidentialité stricte : coupe les
                                         # analytics non essentiels + les pubs ciblées
     muted_words: List[str] = []         # mots/phrases masqués (filtrés du fil + notifs)
@@ -8173,6 +8174,41 @@ SPORTS_POLL_KEY = os.environ.get("SPORTS_POLL_KEY", "").strip()
 def _sport_alerts_of(user: dict) -> dict:
     a = user.get("sport_alerts") or {}
     return {"goals": a.get("goals", True), "match": a.get("match", False), "mma": a.get("mma", True)}
+
+
+WIDGET_STACK_IDS = ["trends", "football", "mma"]
+
+
+def _widget_stack_of(user: dict) -> dict:
+    cfg = user.get("widget_stack_config") or {}
+    order = [x for x in (cfg.get("order") or WIDGET_STACK_IDS) if x in WIDGET_STACK_IDS]
+    # dédoublonne en gardant l'ordre
+    seen, clean = set(), []
+    for x in order:
+        if x not in seen:
+            seen.add(x); clean.append(x)
+    return {"smart_rotate": cfg.get("smart_rotate", True), "order": clean or list(WIDGET_STACK_IDS)}
+
+
+@api_router.get("/users/me/widget-stack")
+async def get_widget_stack(current_user: dict = Depends(get_current_user)):
+    return _widget_stack_of(current_user)
+
+
+@api_router.put("/users/me/widget-stack")
+async def set_widget_stack(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    cfg = dict(current_user.get("widget_stack_config") or {})
+    if "smart_rotate" in data:
+        cfg["smart_rotate"] = bool(data.get("smart_rotate"))
+    if "order" in data and isinstance(data.get("order"), list):
+        seen, order = set(), []
+        for x in data["order"]:
+            x = str(x)
+            if x in WIDGET_STACK_IDS and x not in seen:
+                seen.add(x); order.append(x)
+        cfg["order"] = order
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"widget_stack_config": cfg}})
+    return _widget_stack_of({"widget_stack_config": cfg})
 
 
 @api_router.get("/users/me/sport-alerts")

@@ -198,7 +198,7 @@ export default function HomePage({ user, setUser }) {
         {/* Smart Stack — pile de widgets (Foot / MMA / Tendances) façon iOS, en
             haut du feed MOBILE. Sur PC, ces blocs sont dans la colonne de droite. */}
         <div className="lg:hidden">
-          <WidgetStack user={user} />
+          <WidgetStack user={user} setUser={setUser} />
         </div>
 
         {/* Sélecteur d'ordonnancement du fil « Pour vous » — MOBILE uniquement
