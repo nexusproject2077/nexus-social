@@ -5,7 +5,7 @@ import Layout from "../components/Layout";
 import PostCard from "../components/PostCard";
 import CreatePostModal from "../components/CreatePostModal";
 import StoriesFeed from "../components/StoriesFeed";
-import LiveScores from "../components/LiveScores";
+import WidgetStack from "../components/WidgetStack";
 import AdSense from "../components/AdSense";
 import { Skeleton } from "../components/ui/skeleton";
 import PullToRefresh from "../components/PullToRefresh";
@@ -195,14 +195,11 @@ export default function HomePage({ user, setUser }) {
         {/* Stories */}
         <StoriesFeed />
 
-        {/* Scores de foot en direct — carrousel horizontal (mobile ; sur PC ils
-            sont dans la colonne Tendances à droite). Optionnel : masqué si
-            l'utilisateur a désactivé les scores (show_sports === false). */}
-        {(user?.show_sports !== false || user?.show_mma !== false) && (
-          <div className="lg:hidden">
-            <LiveScores variant="mobile" setUser={setUser} />
-          </div>
-        )}
+        {/* Smart Stack — pile de widgets (Foot / MMA / Tendances) façon iOS, en
+            haut du feed MOBILE. Sur PC, ces blocs sont dans la colonne de droite. */}
+        <div className="lg:hidden">
+          <WidgetStack user={user} />
+        </div>
 
         {/* Sélecteur d'ordonnancement du fil « Pour vous » — MOBILE uniquement
             (sur PC, l'ordre est intégré à la ligne d'onglets X ci-dessous). */}

@@ -29,7 +29,7 @@ const MAJOR_LEAGUES = [
 const STATE_ORDER = { in: 0, pre: 1, post: 2 };
 
 // Tri client identique au backend : favoris d'abord, puis en cours, puis date.
-function sortMatches(list, favL, favT) {
+export function sortMatches(list, favL, favT) {
   const isFav = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id);
   return [...list].sort((a, b) =>
     (isFav(a) ? 0 : 1) - (isFav(b) ? 0 : 1)
@@ -71,7 +71,7 @@ const Team = ({ id, logo, name, score, live, flash, favT, onToggleTeam }) => (
   </div>
 );
 
-function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onToggleTeam, onOpen }) {
+export function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onToggleTeam, onOpen }) {
   const live = m.state === "in";
   const done = m.state === "post";
   const status = live ? (m.clock || m.detail || "En direct")
@@ -130,7 +130,7 @@ function MmaFighter({ f, winner, done }) {
   );
 }
 
-function MmaCard({ m, compact, flash }) {
+export function MmaCard({ m, compact, flash }) {
   const live = m.state === "in";
   const done = m.state === "post";
   const status = live ? `R${m.round || "?"}${m.clock ? " · " + m.clock : ""}`
