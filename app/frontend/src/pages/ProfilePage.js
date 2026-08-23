@@ -368,6 +368,9 @@ export default function ProfilePage({ user, setUser }) {
         )}
         {/* Fade to surface */}
         <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 0%, ${C.surface}80 60%, ${C.surface} 100%)`, zIndex: 1 }} />
+        {/* Voile sombre en HAUT : lisibilité de la barre de statut iOS (heure,
+            batterie, 5G) par-dessus la bannière/avatar en arrière-plan. */}
+        <div className="absolute top-0 left-0 right-0 pointer-events-none" style={{ height: "calc(env(safe-area-inset-top, 0px) + 72px)", background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.28) 45%, transparent 100%)", zIndex: 1 }} />
 
         {/* Profile overlay */}
         <div className="absolute bottom-0 left-0 w-full px-5 sm:px-8 pb-6" style={{ zIndex: 2 }}>

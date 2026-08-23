@@ -243,6 +243,31 @@ export default function SettingsPage({ user, setUser }) {
     }
   };
 
+  // Bien-être numérique : limite de temps quotidienne configurable.
+  const [timeLimit, setTimeLimit] = useState(user?.daily_time_limit || 0);
+  const [timeLimitOn, setTimeLimitOn] = useState(user?.time_limit_enabled !== false);
+  const saveTimeLimit = async (minutes) => {
+    const v = Number(minutes) || 0;
+    setTimeLimit(v);
+    setUser?.((prev) => (prev ? { ...prev, daily_time_limit: v || null } : prev));
+    try {
+      await axios.put(`${API}/users/me/time-limit`, { daily_time_limit: v || null });
+      toast.success(v ? `Limite fixée à ${v} min/jour` : "Limite de temps désactivée");
+    } catch {
+      toast.error("Erreur");
+    }
+  };
+  const toggleTimeLimit = async (value) => {
+    setTimeLimitOn(value);
+    setUser?.((prev) => (prev ? { ...prev, time_limit_enabled: value } : prev));
+    try {
+      await axios.put(`${API}/users/me/time-limit`, { time_limit_enabled: value });
+    } catch {
+      setTimeLimitOn(!value);
+      toast.error("Erreur");
+    }
+  };
+
   // Alertes sportives push (buts foot / résultats MMA).
   const [sportAlerts, setSportAlerts] = useState({ goals: true, match: false, mma: true });
   useEffect(() => {
@@ -899,6 +924,43 @@ export default function SettingsPage({ user, setUser }) {
           checked={showMma}
           onChange={toggleShowMma}
         />
+      </Card>
+      {/* Bien-être numérique : limite de temps quotidienne + fin du scroll infini. */}
+      <Card>
+        <CardHeader title="Bien-être numérique" icon="self_improvement" />
+        <ToggleRow
+          icon="hourglass_top"
+          label="Limite de temps quotidienne"
+          sublabel="Un écran bienveillant t'invite à faire une pause une fois la durée atteinte"
+          checked={timeLimitOn}
+          onChange={toggleTimeLimit}
+        />
+        {timeLimitOn && (
+          <div className="px-5 pb-5 pt-1">
+            <p className="text-xs mb-2" style={{ color: C.outline }}>Durée par jour sur les flux (fil + clips)</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { v: 0, l: "Aucune" },
+                { v: 30, l: "30 min" },
+                { v: 45, l: "45 min" },
+                { v: 60, l: "1 h" },
+                { v: 90, l: "1 h 30" },
+                { v: 120, l: "2 h" },
+              ].map((o) => {
+                const on = Number(timeLimit) === o.v;
+                return (
+                  <button key={o.v} onClick={() => saveTimeLimit(o.v)}
+                    className="px-3.5 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95"
+                    style={on
+                      ? { background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }
+                      : { background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}>
+                    {o.l}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </Card>
       <Card>
         <CardHeader title="Alertes sportives (notifications)" icon="notifications_active" />

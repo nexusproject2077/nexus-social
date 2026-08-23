@@ -25,6 +25,9 @@
 /* Bottom sheet (feuille modale) qui remonte du bas — façon iOS. */
 @keyframes clipSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
+/* Fondu d'apparition des écrans bienveillants (couvre-feu / limite de temps). */
+@keyframes youthFade { from { opacity: 0; } to { opacity: 1; } }
+
 /* ─── Zone sûre iOS (encoche / Dynamic Island) ───────────────────────────────
    En affichage plein écran (PWA « ajouté à l'écran d'accueil »), le haut de
    l'écran est occupé par la barre d'état / la Dynamic Island. Sans marge, les

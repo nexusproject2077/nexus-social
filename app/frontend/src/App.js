@@ -6,6 +6,7 @@ import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import CookieConsent from "./components/CookieConsent";
 import EmailVerifyGate from "@/components/EmailVerifyGate";
+import YouthGuard from "@/components/YouthGuard";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
 import { initAccent, applyAccent } from "@/lib/accent";
 import { syncPrivacyStrictFromUser } from "@/lib/privacyStrict";
@@ -320,6 +321,9 @@ function App() {
           {/* Chemin inconnu → accueil (évite une page blanche). */}
           <Route path="*" element={<Navigate to="/feed" replace />} />
         </Routes>
+        {/* Garde-fous éthique/bien-être (couvre-feu mineurs + limite de temps),
+            superposés aux flux uniquement. */}
+        {user && <YouthGuard user={user} setUser={setUser} />}
       </BrowserRouter>
     </div>
     </GeoProvider>

@@ -24,6 +24,26 @@ const MAX_VIDEO_MS = 15000;
 const MAX_IMPORT = 10 * 1024 * 1024;          // Stories : légères (éphémères, courtes)
 const MAX_IMPORT_CLIP = 50 * 1024 * 1024;     // Clips : vidéos plus longues (upload Cloudinary)
 
+// ── POLITIQUE ÉTHIQUE : filtres CHROMATIQUES uniquement ───────────────────────
+// Choix produit assumé (santé des jeunes) : AUCUN filtre ne déforme la
+// morphologie du visage (yeux, nez, structure). On n'autorise que des réglages
+// colorimétriques (luminosité, saturation, contraste, teinte, sépia, N&B). Les
+// fonctions CSS géométriques (blur au sens flou de peau « beauté », ou toute
+// transformation de forme) sont INTERDITES. Le garde-fou `assertChromatic`
+// ci-dessous fait échouer bruyamment toute tentative d'ajout non conforme.
+const CHROMATIC_FN = /^(none|brightness|contrast|saturate|grayscale|sepia|invert|hue-rotate|opacity)$/;
+const assertChromatic = (css) => {
+  if (!css || css === "none") return css;
+  for (const m of css.matchAll(/([a-z-]+)\(/g)) {
+    if (!CHROMATIC_FN.test(m[1])) {
+      // eslint-disable-next-line no-console
+      console.error(`Filtre non conforme (non chromatique) rejeté: ${m[1]}()`);
+      return "none";
+    }
+  }
+  return css;
+};
+
 const FILTERS = [
   { key: "none", label: "Normal", css: "none" },
   { key: "eclat", label: "Éclat", css: "brightness(1.08) saturate(1.18) contrast(1.05)" },
@@ -32,7 +52,7 @@ const FILTERS = [
   { key: "nb", label: "N&B", css: "grayscale(1) contrast(1.1)" },
   { key: "vintage", label: "Vintage", css: "sepia(0.5) contrast(0.9) brightness(1.05) saturate(1.2)" },
   { key: "vif", label: "Vif", css: "saturate(1.6) contrast(1.12)" },
-];
+].map((f) => ({ ...f, css: assertChromatic(f.css) }));
 
 // Modes du rail gauche (façon Instagram).
 const MODES = [
@@ -869,7 +889,9 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     // ─────────── Interface de capture Nexus Clips (façon TikTok) ───────────
     if (isClip) {
       const activeCss = FILTERS.find((f) => f.key === filter)?.css || "none";
-      const beautyCss = "brightness(1.06) contrast(1.03) saturate(1.06)";
+      // « Éclat » = léger réglage CHROMATIQUE (luminosité/contraste/saturation) —
+      // aucune retouche de forme du visage (cf. politique éthique en tête de fichier).
+      const beautyCss = assertChromatic("brightness(1.06) contrast(1.03) saturate(1.06)");
       const liveFilter = [activeCss !== "none" ? activeCss : "", beauty ? beautyCss : ""].filter(Boolean).join(" ") || "none";
       const tool = (icon, label, active, onClick) => (
         <button onClick={onClick} className="flex flex-col items-center gap-1" aria-label={label}>

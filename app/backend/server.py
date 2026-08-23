@@ -1286,6 +1286,15 @@ class User(BaseModel):
     phone_verified: bool = False
     twofa_enabled: bool = False         # double authentification (code email à la connexion)
     is_private: bool = False            # compte privé (abonnés approuvés uniquement)
+    # Protection des mineurs (loi FR / éthique produit). `is_minor` est calculé à
+    # partir de la date de naissance (< 18 ans). Il active : compte privé forcé,
+    # filtrage des DM d'adultes, barrière anti-scroll (30 min), couvre-feu de nuit
+    # et masquage des mots vulgaires. Les adultes gardent l'expérience complète.
+    is_minor: bool = False
+    # Limite de temps quotidienne configurable (minutes) — bien-être numérique.
+    # None = pas de limite. `time_limit_enabled` permet de désactiver l'option.
+    daily_time_limit: Optional[int] = None
+    time_limit_enabled: bool = True
     show_sports: bool = True            # widget scores de foot en direct (désactivable)
     show_mma: bool = True               # cartes de combat MMA/UFC (désactivable)
     widget_stack_config: Optional[dict] = None  # pile de widgets : {smart_rotate, order}
@@ -1769,6 +1778,54 @@ def _compute_age(birthdate_str):
     return today.year - d.year - ((today.month, today.day) < (d.month, d.day))
 
 
+# ── Masquage des mots vulgaires pour les comptes MINEURS ──────────────────────
+# Pour un viewer `is_minor`, les grossièretés des posts/sondages/commentaires sont
+# masquées (1re lettre conservée + astérisques). Liste FR + EN volontairement
+# compacte, focalisée sur les insultes/vulgarités les plus courantes.
+_PROFANITY_WORDS = [
+    # Français
+    "putain", "put1", "pute", "putes", "connard", "connards", "connasse", "connasses",
+    "salope", "salopes", "salaud", "salauds", "enculé", "enculés", "enculer", "encule",
+    "encules", "nique", "niquer", "niqué", "niquée", "bite", "bites", "couille",
+    "couilles", "chatte", "pédé", "pede", "tarlouze", "batard", "bâtard", "batards",
+    "bâtards", "foutre", "chier", "chiant", "chiante", "merde", "merdes", "merdique",
+    "bordel", "conne", "connes", "pouffiasse", "ntm",
+    # Anglais
+    "fuck", "fucking", "fucker", "motherfucker", "shit", "bullshit", "bitch",
+    "bitches", "asshole", "dick", "cunt", "bastard", "whore", "slut", "faggot",
+    # Insultes/slurs graves (toujours masqués)
+    "nigger", "negro",
+]
+_PROFANITY_RE = re.compile(
+    r"\b(" + "|".join(re.escape(w) for w in sorted(_PROFANITY_WORDS, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def _mask_profanity(text):
+    """Masque les grossièretés : conserve la 1re lettre, remplace le reste par des
+    astérisques (min. 2). Rien si le texte est vide."""
+    if not text:
+        return text
+    def _sub(m):
+        w = m.group(0)
+        return w[0] + "*" * max(2, len(w) - 1)
+    return _PROFANITY_RE.sub(_sub, text)
+
+
+def _mask_post_for_minor(post: dict) -> dict:
+    """Masque le contenu et les options de sondage d'un post (in place) pour un
+    spectateur mineur."""
+    if post.get("content"):
+        post["content"] = _mask_profanity(post["content"])
+    poll = post.get("poll")
+    if isinstance(poll, dict):
+        for opt in (poll.get("options") or []):
+            if isinstance(opt, dict) and opt.get("text"):
+                opt["text"] = _mask_profanity(opt["text"])
+    return post
+
+
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
     """Enregistre un nouvel utilisateur"""
@@ -1793,6 +1850,10 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
 
     hashed_password = pwd_context.hash(user_data.password)
     user_id = str(uuid.uuid4())
+    # Protection des mineurs : < 18 ans → is_minor. Un compte mineur est FORCÉ en
+    # privé (les réglages/DM/scroll seront restreints côté serveur et client).
+    is_minor = age < 18
+    is_private = True if is_minor else bool(user_data.is_private)
     user_to_insert = {
         "id": user_id,
         "username": user_data.username,
@@ -1805,14 +1866,16 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
         # Date de naissance CHIFFRÉE au repos (RGPD) + booléen d'âge en clair.
         "birthdate_enc": encrypt(str(user_data.birthdate)[:10]),
         "age_verified": True,  # >= 15 vérifié ci-dessus
+        "is_minor": is_minor,
         "verification_status": "unverified",
         # Vérification EMAIL : si l'envoi d'email est configuré, le compte doit
         # confirmer son adresse (gate). Sinon on n'enferme personne → auto-vérifié.
         "email_verified": not _EMAIL_ENABLED,
         "phone_verified": False,
         "twofa_enabled": False,
-        # Compte privé par défaut (sauf si l'inscription l'a explicitement désactivé).
-        "is_private": bool(user_data.is_private),
+        # Compte privé (forcé pour les mineurs, sinon selon le choix d'inscription).
+        "is_private": is_private,
+        "time_limit_enabled": True,
         "muted_words": [],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1844,6 +1907,8 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
             "followers_count": 0,
             "following_count": 0,
             "is_private": bool(user_to_insert.get("is_private")),
+            "is_minor": is_minor,
+            "time_limit_enabled": True,
             "privacy_strict": False,
             "muted_words": [],
             "created_at": user_to_insert["created_at"]
@@ -1897,6 +1962,10 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
             "profile_pic": user.get("profile_pic"),
             "followers_count": user.get("followers_count", 0),
             "following_count": user.get("following_count", 0),
+            "is_private": bool(user.get("is_private")),
+            "is_minor": bool(user.get("is_minor")),
+            "daily_time_limit": user.get("daily_time_limit"),
+            "time_limit_enabled": user.get("time_limit_enabled", True),
             "created_at": user["created_at"]
         }
     }
@@ -1912,6 +1981,9 @@ def _auth_payload(user: dict) -> dict:
             "followers_count": user.get("followers_count", 0),
             "following_count": user.get("following_count", 0),
             "is_private": bool(user.get("is_private")),
+            "is_minor": bool(user.get("is_minor")),
+            "daily_time_limit": user.get("daily_time_limit"),
+            "time_limit_enabled": user.get("time_limit_enabled", True),
             "privacy_strict": bool(user.get("privacy_strict")),
             "muted_words": user.get("muted_words") or [],
             "created_at": user.get("created_at"),
@@ -2010,6 +2082,31 @@ async def update_show_sports(data: dict = Body(...), current_user: dict = Depend
     return {
         "show_sports": update.get("show_sports", current_user.get("show_sports") is not False),
         "show_mma": update.get("show_mma", current_user.get("show_mma") is not False),
+    }
+
+
+@api_router.put("/users/me/time-limit")
+async def update_time_limit(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Limite de temps quotidienne (bien-être numérique). `daily_time_limit` en
+    minutes (None/0 = désactivée) ; `time_limit_enabled` permet de couper
+    explicitement l'option."""
+    update = {}
+    if "daily_time_limit" in data:
+        v = data.get("daily_time_limit")
+        if v in (None, "", 0, "0"):
+            update["daily_time_limit"] = None
+        else:
+            try:
+                update["daily_time_limit"] = max(5, min(1440, int(v)))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="Durée invalide (minutes).")
+    if "time_limit_enabled" in data:
+        update["time_limit_enabled"] = bool(data.get("time_limit_enabled"))
+    if update:
+        await db.users.update_one({"id": current_user["id"]}, {"$set": update})
+    return {
+        "daily_time_limit": update.get("daily_time_limit", current_user.get("daily_time_limit")),
+        "time_limit_enabled": update.get("time_limit_enabled", current_user.get("time_limit_enabled", True)),
     }
 
 
@@ -3288,6 +3385,8 @@ async def get_posts_feed(request: Request, skip: int = 0, limit: int = 10, curre
             post["author_is_premium"] = post.get("author_id") in premium_ids
             post["author_can_receive_tips"] = post.get("author_id") in tip_ids
             enrich_post_poll(post, current_user["id"])
+            if current_user.get("is_minor"):
+                _mask_post_for_minor(post)
             posts.append(Post(**post))
         except Exception as e:
             logger.warning(f"/posts/feed — post ignoré {post_raw.get('id')}: {e}")
@@ -3345,6 +3444,8 @@ async def get_post(post_id: str, current_user: dict = Depends(get_current_user))
     post["is_saved"] = bool(await db.saved_posts.find_one({"post_id": post["id"], "user_id": current_user["id"]}))
     post["author_is_premium"] = bool(author and author.get("is_premium"))
     enrich_post_poll(post, current_user["id"])
+    if current_user.get("is_minor"):
+        _mask_post_for_minor(post)
     return Post(**post)
 
 @api_router.post("/posts/{post_id}/repost", response_model=Post)
@@ -3627,10 +3728,13 @@ async def get_post_comments(post_id: str, current_user: dict = Depends(get_curre
         ).to_list(length=len(comment_ids))
         liked_ids = {l.get("comment_id") for l in likes}
 
+    minor = bool(current_user.get("is_minor"))
     comments = []
     for comment_raw in comments_raw:
         comment = convert_mongo_doc_to_dict(comment_raw)
         comment["is_liked"] = comment.get("id") in liked_ids
+        if minor and comment.get("content"):
+            comment["content"] = _mask_profanity(comment["content"])
         comments.append(Comment(**comment))
 
     return comments
@@ -5051,6 +5155,17 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
     recipient_raw = await db.users.find_one({"id": message_data.recipient_id})
     if not recipient_raw:
         raise HTTPException(status_code=404, detail="Recipient not found")
+
+    # Protection des mineurs : un compte ADULTE (is_minor=false) ne peut pas
+    # écrire à un compte MINEUR sans abonnement MUTUEL déjà existant.
+    if recipient_raw.get("is_minor") and not current_user.get("is_minor"):
+        _a = await check_is_following(current_user["id"], message_data.recipient_id)
+        _b = await check_is_following(message_data.recipient_id, current_user["id"])
+        if not (_a and _b):
+            raise HTTPException(
+                status_code=403,
+                detail="Pour protéger les mineurs, un abonnement mutuel est requis pour envoyer un message à ce compte.",
+            )
 
     # Normalise (data URL collée → image, borne la longueur).
     message_data.content, message_data.media_url = normalize_message_content(
@@ -9243,7 +9358,7 @@ async def _ranked_ids(kind, user_id, eu):
     return ids
 
 
-async def _fetch_posts_in_order(ids, user_id, media_base=""):
+async def _fetch_posts_in_order(ids, user_id, media_base="", viewer_is_minor=False):
     """Récupère et enrichit des posts en respectant l'ordre de `ids`.
 
     Le base64 des médias N'EST PAS chargé (étape d'agrégation → sentinel), pour
@@ -9298,6 +9413,8 @@ async def _fetch_posts_in_order(ids, user_id, media_base=""):
         post["author_is_following"] = post.get("author_id") in followed_authors
         try:
             enrich_post_poll(post, user_id)
+            if viewer_is_minor:
+                _mask_post_for_minor(post)
             out.append(Post(**post))
         except Exception as e:
             logger.warning(f"Clip/post ignoré (invalide) {post.get('id')}: {e}")
@@ -9555,7 +9672,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
         eu = CLIPS_EU_GEO_BLOCK and is_eu_request(request)
         ids = await _ranked_ids("clips", current_user["id"], eu)
         page = ids[skip: skip + limit]
-        clips = await _fetch_posts_in_order(page, current_user["id"], media_base)
+        clips = await _fetch_posts_in_order(page, current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")))
 
         # Filet de sécurité : si le scroll dépasse le pool classé, on complète en
         # chronologique (clips plus anciens non inclus dans le pool). Projection
@@ -9566,7 +9683,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
                 base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
             extra_skip = skip - len(ids)
             raw = await db.posts.find(base, {"id": 1, "_id": 0}).sort("created_at", -1).allow_disk_use(True).skip(max(0, extra_skip)).limit(limit).to_list(length=limit)
-            clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base)
+            clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")))
         return clips
     except Exception as e:
         # Le classement a échoué → repli CHRONOLOGIQUE simple pour ne jamais
@@ -9576,7 +9693,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
             raw = await db.posts.find(
                 {"media_type": "video", "media_url": {"$ne": None}, "repost_of": None}, {"id": 1, "_id": 0}
             ).sort("created_at", -1).allow_disk_use(True).skip(max(0, skip)).limit(limit).to_list(length=limit)
-            return await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base)
+            return await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")))
         except Exception as e2:
             logger.exception(f"/clips repli chronologique a aussi échoué: {e2}")
             return []
@@ -10211,7 +10328,7 @@ async def for_you_feed(request: Request, limit: int = 10, skip: int = 0,
         ids = await (_mixed_ids(current_user["id"]) if mode == "mix"
                      else _ranked_ids("foryou", current_user["id"], False))
         page = ids[skip: skip + limit]
-        posts = await _fetch_posts_in_order(page, current_user["id"], media_base)
+        posts = await _fetch_posts_in_order(page, current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")))
 
         # Pool épuisé (scroll au-delà du classement) → on complète en
         # chronologique pour garder un scroll infini fluide.
@@ -10524,9 +10641,12 @@ async def verify_age(data: AgeIn, current_user: dict = Depends(get_current_user)
             status_code=403,
             detail=f"Accès refusé : l'âge minimum est de {MIN_SIGNUP_AGE} ans (loi française).",
         )
-    await db.users.update_one({"id": current_user["id"]}, {"$set": {
-        "age_verified": True, "age_blocked": False, "birthdate_enc": enc}})
-    return {"age_verified": True, "age": age}
+    is_minor = age < 18
+    upd = {"age_verified": True, "age_blocked": False, "birthdate_enc": enc, "is_minor": is_minor}
+    if is_minor:
+        upd["is_private"] = True  # compte mineur forcé en privé
+    await db.users.update_one({"id": current_user["id"]}, {"$set": upd})
+    return {"age_verified": True, "age": age, "is_minor": is_minor}
 
 
 @api_router.get("/verify/status")
