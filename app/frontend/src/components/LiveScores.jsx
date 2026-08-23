@@ -55,11 +55,11 @@ export function formatKickoff(dateStr) {
   const now = new Date();
   const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
   const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-  let day;
-  if (d.toDateString() === now.toDateString()) day = "Auj.";
-  else if (d.toDateString() === tomorrow.toDateString()) day = "Dem.";
-  else { day = d.toLocaleDateString("fr-FR", { weekday: "short" }); day = day.charAt(0).toUpperCase() + day.slice(1); }
-  return `${day} ${time}`;
+  // Aujourd'hui → heure seule (ex : « 20:45 ») ; sinon on préfixe le jour.
+  if (d.toDateString() === now.toDateString()) return time;
+  if (d.toDateString() === tomorrow.toDateString()) return `Dem. ${time}`;
+  const day = d.toLocaleDateString("fr-FR", { weekday: "short" });
+  return `${day.charAt(0).toUpperCase() + day.slice(1)} ${time}`;
 }
 
 // Badge « À VENIR » discret (gris anthracite) — remplace le badge LIVE.

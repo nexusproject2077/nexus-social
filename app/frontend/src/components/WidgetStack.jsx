@@ -45,8 +45,10 @@ const DEFAULT_FINANCE_ASSETS = ["bitcoin", "ethereum", "solana"];
 // le mode démo est activé (?demo=1 ou localStorage nexus_demo_scores=1). Toujours
 // étiquetées « DÉMO » → jamais présentées comme de vrais scores en direct.
 const DEMO_FOOT = [
-  { id: "demo-rma-bar", sport: "foot", league: "LaLiga", league_slug: "esp.1", home: "Real Madrid", away: "Barcelone", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: "2", away_score: "1", state: "in", clock: "74'", detail: "74' · But Mbappé (54')", date: new Date().toISOString(), demo: true },
-  { id: "demo-mci-ars", sport: "foot", league: "Premier League", league_slug: "eng.1", home: "Manchester City", away: "Arsenal", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: "0", away_score: "0", state: "in", clock: "12'", detail: "12'", date: new Date().toISOString(), demo: true },
+  // En direct (test de la carte LIVE) — le vrai match du soir.
+  { id: "demo-ren-psg", sport: "foot", league: "Ligue 1", league_slug: "fra.1", home: "Rennes", away: "PSG", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: "0", away_score: "0", state: "in", clock: "1'", detail: "1'", date: new Date().toISOString(), demo: true },
+  // À venir (test du compte à rebours + badge « À VENIR ») — coup d'envoi +2 h.
+  { id: "demo-om-ol", sport: "foot", league: "Ligue 1", league_slug: "fra.1", home: "Marseille", away: "Lyon", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: null, away_score: null, state: "pre", clock: "", detail: "À venir", date: new Date(Date.now() + 2 * 3600 * 1000).toISOString(), demo: true },
 ];
 const DEMO_MMA = [
   { id: "demo-ufc", sport: "mma", event: "UFC 300", f1: { name: "Jon Jones", avatar: null, winner: false }, f2: { name: "Tom Aspinall", avatar: null, winner: false }, state: "in", round: 3, clock: "02:15", method: "", winner: null, detail: "R3 · 02:15", date: new Date().toISOString(), demo: true },
@@ -543,6 +545,10 @@ export default function WidgetStack({ user, setUser }) {
   const mmaBase = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
   const mmaItems = mmaBase.length ? mmaBase : (demoOn ? DEMO_MMA : []);
   const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id));
+  // Pré-match « à surveiller » : favori OU Ligue 1, qui débute dans moins de 2 h.
+  const isFavOrL1 = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id) || m.league_slug === "fra.1";
+  const startsWithin2h = (m) => { const t = new Date(m.date).getTime(); return Number.isFinite(t) && (t - Date.now()) <= 2 * 3600 * 1000 && (t - Date.now()) >= -15 * 60 * 1000; };
+  const imminentFavPre = footItems.some((m) => m.state === "pre" && isFavOrL1(m) && startsWithin2h(m));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
   const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true };
   const pages = configOrder.filter((id) => avail[id]);
@@ -560,12 +566,13 @@ export default function WidgetStack({ user, setUser }) {
   smartRef.current = smartRotate;
   wantWeatherRef.current = wantWeather;
   // Urgence (rotation forcée) : direct favori foot > combat MMA en cours >
-  // secousse crypto (±5 % sur 24 h) d'un actif suivi.
+  // secousse crypto (±5 % sur 24 h) > pré-match favori/Ligue 1 imminent (< 2 h).
   let urgent = null;
   if (smartRotate) {
     if (footItems.some(isFavLive)) urgent = "football";
     else if (mmaItems.some((m) => m.state === "in")) urgent = "mma";
     else if (financeSwing) urgent = "finance";
+    else if (imminentFavPre) urgent = "football";
   }
   urgentRef.current = urgent;
 
