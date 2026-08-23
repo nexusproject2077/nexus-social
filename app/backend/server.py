@@ -7987,12 +7987,10 @@ def _espn_fetch_league(slug: str, fallback_name: str):
         except Exception:
             return None
 
-    # 1) plage hier→+2 j (matchs à venir + résultats récents). 2) REPLI sur le
-    #    scoreboard DU JOUR si la plage ne renvoie rien — ESPN renvoie parfois une
-    #    liste vide sur une plage de dates, alors que le scoreboard courant marche.
-    data = _fetch({"dates": _espn_dates_param()})
-    if not (data and data.get("events")):
-        data = _fetch(None)
+    # Scoreboard DU JOUR (sans paramètre de dates) : source fiable des matchs du
+    # jour — en direct, à venir et terminés. (Les plages de dates renvoyaient
+    # parfois vide.)
+    data = _fetch(None)
     if not data:
         return out
     try:
@@ -8025,6 +8023,10 @@ def _espn_fetch_league(slug: str, fallback_name: str):
                 "detail": stype.get("shortDetail") or stype.get("description") or "",
                 "date": ev.get("date"),
             })
+    except Exception:
+        pass
+    try:
+        logger.info(f"ESPN {slug}: events={len((data or {}).get('events', []))} → gardés={len(out)}")
     except Exception:
         pass
     return out
@@ -8253,10 +8255,8 @@ def _espn_fetch_mma_sync():
         except Exception:
             return None
 
-    # Plage hier→+2 j, avec repli sur le scoreboard courant si vide.
-    data = _fetch({"dates": _espn_dates_param()})
-    if not (data and data.get("events")):
-        data = _fetch(None)
+    # Scoreboard UFC du jour (source fiable, sans plage de dates).
+    data = _fetch(None)
     if not data:
         return out
 
