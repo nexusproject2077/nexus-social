@@ -3,7 +3,7 @@
 // remontent en tête, instantanément (tri client) et de façon persistante (MongoDB).
 // variant="mobile"  → carrousel horizontal (sous les Stories).
 // variant="sidebar" → bloc compact vertical (haut de la colonne Tendances, PC).
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
@@ -54,7 +54,7 @@ const StarBtn = ({ active, onClick, size = 15 }) => (
   </button>
 );
 
-const Team = ({ id, logo, name, score, live, favT, onToggleTeam }) => (
+const Team = ({ id, logo, name, score, live, flash, favT, onToggleTeam }) => (
   <div className="flex items-center gap-1.5 min-w-0">
     {logo ? (
       <img src={logo} alt="" className="w-4 h-4 object-contain flex-shrink-0" loading="lazy" />
@@ -62,7 +62,7 @@ const Team = ({ id, logo, name, score, live, favT, onToggleTeam }) => (
       <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ background: "#2a3446" }} />
     )}
     <span className="text-xs truncate flex-1" style={{ color: "#c7d0e0" }}>{name}</span>
-    <span className="text-sm font-black tabular-nums" style={{
+    <span className={`text-sm font-black tabular-nums ${flash ? "nexus-score-flash" : ""}`} style={{
       color: live ? NEON : BRIGHT,
       textShadow: live ? `0 0 8px ${NEON}66` : "none",
       minWidth: 14, textAlign: "right",
@@ -71,7 +71,7 @@ const Team = ({ id, logo, name, score, live, favT, onToggleTeam }) => (
   </div>
 );
 
-function MatchCard({ m, compact, favL, favT, onToggleLeague, onToggleTeam, onOpen }) {
+function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onToggleTeam, onOpen }) {
   const live = m.state === "in";
   const done = m.state === "post";
   const status = live ? (m.clock || m.detail || "En direct")
@@ -101,8 +101,8 @@ function MatchCard({ m, compact, favL, favT, onToggleLeague, onToggleTeam, onOpe
         )}
       </div>
       <div className="space-y-1.5">
-        <Team id={m.home_id} logo={m.home_logo} name={m.home} score={m.home_score} live={live} favT={favT} onToggleTeam={onToggleTeam} />
-        <Team id={m.away_id} logo={m.away_logo} name={m.away} score={m.away_score} live={live} favT={favT} onToggleTeam={onToggleTeam} />
+        <Team id={m.home_id} logo={m.home_logo} name={m.home} score={m.home_score} live={live} flash={flash} favT={favT} onToggleTeam={onToggleTeam} />
+        <Team id={m.away_id} logo={m.away_logo} name={m.away} score={m.away_score} live={live} flash={flash} favT={favT} onToggleTeam={onToggleTeam} />
       </div>
       <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
         <span className="text-[10px] font-bold" style={{ color: live ? NEON : "#6b7686" }}>{status}</span>
@@ -130,7 +130,7 @@ function MmaFighter({ f, winner, done }) {
   );
 }
 
-function MmaCard({ m, compact }) {
+function MmaCard({ m, compact, flash }) {
   const live = m.state === "in";
   const done = m.state === "post";
   const status = live ? `R${m.round || "?"}${m.clock ? " · " + m.clock : ""}`
@@ -157,7 +157,7 @@ function MmaCard({ m, compact }) {
         <MmaFighter f={m.f2} winner={w2} done={done} />
       </div>
       <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-        <span className="text-[10px] font-bold" style={{ color: live ? NEON : "#6b7686" }}>{status}</span>
+        <span className={`text-[10px] font-bold ${flash ? "nexus-score-flash" : ""}`} style={{ color: live ? NEON : "#6b7686" }}>{status}</span>
       </div>
     </div>
   );
@@ -216,25 +216,52 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   const [openMatch, setOpenMatch] = useState(null);
   const [confirmHide, setConfirmHide] = useState(false);
   const [fading, setFading] = useState(false);
+  const [flashing, setFlashing] = useState({});   // clé sport-id -> true (score qui vient de changer)
+  const sigRef = useRef({});                        // clé -> signature (score/résultat) précédente
+  const hasLiveRef = useRef(false);
 
+  // Récupère les scores + DÉTECTE les changements (score foot, résultat MMA) pour
+  // déclencher le flash néon sur le nouveau chiffre.
   const load = useCallback(() => {
     axios.get(`${API}/livescores`).then((r) => {
       const d = r.data || {};
-      setMatches(Array.isArray(d.matches) ? d.matches : []);
+      const items = Array.isArray(d.matches) ? d.matches : [];
+      const changed = [];
+      for (const m of items) {
+        const key = `${m.sport}-${m.id}`;
+        const sig = m.sport === "mma" ? `${m.state}|${m.winner || ""}` : `${m.home_score}-${m.away_score}`;
+        if (key in sigRef.current && sigRef.current[key] !== sig) changed.push(key);
+        sigRef.current[key] = sig;
+      }
+      setMatches(items);
       setFavL(new Set(d.favorites?.leagues || []));
       setFavT(new Set(d.favorites?.teams || []));
+      if (changed.length) {
+        setFlashing((f) => { const n = { ...f }; changed.forEach((k) => (n[k] = true)); return n; });
+        changed.forEach((k) => setTimeout(() =>
+          setFlashing((f) => { const n = { ...f }; delete n[k]; return n; }), 3000));
+      }
     }).catch(() => {});
   }, []);
 
+  // Rythme ADAPTATIF (temps réel « à la Flashscore » sans SSE) : 15 s si un match
+  // est en cours ET l'onglet est visible ; 60 s sinon. Rien en arrière-plan
+  // (onglet caché) → coût minimal, compatible scale-to-zero Cloud Run.
   useEffect(() => {
-    let alive = true;
-    const run = () => { if (alive) load(); };
-    run();
-    const iv = setInterval(run, 60000);
-    const onVis = () => { if (document.visibilityState === "visible") run(); };
+    let alive = true, timer = null;
+    const tick = () => {
+      if (!alive) return;
+      if (document.visibilityState === "visible") load();
+      const fast = hasLiveRef.current && document.visibilityState === "visible";
+      timer = setTimeout(tick, fast ? 15000 : 60000);
+    };
+    tick();
+    const onVis = () => { if (document.visibilityState === "visible") { clearTimeout(timer); tick(); } };
     document.addEventListener("visibilitychange", onVis);
-    return () => { alive = false; clearInterval(iv); document.removeEventListener("visibilitychange", onVis); };
+    return () => { alive = false; clearTimeout(timer); document.removeEventListener("visibilitychange", onVis); };
   }, [load]);
+
+  useEffect(() => { hasLiveRef.current = matches.some((m) => m.state === "in"); }, [matches]);
 
   // Bascule un favori : maj optimiste + tri instantané, persistée en tâche de fond.
   const toggleFav = (kind, id) => {
@@ -285,8 +312,8 @@ export default function LiveScores({ variant = "mobile", setUser }) {
     arranged = footItems.length ? footItems : mmaItems;
   }
   const renderCard = (m, compact) => (m.sport === "mma"
-    ? <MmaCard key={`mma-${m.id}`} m={m} compact={compact} />
-    : <MatchCard key={`foot-${m.id}`} m={m} compact={compact} {...cardProps} />);
+    ? <MmaCard key={`mma-${m.id}`} m={m} compact={compact} flash={!!flashing[`mma-${m.id}`]} />
+    : <MatchCard key={`foot-${m.id}`} m={m} compact={compact} flash={!!flashing[`foot-${m.id}`]} {...cardProps} />);
   const fadeStyle = { opacity: fading ? 0 : 1, transition: "opacity 0.34s ease" };
 
   const iconBtn = (icon, onClick, label) => (

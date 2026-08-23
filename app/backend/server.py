@@ -7875,7 +7875,7 @@ async def get_cached_live_scores():
     now = time.time()
     data = _livescores_cache["data"]
     has_live = any(m.get("state") == "in" for m in data)
-    ttl = 60 if has_live else 3600
+    ttl = 20 if has_live else 3600  # ~temps réel pendant les matchs, économe sinon
     if _livescores_cache["ts"] > 0 and (now - _livescores_cache["ts"]) < ttl:
         return data
     async with _livescores_lock:
@@ -7946,7 +7946,7 @@ async def get_cached_mma():
     now = time.time()
     data = _mma_cache["data"]
     has_live = any(m.get("state") == "in" for m in data)
-    ttl = 60 if has_live else 3600
+    ttl = 20 if has_live else 3600  # ~temps réel pendant les matchs, économe sinon
     if _mma_cache["ts"] > 0 and (now - _mma_cache["ts"]) < ttl:
         return data
     async with _mma_lock:
