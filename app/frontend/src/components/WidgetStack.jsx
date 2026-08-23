@@ -428,17 +428,24 @@ export default function WidgetStack({ user, setUser }) {
   // Gestes : swipe vertical (changer de widget) + appui long 2 s (mode Édition).
   const touch = useRef({ x: 0, y: 0, active: false });
   const lpRef = useRef(null);
+  // Isolation stricte du geste : on stoppe la propagation vers les parents
+  // (notamment le pull-to-refresh du fil) pour que SEULE la pile réagisse. Le
+  // défilement vertical natif de la PAGE est déjà coupé par `touchAction: pan-x`
+  // sur le conteneur (les rangées horizontales internes restent défilables).
   const onTouchStart = (e) => {
+    e.stopPropagation();
     const t = e.touches[0];
     touch.current = { x: t.clientX, y: t.clientY, active: true };
     clearTimeout(lpRef.current);
     lpRef.current = setTimeout(() => setEditing(true), 2000);
   };
   const onTouchMove = (e) => {
+    e.stopPropagation();
     const t = e.touches[0];
     if (Math.abs(t.clientX - touch.current.x) > 12 || Math.abs(t.clientY - touch.current.y) > 12) clearTimeout(lpRef.current);
   };
   const onTouchEnd = (e) => {
+    e.stopPropagation();
     clearTimeout(lpRef.current);
     if (!touch.current.active) return;
     touch.current.active = false;
@@ -563,7 +570,8 @@ export default function WidgetStack({ user, setUser }) {
 
   return (
     <div className="px-4 pt-1 pb-2">
-      <div className="relative rounded-2xl overflow-hidden select-none" style={{ height: STACK_H, background: "#0d1424", border: "1px solid rgba(255,255,255,0.06)" }}
+      <div className="relative rounded-2xl overflow-hidden select-none"
+        style={{ height: STACK_H, background: "#0d1424", border: "1px solid rgba(255,255,255,0.06)", touchAction: "pan-x" }}
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         <div style={{ height: STACK_H * pages.length, transform: `translateY(-${idx * STACK_H}px)`, transition: "transform 0.4s cubic-bezier(0.22,1,0.36,1)" }}>
           {pages.map((id) => (<div key={id} style={{ height: STACK_H }}>{pageNode(id)}</div>))}
