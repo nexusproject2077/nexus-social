@@ -7932,14 +7932,19 @@ _livescores_lock = asyncio.Lock()
 ESPN_UPCOMING_HOURS = 48
 
 
-def _espn_dates_param(days_ahead: int = 2) -> str:
+def _espn_dates_param(days_back: int = 1, days_ahead: int = 2) -> str:
+    # Plage : hier → +2 jours. Inclure HIER permet d'afficher les résultats de la
+    # veille en repli quand il n'y a aucun match en direct ni à venir proche.
     now = datetime.now(timezone.utc)
-    return f"{now.strftime('%Y%m%d')}-{(now + timedelta(days=days_ahead)).strftime('%Y%m%d')}"
+    start = (now - timedelta(days=days_back)).strftime("%Y%m%d")
+    end = (now + timedelta(days=days_ahead)).strftime("%Y%m%d")
+    return f"{start}-{end}"
 
 
 def _espn_keep_event(state, date_str) -> bool:
     """Garde : les matchs EN COURS (in) ; les À VENIR (pre) dans les 48 h ; les
-    TERMINÉS (post) récents (< 12 h) pour laisser le score final s'afficher."""
+    TERMINÉS (post) de la veille (< 48 h) → le widget affiche TOUJOURS du contenu
+    (repli automatique quand aucun match n'est en direct)."""
     if state == "in":
         return True
     try:
@@ -7950,7 +7955,7 @@ def _espn_keep_event(state, date_str) -> bool:
     if state == "pre":
         return dt <= now + timedelta(hours=ESPN_UPCOMING_HOURS)
     if state == "post":
-        return dt >= now - timedelta(hours=12)
+        return dt >= now - timedelta(hours=48)
     return False
 
 

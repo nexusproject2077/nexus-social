@@ -48,6 +48,9 @@ const DEMO_FOOT = [
   { id: "demo-rma-bar", sport: "foot", league: "LaLiga", league_slug: "esp.1", home: "Real Madrid", away: "Barcelone", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: "2", away_score: "1", state: "in", clock: "74'", detail: "74' · But Mbappé (54')", date: new Date().toISOString(), demo: true },
   { id: "demo-mci-ars", sport: "foot", league: "Premier League", league_slug: "eng.1", home: "Manchester City", away: "Arsenal", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: "0", away_score: "0", state: "in", clock: "12'", detail: "12'", date: new Date().toISOString(), demo: true },
 ];
+const DEMO_MMA = [
+  { id: "demo-ufc", sport: "mma", event: "UFC 300", f1: { name: "Jon Jones", avatar: null, winner: false }, f2: { name: "Tom Aspinall", avatar: null, winner: false }, state: "in", round: 3, clock: "02:15", method: "", winner: null, detail: "R3 · 02:15", date: new Date().toISOString(), demo: true },
+];
 const demoScoresOn = () => {
   try { return new URLSearchParams(window.location.search).get("demo") === "1" || localStorage.getItem("nexus_demo_scores") === "1"; }
   catch { return false; }
@@ -533,10 +536,12 @@ export default function WidgetStack({ user, setUser }) {
   const saveFinance = (list) => applyConfig({ finance_assets: list });
   const saveCity = (city) => applyConfig({ weather_city: city });
 
+  // Repli DÉMO (opt-in) quand le sport réel est vide → permet de tester le widget.
+  const demoOn = demoScoresOn();
   const footBase = displayMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
-  // Repli DÉMO (opt-in) quand le foot réel est vide → permet de tester le widget.
-  const footItems = footBase.length ? footBase : (demoScoresOn() ? DEMO_FOOT : []);
-  const mmaItems = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
+  const footItems = footBase.length ? footBase : (demoOn ? DEMO_FOOT : []);
+  const mmaBase = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
+  const mmaItems = mmaBase.length ? mmaBase : (demoOn ? DEMO_MMA : []);
   const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
   const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true };

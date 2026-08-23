@@ -183,6 +183,7 @@ export function MmaCard({ m, compact, flash }) {
   const live = m.state === "in";
   const done = m.state === "post";
   const upcoming = !live && !done;
+  const demo = !!m.demo;
   const status = live ? `R${m.round || "?"}${m.clock ? " · " + m.clock : ""}`
     : done ? (m.method || "Terminé")
     : formatKickoff(m.date);
@@ -195,7 +196,7 @@ export function MmaCard({ m, compact, flash }) {
         <span className="text-[10px] font-bold uppercase tracking-wider truncate flex items-center gap-1" style={{ color: "#6b7686" }}>
           <span className="material-symbols-outlined" style={{ fontSize: 12, color: "#ef4444" }}>sports_mma</span>{m.event}
         </span>
-        {live ? <LiveBadge /> : upcoming ? <UpcomingBadge /> : null}
+        {demo ? <DemoBadge /> : live ? <LiveBadge /> : upcoming ? <UpcomingBadge /> : null}
       </div>
       <div className="space-y-1.5">
         <MmaFighter f={m.f1} winner={w1} done={done} />
