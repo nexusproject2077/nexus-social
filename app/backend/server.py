@@ -1286,6 +1286,7 @@ class User(BaseModel):
     phone_verified: bool = False
     twofa_enabled: bool = False         # double authentification (code email à la connexion)
     is_private: bool = False            # compte privé (abonnés approuvés uniquement)
+    show_sports: bool = True            # widget scores de foot en direct (désactivable)
     privacy_strict: bool = False        # Mode Confidentialité stricte : coupe les
                                         # analytics non essentiels + les pubs ciblées
     muted_words: List[str] = []         # mots/phrases masqués (filtrés du fil + notifs)
@@ -1991,6 +1992,14 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     """Récupère le profil de l'utilisateur actuel"""
     current_user["is_admin"] = is_admin_user(current_user)
     return User(**current_user)
+
+
+@api_router.put("/users/me/show-sports")
+async def update_show_sports(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Active/désactive le widget scores de foot en direct pour l'utilisateur."""
+    show = bool(data.get("show_sports"))
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"show_sports": show}})
+    return {"show_sports": show}
 
 
 @api_router.put("/users/me/appearance")

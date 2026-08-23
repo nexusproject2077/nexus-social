@@ -156,12 +156,14 @@ function FilterModal({ favL, onSave, onClose }) {
   );
 }
 
-export default function LiveScores({ variant = "mobile" }) {
+export default function LiveScores({ variant = "mobile", setUser }) {
   const [matches, setMatches] = useState([]);
   const [favL, setFavL] = useState(() => new Set());
   const [favT, setFavT] = useState(() => new Set());
   const [showFilter, setShowFilter] = useState(false);
   const [openMatch, setOpenMatch] = useState(null);
+  const [confirmHide, setConfirmHide] = useState(false);
+  const [fading, setFading] = useState(false);
 
   const load = useCallback(() => {
     axios.get(`${API}/livescores`).then((r) => {
@@ -204,9 +206,27 @@ export default function LiveScores({ variant = "mobile" }) {
     } catch { toast.error("Erreur d'enregistrement"); }
   };
 
+  // Masquer définitivement le widget : persistance MongoDB + fondu + maj du user.
+  const doHide = () => {
+    setConfirmHide(false);
+    setFading(true);
+    setTimeout(() => {
+      axios.put(`${API}/users/me/show-sports`, { show_sports: false }).catch(() => {});
+      setUser?.((prev) => (prev ? { ...prev, show_sports: false } : prev));
+    }, 340);
+  };
+
   if (!matches.length) return null;
   const sorted = sortMatches(matches, favL, favT);
   const cardProps = { favL, favT, onToggleLeague, onToggleTeam, onOpen: setOpenMatch };
+  const fadeStyle = { opacity: fading ? 0 : 1, transition: "opacity 0.34s ease" };
+
+  const iconBtn = (icon, onClick, label) => (
+    <button onClick={onClick} aria-label={label}
+      className="flex items-center justify-center w-7 h-7 rounded-lg active:scale-90 transition-transform" style={{ background: "rgba(255,255,255,0.06)" }}>
+      <span className="material-symbols-outlined" style={{ color: "#9fb0c8", fontSize: 18 }}>{icon}</span>
+    </button>
+  );
 
   const header = (big) => (
     <div className="flex items-center justify-between gap-2">
@@ -218,34 +238,59 @@ export default function LiveScores({ variant = "mobile" }) {
           <span className="font-black uppercase tracking-wider text-xs" style={{ color: "#8b96a8" }}>Scores en direct</span>
         )}
       </div>
-      <button onClick={() => setShowFilter(true)} aria-label="Filtrer les compétitions"
-        className="flex items-center justify-center w-7 h-7 rounded-lg active:scale-90 transition-transform" style={{ background: "rgba(255,255,255,0.06)" }}>
-        <span className="material-symbols-outlined" style={{ color: "#9fb0c8", fontSize: 18 }}>tune</span>
-      </button>
+      <div className="flex items-center gap-1.5">
+        {iconBtn("tune", () => setShowFilter(true), "Filtrer les compétitions")}
+        {iconBtn("close", () => setConfirmHide(true), "Masquer les scores")}
+      </div>
+    </div>
+  );
+
+  // Alerte épurée de confirmation de masquage.
+  const confirmDialog = confirmHide && (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+      style={{ background: "rgba(2,6,20,0.82)" }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) setConfirmHide(false); }}>
+      <div className="w-full max-w-xs rounded-3xl p-5 text-center"
+        style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <span className="material-symbols-outlined mb-2" style={{ color: "#9fb0c8", fontSize: 30 }}>visibility_off</span>
+        <h3 className="text-white font-bold text-base mb-1">Masquer les scores sportifs ?</h3>
+        <p className="text-xs mb-4" style={{ color: "#859397" }}>Le widget disparaîtra. Tu pourras le réactiver à tout moment dans les Paramètres.</p>
+        <button onClick={doHide}
+          className="w-full py-2.5 rounded-xl font-bold text-sm active:scale-95 transition-transform mb-2"
+          style={{ background: "#f87171", color: "#2a0808" }}>
+          Masquer
+        </button>
+        <button onClick={() => setConfirmHide(false)}
+          className="w-full py-2.5 rounded-xl font-bold text-sm" style={{ background: "#222a3d", color: "#a7b3cc" }}>
+          Annuler
+        </button>
+      </div>
     </div>
   );
 
   if (variant === "sidebar") {
     return (
-      <section className="rounded-2xl p-4" style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.05)" }}>
+      <section className="rounded-2xl p-4" style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.05)", ...fadeStyle }}>
         <div className="mb-3">{header(true)}</div>
         <div className="space-y-2">
           {sorted.slice(0, 6).map((m) => <MatchCard key={m.id} m={m} compact {...cardProps} />)}
         </div>
         {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
+        {confirmDialog}
       </section>
     );
   }
 
   return (
-    <div className="pt-1 pb-2">
+    <div className="pt-1 pb-2" style={fadeStyle}>
       <div className="px-4 mb-1.5">{header(false)}</div>
       <div className="flex gap-3 overflow-x-auto no-scrollbar px-4">
         {sorted.map((m) => <MatchCard key={m.id} m={m} {...cardProps} />)}
       </div>
       {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
       {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
+      {confirmDialog}
     </div>
   );
 }

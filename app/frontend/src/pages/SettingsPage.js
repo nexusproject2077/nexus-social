@@ -215,6 +215,21 @@ export default function SettingsPage({ user, setUser }) {
     } catch { toast.error("Lien PayPal invalide"); }
   };
 
+  // Widget scores de sport en direct : préférence utilisateur (défaut affiché).
+  const [showSports, setShowSports] = useState(user?.show_sports !== false);
+  const toggleShowSports = async (value) => {
+    setShowSports(value);
+    setUser?.((prev) => (prev ? { ...prev, show_sports: value } : prev));
+    try {
+      await axios.put(`${API}/users/me/show-sports`, { show_sports: value });
+      toast.success(value ? "Scores de sport affichés" : "Scores de sport masqués");
+    } catch {
+      setShowSports(!value);
+      setUser?.((prev) => (prev ? { ...prev, show_sports: !value } : prev));
+      toast.error("Erreur");
+    }
+  };
+
   // Stripe Connect (pourboires par carte) : état + activation.
   const [connect, setConnect] = useState(null); // { connected, charges_enabled, enabled }
   const [connectBusy, setConnectBusy] = useState(false);
@@ -832,6 +847,16 @@ export default function SettingsPage({ user, setUser }) {
         <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Préférences de contenu</h2>
         <p className="text-sm" style={{ color: C.outline }}>Personnalisez ce que vous voyez sur Nexus</p>
       </div>
+      <Card>
+        <CardHeader title="Widgets du fil" icon="widgets" />
+        <ToggleRow
+          icon="sports_soccer"
+          label="Afficher les scores de sport en direct"
+          sublabel="Le widget football en haut du fil (mobile) et dans la colonne de droite (PC)"
+          checked={showSports}
+          onChange={toggleShowSports}
+        />
+      </Card>
       <Card>
         <CardHeader title="Filtre de contenu" icon="filter_alt" />
         <ToggleRow label="Contenu sensible" sublabel="Afficher le contenu marqué comme sensible" checked={false} onChange={() => toast.info("Paramètre à venir")} />

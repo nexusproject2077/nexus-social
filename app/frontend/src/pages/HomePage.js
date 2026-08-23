@@ -196,10 +196,13 @@ export default function HomePage({ user, setUser }) {
         <StoriesFeed />
 
         {/* Scores de foot en direct — carrousel horizontal (mobile ; sur PC ils
-            sont dans la colonne Tendances à droite). */}
-        <div className="lg:hidden">
-          <LiveScores variant="mobile" />
-        </div>
+            sont dans la colonne Tendances à droite). Optionnel : masqué si
+            l'utilisateur a désactivé les scores (show_sports === false). */}
+        {user?.show_sports !== false && (
+          <div className="lg:hidden">
+            <LiveScores variant="mobile" setUser={setUser} />
+          </div>
+        )}
 
         {/* Sélecteur d'ordonnancement du fil « Pour vous » — MOBILE uniquement
             (sur PC, l'ordre est intégré à la ligne d'onglets X ci-dessous). */}
