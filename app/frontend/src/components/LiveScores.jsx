@@ -22,6 +22,8 @@ const DEMO_SCORES = [
   { id: "demo-ren-psg", sport: "foot", league: "Ligue 1", league_slug: "fra.1", home: "Rennes", away: "PSG", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: "0", away_score: "0", state: "in", clock: "1'", detail: "1'", date: new Date().toISOString(), demo: true },
   { id: "demo-om-ol", sport: "foot", league: "Ligue 1", league_slug: "fra.1", home: "Marseille", away: "Lyon", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: null, away_score: null, state: "pre", clock: "", detail: "À venir", date: new Date(Date.now() + 2 * 3600 * 1000).toISOString(), demo: true },
   { id: "demo-ufc", sport: "mma", event: "UFC 300", f1: { name: "Jon Jones", avatar: null, winner: false }, f2: { name: "Tom Aspinall", avatar: null, winner: false }, state: "in", round: 3, clock: "02:15", method: "", winner: null, detail: "R3 · 02:15", date: new Date().toISOString(), demo: true },
+  // Terminé (score final, ~3 h) — pour visualiser la carte « dernier résultat 24 h ».
+  { id: "demo-len-mon", sport: "foot", league: "Ligue 1", league_slug: "fra.1", home: "Lens", away: "Monaco", home_id: "", away_id: "", home_logo: null, away_logo: null, home_score: "1", away_score: "2", state: "post", clock: "", detail: "Terminé", date: new Date(Date.now() - 3 * 3600 * 1000).toISOString(), demo: true },
 ];
 
 // Ligues majeures proposées dans la modale de filtres (slugs ESPN).
