@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useMemo, Fragment } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
@@ -13,6 +13,7 @@ import NexusAIChat from "@/components/NexusAIChat";
 import { SURFACE, TEXT, OUTLINE, ACCENT, glass as sharedGlass } from "@/lib/theme";
 import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
 import DrawCanvasModal from "@/components/DrawCanvasModal";
+import ScheduleMessageModal from "@/components/ScheduleMessageModal";
 
 // Un message vocal ne doit pas non plus réclamer la session « Now Playing »
 // iOS : on route son son par Web Audio quand l'URL est CORS-safe (Cloudinary /
@@ -482,6 +483,12 @@ export default function MessagesPage({ user }) {
   const [pendingImage, setPendingImage] = useState(null);
   const [showDraw, setShowDraw] = useState(false);      // canevas de dessin (DM)
   const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const [scheduledMsgs, setScheduledMsgs] = useState([]);   // messages planifiés pour ce DM
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [manageSched, setManageSched] = useState(false);    // feuille de gestion des planifiés
+  const [rescheduleId, setRescheduleId] = useState(null);   // id en cours de replanification
+  const sendLpTimer = useRef(null);
+  const sendLpFired = useRef(false);
   const [compressing, setCompressing] = useState(false);
   const imageInputRef = useRef(null);
 
@@ -1103,6 +1110,8 @@ export default function MessagesPage({ user }) {
 
   const handleSendMessage = async (e) => {
     e?.preventDefault();
+    // Appui long sur « Envoyer » → planification (on ne part pas tout de suite).
+    if (sendLpFired.current) { sendLpFired.current = false; return; }
     const text = messageContent.trim();
     if (!text && !pendingImage && !pendingAudio) return;
     try {
@@ -1157,6 +1166,50 @@ export default function MessagesPage({ user }) {
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors de l'envoi");
     }
+  };
+
+  // ── Messages planifiés (Scheduled DMs) ───────────────────────────────────────
+  const fetchScheduled = useCallback(async (peer) => {
+    if (!peer) { setScheduledMsgs([]); return; }
+    try {
+      const r = await axios.get(`${API}/messages/scheduled`, { params: { peer_id: peer } });
+      setScheduledMsgs(Array.isArray(r.data) ? r.data : []);
+    } catch { setScheduledMsgs([]); }
+  }, []);
+
+  useEffect(() => {
+    if (!isGroup && selectedUserId) fetchScheduled(selectedUserId);
+    else setScheduledMsgs([]);
+  }, [selectedUserId, isGroup, fetchScheduled]);
+
+  const scheduleCurrentMessage = async (iso) => {
+    const text = messageContent.trim();
+    if ((!text && !pendingImage) || !selectedUserId) return;
+    try {
+      await axios.post(`${API}/messages/scheduled`, {
+        recipient_id: selectedUserId, content: text,
+        media_url: pendingImage || null, media_type: pendingImage ? "image" : null,
+        scheduled_at: iso,
+      });
+      setMessageContent(""); setPendingImage(null);
+      fetchScheduled(selectedUserId);
+      toast.success("Message planifié");
+    } catch (err) { toast.error(err.response?.data?.detail || "Planification impossible"); }
+  };
+
+  const sendScheduledNow = async (id) => {
+    try { await axios.post(`${API}/messages/scheduled/${id}/send-now`); fetchScheduled(selectedUserId); if (selectedUserId) fetchMessages(selectedUserId); toast.success("Message envoyé"); }
+    catch { toast.error("Envoi impossible"); }
+  };
+  const deleteScheduled = async (id) => {
+    try { await axios.delete(`${API}/messages/scheduled/${id}`); fetchScheduled(selectedUserId); }
+    catch { toast.error("Suppression impossible"); }
+  };
+  const rescheduleTo = async (iso) => {
+    if (!rescheduleId) return;
+    try { await axios.put(`${API}/messages/scheduled/${rescheduleId}`, { scheduled_at: iso }); fetchScheduled(selectedUserId); toast.success("Heure modifiée"); }
+    catch { toast.error("Modification impossible"); }
+    setRescheduleId(null);
   };
 
   // Le backend renvoie reactions sous forme de LISTE [{user_id, emoji}] ;
@@ -2074,6 +2127,15 @@ export default function MessagesPage({ user }) {
                 </button>
               </div>
             ) : (
+              <div className="flex flex-col">
+              {!isGroup && scheduledMsgs.length > 0 && (
+                <button onClick={() => setManageSched(true)}
+                  className="flex items-center gap-1.5 mb-2 px-3 py-1.5 rounded-full text-xs font-bold self-start active:scale-95 transition-transform"
+                  style={{ background: "rgba(34,211,238,0.12)", color: C.cyan }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 15 }}>schedule</span>
+                  {scheduledMsgs.length} message{scheduledMsgs.length > 1 ? "s" : ""} planifié{scheduledMsgs.length > 1 ? "s" : ""}
+                </button>
+              )}
               <form onSubmit={handleSendMessage} className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={glass}>
                 <input
                   ref={imageInputRef}
@@ -2132,11 +2194,22 @@ export default function MessagesPage({ user }) {
                   )}
                 </div>
                 <button type="submit" disabled={!messageContent.trim() && !pendingImage && !pendingAudio}
+                  onPointerDown={() => {
+                    // Appui long (1 s) → planifier (1:1 uniquement, si contenu).
+                    if (isGroup || (!messageContent.trim() && !pendingImage)) return;
+                    sendLpFired.current = false;
+                    clearTimeout(sendLpTimer.current);
+                    sendLpTimer.current = setTimeout(() => { sendLpFired.current = true; setShowScheduleModal(true); }, 1000);
+                  }}
+                  onPointerUp={() => clearTimeout(sendLpTimer.current)}
+                  onPointerLeave={() => clearTimeout(sendLpTimer.current)}
+                  title="Envoyer — appui long pour planifier"
                   className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-40"
                   style={{ background: (messageContent.trim() || pendingImage || pendingAudio) ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: (messageContent.trim() || pendingImage || pendingAudio) ? C.onPrimary : C.outline }}>
                   <span className="material-symbols-outlined text-sm">send</span>
                 </button>
               </form>
+              </div>
             )}
           </div>
         </>
@@ -2167,6 +2240,41 @@ export default function MessagesPage({ user }) {
         </div>
       )}
       <DrawCanvasModal open={showDraw} onClose={() => setShowDraw(false)} onSubmit={postDrawing} />
+      <ScheduleMessageModal open={showScheduleModal} onClose={() => setShowScheduleModal(false)} onConfirm={scheduleCurrentMessage} />
+      <ScheduleMessageModal open={!!rescheduleId} onClose={() => setRescheduleId(null)} onConfirm={rescheduleTo} title="Nouvelle heure" />
+      {manageSched && (
+        <div className="fixed inset-0 z-[96] flex items-end sm:items-center justify-center sm:p-4"
+          style={{ background: "rgba(2,6,20,0.86)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) setManageSched(false); }}>
+          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5" style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.1)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
+            <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.22)" }} />
+            <div className="flex items-center gap-2 mb-4">
+              <span className="material-symbols-outlined" style={{ color: C.cyan }}>schedule</span>
+              <h3 className="text-white font-black text-lg">Messages planifiés</h3>
+            </div>
+            {scheduledMsgs.length === 0 ? (
+              <p className="text-sm py-6 text-center" style={{ color: "#6b7686" }}>Aucun message planifié.</p>
+            ) : (
+              <div className="space-y-2 max-h-[52vh] overflow-y-auto no-scrollbar">
+                {scheduledMsgs.map((s) => (
+                  <div key={s.id} className="rounded-2xl p-3" style={{ background: "#1a2234" }}>
+                    <p className="text-sm text-white truncate flex items-center gap-1">
+                      {!s.content && s.media_type && <span className="material-symbols-outlined" style={{ fontSize: 15, color: "#8b96a8" }}>image</span>}
+                      <span className="truncate">{s.content || (s.media_type ? "Média joint" : "")}</span>
+                    </p>
+                    <p className="text-[11px] mb-2" style={{ color: C.cyan }}>{new Date(s.scheduled_at).toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => sendScheduledNow(s.id)} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#04121a" }}>Envoyer</button>
+                      <button onClick={() => { setManageSched(false); setRescheduleId(s.id); }} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "#232c40", color: "#c7d0e0" }}>Replanifier</button>
+                      <button onClick={() => deleteScheduled(s.id)} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "#3a1414", color: "#f87171" }}>Supprimer</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setManageSched(false)} className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold" style={{ background: "#1a2234", color: "#a7b3cc" }}>Fermer</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 

@@ -4865,6 +4865,12 @@ async def set_notif_preferences(data: NotifPrefs, current_user: dict = Depends(g
 @api_router.get("/messages/conversations", response_model=List[Conversation])
 async def get_conversations(current_user: dict = Depends(get_current_user)):
     """Récupère les conversations de l'utilisateur"""
+    # Repli de livraison : envoie les messages planifiés échus de l'expéditeur
+    # (au cas où le cron ne tournerait pas).
+    try:
+        await _dispatch_due_scheduled(current_user["id"])
+    except Exception:
+        pass
     # Projection : on N'INCLUT PAS media_url (data URL base64 potentiellement
     # lourd) pour garder la liste des conversations légère et rapide.
     messages_raw = await db.messages.find(
@@ -5394,6 +5400,196 @@ async def send_message(message_data: MessageCreate, current_user: dict = Depends
         await send_web_push(message_data.recipient_id, _mt, _mb, _mu, tag="message")
 
     return Message(**message)
+
+
+# ==================== MESSAGES PLANIFIÉS (Scheduled DMs) ====================
+# On écrit maintenant, on livre à l'heure H (utile la nuit sans réveiller le
+# contact). Livraison : cron (endpoint interne) OU repli paresseux à l'ouverture
+# de la messagerie par l'expéditeur.
+
+async def _deliver_scheduled(sched: dict):
+    """Matérialise un message planifié en vrai message (best-effort, idempotent)."""
+    try:
+        # Verrou léger : on ne livre que s'il est encore 'pending' (anti-double).
+        claim = await db.scheduled_messages.update_one(
+            {"id": sched["id"], "status": "pending"}, {"$set": {"status": "sending"}}
+        )
+        if claim.modified_count == 0:
+            return False
+        sender = await db.users.find_one({"id": sched["sender_id"]})
+        recipient = await db.users.find_one({"id": sched["recipient_id"]})
+        if not sender or not recipient:
+            await db.scheduled_messages.update_one({"id": sched["id"]}, {"$set": {"status": "failed"}})
+            return False
+        now = datetime.now(timezone.utc)
+        content_plain = decrypt_message(sched.get("content") or "")
+        message_id = str(uuid.uuid4())
+        ttl = await _ephemeral_ttl(sender["id"], recipient["id"])
+        expires_at = (now + timedelta(seconds=ttl)).isoformat() if ttl > 0 else None
+        doc = {
+            "id": message_id,
+            "sender_id": sender["id"], "sender_username": sender["username"], "sender_profile_pic": sender.get("profile_pic"),
+            "recipient_id": recipient["id"], "recipient_username": recipient["username"],
+            "content": sched.get("content") or "",   # déjà chiffré
+            "media_url": sched.get("media_url"), "media_type": sched.get("media_type"),
+            "reply_to_id": None, "expires_at": expires_at, "read": False,
+            "created_at": now.isoformat(),
+        }
+        await db.messages.insert_one(doc)
+        await db.scheduled_messages.update_one(
+            {"id": sched["id"]}, {"$set": {"status": "sent", "sent_at": now.isoformat(), "message_id": message_id}}
+        )
+        await push_realtime(recipient["id"], {"type": "new_message", "data": {
+            "id": message_id, "sender_id": sender["id"], "sender_username": sender["username"],
+            "sender_profile_pic": sender.get("profile_pic"), "recipient_id": recipient["id"],
+            "content": content_plain, "media_url": sched.get("media_url"), "media_type": sched.get("media_type"),
+            "reply_to_id": None, "expires_at": expires_at, "created_at": doc["created_at"],
+        }})
+        if await _notif_allowed(recipient["id"], "message", sender["id"]):
+            _mt, _mb, _mu = _push_content_for("message", sender)
+            await send_web_push(recipient["id"], _mt, _mb, _mu, tag="message")
+        return True
+    except Exception as e:
+        logger.warning(f"scheduled deliver failed ({sched.get('id')}): {e}")
+        return False
+
+
+async def _dispatch_due_scheduled(sender_id: str = None):
+    """Livre tous les messages planifiés dont l'heure est passée."""
+    now = datetime.now(timezone.utc).isoformat()
+    q = {"status": "pending", "scheduled_at": {"$lte": now}}
+    if sender_id:
+        q["sender_id"] = sender_id
+    due = await db.scheduled_messages.find(q).sort("scheduled_at", 1).to_list(length=200)
+    n = 0
+    for s in due:
+        if await _deliver_scheduled(convert_mongo_doc_to_dict(s)):
+            n += 1
+    return n
+
+
+def _sched_public(s: dict) -> dict:
+    return {
+        "id": s.get("id"),
+        "recipient_id": s.get("recipient_id"),
+        "content": decrypt_message(s.get("content") or ""),
+        "media_type": s.get("media_type"),
+        "scheduled_at": s.get("scheduled_at"),
+        "created_at": s.get("created_at"),
+    }
+
+
+@api_router.post("/messages/scheduled")
+async def create_scheduled_message(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Planifie un message privé pour plus tard. Corps : {recipient_id, content,
+    media_url?, media_type?, scheduled_at (ISO)}."""
+    recipient_id = str(data.get("recipient_id") or "").strip()
+    content = (data.get("content") or "").strip()
+    media_url = data.get("media_url")
+    scheduled_at = str(data.get("scheduled_at") or "").strip()
+    if not recipient_id or (not content and not media_url):
+        raise HTTPException(status_code=400, detail="Destinataire et contenu requis")
+    try:
+        when = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Date de planification invalide")
+    now = datetime.now(timezone.utc)
+    if when <= now + timedelta(seconds=30):
+        raise HTTPException(status_code=400, detail="Choisissez une heure dans le futur")
+    if when > now + timedelta(days=30):
+        raise HTTPException(status_code=400, detail="30 jours maximum")
+
+    recipient_raw = await db.users.find_one({"id": recipient_id})
+    if not recipient_raw:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    # Même garde mineurs que l'envoi direct.
+    if recipient_raw.get("is_minor") and not current_user.get("is_minor"):
+        _a = await check_is_following(current_user["id"], recipient_id)
+        _b = await check_is_following(recipient_id, current_user["id"])
+        if not (_a and _b):
+            raise HTTPException(status_code=403, detail="Abonnement mutuel requis pour écrire à ce compte.")
+
+    content, media_url = normalize_message_content(content, media_url)
+    if media_url:
+        await screen_content(media_url=media_url)
+        media_url = await store_media(media_url, folder="messages")
+    sched_id = str(uuid.uuid4())
+    await db.scheduled_messages.insert_one({
+        "id": sched_id, "sender_id": current_user["id"], "recipient_id": recipient_id,
+        "content": encrypt_message(content or ""), "media_url": media_url,
+        "media_type": data.get("media_type"), "scheduled_at": when.isoformat(),
+        "status": "pending", "created_at": now.isoformat(),
+    })
+    return {"success": True, "id": sched_id, "scheduled_at": when.isoformat()}
+
+
+@api_router.get("/messages/scheduled")
+async def list_scheduled_messages(peer_id: str = "", current_user: dict = Depends(get_current_user)):
+    """Messages planifiés EN ATTENTE de l'utilisateur (optionnellement filtrés par
+    destinataire), du plus proche au plus lointain."""
+    await _dispatch_due_scheduled(current_user["id"])  # livre les échus au passage
+    q = {"sender_id": current_user["id"], "status": "pending"}
+    if peer_id:
+        q["recipient_id"] = peer_id
+    rows = await db.scheduled_messages.find(q).sort("scheduled_at", 1).to_list(length=100)
+    return [_sched_public(convert_mongo_doc_to_dict(r)) for r in rows]
+
+
+@api_router.put("/messages/scheduled/{sched_id}")
+async def update_scheduled_message(sched_id: str, data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Modifie l'heure d'un message planifié."""
+    s = await db.scheduled_messages.find_one({"id": sched_id, "sender_id": current_user["id"], "status": "pending"})
+    if not s:
+        raise HTTPException(status_code=404, detail="Message planifié introuvable")
+    scheduled_at = str(data.get("scheduled_at") or "").strip()
+    try:
+        when = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Date invalide")
+    now = datetime.now(timezone.utc)
+    if when <= now + timedelta(seconds=30) or when > now + timedelta(days=30):
+        raise HTTPException(status_code=400, detail="Heure hors limites")
+    await db.scheduled_messages.update_one({"id": sched_id}, {"$set": {"scheduled_at": when.isoformat()}})
+    return {"success": True, "scheduled_at": when.isoformat()}
+
+
+@api_router.post("/messages/scheduled/{sched_id}/send-now")
+async def send_scheduled_now(sched_id: str, current_user: dict = Depends(get_current_user)):
+    """Envoie immédiatement un message planifié."""
+    s = await db.scheduled_messages.find_one({"id": sched_id, "sender_id": current_user["id"], "status": "pending"})
+    if not s:
+        raise HTTPException(status_code=404, detail="Message planifié introuvable")
+    ok = await _deliver_scheduled(convert_mongo_doc_to_dict(s))
+    if not ok:
+        raise HTTPException(status_code=409, detail="Envoi impossible")
+    return {"success": True}
+
+
+@api_router.delete("/messages/scheduled/{sched_id}")
+async def delete_scheduled_message(sched_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprime un message planifié en attente."""
+    res = await db.scheduled_messages.delete_one({"id": sched_id, "sender_id": current_user["id"], "status": "pending"})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Message planifié introuvable")
+    return {"success": True}
+
+
+@api_router.post("/internal/dispatch-scheduled")
+async def internal_dispatch_scheduled(request: Request):
+    """Livraison des messages planifiés échus (déclencheur externe / Cloud
+    Scheduler). Protégé par la même clé que le poll sportif."""
+    if not SPORTS_POLL_KEY:
+        raise HTTPException(status_code=503, detail="Dispatch non configuré")
+    key = request.headers.get("x-poll-key") or request.query_params.get("key") or ""
+    if key != SPORTS_POLL_KEY:
+        raise HTTPException(status_code=403, detail="Clé invalide")
+    n = await _dispatch_due_scheduled()
+    return {"success": True, "delivered": n}
+
 
 # Aperçu de lien (Open Graph) pour la messagerie.
 _LINK_PREVIEW_CACHE: Dict[str, dict] = {}
