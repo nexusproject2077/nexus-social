@@ -8,15 +8,18 @@
 //
 // Le reste du monde : ce composant ne rend RIEN (zéro friction).
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Eye, ShieldCheck, FileText, Trash2, Check } from "lucide-react";
 import { useGeo } from "@/context/GeoContext";
 
 const APPI_CONSENT_KEY = "appi_consent_v1";
 
+// NB : ce composant est monté HORS du <Router> (au niveau de <App>), donc on ne
+// peut pas utiliser useNavigate() ici (il lèverait « useNavigate may be used only
+// in the context of a <Router> »). On navigue via window.location — action rare.
+const goPrivacyCenter = () => { try { window.location.assign("/privacy-center"); } catch { /* ignore */ } };
+
 export default function ComplianceGate() {
   const geo = useGeo();
-  const navigate = useNavigate();
   const [roDismissed, setRoDismissed] = useState(false);
   const [appiDone, setAppiDone] = useState(true);
 
@@ -85,12 +88,12 @@ export default function ComplianceGate() {
               </button>
 
               <div className="flex items-center justify-center gap-4 mt-3 text-xs" style={{ color: "#8ea0c4" }}>
-                <button onClick={() => { acceptAppi(); navigate("/privacy-center"); }}
+                <button onClick={() => { acceptAppi(); goPrivacyCenter(); }}
                   className="inline-flex items-center gap-1.5 hover:underline">
                   <FileText className="w-3.5 h-3.5" /> Mes données
                 </button>
                 <span style={{ color: "#3a4759" }}>·</span>
-                <button onClick={() => { acceptAppi(); navigate("/privacy-center"); }}
+                <button onClick={() => { acceptAppi(); goPrivacyCenter(); }}
                   className="inline-flex items-center gap-1.5 hover:underline" style={{ color: "#f7a1a1" }}>
                   <Trash2 className="w-3.5 h-3.5" /> Supprimer mon compte
                 </button>
