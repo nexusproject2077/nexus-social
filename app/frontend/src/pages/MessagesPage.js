@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
@@ -297,6 +298,7 @@ function Ico({ name, size = 20 }) {
 }
 
 export default function MessagesPage({ user }) {
+  const { t } = useTranslation();
   const params = useParams();
   const navigate = useNavigate();
 
@@ -510,12 +512,12 @@ export default function MessagesPage({ user }) {
     if (!file) return;
     const isImage = file.type.startsWith("image/");
     const isVideo = file.type.startsWith("video/");
-    if (!isImage && !isVideo) { toast.error("Sélectionnez une image ou une vidéo"); return; }
+    if (!isImage && !isVideo) { toast.error(t("dm.err_select_media")); return; }
     try {
       setCompressing(true);
       let dataUrl;
       if (isVideo) {
-        if (file.size > MAX_VIDEO_BYTES) { toast.error("Vidéo trop lourde (max 8 Mo)"); return; }
+        if (file.size > MAX_VIDEO_BYTES) { toast.error(t("dm.err_video_heavy")); return; }
         dataUrl = await new Promise((resolve, reject) => {
           const r = new FileReader();
           r.onloadend = () => resolve(r.result);
@@ -530,7 +532,7 @@ export default function MessagesPage({ user }) {
       const kb = Math.max(1, Math.round(dataUrlBytes(dataUrl) / 1024));
       toast.success(`${isVideo ? "Vidéo" : "Image"} prête (~${kb} Ko)`);
     } catch {
-      toast.error("Impossible de traiter ce média");
+      toast.error(t("dm.err_media_process"));
     } finally {
       setCompressing(false);
     }
@@ -547,7 +549,7 @@ export default function MessagesPage({ user }) {
       mr.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(audioChunksRef.current, { type: mr.mimeType || "audio/webm" });
-        if (blob.size > 4_000_000) { toast.error("Message vocal trop long"); return; }
+        if (blob.size > 4_000_000) { toast.error(t("dm.err_voice_long")); return; }
         if (blob.size < 400) return; // trop court / vide
         const reader = new FileReader();
         reader.onloadend = () => setPendingAudio(reader.result);
@@ -558,7 +560,7 @@ export default function MessagesPage({ user }) {
       setPendingImage(null);
       setRecordSecs(0);
       setRecording(true);
-    } catch { toast.error("Micro indisponible — autorisez l'accès au micro"); }
+    } catch { toast.error(t("dm.err_mic")); }
   };
 
   const stopRecording = () => {
@@ -861,7 +863,7 @@ export default function MessagesPage({ user }) {
       setShowNoteComposer(false);
       setNoteText("");
       fetchNotes();
-      toast.success("Note publiée");
+      toast.success(t("dm.note_published"));
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur");
     }
@@ -873,8 +875,8 @@ export default function MessagesPage({ user }) {
       setShowNoteComposer(false);
       setNoteText("");
       fetchNotes();
-      toast.success("Note supprimée");
-    } catch { toast.error("Erreur"); }
+      toast.success(t("dm.note_deleted"));
+    } catch { toast.error(t("dm.err_generic")); }
   };
 
   const fetchMessages = async (uid) => {
@@ -898,7 +900,7 @@ export default function MessagesPage({ user }) {
         const eph = await axios.get(`${API}/messages/conversations/${uid}/ephemeral`);
         setEphemeralTtl(eph.data?.ttl_seconds || 0);
       } catch { setEphemeralTtl(0); }
-    } catch { toast.error("Erreur lors du chargement des messages"); }
+    } catch { toast.error(t("dm.err_load_messages")); }
     finally { setLoading(false); }
   };
 
@@ -909,7 +911,7 @@ export default function MessagesPage({ user }) {
       setEphemeralTtl(ttl);
       setShowEphemeralChooser(false);
       toast.success(ttl ? `Messages éphémères : ${ephemeralLabel(ttl)}` : "Messages éphémères désactivés");
-    } catch { toast.error("Erreur"); }
+    } catch { toast.error(t("dm.err_generic")); }
   };
 
   // Purge locale des messages éphémères expirés (toutes les 10 s).
@@ -960,13 +962,13 @@ export default function MessagesPage({ user }) {
       fetchConversations();
       fetchGroups();
       window.dispatchEvent(new Event("nexus:badges"));
-    } catch { toast.error("Action impossible"); }
+    } catch { toast.error(t("dm.err_action")); }
   };
 
   const handleMarkUnread = async () => {
     if (!convMenu) return;
     await setConvPref(convMenu.id, { marked_unread: true });
-    toast.success("Marqué comme non lu");
+    toast.success(t("dm.marked_unread"));
     setConvMenu(null);
   };
 
@@ -995,16 +997,16 @@ export default function MessagesPage({ user }) {
         setGroups((prev) => prev.filter((g) => g.id !== m.id));
         if (selectedGroupId === m.id) navigate("/messages");
         fetchGroups();
-        toast.success("Groupe quitté");
-      } catch { toast.error("Impossible de quitter le groupe"); }
+        toast.success(t("dm.group_left"));
+      } catch { toast.error(t("dm.err_leave_group")); }
     } else {
       if (!window.confirm("Supprimer cette conversation ?")) return;
       try {
         await axios.delete(`${API}/messages/conversations/${m.id}`);
         if (selectedUserId === m.id) navigate("/messages");
         fetchConversations();
-        toast.success("Conversation supprimée");
-      } catch { toast.error("Suppression impossible"); }
+        toast.success(t("dm.conv_deleted"));
+      } catch { toast.error(t("dm.err_delete")); }
     }
   };
 
@@ -1193,22 +1195,22 @@ export default function MessagesPage({ user }) {
       });
       setMessageContent(""); setPendingImage(null);
       fetchScheduled(selectedUserId);
-      toast.success("Message planifié");
+      toast.success(t("dm.msg_scheduled"));
     } catch (err) { toast.error(err.response?.data?.detail || "Planification impossible"); }
   };
 
   const sendScheduledNow = async (id) => {
-    try { await axios.post(`${API}/messages/scheduled/${id}/send-now`); fetchScheduled(selectedUserId); if (selectedUserId) fetchMessages(selectedUserId); toast.success("Message envoyé"); }
-    catch { toast.error("Envoi impossible"); }
+    try { await axios.post(`${API}/messages/scheduled/${id}/send-now`); fetchScheduled(selectedUserId); if (selectedUserId) fetchMessages(selectedUserId); toast.success(t("dm.msg_sent")); }
+    catch { toast.error(t("dm.err_send")); }
   };
   const deleteScheduled = async (id) => {
     try { await axios.delete(`${API}/messages/scheduled/${id}`); fetchScheduled(selectedUserId); }
-    catch { toast.error("Suppression impossible"); }
+    catch { toast.error(t("dm.err_delete")); }
   };
   const rescheduleTo = async (iso) => {
     if (!rescheduleId) return;
-    try { await axios.put(`${API}/messages/scheduled/${rescheduleId}`, { scheduled_at: iso }); fetchScheduled(selectedUserId); toast.success("Heure modifiée"); }
-    catch { toast.error("Modification impossible"); }
+    try { await axios.put(`${API}/messages/scheduled/${rescheduleId}`, { scheduled_at: iso }); fetchScheduled(selectedUserId); toast.success(t("dm.time_changed")); }
+    catch { toast.error(t("dm.err_modify")); }
     setRescheduleId(null);
   };
 
@@ -1232,7 +1234,7 @@ export default function MessagesPage({ user }) {
       const res = await axios.post(`${API}/messages/${messageId}/react`, { emoji });
       setMessages(p => p.map(m => m.id === messageId ? { ...m, reactions: res.data.reactions } : m));
       setShowEmojiPicker(null);
-    } catch { toast.error("Erreur réaction"); }
+    } catch { toast.error(t("dm.err_reaction")); }
   };
 
   // messageId : id ; everyone : true = pour tous (hard delete), false = pour moi.
@@ -1242,7 +1244,7 @@ export default function MessagesPage({ user }) {
       setMessages(p => p.filter(m => m.id !== messageId));
       fetchConversations();
       toast.success(everyone ? "Message supprimé pour tout le monde" : "Message supprimé pour vous");
-    } catch { toast.error("Erreur suppression"); }
+    } catch { toast.error(t("dm.err_delete_msg")); }
   };
 
   // ── Traduction d'un message (langue = paramètres de l'app) ───────────────────
@@ -1256,8 +1258,8 @@ export default function MessagesPage({ user }) {
     try {
       const res = await axios.post(`${API}/messages/translate`, { text: msg.content, target });
       if (res.data?.translated) setTranslations((t) => ({ ...t, [msg.id]: res.data.translated }));
-      else toast.error("Traduction indisponible");
-    } catch { toast.error("Traduction indisponible"); }
+      else toast.error(t("dm.err_translate"));
+    } catch { toast.error(t("dm.err_translate")); }
   };
 
   // ── Transfert d'un message vers une autre conversation ───────────────────────
@@ -1278,19 +1280,19 @@ export default function MessagesPage({ user }) {
           media_type: m.media_type || null,
         });
       }
-      toast.success("Message transféré");
+      toast.success(t("dm.msg_forwarded"));
       fetchConversations();
-    } catch { toast.error("Transfert impossible"); }
+    } catch { toast.error(t("dm.err_forward")); }
   };
 
   const handleCopy = (content) => {
     navigator.clipboard.writeText(content);
-    toast.success("Copié !");
+    toast.success(t("dm.copied"));
   };
 
   const handleCreateGroup = async () => {
     if (!groupName.trim() || selectedMembers.length === 0) {
-      toast.error("Nom et membres requis"); return;
+      toast.error(t("dm.err_name_members")); return;
     }
     try {
       setLoading(true);
@@ -1301,7 +1303,7 @@ export default function MessagesPage({ user }) {
         setShowNewGroup(false); setGroupName(""); setSelectedMembers([]); setGroupSearch("");
         await fetchGroups();
         navigate(`/messages/group/${res.data.group.id}`);
-        toast.success("Groupe créé !");
+        toast.success(t("dm.group_created"));
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur création groupe");
@@ -1326,7 +1328,7 @@ export default function MessagesPage({ user }) {
       if (res.data?.group) setSelectedGroup(res.data.group);
       setEditingName(false);
       fetchGroups();
-      toast.success("Groupe renommé");
+      toast.success(t("dm.group_renamed"));
     } catch (err) { toast.error(err.response?.data?.detail || "Erreur"); }
   };
 
@@ -1366,7 +1368,7 @@ export default function MessagesPage({ user }) {
       await axios.delete(`${API}/messages/groups/${gid}/members/${user.id}`);
       // Retire immédiatement le groupe de la liste (plus d'attente / de cache).
       setGroups((prev) => prev.filter((g) => g.id !== gid));
-      toast.success("Vous avez quitté le groupe");
+      toast.success(t("dm.you_left_group"));
       navigate("/messages");
       fetchGroups();
     } catch (err) {
@@ -1384,7 +1386,7 @@ export default function MessagesPage({ user }) {
       : [...prev, u]);
   };
   const startConversation = async () => {
-    if (nmSelected.length === 0) { toast.error("Sélectionnez au moins une personne"); return; }
+    if (nmSelected.length === 0) { toast.error(t("dm.err_select_person")); return; }
     // 1 personne → conversation privée. 2+ → groupe.
     if (nmSelected.length === 1) {
       setShowNewMessageModal(false);
@@ -1401,7 +1403,7 @@ export default function MessagesPage({ user }) {
         setShowNewMessageModal(false);
         await fetchGroups();
         navigate(`/messages/group/${res.data.group.id}`);
-        toast.success("Groupe créé !");
+        toast.success(t("dm.group_created"));
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur création groupe");
@@ -1417,8 +1419,8 @@ export default function MessagesPage({ user }) {
       setConversations((prev) => prev.filter((c) => c.user_id !== selectedUserId));
       setShowDetails(false);
       navigate("/messages");
-      toast.success("Discussion supprimée");
-    } catch { toast.error("Erreur"); }
+      toast.success(t("dm.chat_deleted"));
+    } catch { toast.error(t("dm.err_generic")); }
   };
   const handleBlockUser = async () => {
     if (!selectedUserId) return;
@@ -1428,7 +1430,7 @@ export default function MessagesPage({ user }) {
       setShowDetails(false);
       navigate("/messages");
       toast.success(`@${selectedUser?.username} bloqué`);
-    } catch { toast.error("Erreur"); }
+    } catch { toast.error(t("dm.err_generic")); }
   };
   const handleReport = async () => {
     const target = selectedUserId || selectedGroupId;
@@ -1440,8 +1442,8 @@ export default function MessagesPage({ user }) {
         reason: "Signalé depuis la messagerie",
       });
       setShowDetails(false);
-      toast.success("Signalement envoyé");
-    } catch { toast.error("Erreur"); }
+      toast.success(t("dm.report_sent"));
+    } catch { toast.error(t("dm.err_generic")); }
   };
 
   const getStatus = (msg) => {
@@ -1533,7 +1535,7 @@ export default function MessagesPage({ user }) {
       </button>
       {/* PC : 3 points au survol → menu (non lu / épingler / sourdine / supprimer). */}
       <button
-        title="Options"
+        title={t("dm.options")}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvMenu(lp); }}
         className="hidden lg:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
@@ -1584,7 +1586,7 @@ export default function MessagesPage({ user }) {
       </button>
       {/* PC : 3 points au survol → menu (non lu / épingler / sourdine / supprimer). */}
       <button
-        title="Options"
+        title={t("dm.options")}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvMenu(lp); }}
         className="hidden lg:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
@@ -1614,7 +1616,7 @@ export default function MessagesPage({ user }) {
           {user?.username || "Messages"}
         </h2>
         {/* Un seul bouton « Nouveau message » (façon Insta : DM ou groupe). */}
-        <button onClick={openNewMessageModal} title="Nouveau message"
+        <button onClick={openNewMessageModal} title={t("dm.new_message")}
           className="w-9 h-9 flex-shrink-0 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
           style={{ background: `${C.cyan}18`, color: C.cyan }}>
           <span className="material-symbols-outlined text-lg">edit_square</span>
@@ -1629,7 +1631,7 @@ export default function MessagesPage({ user }) {
             ref={newMsgSearchRef}
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); if (!e.target.value.trim()) setShowNewMsg(false); else setShowNewMsg(true); }}
-            placeholder="Rechercher une conversation…"
+            placeholder={t("dm.search_conv")}
             className="w-full text-sm pl-9 pr-3 py-2.5 rounded-xl border-none outline-none placeholder:text-slate-600 select-text truncate"
             style={{ background: C.high, color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
           />
@@ -1639,7 +1641,7 @@ export default function MessagesPage({ user }) {
       {/* Search results */}
       {showNewMsg && searchResults.length > 0 && (
         <div className="px-4 pb-3 space-y-1">
-          <p className="text-[9px] font-bold uppercase tracking-widest mb-2" style={{ color: C.outline }}>Utilisateurs</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest mb-2" style={{ color: C.outline }}>{t("dm.users")}</p>
           {searchResults.map(u => (
             <button key={u.id} onClick={() => { navigate(`/messages/${u.id}`); setSearchQuery(""); setShowNewMsg(false); }}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all hover:bg-white/5 text-left">
@@ -1657,7 +1659,7 @@ export default function MessagesPage({ user }) {
         <div className="px-4 pb-4 pt-1 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
           <div className="flex gap-5 items-end">
             {/* Ta note */}
-            <button onClick={openNoteComposer} className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ width: 88 }} title="Votre note">
+            <button onClick={openNoteComposer} className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ width: 88 }} title={t("dm.your_note")}>
               <div className="px-3 py-1.5 rounded-2xl text-[11px] font-medium leading-snug text-center shadow-lg"
                 style={{ maxWidth: 86, background: C.container, color: myNote ? C.onSurface : C.outline, border: `1px solid ${C.cyan}22`,
                   display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
@@ -1670,7 +1672,7 @@ export default function MessagesPage({ user }) {
                     style={{ background: C.cyan, color: C.onPrimary, border: `2px solid ${C.surface}` }}>+</div>
                 )}
               </div>
-              <span className="text-[11px] font-semibold text-center truncate" style={{ width: 82, color: C.onSurface }}>Votre note</span>
+              <span className="text-[11px] font-semibold text-center truncate" style={{ width: 82, color: C.onSurface }}>{t("dm.your_note")}</span>
             </button>
 
             {/* Notes des abonnements mutuels */}
@@ -1727,7 +1729,7 @@ export default function MessagesPage({ user }) {
         {chatItems.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
-            <p className="text-xs" style={{ color: C.outline }}>Aucune conversation</p>
+            <p className="text-xs" style={{ color: C.outline }}>{t("dm.no_conversations")}</p>
             <button onClick={openNewMessage} className="mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ background: `${C.cyan}18`, color: C.cyan }}>
               Commencer
             </button>
@@ -1769,12 +1771,12 @@ export default function MessagesPage({ user }) {
               {/* Appels audio / vidéo (conversations privées uniquement) */}
               {!isGroup && (
                 <>
-                  <button title="Appel audio"
+                  <button title={t("dm.call_audio")}
                     onClick={() => window.dispatchEvent(new CustomEvent("nexus:startcall", { detail: { userId: selectedUserId, username: currentName, profilePic: currentPic, video: false } }))}
                     className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5" style={{ color: C.outline }}>
                     <span className="material-symbols-outlined text-xl">call</span>
                   </button>
-                  <button title="Appel vidéo"
+                  <button title={t("dm.call_video")}
                     onClick={() => window.dispatchEvent(new CustomEvent("nexus:startcall", { detail: { userId: selectedUserId, username: currentName, profilePic: currentPic, video: true } }))}
                     className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5" style={{ color: C.outline }}>
                     <span className="material-symbols-outlined text-xl">videocam</span>
@@ -1782,7 +1784,7 @@ export default function MessagesPage({ user }) {
                 </>
               )}
               {/* Rechercher dans la conversation */}
-              <button onClick={() => { setShowConvSearch((v) => { if (v) setConvSearch(""); return !v; }); }} title="Rechercher"
+              <button onClick={() => { setShowConvSearch((v) => { if (v) setConvSearch(""); return !v; }); }} title={t("dm.search_title")}
                 className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5"
                 style={{ color: showConvSearch ? C.cyan : C.outline }}>
                 <Ico name="search" size={20} />
@@ -1790,7 +1792,7 @@ export default function MessagesPage({ user }) {
               {/* Bouton Détails (i) — PC uniquement. Sur mobile, on ouvre les
                   détails en tapant l'avatar/nom (l'appui long sur la liste gère
                   le reste : épingler, sourdine, non lu, supprimer). */}
-              <button onClick={() => setShowDetails((v) => !v)} title="Détails"
+              <button onClick={() => setShowDetails((v) => !v)} title={t("dm.details")}
                 className="hidden sm:flex w-9 h-9 rounded-full items-center justify-center transition-all hover:bg-white/5"
                 style={{ color: showDetails ? C.cyan : C.outline }}>
                 <Ico name="info" size={22} />
@@ -1806,7 +1808,7 @@ export default function MessagesPage({ user }) {
                 autoFocus
                 value={convSearch}
                 onChange={(e) => setConvSearch(e.target.value)}
-                placeholder="Rechercher dans la conversation..."
+                placeholder={t("dm.search_in_conv")}
                 className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600 select-text"
                 style={{ color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
               />
@@ -1850,12 +1852,12 @@ export default function MessagesPage({ user }) {
             ) : messages.length === 0 ? (
               <div className="flex flex-col justify-center items-center h-full gap-3">
                 <span className="material-symbols-outlined text-4xl" style={{ color: C.outline, opacity: 0.3 }}>forum</span>
-                <p className="text-sm" style={{ color: C.outline }}>Envoyez le premier message !</p>
+                <p className="text-sm" style={{ color: C.outline }}>{t("dm.send_first")}</p>
               </div>
             ) : (convSearchQ && displayedMessages.length === 0) ? (
               <div className="flex flex-col justify-center items-center h-full gap-3">
                 <span className="material-symbols-outlined text-4xl" style={{ color: C.outline, opacity: 0.3 }}>search_off</span>
-                <p className="text-sm" style={{ color: C.outline }}>Aucun message trouvé</p>
+                <p className="text-sm" style={{ color: C.outline }}>{t("dm.no_messages_found")}</p>
               </div>
             ) : (
               // mt-auto colle les messages EN BAS (peu de messages → collés au bas,
@@ -1965,7 +1967,7 @@ export default function MessagesPage({ user }) {
                           {/* Traduction (façon Instagram : affichée sous le texte) */}
                           {translations[msg.id] && (
                             <div className="mt-1.5 pt-1.5 text-sm" style={{ borderTop: `1px solid ${C.outlineVar}`, color: C.onSurface }}>
-                              <span className="text-[9px] font-bold uppercase tracking-widest block mb-0.5" style={{ color: C.cyan }}>Traduit</span>
+                              <span className="text-[9px] font-bold uppercase tracking-widest block mb-0.5" style={{ color: C.cyan }}>{t("dm.translated")}</span>
                               {translations[msg.id]}
                             </div>
                           )}
@@ -2031,7 +2033,7 @@ export default function MessagesPage({ user }) {
                     {/* Status + time */}
                     <div className={`flex items-center gap-1 mt-0.5 ${isOwn ? "justify-end" : "justify-start ml-9"}`}>
                       {msg.expires_at && (
-                        <span title="Message éphémère" style={{ color: C.cyan }}><Ico name="timer" size={11} /></span>
+                        <span title={t("dm.ephemeral")} style={{ color: C.cyan }}><Ico name="timer" size={11} /></span>
                       )}
                       <span className="text-[9px]" style={{ color: C.outline }}>
                         {msg.created_at ? new Date(msg.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : ""}
@@ -2061,7 +2063,7 @@ export default function MessagesPage({ user }) {
             <div className="px-4 py-2 flex items-center justify-between" style={{ background: "rgba(2,6,23,0.5)" }}>
               <div className="flex items-center gap-2 text-xs" style={{ color: C.outline }}>
                 <span className="material-symbols-outlined text-sm" style={{ color: C.cyan }}>reply</span>
-                <span>Réponse à <strong style={{ color: C.onSurface }}>{replyingTo.content?.substring(0, 40)}…</strong></span>
+                <span>{t("dm.reply_to")} <strong style={{ color: C.onSurface }}>{replyingTo.content?.substring(0, 40)}…</strong></span>
               </div>
               <button onClick={() => setReplyingTo(null)} style={{ color: C.outline }} className="hover:text-white transition-colors">
                 <span className="material-symbols-outlined text-sm">close</span>
@@ -2085,7 +2087,7 @@ export default function MessagesPage({ user }) {
                   onClick={() => setPendingImage(null)}
                   className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs"
                   style={{ background: "#ef4444", color: "#fff" }}
-                  title="Retirer"
+                  title={t("dm.remove")}
                 >
                   <span className="material-symbols-outlined text-sm">close</span>
                 </button>
@@ -2096,7 +2098,7 @@ export default function MessagesPage({ user }) {
               <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: C.container }}>
                 <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>graphic_eq</span>
                 <audio src={pendingAudio} controls style={{ height: 32, flex: 1 }} />
-                <button type="button" onClick={() => setPendingAudio(null)} title="Retirer" style={{ color: "#f87171" }}>
+                <button type="button" onClick={() => setPendingAudio(null)} title={t("dm.remove")} style={{ color: "#f87171" }}>
                   <span className="material-symbols-outlined text-sm">delete</span>
                 </button>
               </div>
@@ -2106,7 +2108,7 @@ export default function MessagesPage({ user }) {
               /* Barre d'enregistrement vocal (façon Insta : corbeille · mic rouge ·
                  chrono · onde animée · valider) */
               <div className="flex items-center gap-2.5 px-3 py-2 rounded-2xl" style={glass}>
-                <button type="button" onClick={cancelRecording} title="Supprimer"
+                <button type="button" onClick={cancelRecording} title={t("dm.delete")}
                   className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
                   style={{ color: "#f87171" }}>
                   <span className="material-symbols-outlined text-lg">delete</span>
@@ -2120,7 +2122,7 @@ export default function MessagesPage({ user }) {
                         height: `${25 + Math.abs(Math.sin(i * 1.7)) * 70}%`, animationDelay: `${(i % 6) * 110}ms` }} />
                   ))}
                 </div>
-                <button type="button" onClick={stopRecording} title="Terminer"
+                <button type="button" onClick={stopRecording} title={t("dm.finish")}
                   className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
                   style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
                   <span className="material-symbols-outlined text-lg">check</span>
@@ -2150,7 +2152,7 @@ export default function MessagesPage({ user }) {
                   disabled={compressing}
                   className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-50"
                   style={{ background: C.high, color: C.cyan }}
-                  title="Envoyer une image ou une vidéo"
+                  title={t("dm.send_img_video")}
                 >
                   <span className="material-symbols-outlined text-sm">{compressing ? "hourglass_top" : "image"}</span>
                 </button>
@@ -2160,7 +2162,7 @@ export default function MessagesPage({ user }) {
                     onClick={startRecording}
                     className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90"
                     style={{ background: C.high, color: C.cyan }}
-                    title="Message vocal"
+                    title={t("dm.voice_message")}
                   >
                     <span className="material-symbols-outlined text-sm">mic</span>
                   </button>
@@ -2168,7 +2170,7 @@ export default function MessagesPage({ user }) {
                 <input
                   value={messageContent}
                   onChange={(e) => setMessageContent(e.target.value)}
-                  placeholder="Envoyer un message..."
+                  placeholder={t("dm.send_message")}
                   className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600 select-text"
                   style={{ color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) handleSendMessage(e); }}
@@ -2177,7 +2179,7 @@ export default function MessagesPage({ user }) {
                 <div className="relative">
                   <button type="button" onClick={() => setShowPlusMenu((v) => !v)}
                     className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90"
-                    style={{ background: C.high, color: C.cyan }} title="Plus d'outils">
+                    style={{ background: C.high, color: C.cyan }} title={t("dm.more_tools")}>
                     <span className="material-symbols-outlined text-sm" style={{ transform: showPlusMenu ? "rotate(45deg)" : "none", transition: "transform 0.2s" }}>add</span>
                   </button>
                   {showPlusMenu && (
@@ -2187,7 +2189,7 @@ export default function MessagesPage({ user }) {
                         <button type="button" onClick={() => { setShowPlusMenu(false); setShowDraw(true); }}
                           className="flex items-center gap-2 px-4 py-3 w-40 text-left active:scale-[0.98]" style={{ color: C.onSurface }}>
                           <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>brush</span>
-                          <span className="text-sm font-semibold">Dessiner</span>
+                          <span className="text-sm font-semibold">{t("dm.draw")}</span>
                         </button>
                       </div>
                     </>
@@ -2230,8 +2232,8 @@ export default function MessagesPage({ user }) {
             <span className="material-symbols-outlined text-4xl" style={{ color: C.cyan, opacity: 0.6 }}>forum</span>
           </div>
           <div className="text-center">
-            <h3 className="font-black text-lg mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Centre de communication</h3>
-            <p className="text-sm" style={{ color: C.outline }}>Sélectionnez une conversation pour commencer</p>
+            <h3 className="font-black text-lg mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("dm.comm_center")}</h3>
+            <p className="text-sm" style={{ color: C.outline }}>{t("dm.select_conv")}</p>
           </div>
           <button onClick={openNewMessage} className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
@@ -2241,7 +2243,7 @@ export default function MessagesPage({ user }) {
       )}
       <DrawCanvasModal open={showDraw} onClose={() => setShowDraw(false)} onSubmit={postDrawing} />
       <ScheduleMessageModal open={showScheduleModal} onClose={() => setShowScheduleModal(false)} onConfirm={scheduleCurrentMessage} />
-      <ScheduleMessageModal open={!!rescheduleId} onClose={() => setRescheduleId(null)} onConfirm={rescheduleTo} title="Nouvelle heure" />
+      <ScheduleMessageModal open={!!rescheduleId} onClose={() => setRescheduleId(null)} onConfirm={rescheduleTo} title={t("dm.new_time")} />
       {manageSched && (
         <div className="fixed inset-0 z-[96] flex items-end sm:items-center justify-center sm:p-4"
           style={{ background: "rgba(2,6,20,0.86)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) setManageSched(false); }}>
@@ -2249,10 +2251,10 @@ export default function MessagesPage({ user }) {
             <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.22)" }} />
             <div className="flex items-center gap-2 mb-4">
               <span className="material-symbols-outlined" style={{ color: C.cyan }}>schedule</span>
-              <h3 className="text-white font-black text-lg">Messages planifiés</h3>
+              <h3 className="text-white font-black text-lg">{t("dm.scheduled_messages")}</h3>
             </div>
             {scheduledMsgs.length === 0 ? (
-              <p className="text-sm py-6 text-center" style={{ color: "#6b7686" }}>Aucun message planifié.</p>
+              <p className="text-sm py-6 text-center" style={{ color: "#6b7686" }}>{t("dm.no_scheduled")}</p>
             ) : (
               <div className="space-y-2 max-h-[52vh] overflow-y-auto no-scrollbar">
                 {scheduledMsgs.map((s) => (
@@ -2263,15 +2265,15 @@ export default function MessagesPage({ user }) {
                     </p>
                     <p className="text-[11px] mb-2" style={{ color: C.cyan }}>{new Date(s.scheduled_at).toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
                     <div className="flex gap-2">
-                      <button onClick={() => sendScheduledNow(s.id)} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#04121a" }}>Envoyer</button>
-                      <button onClick={() => { setManageSched(false); setRescheduleId(s.id); }} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "#232c40", color: "#c7d0e0" }}>Replanifier</button>
-                      <button onClick={() => deleteScheduled(s.id)} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "#3a1414", color: "#f87171" }}>Supprimer</button>
+                      <button onClick={() => sendScheduledNow(s.id)} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#04121a" }}>{t("dm.send")}</button>
+                      <button onClick={() => { setManageSched(false); setRescheduleId(s.id); }} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "#232c40", color: "#c7d0e0" }}>{t("dm.reschedule")}</button>
+                      <button onClick={() => deleteScheduled(s.id)} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "#3a1414", color: "#f87171" }}>{t("dm.delete")}</button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            <button onClick={() => setManageSched(false)} className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold" style={{ background: "#1a2234", color: "#a7b3cc" }}>Fermer</button>
+            <button onClick={() => setManageSched(false)} className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold" style={{ background: "#1a2234", color: "#a7b3cc" }}>{t("dm.close")}</button>
           </div>
         </div>
       )}
@@ -2373,7 +2375,7 @@ export default function MessagesPage({ user }) {
                 {showAddMember && groupIsAdmin && (
                   <div className="px-4 pb-2">
                     <input value={addMemberSearch} autoFocus onChange={(e) => setAddMemberSearch(e.target.value)}
-                      placeholder="Rechercher une personne..."
+                      placeholder={t("dm.search_person")}
                       className="w-full px-3 py-2 rounded-xl text-sm border-none outline-none placeholder:text-slate-600"
                       style={{ background: C.high, color: C.onSurface }} />
                     {addMemberResults.map((u) => (
@@ -2405,7 +2407,7 @@ export default function MessagesPage({ user }) {
                           style={{ color: m.is_admin ? C.cyan : C.outline }}>
                           <span className="material-symbols-outlined text-sm">shield_person</span>
                         </button>
-                        <button onClick={() => removeGroupMember(m)} title="Retirer du groupe"
+                        <button onClick={() => removeGroupMember(m)} title={t("dm.remove_from_group")}
                           className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-red-500/10"
                           style={{ color: "#f87171" }}>
                           <span className="material-symbols-outlined text-sm">person_remove</span>
@@ -2516,7 +2518,7 @@ export default function MessagesPage({ user }) {
               <button onClick={handleMarkUnread}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                 <span className="material-symbols-outlined" style={{ color: C.cyan }}>mark_chat_unread</span>
-                <span className="text-[15px]">Marquer comme non lu</span>
+                <span className="text-[15px]">{t("dm.mark_unread")}</span>
               </button>
               <button onClick={handleTogglePin}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
@@ -2572,12 +2574,12 @@ export default function MessagesPage({ user }) {
               <button onClick={() => { setReplyingTo(msgMenu); setMsgMenu(null); }}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                 <span className="material-symbols-outlined" style={{ color: C.cyan }}>reply</span>
-                <span className="text-[15px]">Répondre</span>
+                <span className="text-[15px]">{t("dm.reply")}</span>
               </button>
               <button onClick={() => { const m = msgMenu; setMsgMenu(null); setForwardMsg(m); }}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                 <span className="material-symbols-outlined" style={{ color: C.cyan }}>forward</span>
-                <span className="text-[15px]">Transférer</span>
+                <span className="text-[15px]">{t("dm.forward")}</span>
               </button>
               {!isDataImage(msgMenu.content) && (msgMenu.content || "").trim() && (
                 <>
@@ -2589,7 +2591,7 @@ export default function MessagesPage({ user }) {
                   <button onClick={() => { handleCopy(msgMenu.content); setMsgMenu(null); }}
                     className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                     <span className="material-symbols-outlined" style={{ color: C.cyan }}>content_copy</span>
-                    <span className="text-[15px]">Copier</span>
+                    <span className="text-[15px]">{t("dm.copy")}</span>
                   </button>
                 </>
               )}
@@ -2598,14 +2600,14 @@ export default function MessagesPage({ user }) {
               <button onClick={() => { handleDeleteMessage(msgMenu.id, false); setMsgMenu(null); }}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                 <span className="material-symbols-outlined" style={{ color: C.outline }}>visibility_off</span>
-                <span className="text-[15px]">Supprimer pour vous</span>
+                <span className="text-[15px]">{t("dm.delete_for_you")}</span>
               </button>
               {/* Supprimer pour tout le monde : seulement mes propres messages. */}
               {msgMenu.sender_id === user.id && (
                 <button onClick={() => { handleDeleteMessage(msgMenu.id, true); setMsgMenu(null); }}
                   className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-red-500/10 text-left" style={{ color: "#f87171" }}>
                   <span className="material-symbols-outlined">delete</span>
-                  <span className="text-[15px]">Supprimer pour tout le monde</span>
+                  <span className="text-[15px]">{t("dm.delete_for_all")}</span>
                 </button>
               )}
             </div>
@@ -2628,11 +2630,11 @@ export default function MessagesPage({ user }) {
             onClick={(e) => e.stopPropagation()}>
             <div className="pt-3 pb-2 flex flex-col items-center gap-2 flex-shrink-0">
               <div className="w-10 h-1 rounded-full" style={{ background: C.outlineVar }} />
-              <p className="text-sm font-bold" style={{ color: C.onSurface }}>Transférer à…</p>
+              <p className="text-sm font-bold" style={{ color: C.onSurface }}>{t("dm.forward_to")}</p>
             </div>
             <div className="overflow-y-auto flex-1" style={{ scrollbarWidth: "none" }}>
               {chatItems.length === 0 ? (
-                <p className="text-center text-xs py-6" style={{ color: C.outline }}>Aucune conversation</p>
+                <p className="text-center text-xs py-6" style={{ color: C.outline }}>{t("dm.no_conversations")}</p>
               ) : chatItems.map((item) => {
                 const g = item.kind === "group";
                 const name = g ? item.data.name : item.data.username;
@@ -2669,7 +2671,7 @@ export default function MessagesPage({ user }) {
             onClick={() => setLightbox(null)}
             className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center"
             style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}
-            aria-label="Fermer"
+            aria-label={t("dm.close")}
           >
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -2691,7 +2693,7 @@ export default function MessagesPage({ user }) {
             style={{ background: C.low, border: `1px solid ${C.outlineVar}` }}
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Votre note</h3>
+              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("dm.your_note")}</h3>
               <button onClick={() => setShowNoteComposer(false)} style={{ color: C.outline }} className="hover:text-white transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
@@ -2715,7 +2717,7 @@ export default function MessagesPage({ user }) {
                 maxLength={NOTE_MAX}
                 onChange={(e) => setNoteText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") saveNote(); }}
-                placeholder="Partagez une note…"
+                placeholder={t("dm.share_note")}
                 className="w-full px-4 py-3 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
                 style={{ background: C.high, color: C.onSurface }}
               />
@@ -2723,7 +2725,7 @@ export default function MessagesPage({ user }) {
                 {noteText.length}/{NOTE_MAX}
               </span>
             </div>
-            <p className="text-[10px] mt-2" style={{ color: C.outline }}>Votre note disparaît après 24 h.</p>
+            <p className="text-[10px] mt-2" style={{ color: C.outline }}>{t("dm.note_expires")}</p>
 
             <div className="flex gap-2 mt-5">
               {myNote && (
@@ -2764,7 +2766,7 @@ export default function MessagesPage({ user }) {
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-1 px-1">
               <span style={{ color: C.cyan }}><Ico name="timer" size={22} /></span>
-              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Messages éphémères</h3>
+              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("dm.ephemeral_messages")}</h3>
             </div>
             <p className="text-xs px-1 mb-4" style={{ color: C.outline }}>
               Les nouveaux messages disparaissent automatiquement après la durée choisie, des deux côtés.
@@ -2797,7 +2799,7 @@ export default function MessagesPage({ user }) {
               <button onClick={() => setShowNewMessageModal(false)} style={{ color: C.outline }} className="hover:text-white transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
-              <h3 className="font-black text-base" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Nouveau message</h3>
+              <h3 className="font-black text-base" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("dm.new_message")}</h3>
               <span className="w-6" />
             </div>
 
@@ -2806,7 +2808,7 @@ export default function MessagesPage({ user }) {
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: C.outline }}>search</span>
                 <input autoFocus value={nmSearch} onChange={(e) => setNmSearch(e.target.value)}
-                  placeholder="Rechercher..."
+                  placeholder={t("dm.search")}
                   className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border-none outline-none placeholder:text-slate-600"
                   style={{ background: C.high, color: C.onSurface }} />
               </div>
@@ -2871,15 +2873,15 @@ export default function MessagesPage({ user }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
           <div className="w-full max-w-md rounded-3xl p-6" style={{ background: C.low, border: `1px solid ${C.outlineVar}` }}>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Nouveau groupe</h3>
+              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("dm.new_group")}</h3>
               <button onClick={() => setShowNewGroup(false)} style={{ color: C.outline }} className="hover:text-white transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Nom du groupe..."
+            <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder={t("dm.group_name")}
               className="w-full mb-4 px-4 py-2.5 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
               style={{ background: C.high, color: C.onSurface }} />
-            <input value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="Rechercher des membres..."
+            <input value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder={t("dm.search_members")}
               className="w-full mb-3 px-4 py-2.5 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
               style={{ background: C.high, color: C.onSurface }} />
             {groupSearchRes.length > 0 && (
