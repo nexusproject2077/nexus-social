@@ -698,18 +698,26 @@ export default function WidgetStack({ user, setUser }) {
 
   const pageNode = (id) => {
     if (id === "football") return (
-      <div className="h-full flex flex-col px-3 py-2.5">
-        <PageHeader id="football" />
-        <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar items-center">
-          {footItems.map((m) => <MatchCard key={m.id} m={m} flash={!!flashing[`foot-${m.id}`]} {...cardProps} />)}
+      <div className="h-full flex flex-col pl-3 py-2.5">
+        <div className="pr-3"><PageHeader id="football" /></div>
+        <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar items-center" style={{ scrollSnapType: "x mandatory", paddingRight: 16 }}>
+          {footItems.map((m) => (
+            <div key={m.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
+              <MatchCard m={m} flash={!!flashing[`foot-${m.id}`]} {...cardProps} />
+            </div>
+          ))}
         </div>
       </div>
     );
     if (id === "mma") return (
-      <div className="h-full flex flex-col px-3 py-2.5">
-        <PageHeader id="mma" />
-        <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar items-center">
-          {mmaItems.map((m) => <MmaCard key={m.id} m={m} flash={!!flashing[`mma-${m.id}`]} />)}
+      <div className="h-full flex flex-col pl-3 py-2.5">
+        <div className="pr-3"><PageHeader id="mma" /></div>
+        <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar items-center" style={{ scrollSnapType: "x mandatory", paddingRight: 16 }}>
+          {mmaItems.map((m) => (
+            <div key={m.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
+              <MmaCard m={m} flash={!!flashing[`mma-${m.id}`]} />
+            </div>
+          ))}
         </div>
       </div>
     );

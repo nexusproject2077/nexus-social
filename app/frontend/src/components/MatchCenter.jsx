@@ -2,8 +2,7 @@
 // Design sombre premium, typo fine (Inter), icônes 100 % SVG (aucun emoji).
 // Événements domicile à GAUCHE de l'axe, extérieur à DROITE. Rafraîchi 60 s.
 import { useState, useEffect, useCallback } from "react";
-import axios from "axios";
-import { API } from "@/App";
+import { fetchMatchDetailsFromEspn } from "@/lib/espnClient";
 
 const NEON = "#4ade80";
 const INTER = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif";
@@ -91,8 +90,11 @@ export default function MatchCenter({ match, onClose }) {
 
   const load = useCallback(() => {
     if (!eventId || !slug) return;
-    axios.get(`${API}/livescores/match`, { params: { event: eventId, league: slug } })
-      .then((r) => setDetail(r.data || null)).catch(() => {});
+    // Résumé ESPN récupéré DIRECTEMENT dans le navigateur (l'endpoint summary est
+    // aussi bloqué depuis Cloud Run, comme les scoreboards).
+    fetchMatchDetailsFromEspn(eventId, slug)
+      .then((d) => setDetail(d || null))
+      .catch(() => {});
   }, [eventId, slug]);
 
   useEffect(() => {
