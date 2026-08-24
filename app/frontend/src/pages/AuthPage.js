@@ -3,8 +3,10 @@ import { Link } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
 import { toast } from "sonner";
+import { useGeo } from "@/context/GeoContext";
 
 export default function AuthPage({ setUser }) {
+  const geo = useGeo();
   const [isLogin, setIsLogin] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -90,7 +92,14 @@ export default function AuthPage({ setUser }) {
       toast.error("Veuillez accepter les conditions d'utilisation.");
       return;
     }
-    // Contrôle d'âge (loi française : réseaux sociaux interdits avant 15 ans).
+    // Pays en mode consultation (RU/CN) : pas de création de compte (le backend
+    // refuse de toute façon, mais on l'explique clairement avant l'envoi).
+    if (!isLogin && geo.readOnly) {
+      toast.error(geo.readOnlyMessage || "Inscription indisponible dans votre pays.");
+      return;
+    }
+    // Contrôle d'âge : le seuil dépend du pays (COPPA 13 US, RGPD 15/16 UE…).
+    // La vérification finale est faite côté serveur (source de vérité géo).
     if (!isLogin) {
       if (!formData.birthdate) {
         toast.error("Indique ta date de naissance.");
@@ -105,8 +114,9 @@ export default function AuthPage({ setUser }) {
         toast.error("Date de naissance invalide.");
         return;
       }
-      if (age < 15) {
-        toast.error("Inscription impossible : l'âge minimum est de 15 ans (loi française).");
+      const minAge = geo.minAge || 13;  // plancher permissif : le serveur tranche
+      if (age < minAge) {
+        toast.error(`Inscription impossible : l'âge minimum requis dans votre pays est de ${minAge} ans.`);
         return;
       }
     }

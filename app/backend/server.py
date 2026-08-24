@@ -1737,6 +1737,134 @@ def is_eu_request(request: Request) -> bool:
     return bool(country and country in EU_COUNTRIES)
 
 
+# ==================== CONFORMITÉ LÉGALE PAR PAYS (Geo-routing) ====================
+# Source de vérité UNIQUE, CÔTÉ SERVEUR. Le `cf.country` du front est contournable :
+# l'enforcement des règles sensibles (âge minimum, mode « lecture seule ») DOIT être
+# ici, sur le backend. Le front ne fait qu'AFFICHER la bonne UI (bannières, écrans).
+#
+# ⚠️ Ceci fournit des MÉCANISMES techniques best-effort, PAS une certification
+# juridique. Les lois de localisation des données (FZ-152 RU, PIPL CN) exigent une
+# infrastructure locale : on se contente ici de ne PAS traiter/stocker de données
+# perso dans ces pays (inscription/publication/messagerie coupées). À faire valider
+# par un juriste avant toute allégation publique de conformité.
+LEGAL_GEO_ROUTING = os.environ.get("LEGAL_GEO_ROUTING", "true").lower() == "true"
+
+# Pays « mode consultation » : navigation/lecture OK, mais écritures (inscription,
+# publication, messagerie) refusées — décision produit (coût 0, pas d'infra locale).
+READ_ONLY_COUNTRIES = {"RU", "CN"}
+
+# Groupes de pays (repris du spec des 10 blocs légaux mondiaux).
+CIS_COUNTRIES = {"RU", "BY", "KZ", "UZ", "AM", "AZ", "KG", "TJ", "TM"}
+LATAM_COUNTRIES = {"BR", "MX", "AR", "CO", "CL", "PE", "VE", "EC", "GT", "CU",
+                   "BO", "DO", "HN", "PY", "SV", "NI", "CR", "PA", "UY", "JM"}
+
+# Âge minimum d'inscription (consentement numérique) par pays. Défaut : 15.
+# Seuils INDICATIFS à confirmer juridiquement (RGPD art. 8 = 16 par défaut, abaissé
+# par transposition nationale ; COPPA US = 13).
+DIGITAL_CONSENT_AGE = {
+    "FR": 15,                                   # France
+    "DE": 16, "IE": 16, "NL": 16, "LU": 16,     # UE à 16 ans
+    # Reste de l'UE : plancher RGPD retenu à 13
+    "AT": 13, "BE": 13, "BG": 13, "CY": 13, "CZ": 13, "DK": 13, "EE": 13,
+    "ES": 13, "FI": 13, "GR": 13, "HR": 13, "HU": 13, "IT": 13, "LT": 13,
+    "LV": 13, "MT": 13, "PL": 13, "PT": 13, "RO": 13, "SE": 13, "SI": 13, "SK": 13,
+    "US": 13,   # COPPA
+    "GB": 13,   # UK (ICO Age-Appropriate Design)
+}
+
+# Style de consentement / bannière par bloc légal (piloté côté front).
+_CONSENT_STYLE = {
+    "RGPD_EUROPE": "gdpr",
+    "ONLINE_SAFETY_UK": "uk_osa",
+    "COPPA_USA": "coppa",
+    "PIPEDA_CANADA": "pipeda",
+    "KVKK_TURQUIE": "kvkk",
+    "FZ152_RUSSIE": "read_only",
+    "PIPL_CHINE": "read_only",
+    "APAC_STRICT": "appi",       # JP/KR/IN/AU : écran consentement + droits + suppression
+    "LGPD_LATAM": "lgpd",
+    "GLOBAL_STANDARD": "minimal",
+}
+
+
+def legal_block_for_country(country: Optional[str]) -> str:
+    """Bloc légal applicable (code) selon le code pays ISO 3166-1 alpha-2.
+    Reprend la cartographie des 10 blocs mondiaux du spec."""
+    c = (country or "").upper()
+    if not c:
+        return "GLOBAL_STANDARD"
+    if c in EU_COUNTRIES:
+        return "RGPD_EUROPE"
+    if c == "GB":
+        return "ONLINE_SAFETY_UK"
+    if c == "US":
+        return "COPPA_USA"
+    if c == "CA":
+        return "PIPEDA_CANADA"
+    if c == "TR":
+        return "KVKK_TURQUIE"
+    if c == "RU" or c in CIS_COUNTRIES:
+        return "FZ152_RUSSIE"
+    if c == "CN":
+        return "PIPL_CHINE"
+    if c in {"JP", "KR", "IN", "AU"}:
+        return "APAC_STRICT"
+    if c in LATAM_COUNTRIES:
+        return "LGPD_LATAM"
+    return "GLOBAL_STANDARD"
+
+
+def age_gate_for_country(country: Optional[str]) -> int:
+    """Âge minimum d'inscription pour le pays (défaut : 15)."""
+    return DIGITAL_CONSENT_AGE.get((country or "").upper(), 15)
+
+
+def legal_profile_for_country(country: Optional[str]) -> dict:
+    """Profil de conformité complet d'un pays. Consommé par le BACKEND (enforcement)
+    ET le FRONTEND (quelle UI de consentement afficher). Le reste du monde
+    (GLOBAL_STANDARD) : aucune friction."""
+    c = (country or "").upper() or None
+    block = legal_block_for_country(c)
+    is_eu = bool(c and c in EU_COUNTRIES)
+    read_only = bool(LEGAL_GEO_ROUTING and c and c in READ_ONLY_COUNTRIES)
+    ro_msg = None
+    if read_only:
+        if c == "RU":
+            ro_msg = ("Vymix est actuellement disponible en mode consultation en Russie, "
+                      "conformément à la loi FZ-152.")
+        elif c == "CN":
+            ro_msg = ("Vymix 目前在中国仅提供浏览模式，以遵守《个人信息保护法》(PIPL)。 — "
+                      "Mode consultation uniquement (PIPL).")
+        else:
+            ro_msg = "Mode consultation uniquement dans votre pays."
+    return {
+        "country": c,
+        "block": block,
+        "consent_style": _CONSENT_STYLE.get(block, "minimal"),
+        "min_age": age_gate_for_country(c),
+        "read_only": read_only,
+        "read_only_message": ro_msg,
+        "eu": is_eu,
+        # Bannière cookies : UE + UK. Écran de consentement dédié : APAC strict (APPI).
+        "cookie_banner": bool(is_eu or block == "ONLINE_SAFETY_UK"),
+        "consent_screen": block == "APAC_STRICT",
+        # Par défaut, pas de traceurs pub en UE (et coupés pour les mineurs UE au signup).
+        "ad_tracking_default": not is_eu,
+    }
+
+
+async def enforce_write_allowed(request: Request):
+    """Dépendance FastAPI : refuse toute écriture (publication, messagerie…) depuis
+    un pays en mode consultation (RU, CN). 451 = indisponible pour raison légale."""
+    if not LEGAL_GEO_ROUTING:
+        return True
+    prof = legal_profile_for_country(country_for_request(request))
+    if prof["read_only"]:
+        raise HTTPException(status_code=451,
+                            detail=prof["read_only_message"] or "Action indisponible dans votre pays.")
+    return True
+
+
 # ==================== GEO / LANGUE ====================
 # Détection de la langue à partir du pays (adresse IP) pour adapter
 # automatiquement l'interface. Les pays non listés retombent sur l'anglais.
@@ -1812,13 +1940,14 @@ async def detect_language(request: Request):
 async def geo_status(request: Request):
     """État géographique du visiteur pour adapter l'expérience.
 
-    restricted=True pour l'UE (pas de pubs / pas de tracking, bandeau RGPD
-    complet). Hors-UE : accès complet + bandeau cookies discret.
-    Best-effort : si la base GeoIP est absente, on considère non-restreint.
+    Renvoie le PROFIL DE CONFORMITÉ complet du pays (bloc légal, âge minimum,
+    style de consentement, mode lecture seule…) — le front s'en sert pour
+    afficher la bonne UI. `restricted`/`eu` conservés pour rétro-compatibilité.
+    Best-effort : si la base GeoIP est absente, profil « GLOBAL_STANDARD ».
     """
     country = country_for_request(request)
-    restricted = bool(country and country in EU_COUNTRIES)
-    return {"country": country, "restricted": restricted, "eu": restricted}
+    prof = legal_profile_for_country(country)
+    return {**prof, "restricted": prof["eu"]}
 
 
 # ==================== AUTH ROUTES ====================
@@ -1888,16 +2017,24 @@ def _mask_post_for_minor(post: dict) -> dict:
 
 
 @api_router.post("/auth/register")
-async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
+async def register(user_data: UserCreate, background_tasks: BackgroundTasks, request: Request):
     """Enregistre un nouvel utilisateur"""
-    # Contrôle d'âge OBLIGATOIRE (loi FR : réseaux sociaux interdits < 15 ans).
+    # Conformité par géographie (source de vérité serveur).
+    country = country_for_request(request)
+    legal = legal_profile_for_country(country)
+    # Pays en mode consultation (RU, CN) : pas de création de compte (FZ-152 / PIPL).
+    if legal["read_only"]:
+        raise HTTPException(status_code=451,
+                            detail=legal["read_only_message"] or "Inscription indisponible dans votre pays.")
+    # Contrôle d'âge OBLIGATOIRE, seuil selon le pays (COPPA 13 US, RGPD 15/16 UE…).
+    min_age = legal["min_age"]
     age = _compute_age(user_data.birthdate)
     if age is None:
         raise HTTPException(status_code=400, detail="Date de naissance requise (format AAAA-MM-JJ).")
-    if age < MIN_SIGNUP_AGE:
+    if age < min_age:
         raise HTTPException(
             status_code=403,
-            detail=f"Inscription refusée : l'âge minimum est de {MIN_SIGNUP_AGE} ans (loi française).",
+            detail=f"Inscription refusée : l'âge minimum requis dans votre pays est de {min_age} ans.",
         )
 
     existing_user_raw = await db.users.find_one({
@@ -1915,6 +2052,9 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
     # privé (les réglages/DM/scroll seront restreints côté serveur et client).
     is_minor = age < 18
     is_private = True if is_minor else bool(user_data.is_private)
+    # RGPD/DSA : pour un MINEUR de l'UE, on coupe le suivi publicitaire et le
+    # profilage algorithmique (le feed « Pour toi » retombe en chronologique).
+    eu_minor = bool(legal["eu"] and is_minor)
     user_to_insert = {
         "id": user_id,
         "username": user_data.username,
@@ -1938,6 +2078,12 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks):
         "is_private": is_private,
         "time_limit_enabled": True,
         "muted_words": [],
+        # Conformité par géographie (source : IP à l'inscription).
+        "signup_country": country,
+        "legal_block": legal["block"],
+        # Suivi pub / profilage algo : coupés d'office pour les mineurs de l'UE.
+        "ad_tracking": (False if eu_minor else True),
+        "algorithmic_profiling": (False if eu_minor else True),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_to_insert)
@@ -3354,7 +3500,8 @@ async def resolve_mentions(content: str, exclude_id: str = None):
 
 
 @api_router.post("/posts", response_model=Post)
-async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user)):
+async def create_post(post_data: PostCreate, current_user: dict = Depends(get_current_user),
+                      _geo: bool = Depends(enforce_write_allowed)):
     """Créer un nouveau post"""
     # Modération auto (toxicité + NSFW) : bloque le contenu interdit avant insertion.
     verdict = await screen_content(text=post_data.content, media_url=post_data.media_url)
@@ -3939,7 +4086,8 @@ async def get_post_comments(post_id: str, current_user: dict = Depends(get_curre
     return comments
 
 @api_router.post("/posts/{post_id}/comments", response_model=Comment)
-async def create_comment(post_id: str, comment_data: CommentCreate, current_user: dict = Depends(get_current_user)):
+async def create_comment(post_id: str, comment_data: CommentCreate, current_user: dict = Depends(get_current_user),
+                         _geo: bool = Depends(enforce_write_allowed)):
     """Ajoute un commentaire à un post. Un commentaire sur un repost est rattaché
     à la publication d'origine (l'engagement reste sur l'originale)."""
     post_id, post_raw = await _canonical_engagement_target(post_id)
@@ -5415,7 +5563,8 @@ def normalize_message_content(content, media_url):
 
 
 @api_router.post("/messages", response_model=Message)
-async def send_message(message_data: MessageCreate, current_user: dict = Depends(get_current_user)):
+async def send_message(message_data: MessageCreate, current_user: dict = Depends(get_current_user),
+                       _geo: bool = Depends(enforce_write_allowed)):
     """Envoie un message"""
     # Anti-spam : max 30 messages / 60 s par utilisateur
     if not rate_limit(f"msg:{current_user['id']}", max_attempts=30, window_seconds=60):
@@ -10388,6 +10537,7 @@ async def create_clip(
     caption: str = Form(""),
     eu_blocked: bool = Form(False),
     current_user: dict = Depends(get_current_user),
+    _geo: bool = Depends(enforce_write_allowed),
 ):
     """
     Créer un Clip / Reel : la vidéo uploadée est stockée comme publication vidéo,
@@ -10480,7 +10630,8 @@ _ALLOWED_CLIP_HOSTS = (
 
 
 @api_router.post("/clips/external", response_model=Post)
-async def create_clip_from_url(data: ExternalClip, current_user: dict = Depends(get_current_user)):
+async def create_clip_from_url(data: ExternalClip, current_user: dict = Depends(get_current_user),
+                               _geo: bool = Depends(enforce_write_allowed)):
     """Crée un Clip à partir d'une vidéo DÉJÀ téléversée sur Firebase Storage.
 
     L'upload passe directement du navigateur à Firebase (il ne transite pas par
@@ -10910,6 +11061,11 @@ async def for_you_feed(request: Request, limit: int = 10, skip: int = 0,
     mode = (mode or "reco").strip().lower()
     if mode not in ("chrono", "reco", "mix"):
         mode = "reco"
+
+    # RGPD/DSA : profilage algorithmique désactivé (ex. mineur de l'UE) → on force
+    # le fil chronologique, quel que soit le `mode` demandé (pas de recommandation).
+    if current_user.get("algorithmic_profiling") is False:
+        return await _foryou_chronological(request, current_user, limit, skip)
 
     # Chronologique : chemin dédié (agrégation triée par date).
     if mode == "chrono":

@@ -5,6 +5,7 @@ import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import CookieConsent from "./components/CookieConsent";
+import ComplianceGate from "./components/ComplianceGate";
 import EmailVerifyGate from "@/components/EmailVerifyGate";
 import YouthGuard from "@/components/YouthGuard";
 import { useTimeTracking } from "@/hooks/useTimeTracking";
@@ -196,6 +197,7 @@ function App() {
     <div className="App">
       <Toaster position="top-center" richColors />
       <CookieConsent />
+      <ComplianceGate />
       {/* Vérification par email obligatoire (remplace la vérification d'identité) :
           l'accès reste bloqué tant que l'adresse n'est pas confirmée. Les admins
           en sont exemptés. */}
