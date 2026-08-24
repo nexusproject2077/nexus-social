@@ -132,9 +132,9 @@ export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) 
 // Chargé une seule fois puis mis en cache mémoire.
 
 const TEAM_DIR_LEAGUES = [
+  "uefa.champions", "uefa.europa",          // Coupes d'Europe → élite de tous les pays
   "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", // top 5
-  "eng.2", "esp.2", "ita.2", "ger.2", "fra.2", // 2es divisions
-  "ned.1", "por.1", "tur.1", "sco.1", "bel.1", "gre.1", "sui.1", "aut.1", // Europe
+  "eng.2", "ned.1", "por.1", "tur.1",        // autres championnats européens
   "usa.1", "mex.1", "bra.1", "arg.1", "sau.1", // Amériques + Saudi
 ];
 
@@ -162,16 +162,55 @@ function extractTeams(data, slug) {
   return out;
 }
 
+// Équipes extraites d'un scoreboard (source PROUVÉE CORS + mêmes IDs ESPN que
+// home_id/away_id → le tri favori marche). Complète l'endpoint /teams qui, lui,
+// n'est pas toujours joignable depuis le navigateur.
+function extractTeamsFromScoreboard(data, slug) {
+  const out = [];
+  for (const ev of data?.events || []) {
+    const comp = (ev.competitions || [])[0] || {};
+    for (const c of comp.competitors || []) {
+      const t = c.team || {};
+      const id = String(t.id || "");
+      if (!id) continue;
+      out.push({
+        id,
+        name: t.displayName || t.shortDisplayName || t.name || "",
+        shortName: t.shortDisplayName || "",
+        abbrev: t.abbreviation || "",
+        logo: t.logo || t.logos?.[0]?.href || null,
+        league_slug: slug,
+      });
+    }
+  }
+  return out;
+}
+
+// Plage « saison » YYYYMMDD-YYYYMMDD (−8 mois → +2 mois) pour le scoreboard large.
+function _seasonRange() {
+  const fmt = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  const now = new Date();
+  const start = new Date(now); start.setMonth(start.getMonth() - 8);
+  const end = new Date(now); end.setMonth(end.getMonth() + 2);
+  return `${fmt(start)}-${fmt(end)}`;
+}
+
 function loadTeamDirectory() {
   if (_teamDirCache) return _teamDirCache;
   _teamDirCache = (async () => {
-    const jobs = TEAM_DIR_LEAGUES.map((slug) =>
-      fetchJson(`${SOCCER_BASE}/${slug}/teams`).then((d) => extractTeams(d, slug))
-    );
+    const range = _seasonRange();
+    const jobs = [];
+    for (const slug of TEAM_DIR_LEAGUES) {
+      // 3 sources fusionnées, par ordre de fiabilité décroissante :
+      // 1) scoreboard du jour (fiable), 2) scoreboard saison (large), 3) /teams (bonus).
+      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/scoreboard`).then((d) => extractTeamsFromScoreboard(d, slug)));
+      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/scoreboard?dates=${range}&limit=1000`).then((d) => extractTeamsFromScoreboard(d, slug)));
+      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/teams`).then((d) => extractTeams(d, slug)));
+    }
     const all = (await Promise.all(jobs)).flat();
-    // Dédoublonnage par id (une équipe peut apparaître dans plusieurs listes).
+    // Dédoublonnage par id (une équipe apparaît dans plusieurs sources/listes).
     const map = new Map();
-    for (const t of all) if (!map.has(t.id)) map.set(t.id, t);
+    for (const t of all) if (t.id && !map.has(t.id)) map.set(t.id, t);
     const list = [...map.values()];
     // Ne PAS mettre en cache un annuaire vide (échec réseau ponctuel) → on
     // pourra réessayer à la prochaine recherche.
