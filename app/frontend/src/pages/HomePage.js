@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, Fragment } from "react";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "../App";
 import Layout from "../components/Layout";
@@ -15,6 +16,7 @@ import { getTodayMinutes } from "@/lib/screenTime";
 import { toast } from "sonner";
 
 export default function HomePage({ user, setUser }) {
+  const { t } = useTranslation();
   const PAGE = 8; // petite page → premier affichage rapide (surtout médias lourds)
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -153,7 +155,7 @@ export default function HomePage({ user, setUser }) {
         }
         if (reset) {
           console.error("Erreur lors du chargement du fil:", error);
-          toast.error("Impossible de charger le fil. Réessaie dans un instant.");
+          toast.error(t("feed.err_load"));
         }
         setLoading(false);
         setLoadingMore(false);
@@ -239,7 +241,7 @@ export default function HomePage({ user, setUser }) {
             className="font-headline font-bold text-xl tracking-tight"
             style={{ color: "#dae2fd" }}
           >
-            Fil d'actualité
+            {t("feed.title")}
           </h1>
         </header>
 
@@ -258,12 +260,12 @@ export default function HomePage({ user, setUser }) {
           <div
             className="flex lg:hidden items-center gap-5 sm:gap-6 px-4 mt-3"
             role="tablist"
-            aria-label="Ordre du fil"
+            aria-label={t("feed.aria_order")}
           >
             {[
-              { key: "reco", label: "Recommandé" },
-              { key: "chrono", label: "Chronologique" },
-              { key: "mix", label: "Mix" },
+              { key: "reco", label: t("feed.mode_reco") },
+              { key: "chrono", label: t("feed.mode_chrono") },
+              { key: "mix", label: t("feed.mode_mix") },
             ].map(({ key, label }) => {
               const active = feedMode === key;
               return (
@@ -297,12 +299,12 @@ export default function HomePage({ user, setUser }) {
           className="hidden lg:flex items-center gap-8 mx-4 mt-4 border-b"
           style={{ borderColor: "rgba(255,255,255,0.06)" }}
           role="tablist"
-          aria-label="Fil"
+          aria-label={t("feed.aria_tabs")}
         >
           {[
-            { key: "foryou",    label: "Pour vous",     active: feedType === "foryou" && feedMode !== "chrono", onClick: () => { selectFeed("foryou"); selectMode("reco"); } },
-            { key: "following", label: "Abonnements",   active: feedType === "following",                        onClick: () => selectFeed("following") },
-            { key: "chrono",    label: "Chronologique", active: feedType === "foryou" && feedMode === "chrono",  onClick: () => { selectFeed("foryou"); selectMode("chrono"); } },
+            { key: "foryou",    label: t("feed.tab_foryou"),    active: feedType === "foryou" && feedMode !== "chrono", onClick: () => { selectFeed("foryou"); selectMode("reco"); } },
+            { key: "following", label: t("feed.tab_following"), active: feedType === "following",                        onClick: () => selectFeed("following") },
+            { key: "chrono",    label: t("feed.tab_chrono"),    active: feedType === "foryou" && feedMode === "chrono",  onClick: () => { selectFeed("foryou"); selectMode("chrono"); } },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -330,7 +332,7 @@ export default function HomePage({ user, setUser }) {
                   style={{ backgroundColor: "#171f33", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: "#22d3ee" }} />
                   <p className="text-sm" style={{ color: "#a9b6d9" }}>
-                    Le serveur se réveille… le fil arrive dans quelques secondes.
+                    {t("feed.server_waking")}
                   </p>
                 </div>
               )}
@@ -358,11 +360,9 @@ export default function HomePage({ user, setUser }) {
             </div>
           ) : visiblePosts.length === 0 ? (
             <div className="text-center py-12" style={{ color: "#859397" }}>
-              <p className="text-lg">Aucune publication pour le moment</p>
+              <p className="text-lg">{t("feed.empty_title")}</p>
               <p className="text-sm mt-2">
-                {feedType === "foryou"
-                  ? "Revenez bientôt : le fil « Pour toi » se remplit avec les publications populaires"
-                  : "Suivez des utilisateurs pour voir leurs publications ici"}
+                {feedType === "foryou" ? t("feed.empty_foryou") : t("feed.empty_following")}
               </p>
             </div>
           ) : (
@@ -402,17 +402,15 @@ export default function HomePage({ user, setUser }) {
                 <path d="M24 8 l3.2 8.8 L36 20 l-8.8 3.2 L24 32 l-3.2-8.8 L12 20 l8.8-3.2 Z" />
                 <path d="M37 30 l1.4 3.8 L42 35 l-3.6 1.2 L37 40 l-1.4-3.8 L32 35 l3.6-1.2 Z" />
               </svg>
-              <p className="text-white font-black text-base mt-4">Tu as fait le tour de ton réseau pour aujourd'hui&nbsp;!</p>
+              <p className="text-white font-black text-base mt-4">{t("feed.end_title")}</p>
               <p className="text-xs mt-1.5 max-w-xs" style={{ color: "#8b96a8" }}>
-                {endKind === "minor"
-                  ? "Tu as bien profité de Nexus aujourd'hui. Repose tes yeux — à demain pour du nouveau."
-                  : "Reviens plus tard pour découvrir les nouvelles publications de tes abonnements."}
+                {endKind === "minor" ? t("feed.end_minor") : t("feed.end_following")}
               </p>
               {endKind === "fresh" && !user?.is_minor && (
                 <button onClick={resumeExplore}
                   className="mt-4 px-4 py-2 rounded-full text-xs font-bold"
                   style={{ background: "#1a2234", color: "#c7d0e0", border: "1px solid rgba(255,255,255,0.1)" }}>
-                  Continuer à explorer
+                  {t("feed.resume_explore")}
                 </button>
               )}
             </div>

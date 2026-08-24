@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { toast } from "sonner";
 
 export default function CreatePostModal({ open, onClose, onPostCreated }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [content, setContent] = useState("");
   const [media, setMedia] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
@@ -43,7 +45,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     if (!file) return;
 
     if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      toast.error(`Fichier trop volumineux (max ${MAX_FILE_MB} Mo)`);
+      toast.error(t("create_post.err_file_too_big", { max: MAX_FILE_MB }));
       e.target.value = "";
       return;
     }
@@ -58,7 +60,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
       probe.onloadedmetadata = () => {
         URL.revokeObjectURL(url);
         if (probe.duration > MAX_VIDEO_SECONDS + 0.5) {
-          toast.error(`Vidéo trop longue (max ${MAX_VIDEO_SECONDS}s pour un clip)`);
+          toast.error(t("create_post.err_video_too_long", { s: MAX_VIDEO_SECONDS }));
           e.target.value = "";
           return;
         }
@@ -66,7 +68,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
       };
       probe.onerror = () => {
         URL.revokeObjectURL(url);
-        toast.error("Impossible de lire cette vidéo");
+        toast.error(t("create_post.err_video_unreadable"));
         e.target.value = "";
       };
       probe.src = url;
@@ -95,7 +97,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     // --- Story : média obligatoire, publié vers /stories (expire en 24h) ---
     if (mode === "story") {
       if (!mediaPreview) {
-        toast.error("Ajoutez une photo ou une vidéo pour votre story");
+        toast.error(t("create_post.err_story_media_required"));
         return;
       }
       setLoading(true);
@@ -104,12 +106,12 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
         form.append("media_type", mediaType);
         form.append("media_url", mediaPreview); // base64 (CAS URL du backend)
         await axios.post(`${API}/stories`, form);
-        toast.success("Story publiée (disparaît dans 24h)");
+        toast.success(t("create_post.story_published"));
         resetForm();
         onClose?.();
       } catch (error) {
         console.error("Erreur création story:", error);
-        toast.error(error.response?.data?.detail || "Erreur lors de la publication de la story");
+        toast.error(error.response?.data?.detail || t("create_post.err_story_publish"));
       } finally {
         setLoading(false);
       }
@@ -118,7 +120,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
     // --- Post / Sondage ---
     if (!content.trim()) {
-      toast.error(mode === "poll" ? "Posez une question pour votre sondage" : "Le contenu ne peut pas être vide");
+      toast.error(mode === "poll" ? t("create_post.err_poll_question") : t("create_post.err_content_empty"));
       return;
     }
 
@@ -126,7 +128,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     if (mode === "poll") {
       poll_options = pollOptions.map((o) => o.trim()).filter(Boolean);
       if (poll_options.length < 2) {
-        toast.error("Ajoutez au moins 2 options de sondage");
+        toast.error(t("create_post.err_poll_options"));
         return;
       }
     }
@@ -150,10 +152,10 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
       onPostCreated(response.data);
       resetForm();
-      toast.success(mode === "poll" ? "Sondage publié" : "Publication créée avec succès");
+      toast.success(mode === "poll" ? t("create_post.poll_published") : t("create_post.post_published"));
     } catch (error) {
       console.error("Erreur création post:", error);
-      toast.error(error.response?.data?.detail || "Erreur lors de la création de la publication");
+      toast.error(error.response?.data?.detail || t("create_post.err_post_create"));
     } finally {
       setLoading(false);
     }
@@ -171,7 +173,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
   if (!open) return null;
 
-  const title = mode === "story" ? "Créer une story" : mode === "poll" ? "Créer un sondage" : "Quoi de neuf ?";
+  const title = mode === "story" ? t("create_post.title_story") : mode === "poll" ? t("create_post.title_poll") : t("create_post.title_default");
   const canSubmit = mode === "story" ? !!mediaPreview : !!content.trim();
 
   return (
@@ -200,7 +202,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
             className="rounded-full px-5 h-9 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-900 font-bold disabled:opacity-50"
             data-testid="submit-post-button"
           >
-            {loading ? "…" : mode === "story" ? "Publier" : mode === "poll" ? "Publier" : "Publier"}
+            {loading ? "…" : t("create_post.publish")}
           </Button>
         </div>
 
@@ -208,9 +210,9 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
           {/* Mode selector : Post / Story / Sondage */}
           <div className="flex gap-2">
             {[
-              { key: "post", label: "Publication", icon: "article" },
-              { key: "story", label: "Story", icon: "auto_stories" },
-              { key: "poll", label: "Sondage", icon: "bar_chart" },
+              { key: "post", label: t("create_post.mode_post"), icon: "article" },
+              { key: "story", label: t("create_post.mode_story"), icon: "auto_stories" },
+              { key: "poll", label: t("create_post.mode_poll"), icon: "bar_chart" },
             ].map(({ key, label, icon }) => (
               <button
                 key={key}
@@ -231,13 +233,13 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
           {mode !== "story" && (
             <div>
-              <Label htmlFor="content">{mode === "poll" ? "Question" : "Contenu"}</Label>
+              <Label htmlFor="content">{mode === "poll" ? t("create_post.label_question") : t("create_post.label_content")}</Label>
               <Textarea
                 id="content"
                 data-testid="create-post-content"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder={mode === "poll" ? "Posez votre question…" : "Que voulez-vous partager?"}
+                placeholder={mode === "poll" ? t("create_post.placeholder_question") : t("create_post.placeholder_content")}
                 className="bg-slate-800 border-slate-700 text-white min-h-32"
                 rows={mode === "poll" ? 2 : 5}
               />
@@ -247,14 +249,14 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
           {/* Options de sondage */}
           {mode === "poll" && (
             <div className="space-y-2">
-              <Label>Options</Label>
+              <Label>{t("create_post.options")}</Label>
               {pollOptions.map((opt, i) => (
                 <div key={i} className="flex gap-2 items-center">
                   <Input
                     value={opt}
                     data-testid={`poll-option-input-${i}`}
                     onChange={(e) => updateOption(i, e.target.value)}
-                    placeholder={`Option ${i + 1}`}
+                    placeholder={t("create_post.option_n", { n: i + 1 })}
                     maxLength={80}
                     className="bg-slate-800 border-slate-700 text-white"
                   />
@@ -279,7 +281,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                   data-testid="add-poll-option"
                   className="text-sm font-medium text-cyan-400 hover:text-cyan-300"
                 >
-                  + Ajouter une option
+                  {t("create_post.add_option")}
                 </button>
               )}
             </div>
@@ -287,14 +289,14 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
           {mode === "story" && (
             <p className="text-sm text-slate-400">
-              Votre story sera visible 24h puis disparaîtra. Ajoutez une photo ou une vidéo ci-dessous.
+              {t("create_post.story_hint")}
             </p>
           )}
 
           {/* Lien affilié (optionnel) */}
           {mode !== "story" && (
             <div>
-              <Label htmlFor="affiliate">Lien affilié (optionnel)</Label>
+              <Label htmlFor="affiliate">{t("create_post.affiliate_label")}</Label>
               <Input
                 id="affiliate"
                 data-testid="affiliate-input"
@@ -305,7 +307,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                 className="bg-slate-800 border-slate-700 text-white"
               />
               <p className="text-xs text-slate-500 mt-1">
-                Affiche un bouton « Shop » sur votre publication (liens http/https uniquement).
+                {t("create_post.affiliate_hint")}
               </p>
             </div>
           )}
@@ -332,7 +334,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                 onClick={handleRemoveMedia}
                 className="absolute top-2 left-2 bg-slate-900/80 hover:bg-slate-800"
                 data-testid="remove-media-button"
-                title="Retirer le média"
+                title={t("create_post.remove_media")}
               >
                 <X className="w-4 h-4" />
               </Button>
@@ -352,30 +354,30 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
         >
           <Label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
             <Image className="w-5 h-5" />
-            <span className="text-[11px] font-medium">Photo</span>
+            <span className="text-[11px] font-medium">{t("create_post.tool_photo")}</span>
           </Label>
           <Label htmlFor="video-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
             <Video className="w-5 h-5" />
-            <span className="text-[11px] font-medium">Vidéo</span>
+            <span className="text-[11px] font-medium">{t("create_post.tool_video")}</span>
           </Label>
           <Label htmlFor="gif-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
             <span className="material-symbols-outlined text-[22px] leading-none">gif_box</span>
-            <span className="text-[11px] font-medium">GIF</span>
+            <span className="text-[11px] font-medium">{t("create_post.tool_gif")}</span>
           </Label>
           <button type="button" onClick={() => setMode("poll")}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "poll" ? "text-cyan-300" : "text-cyan-400"}`}>
             <span className="material-symbols-outlined text-[22px] leading-none">bar_chart</span>
-            <span className="text-[11px] font-medium">Sondage</span>
+            <span className="text-[11px] font-medium">{t("create_post.tool_poll")}</span>
           </button>
           <button type="button" onClick={() => { onClose?.(); navigate("/live"); }}
                   className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-rose-400">
             <span className="material-symbols-outlined text-[22px] leading-none">sensors</span>
-            <span className="text-[11px] font-medium">Live</span>
+            <span className="text-[11px] font-medium">{t("create_post.tool_live")}</span>
           </button>
           <button type="button" onClick={() => setMode("story")}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "story" ? "text-cyan-300" : "text-cyan-400"}`}>
             <span className="material-symbols-outlined text-[22px] leading-none">auto_stories</span>
-            <span className="text-[11px] font-medium">Story</span>
+            <span className="text-[11px] font-medium">{t("create_post.tool_story")}</span>
           </button>
         </div>
       </div>
