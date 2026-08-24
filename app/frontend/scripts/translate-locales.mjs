@@ -141,7 +141,14 @@ async function translateTree(src, existing, target, stats) {
       out[k] = existing[k]; stats.kept++;
     } else {
       try { out[k] = await translate(v, target); stats.done++; await sleep(120); }
-      catch (e) { out[k] = existing?.[k] ?? v; stats.failed++; if (stats.failed <= 3) console.warn(`  ! ${k}: ${e.message}`); }
+      catch (e) {
+        // En cas d'échec : on garde une éventuelle traduction existante, sinon on
+        // N'ÉCRIT PAS la clé (elle reste « à traduire » au prochain run ; i18next
+        // retombe sur `fallbackLng`). Surtout PAS le texte source, sinon les runs
+        // suivants la croiraient déjà traduite et la conserveraient à tort.
+        if (existing && typeof existing[k] === "string" && existing[k].trim()) out[k] = existing[k];
+        stats.failed++; if (stats.failed <= 3) console.warn(`  ! ${k}: ${e.message}`);
+      }
     }
   }
   return out;
