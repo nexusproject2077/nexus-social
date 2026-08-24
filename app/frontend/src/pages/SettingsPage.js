@@ -8,7 +8,8 @@ import Layout from '../components/Layout';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import AlgorithmTransparencyModal from '../components/AlgorithmTransparencyModal';
-import { ACCENTS, applyAccent, getAccent } from '../lib/accent';
+import { ACCENTS, PREMIUM_ACCENTS, applyAccent, getAccent } from '../lib/accent';
+import PremiumModal from '@/components/PremiumModal';
 import { enablePush, disablePush, isPushEnabled, pushReasonLabel } from '@/lib/push';
 import { isPrivacyStrict, setPrivacyStrict } from '@/lib/privacyStrict';
 
@@ -151,6 +152,7 @@ export default function SettingsPage({ user, setUser }) {
   const [showAlgoModal, setShowAlgoModal] = useState(false);
   const [accent, setAccent] = useState(getAccent());
   const [mutedInput, setMutedInput] = useState("");
+  const [premiumPitch, setPremiumPitch] = useState(null);   // texte de la modale Premium (null = fermée)
 
   // Notifications : préférences par type + état de l'abonnement push.
   const [notifTypes, setNotifTypes]       = useState([]);
@@ -1063,33 +1065,64 @@ export default function SettingsPage({ user, setUser }) {
         <CardHeader title="Couleur d'accentuation" icon="palette" />
         <div className="p-5">
           <p className="text-sm mb-4" style={{ color: C.outline }}>Choisissez la couleur principale de l'interface</p>
-          <div className="flex flex-wrap gap-3">
-            {ACCENTS.map((a) => {
-              const selected = accent.toLowerCase() === a.value.toLowerCase();
-              return (
-                <button
-                  key={a.value}
-                  title={a.name}
-                  aria-label={a.name}
-                  onClick={() => {
-                    applyAccent(a.value);
-                    setAccent(a.value);
-                    toast.success(`Couleur « ${a.name} » appliquée`);
-                    // On enregistre côté serveur pour que le choix suive
-                    // l'utilisateur sur ses autres appareils/navigateurs.
-                    axios.put(`${API}/users/me/appearance`, { accent_color: a.value }).catch(() => {});
-                  }}
-                  className="w-10 h-10 rounded-full border-2 transition-all hover:scale-110"
-                  style={{ background: a.value, borderColor: selected ? "#fff" : "transparent" }}
-                />
-              );
-            })}
-          </div>
-          <p className="text-xs mt-3" style={{ color: C.outlineVar }}>
-            La navigation, le logo et les boutons se recolorent aussitôt. Votre choix est enregistré et vous suit sur tous vos appareils et navigateurs.
-          </p>
+          {(() => {
+            const isSel = (v) => accent.toLowerCase() === v.toLowerCase();
+            const apply = (a) => {
+              applyAccent(a.value);
+              setAccent(a.value);
+              toast.success(`Couleur « ${a.name} » appliquée`);
+              // Persisté côté serveur → suit l'utilisateur sur ses autres appareils.
+              axios.put(`${API}/users/me/appearance`, { accent_color: a.value }).catch(() => {});
+            };
+            return (
+              <>
+                {/* Couleurs gratuites (unies) */}
+                <div className="flex flex-wrap gap-3">
+                  {ACCENTS.map((a) => (
+                    <button key={a.value} title={a.name} aria-label={a.name}
+                      onClick={() => apply(a)}
+                      className="w-10 h-10 rounded-full border-2 transition-all hover:scale-110"
+                      style={{ background: a.value, borderColor: isSel(a.value) ? "#fff" : "transparent" }} />
+                  ))}
+                </div>
+
+                {/* Thèmes Premium (dégradés) */}
+                <div className="flex items-center gap-2 mt-5 mb-3">
+                  <span className="material-symbols-outlined" style={{ color: "#e0a92e", fontSize: 18 }}>workspace_premium</span>
+                  <span className="text-xs font-black uppercase tracking-widest" style={{ color: "#c9b06a" }}>Thèmes de luxe · Premium</span>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {PREMIUM_ACCENTS.map((a) => {
+                    const locked = !user?.is_premium;
+                    return (
+                      <button key={a.name} title={a.name} aria-label={a.name}
+                        onClick={() => {
+                          if (locked) { setPremiumPitch(`Le thème « ${a.name} » est réservé aux abonnés.`); return; }
+                          apply(a);
+                        }}
+                        className="relative w-10 h-10 rounded-full border-2 transition-all hover:scale-110"
+                        style={{ background: a.value, borderColor: isSel(a.value) ? "#fff" : "rgba(255,255,255,0.14)" }}>
+                        {locked && (
+                          <span className="absolute inset-0 flex items-center justify-center rounded-full"
+                            style={{ background: "rgba(4,8,20,0.5)" }}>
+                            <span className="material-symbols-outlined" style={{ color: "#fff", fontSize: 16 }}>lock</span>
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="text-xs mt-3" style={{ color: C.outlineVar }}>
+                  La navigation, le logo et les boutons se recolorent aussitôt. Votre choix est enregistré et vous suit sur tous vos appareils.
+                  {!user?.is_premium && " Les dégradés de luxe nécessitent Nexus Premium."}
+                </p>
+              </>
+            );
+          })()}
         </div>
       </Card>
+      <PremiumModal open={!!premiumPitch} feature={premiumPitch} onClose={() => setPremiumPitch(null)} />
       <Card>
         <CardHeader title="Langue" icon="language" />
         <div className="p-5 flex items-center justify-between gap-4">
