@@ -40,5 +40,25 @@
   "error": "Une erreur s'est produite",
   "success": "Succès",
   "loading": "Chargement...",
-  "language": "Langue"
+  "language": "Langue",
+  "premium": {
+    "title": "Nexus Premium",
+    "tagline": "Débloquez l'expérience de luxe",
+    "perk_finance": "Widget Finance & Crypto en temps réel",
+    "perk_colors": "Couleurs exclusives (Or Impérial, Cyberpunk…)",
+    "perk_reach": "Priorité algorithmique : +20 % de visibilité",
+    "perk_badge": "Badge de certification néon près du pseudo",
+    "perk_widgets": "Widgets exclusifs (Visites, AI Analytics, Astro)",
+    "plan_annual": "Annuel",
+    "plan_monthly": "Mensuel",
+    "per_year": "/ an",
+    "per_month": "/ mois",
+    "note_annual": "≈ 2,92 €/mois · engagement 12 mois",
+    "note_monthly": "Sans engagement",
+    "save_badge": "ÉCONOMISEZ 25%",
+    "subscribe": "S'abonner · {{price}} {{per}}",
+    "redirecting": "Redirection…",
+    "later": "Plus tard",
+    "secure": "Paiement sécurisé par Stripe · résiliable à tout moment"
+  }
 }

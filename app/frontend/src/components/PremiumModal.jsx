@@ -4,28 +4,31 @@
 // paiement n'est pas configuré. Icônes 100 % SVG (aucune emoji).
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import { Crown, Check, TrendingUp, Palette, Rocket, BadgeCheck, LayoutGrid } from "lucide-react";
 
 const GOLD = "linear-gradient(135deg,#f9d976,#c8962c)";
 
-// Les 5 piliers inclus dès 3,99 €.
+// Les 5 piliers inclus dès 3,99 € (icône + clé de traduction).
 const PERKS = [
-  { icon: TrendingUp, text: "Widget Finance & Crypto en temps réel" },
-  { icon: Palette, text: "Couleurs exclusives (Or Impérial, Cyberpunk…)" },
-  { icon: Rocket, text: "Priorité algorithmique : +20 % de visibilité" },
-  { icon: BadgeCheck, text: "Badge de certification néon près du pseudo" },
-  { icon: LayoutGrid, text: "Widgets exclusifs (Visites, AI Analytics, Astro)" },
+  { icon: TrendingUp, key: "premium.perk_finance" },
+  { icon: Palette, key: "premium.perk_colors" },
+  { icon: Rocket, key: "premium.perk_reach" },
+  { icon: BadgeCheck, key: "premium.perk_badge" },
+  { icon: LayoutGrid, key: "premium.perk_widgets" },
 ];
 
+// Les prix restent des DONNÉES (mêmes montants partout) ; libellés via i18n.
 const PLANS = {
-  annual: { label: "Annuel", price: "34,99 €", per: "/ an", note: "≈ 2,92 €/mois · engagement 12 mois", save: "ÉCONOMISEZ 25%" },
-  monthly: { label: "Mensuel", price: "3,99 €", per: "/ mois", note: "Sans engagement", save: null },
+  annual: { price: "34,99 €", perKey: "premium.per_year", labelKey: "premium.plan_annual", noteKey: "premium.note_annual", saveKey: "premium.save_badge" },
+  monthly: { price: "3,99 €", perKey: "premium.per_month", labelKey: "premium.plan_monthly", noteKey: "premium.note_monthly", saveKey: null },
 };
 
 export default function PremiumModal({ open, onClose, feature }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [plan, setPlan] = useState("annual");
   const [busy, setBusy] = useState(false);
   if (!open) return null;
@@ -50,12 +53,12 @@ export default function PremiumModal({ open, onClose, feature }) {
       <button onClick={() => setPlan(id)}
         className="relative flex-1 rounded-2xl px-3 py-3 text-left transition-all active:scale-[0.98]"
         style={{ background: on ? "rgba(249,217,118,0.10)" : "#141c2e", border: `1.5px solid ${on ? "#c8962c" : "rgba(255,255,255,0.08)"}` }}>
-        {p.save && (
+        {p.saveKey && (
           <span className="absolute -top-2.5 left-3 px-2 py-0.5 rounded-full text-[9px] font-black tracking-wide"
-            style={{ background: "#4ade80", color: "#04250f", boxShadow: "0 0 10px rgba(74,222,128,0.6)" }}>{p.save}</span>
+            style={{ background: "#4ade80", color: "#04250f", boxShadow: "0 0 10px rgba(74,222,128,0.6)" }}>{t(p.saveKey)}</span>
         )}
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-black uppercase tracking-widest" style={{ color: on ? "#e8c874" : "#8b96a8" }}>{p.label}</span>
+          <span className="text-[11px] font-black uppercase tracking-widest" style={{ color: on ? "#e8c874" : "#8b96a8" }}>{t(p.labelKey)}</span>
           <span className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
             style={{ background: on ? GOLD : "transparent", border: on ? "none" : "1.5px solid #3a4759" }}>
             {on && <Check className="w-2.5 h-2.5" style={{ color: "#3a2a05" }} strokeWidth={3.5} />}
@@ -63,9 +66,9 @@ export default function PremiumModal({ open, onClose, feature }) {
         </div>
         <div className="mt-1 flex items-baseline gap-1">
           <span className="text-xl font-black text-white">{p.price}</span>
-          <span className="text-[11px]" style={{ color: "#8b96a8" }}>{p.per}</span>
+          <span className="text-[11px]" style={{ color: "#8b96a8" }}>{t(p.perKey)}</span>
         </div>
-        <p className="text-[10px] mt-0.5" style={{ color: "#6b7686" }}>{p.note}</p>
+        <p className="text-[10px] mt-0.5" style={{ color: "#6b7686" }}>{t(p.noteKey)}</p>
       </button>
     );
   };
@@ -82,8 +85,8 @@ export default function PremiumModal({ open, onClose, feature }) {
             style={{ background: GOLD, boxShadow: "0 8px 24px rgba(201,150,44,0.4)" }}>
             <Crown className="w-7 h-7" style={{ color: "#3a2a05" }} />
           </div>
-          <h3 className="text-white font-black text-xl">Nexus Premium</h3>
-          <p className="text-sm mt-1" style={{ color: "#c9b06a" }}>{feature || "Débloquez l'expérience de luxe"}</p>
+          <h3 className="text-white font-black text-xl">{t("premium.title")}</h3>
+          <p className="text-sm mt-1" style={{ color: "#c9b06a" }}>{feature || t("premium.tagline")}</p>
         </div>
 
         <div className="px-6 py-5">
@@ -95,13 +98,13 @@ export default function PremiumModal({ open, onClose, feature }) {
 
           {/* 5 piliers */}
           <ul className="space-y-2.5 mb-5">
-            {PERKS.map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-start gap-2.5">
+            {PERKS.map(({ icon: Icon, key }) => (
+              <li key={key} className="flex items-start gap-2.5">
                 <span className="mt-0.5 w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0"
                   style={{ background: "rgba(249,217,118,0.14)" }}>
                   <Icon className="w-3 h-3" style={{ color: "#e8c874" }} />
                 </span>
-                <span className="text-sm" style={{ color: "#dae2fd" }}>{text}</span>
+                <span className="text-sm" style={{ color: "#dae2fd" }}>{t(key)}</span>
               </li>
             ))}
           </ul>
@@ -109,13 +112,13 @@ export default function PremiumModal({ open, onClose, feature }) {
           <button onClick={subscribe} disabled={busy}
             className="w-full py-3 rounded-2xl font-black text-sm active:scale-[0.98] transition-transform disabled:opacity-60"
             style={{ background: GOLD, color: "#3a2a05", boxShadow: "0 8px 24px rgba(201,150,44,0.35)" }}>
-            {busy ? "Redirection…" : `S'abonner · ${PLANS[plan].price} ${PLANS[plan].per}`}
+            {busy ? t("premium.redirecting") : t("premium.subscribe", { price: PLANS[plan].price, per: t(PLANS[plan].perKey) })}
           </button>
           <button onClick={onClose} disabled={busy}
             className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60" style={{ background: "#1a2234", color: "#a7b3cc" }}>
-            Plus tard
+            {t("premium.later")}
           </button>
-          <p className="text-[10px] text-center mt-2" style={{ color: "#6b7686" }}>Paiement sécurisé par Stripe · résiliable à tout moment</p>
+          <p className="text-[10px] text-center mt-2" style={{ color: "#6b7686" }}>{t("premium.secure")}</p>
         </div>
       </div>
     </div>
