@@ -200,6 +200,14 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
   const dragRef = useRef(null);
   const removed = Object.keys(WIDGETS).filter((id) => !list.includes(id));
 
+  // Verrou du défilement de l'arrière-plan tant que la modale est ouverte
+  // (empêche le feed de bouger quand on scrolle dans la feuille).
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev || "unset"; };
+  }, []);
+
   const commit = (next) => { setList(next); onChange({ order: next }); };
 
   // Drag & Drop vertical (pointer) via la poignée.
@@ -254,8 +262,9 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
     <div className="fixed inset-0 z-[80] flex items-end justify-center"
       style={{ background: "rgba(2,6,20,0.82)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full sm:max-w-md rounded-t-3xl px-5 overflow-y-auto no-scrollbar"
-        style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "92vh", paddingTop: "calc(env(safe-area-inset-top,0px) + 2rem)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
+      <div className="w-full sm:max-w-md rounded-t-3xl px-5 overflow-y-auto overscroll-contain no-scrollbar"
+        onTouchMove={(e) => e.stopPropagation()}
+        style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "85vh", WebkitOverflowScrolling: "touch", paddingTop: "calc(env(safe-area-inset-top,0px) + 2rem)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
         <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.22)" }} />
         <h3 className="text-white font-black text-lg mb-1">Modifier la pile</h3>
         <p className="text-xs mb-4" style={{ color: "#859397" }}>Réordonne (glisse la poignée), retire (balaye vers la gauche) ou ajoute un widget.</p>
@@ -341,6 +350,12 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
 // (ligues pour le Foot, cryptos pour la Finance, ville pour la Météo).
 function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSaveFav, onSaveFinance, onSaveCity, onToggleTeam, onClose }) {
   const [busy, setBusy] = useState(false);
+  // Verrou du défilement de l'arrière-plan pendant que la feuille est ouverte.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev || "unset"; };
+  }, []);
   const [leagues, setLeagues] = useState(() => new Set(favL));                 // Foot
   const [assets, setAssets] = useState(() => (financeAssets || []).slice());   // Finance
   const [q, setQ] = useState(weatherCity?.name || "");                          // Météo
@@ -416,8 +431,9 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
     <div className="fixed inset-0 z-[80] flex items-end justify-center"
       style={{ background: "rgba(2,6,20,0.82)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full sm:max-w-md rounded-t-3xl p-5"
-        style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.08)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
+      <div className="w-full sm:max-w-md rounded-t-3xl p-5 overflow-y-auto overscroll-contain no-scrollbar"
+        onTouchMove={(e) => e.stopPropagation()}
+        style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "85vh", WebkitOverflowScrolling: "touch", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
         <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.22)" }} />
         <div className="flex items-center gap-2 mb-4">
           <span className="material-symbols-outlined" style={{ color: WIDGETS[widgetId]?.color }}>{WIDGETS[widgetId]?.icon}</span>
