@@ -61,7 +61,7 @@
     "later": "Plus tard",
     "secure": "Paiement sécurisé par Stripe · résiliable à tout moment"
   },
-  "create_post": {
+  "compose": {
     "title_story": "Créer une story",
     "title_poll": "Créer un sondage",
     "title_default": "Quoi de neuf ?",

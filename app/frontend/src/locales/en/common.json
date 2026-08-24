@@ -61,7 +61,7 @@
     "later": "Later",
     "secure": "Secure payment by Stripe · cancel anytime"
   },
-  "create_post": {
+  "compose": {
     "title_story": "Create a story",
     "title_poll": "Create a poll",
     "title_default": "What's new?",
