@@ -61,14 +61,21 @@ function eventTexts(ev) {
     case "goal":
     case "penalty_goal":
     case "own_goal": {
+      const scorer = ev.scorer || p[0] || "But";
       const tags = [ev.type === "penalty_goal" && "Pen.", ev.own_goal && "csc"].filter(Boolean).join(" · ");
-      return { title: p[0] || "But", sub: [p[1] ? `passe ${p[1]}` : "", tags].filter(Boolean).join("  ") || "But" };
+      const sub = [ev.assist ? `Passe : ${ev.assist}` : "", tags].filter(Boolean).join("  ");
+      return { title: scorer, sub: sub || "But" };
     }
-    case "yellow": return { title: p[0] || "Carton jaune", sub: "Carton jaune" };
-    case "red": return { title: p[0] || "Carton rouge", sub: "Carton rouge" };
-    case "sub": return { title: p[0] || "Entrant", sub: p[1] ? `sort ${p[1]}` : "Remplacement" };
+    case "yellow": return { title: ev.player || p[0] || "Carton jaune", sub: "Carton jaune" };
+    case "red": return { title: ev.player || p[0] || "Carton rouge", sub: "Carton rouge" };
+    case "sub": {
+      const inn = ev.playerIn, out = ev.playerOut;
+      // Sortant ⇄ Entrant sur une seule ligne (ex : « O. Dembélé ⇄ B. Barcola »).
+      if (inn && out) return { title: `${out} ⇄ ${inn}`, sub: "Remplacement" };
+      return { title: inn || out || p[0] || "Remplacement", sub: "Remplacement" };
+    }
     case "var": return { title: "VAR", sub: ev.text || "Décision VAR" };
-    case "injury": return { title: p[0] || "Blessure", sub: "Blessure" };
+    case "injury": return { title: ev.player || p[0] || "Blessure", sub: "Blessure" };
     default: return { title: p[0] || ev.text || "", sub: p[0] ? ev.text : "" };
   }
 }

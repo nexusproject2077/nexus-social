@@ -260,20 +260,49 @@ export async function fetchMatchDetailsFromEspn(eventId, slug) {
     /* header optionnel */
   }
 
+  // Nom court de préférence (« K. Mbappé »), sinon nom complet.
+  const nm = (a) => (a?.shortName || a?.displayName || "").trim();
+
   const events = [];
   for (const ev of data.keyEvents || []) {
     const typ = ev.type || {};
     const text = typ.text || typ.name || "";
     const teamId = String(ev.team?.id || "");
-    const players = (ev.athletesInvolved || [])
-      .map((a) => (a?.displayName || a?.shortName || "").trim())
-      .filter(Boolean);
+    const kind = mapEventType(text, ev);
+
+    // Athlètes impliqués : `participants` porte le RÔLE (buteur, passeur,
+    // entrant, sortant), `athletesInvolved` est le repli.
+    const parts = (ev.participants || [])
+      .map((p) => ({ name: nm(p.athlete || p), role: String(p.type || p.role || "").toLowerCase() }))
+      .filter((p) => p.name);
+    const involved = (ev.athletesInvolved || []).map((a) => nm(a)).filter(Boolean);
+    const players = parts.length ? parts.map((p) => p.name) : involved;
+    const byRole = (...keys) => (parts.find((p) => keys.some((k) => p.role.includes(k))) || {}).name || null;
+
+    let scorer = null, assist = null, playerIn = null, playerOut = null, player = null;
+    if (kind === "goal" || kind === "penalty_goal" || kind === "own_goal") {
+      scorer = byRole("scor", "goal") || players[0] || null;
+      assist = byRole("assist") || (players[1] && players[1] !== scorer ? players[1] : null);
+    } else if (kind === "sub") {
+      playerIn = byRole("subbed-in", "sub-in", "sub in", "playerin", "enter", "in");
+      playerOut = byRole("subbed-out", "sub-out", "sub out", "playerout", "exit", "out");
+      // Repli si aucun rôle : ordre ESPN habituel = [entrant, sortant].
+      if (!playerIn && !playerOut) { playerIn = players[0] || null; playerOut = players[1] || null; }
+      else {
+        if (!playerIn) playerIn = players.find((n) => n !== playerOut) || null;
+        if (!playerOut) playerOut = players.find((n) => n !== playerIn) || null;
+      }
+    } else {
+      player = players[0] || null; // cartons, blessures…
+    }
+
     events.push({
       minute: ev.clock?.displayValue || "",
-      type: mapEventType(text, ev),
+      type: kind,
       side: sideMap[teamId],
       text,
       players,
+      scorer, assist, playerIn, playerOut, player,
       penalty: !!ev.penaltyKick,
       own_goal: !!ev.ownGoal,
     });
