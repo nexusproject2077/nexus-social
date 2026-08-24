@@ -546,12 +546,35 @@ def decrypt_message(value):
 # ==================== PAIEMENTS (Stripe) ====================
 # Abonnements via Stripe Checkout. Désactivé proprement si les clés sont
 # absentes : les endpoints renvoient 503 et rien n'est facturé.
-STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
-STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID", "")  # prix d'abonnement (repli / mensuel)
+def _clean_secret(raw: str) -> str:
+    """Nettoie une clé/identifiant Stripe lu depuis l'environnement.
+
+    Un copier-coller « enrichi » (mail, PDF, doc stylé) injecte parfois des
+    caractères Unicode invisibles ou typographiques (apostrophe courbe, espace
+    insécable, zéro-largeur…). Le SDK Stripe met la clé dans l'en-tête HTTP
+    `Authorization`, encodé en latin-1 par `requests` → un tel caractère fait
+    planter TOUT appel Stripe avec « 'latin-1' codec can't encode… ordinal not
+    in range(256) ». On ne garde donc que le 1er jeton et ses octets ASCII
+    imprimables (les clés Stripe sont [A-Za-z0-9_] : rien de légitime n'est
+    perdu). Corrige aussi une clé collée par erreur avec un secret à la suite.
+    """
+    v = (raw or "").strip()
+    parts = v.split()
+    if parts:
+        v = parts[0]
+    return "".join(ch for ch in v if 33 <= ord(ch) <= 126)
+
+
+STRIPE_SECRET_KEY = _clean_secret(os.environ.get("STRIPE_SECRET_KEY", ""))
+STRIPE_WEBHOOK_SECRET = _clean_secret(os.environ.get("STRIPE_WEBHOOK_SECRET", ""))
+STRIPE_PRICE_ID = _clean_secret(os.environ.get("STRIPE_PRICE_ID", ""))  # prix d'abonnement (repli / mensuel)
 # Deux offres Premium : Mensuel 3,99 €/mois et Annuel 34,99 €/an (−25 %).
-STRIPE_PRICE_ID_MONTHLY = os.environ.get("STRIPE_PRICE_ID_MONTHLY", "") or STRIPE_PRICE_ID
-STRIPE_PRICE_ID_ANNUAL = os.environ.get("STRIPE_PRICE_ID_ANNUAL", "")
+STRIPE_PRICE_ID_MONTHLY = _clean_secret(os.environ.get("STRIPE_PRICE_ID_MONTHLY", "")) or STRIPE_PRICE_ID
+STRIPE_PRICE_ID_ANNUAL = _clean_secret(os.environ.get("STRIPE_PRICE_ID_ANNUAL", ""))
+# Diagnostic : signale (sans révéler la clé) si un nettoyage a été nécessaire.
+if os.environ.get("STRIPE_SECRET_KEY", "") and os.environ.get("STRIPE_SECRET_KEY", "").strip() != STRIPE_SECRET_KEY:
+    print("🧹 Stripe: STRIPE_SECRET_KEY contenait des caractères parasites (nettoyés) — "
+          "vérifiez le copier-coller de la clé dans Cloud Run.")
 # URL du front (redirections Stripe/PayPal succès·annulation, liens Connect,
 # retours OAuth…). Défaut = le front Cloudflare actuel (l'ancienne URL Render
 # était morte depuis la migration). Surchargeable via la variable FRONTEND_URL.
@@ -564,13 +587,15 @@ except ValueError:
 STRIPE_ENABLED = bool(stripe and STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
 if STRIPE_ENABLED:
     stripe.api_key = STRIPE_SECRET_KEY
-    # Force le client HTTP `requests` (CA certifi embarqué) au lieu du repli
-    # urllib qui, sur l'image slim, échouait la vérification TLS vers Stripe.
+    # Force explicitement le client HTTP `requests` (CA `certifi` embarqué,
+    # gestion propre des en-têtes). `requests` est déjà dans requirements donc
+    # Stripe le choisit automatiquement — ce forçage n'est qu'une assurance.
+    # NB (v12+) : le module est `stripe._http_client`, pas `stripe.http_client`.
     try:
-        import stripe.http_client as _stripe_http
+        from stripe import _http_client as _stripe_http
         stripe.default_http_client = _stripe_http.RequestsClient()
-    except Exception as _e:
-        print(f"ℹ️ Stripe: client requests non forcé ({_e})")
+    except Exception:
+        pass  # le choix automatique de Stripe reste valable
     print("✅ Stripe activé (abonnements)")
 elif stripe is None:
     print("ℹ️ Stripe indisponible (SDK non installé) — abonnements désactivés")
