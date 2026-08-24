@@ -84,8 +84,13 @@ async function translateLibre(text, target) {
 async function translateDeepl(text, target) {
   const key = process.env.DEEPL_API_KEY;
   const host = key?.endsWith(":fx") ? "https://api-free.deepl.com" : "https://api.deepl.com";
-  const params = new URLSearchParams({ auth_key: key, text, source_lang: SOURCE_LANG.toUpperCase(), target_lang: target.toUpperCase() });
-  const r = await fetch(`${host}/v2/translate`, { method: "POST", body: params });
+  // La clé passe par l'en-tête Authorization (l'ancien paramètre auth_key est rejeté : 403).
+  const params = new URLSearchParams({ text, source_lang: SOURCE_LANG.toUpperCase(), target_lang: target.toUpperCase() });
+  const r = await fetch(`${host}/v2/translate`, {
+    method: "POST",
+    headers: { "Authorization": `DeepL-Auth-Key ${key}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  });
   if (!r.ok) throw new Error(`DeepL ${r.status}: ${await r.text()}`);
   return (await r.json()).translations[0].text;
 }
