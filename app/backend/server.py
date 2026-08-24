@@ -3962,7 +3962,21 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
     
     user = convert_mongo_doc_to_dict(user_raw)
     is_following = await check_is_following(current_user["id"], user_id)
-    
+
+    # Visite de profil (widget Premium « Visites du profil ») : on note QUI a vu
+    # QUEL profil, dédoublonné par jour, jamais pour ses propres visites.
+    if current_user["id"] != user_id:
+        try:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            await db.profile_views.update_one(
+                {"profile_id": user_id, "viewer_id": current_user["id"], "day": today},
+                {"$set": {"ts": datetime.now(timezone.utc).isoformat()},
+                 "$setOnInsert": {"profile_id": user_id, "viewer_id": current_user["id"], "day": today}},
+                upsert=True,
+            )
+        except Exception as e:
+            logger.warning(f"profile_views: enregistrement échoué ({e})")
+
     return UserProfile(
         id=user["id"],
         username=user["username"],
@@ -3980,6 +3994,42 @@ async def get_user_profile(user_id: str, current_user: dict = Depends(get_curren
         crypto_wallet=user.get("crypto_wallet"),
         created_at=user["created_at"]
     )
+
+@api_router.get("/users/me/profile-views")
+async def my_profile_views(current_user: dict = Depends(get_current_user)):
+    """Widget Premium « Visites du profil » : nombre total de visiteurs uniques
+    (30 j) + aperçu des plus récents. Les avatars ne sont renvoyés qu'aux abonnés
+    Premium (paywall : côté gratuit, le front floute et propose l'abonnement)."""
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    rows = await db.profile_views.find(
+        {"profile_id": current_user["id"], "ts": {"$gte": since}}
+    ).sort("ts", -1).to_list(length=500)
+    # Visiteurs uniques (le plus récent d'abord).
+    seen, ordered = set(), []
+    for r in rows:
+        vid = r.get("viewer_id")
+        if vid and vid not in seen:
+            seen.add(vid)
+            ordered.append(vid)
+    total = len(ordered)
+    is_premium = bool(current_user.get("is_premium"))
+    visitors = []
+    if is_premium and ordered:
+        top = ordered[:12]
+        users = await db.users.find(
+            {"id": {"$in": top}}, {"id": 1, "username": 1, "profile_pic": 1, "is_verified": 1, "is_premium": 1}
+        ).to_list(length=len(top))
+        by_id = {u["id"]: u for u in users}
+        for vid in top:
+            u = by_id.get(vid)
+            if u:
+                visitors.append({
+                    "id": u["id"], "username": u.get("username"),
+                    "profile_pic": u.get("profile_pic"),
+                    "is_verified": bool(u.get("is_verified")), "is_premium": bool(u.get("is_premium")),
+                })
+    return {"count": total, "is_premium": is_premium, "visitors": visitors}
+
 
 @api_router.get("/users/{user_id}/posts")
 async def get_user_posts(user_id: str, request: Request, current_user: dict = Depends(get_current_user)):
@@ -8592,7 +8642,8 @@ async def finance(ids: str = "", current_user: dict = Depends(get_current_user))
     return {"assets": data, "catalog": FINANCE_ASSETS}
 
 
-WIDGET_STACK_IDS = ["trends", "screentime", "weather", "finance", "football", "mma"]
+WIDGET_STACK_IDS = ["trends", "screentime", "weather", "finance", "football", "mma",
+                    "profile_views", "ai_analytics", "astro_lifestyle"]
 
 
 def _widget_stack_of(user: dict) -> dict:

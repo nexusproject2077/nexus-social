@@ -12,6 +12,7 @@ import { MatchCard, MmaCard, displayMatches } from "@/components/LiveScores";
 import { getTodayMinutes } from "@/lib/screenTime";
 import { fetchLiveScoresFromEspn, searchTeamsFromEspn, resolveTeamIdByName } from "@/lib/espnClient";
 import Flag from "@/components/Flags";
+import PremiumModal from "@/components/PremiumModal";
 
 const NEON = "#4ade80";
 const STACK_H = 150;
@@ -23,8 +24,28 @@ const WIDGETS = {
   weather: { label: "Météo", icon: "partly_cloudy_day", color: "#fbbf24" },
   finance: { label: "Finance", icon: "monitoring", color: "#a78bfa" },
   screentime: { label: "Temps d'écran", icon: "hourglass_top", color: "#34d399" },
+  // Widgets exclusifs Premium (affichés en teaser verrouillé aux non-abonnés).
+  profile_views: { label: "Visites du profil", icon: "visibility", color: "#f472b6", premium: true },
+  ai_analytics: { label: "AI Analytics", icon: "auto_graph", color: "#22d3ee", premium: true },
+  astro_lifestyle: { label: "Astro Néon", icon: "auto_awesome", color: "#a78bfa", premium: true },
 };
-const DEFAULT_ORDER = ["trends", "screentime", "weather", "finance", "football", "mma"];
+const DEFAULT_ORDER = ["trends", "screentime", "weather", "finance", "football", "mma",
+  "profile_views", "ai_analytics", "astro_lifestyle"];
+
+// Signes astro (widget Astro Néon).
+const ASTRO_SIGNS = [
+  { key: "belier", label: "Bélier" }, { key: "taureau", label: "Taureau" }, { key: "gemeaux", label: "Gémeaux" },
+  { key: "cancer", label: "Cancer" }, { key: "lion", label: "Lion" }, { key: "vierge", label: "Vierge" },
+  { key: "balance", label: "Balance" }, { key: "scorpion", label: "Scorpion" }, { key: "sagittaire", label: "Sagittaire" },
+  { key: "capricorne", label: "Capricorne" }, { key: "verseau", label: "Verseau" }, { key: "poissons", label: "Poissons" },
+];
+// Score quotidien DÉTERMINISTE (même valeur toute la journée pour un signe donné).
+function astroScore(signKey, metric) {
+  const seed = `${signKey}|${metric}|${new Date().toISOString().slice(0, 10)}`;
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return 55 + (h % 46); // 55–100 : toujours encourageant
+}
 
 // Catalogue crypto (aligné sur le backend) : id CoinGecko → ticker + nom.
 const FINANCE_CATALOG = {
@@ -619,6 +640,11 @@ export default function WidgetStack({ user, setUser }) {
   const [active, setActive] = useState(0);
   const [editing, setEditing] = useState(false);
   const [configWidget, setConfigWidget] = useState(null);  // id du widget en cours de personnalisation
+  const [profileViews, setProfileViews] = useState(null);  // { count, visitors } — widget Premium
+  const [analytics, setAnalytics] = useState(null);        // { stats, trend } — widget Premium
+  const [astroSign, setAstroSign] = useState(() => { try { return localStorage.getItem("nexus_astro_sign") || ""; } catch { return ""; } });
+  const [premiumPitch, setPremiumPitch] = useState(null);  // texte de la modale de vente (null = fermée)
+  const isPremium = !!user?.is_premium;
 
   const sigRef = useRef({});
   const hasLiveRef = useRef(false);
@@ -705,6 +731,29 @@ export default function WidgetStack({ user, setUser }) {
     return () => clearInterval(iv);
   }, []);
 
+  // Visites du profil (widget Premium) : nombre + visiteurs (avatars réservés aux abonnés).
+  const wantViews = configOrder.includes("profile_views");
+  useEffect(() => {
+    if (!wantViews) return;
+    let alive = true;
+    axios.get(`${API}/users/me/profile-views`)
+      .then((r) => { if (alive) setProfileViews(r.data || { count: 0, visitors: [] }); })
+      .catch(() => { if (alive) setProfileViews({ count: 0, visitors: [] }); });
+    return () => { alive = false; };
+  }, [wantViews]);
+
+  // AI Analytics (widget Premium) : stats + tendance des likes (14 j).
+  const wantAnalytics = configOrder.includes("ai_analytics");
+  useEffect(() => {
+    if (!wantAnalytics) return;
+    let alive = true;
+    Promise.all([
+      axios.get(`${API}/analytics/me/stats`).then((r) => r.data).catch(() => null),
+      axios.get(`${API}/analytics/me/trends`, { params: { days: 14 } }).then((r) => r.data).catch(() => null),
+    ]).then(([stats, trend]) => { if (alive) setAnalytics({ stats, trend: Array.isArray(trend) ? trend : [] }); });
+    return () => { alive = false; };
+  }, [wantAnalytics]);
+
   const toggleFav = (kind, id) => {
     if (!id) return;
     const setFav = kind === "league" ? setFavL : setFavT;
@@ -748,7 +797,9 @@ export default function WidgetStack({ user, setUser }) {
   const startsWithin2h = (m) => { const t = new Date(m.date).getTime(); return Number.isFinite(t) && (t - Date.now()) <= 2 * 3600 * 1000 && (t - Date.now()) >= -15 * 60 * 1000; };
   const imminentFavPre = footItems.some((m) => m.state === "pre" && isFavOrL1(m) && startsWithin2h(m));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
-  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true };
+  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true,
+    // Widgets Premium : toujours affichés (verrouillés = teaser d'abonnement).
+    profile_views: true, ai_analytics: true, astro_lifestyle: true };
   const pages = configOrder.filter((id) => avail[id]);
 
   // Rotation intelligente.
@@ -1002,6 +1053,168 @@ export default function WidgetStack({ user, setUser }) {
         )}
       </div>
     );
+
+    // ───────────────────── Widgets Premium (teaser verrouillé si gratuit) ────────
+    // Bandeau « Débloquer » réutilisé par les widgets premium côté gratuit.
+    const unlockCTA = (pitch) => (
+      <button onClick={() => setPremiumPitch(pitch)}
+        className="inline-flex items-center gap-1 mt-1.5 text-[11px] font-black px-2.5 py-1 rounded-full active:scale-95 transition-transform"
+        style={{ background: "linear-gradient(135deg,#f9d976,#c8962c)", color: "#3a2a05" }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 13 }}>lock_open</span>Débloquer avec Premium
+      </button>
+    );
+
+    if (id === "profile_views") {
+      const count = profileViews?.count ?? 0;
+      const visitors = profileViews?.visitors || [];
+      return (
+        <div className="h-full flex flex-col px-4 py-2.5">
+          <PageHeader id="profile_views" />
+          <div className="flex-1 flex flex-col justify-center">
+            {isPremium ? (
+              <>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="font-extralight leading-none text-white" style={{ fontSize: 34, textShadow: "0 0 14px rgba(244,114,182,0.3)" }}>{count}</span>
+                  <span className="text-[12px]" style={{ color: "#8b96a8" }}>visites · 30 j</span>
+                </div>
+                <div className="flex items-center mt-2.5">
+                  {visitors.length ? visitors.slice(0, 8).map((v, i) => (
+                    v.profile_pic
+                      ? <img key={v.id} src={v.profile_pic} alt="" className="w-7 h-7 rounded-full object-cover -ml-2 first:ml-0" style={{ border: "2px solid #0d1424", zIndex: 20 - i }} loading="lazy" />
+                      : <span key={v.id} className="w-7 h-7 rounded-full -ml-2 first:ml-0 flex items-center justify-center text-[10px] font-bold text-white" style={{ background: "#334155", border: "2px solid #0d1424", zIndex: 20 - i }}>{(v.username || "?").slice(0, 1).toUpperCase()}</span>
+                  )) : <span className="text-[11px]" style={{ color: "#6b7686" }}>Aucune visite récente pour l'instant.</span>}
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center flex-shrink-0" style={{ filter: "blur(5px)" }} aria-hidden>
+                  {[0, 1, 2, 3].map((i) => (
+                    <span key={i} className="w-9 h-9 rounded-full -ml-2.5 first:ml-0" style={{ background: "linear-gradient(135deg,#f472b6,#a78bfa)", border: "2px solid #0d1424" }} />
+                  ))}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-white flex items-center gap-1">
+                    <span className="material-symbols-outlined" style={{ fontSize: 15, color: "#f472b6" }}>lock</span>
+                    {count} personne{count > 1 ? "s" : ""} ont vu votre profil
+                  </p>
+                  {unlockCTA("Voyez qui visite votre profil avec Nexus Premium.")}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (id === "ai_analytics") {
+      const stats = analytics?.stats;
+      const trend = analytics?.trend || [];
+      const likes = trend.map((d) => d.likes || 0);
+      const maxL = Math.max(1, ...likes);
+      const half = Math.ceil(likes.length / 2) || 1;
+      const recent = likes.slice(-half).reduce((a, b) => a + b, 0);
+      const prev = likes.slice(0, half).reduce((a, b) => a + b, 0);
+      const up = recent >= prev;
+      const reco = !likes.length ? "Publiez pour lancer votre croissance."
+        : up ? "Tendance en hausse : gardez ce rythme de publication."
+          : "Engagement en baisse : postez à vos heures de pointe.";
+      const pts = likes.length > 1
+        ? likes.map((v, i) => `${(i / (likes.length - 1)) * 100},${28 - (v / maxL) * 24}`).join(" ")
+        : "0,16 100,16";
+      const chart = (
+        <svg viewBox="0 0 100 28" preserveAspectRatio="none" className="w-full" style={{ height: 34 }}>
+          <polyline points={pts} fill="none" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ filter: "drop-shadow(0 0 4px rgba(34,211,238,0.5))" }} />
+        </svg>
+      );
+      return (
+        <div className="h-full flex flex-col px-4 py-2.5">
+          <PageHeader id="ai_analytics" />
+          <div className="flex-1 flex flex-col justify-center">
+            {isPremium ? (
+              <>
+                <div className="flex items-center gap-4 mb-1">
+                  <div><span className="text-lg font-black text-white tabular-nums">{stats?.total_views ?? "—"}</span><span className="text-[10px] ml-1" style={{ color: "#8b96a8" }}>vues</span></div>
+                  <div><span className="text-lg font-black text-white tabular-nums">{stats?.total_likes ?? "—"}</span><span className="text-[10px] ml-1" style={{ color: "#8b96a8" }}>likes</span></div>
+                  <span className="ml-auto text-[11px] font-bold" style={{ color: up ? NEON : "#f87171" }}>{up ? "▲" : "▼"}</span>
+                </div>
+                {chart}
+                <p className="text-[11px] mt-1 flex items-start gap-1" style={{ color: "#a5b4fc" }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 13 }}>auto_awesome</span>{reco}
+                </p>
+              </>
+            ) : (
+              <div>
+                <div style={{ filter: "blur(4px)" }} aria-hidden>{chart}</div>
+                <p className="text-sm font-bold text-white flex items-center gap-1 mt-1">
+                  <span className="material-symbols-outlined" style={{ fontSize: 15, color: "#22d3ee" }}>lock</span>
+                  Analyse de croissance par Nexus AI
+                </p>
+                {unlockCTA("Suivez vos performances et vos conseils IA avec Premium.")}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (id === "astro_lifestyle") {
+      const metrics = [
+        { key: "amour", label: "Amour", color: "#ec4899" },
+        { key: "chance", label: "Chance", color: "#fbbf24" },
+        { key: "energie", label: "Énergie", color: NEON },
+      ];
+      return (
+        <div className="h-full flex flex-col px-4 py-2.5">
+          <PageHeader id="astro_lifestyle" />
+          {!isPremium ? (
+            <div className="flex-1 flex items-center gap-3">
+              <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 40, color: "#a78bfa", filter: "blur(0.5px)" }}>auto_awesome</span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white flex items-center gap-1">
+                  <span className="material-symbols-outlined" style={{ fontSize: 15, color: "#a78bfa" }}>lock</span>Astro Néon
+                </p>
+                <p className="text-[11px]" style={{ color: "#8b96a8" }}>Horoscope quotidien exclusif.</p>
+                {unlockCTA("Astro Néon est réservé aux abonnés Premium.")}
+              </div>
+            </div>
+          ) : !astroSign ? (
+            <div className="flex-1 overflow-y-auto no-scrollbar">
+              <p className="text-[11px] mb-1.5" style={{ color: "#8b96a8" }}>Choisis ton signe :</p>
+              <div className="flex flex-wrap gap-1.5">
+                {ASTRO_SIGNS.map((s) => (
+                  <button key={s.key} onClick={() => { setAstroSign(s.key); try { localStorage.setItem("nexus_astro_sign", s.key); } catch { /* ignore */ } }}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ background: "#1a2234", color: "#c4b5fd", border: "1px solid rgba(167,139,250,0.3)" }}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col justify-center gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-black" style={{ color: "#c4b5fd" }}>{ASTRO_SIGNS.find((s) => s.key === astroSign)?.label}</span>
+                <button onClick={() => { setAstroSign(""); try { localStorage.removeItem("nexus_astro_sign"); } catch { /* ignore */ } }}
+                  className="text-[10px] font-bold" style={{ color: "#6b7686" }}>changer</button>
+              </div>
+              {metrics.map((m) => {
+                const v = astroScore(astroSign, m.key);
+                return (
+                  <div key={m.key} className="flex items-center gap-2">
+                    <span className="text-[11px] w-12 flex-shrink-0" style={{ color: "#9fb0c8" }}>{m.label}</span>
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#1a2234" }}>
+                      <div className="h-full rounded-full" style={{ width: `${v}%`, background: m.color, boxShadow: `0 0 8px ${m.color}` }} />
+                    </div>
+                    <span className="text-[11px] font-bold tabular-nums w-7 text-right" style={{ color: m.color }}>{v}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="h-full flex flex-col px-4 py-2.5">
         <PageHeader id="trends" />
@@ -1056,6 +1269,7 @@ export default function WidgetStack({ user, setUser }) {
           onClose={() => setConfigWidget(null)}
         />
       )}
+      <PremiumModal open={!!premiumPitch} feature={premiumPitch} onClose={() => setPremiumPitch(null)} />
     </div>
   );
 }
