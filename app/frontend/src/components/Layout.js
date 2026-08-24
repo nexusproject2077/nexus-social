@@ -252,7 +252,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
     { icon: "notifications",  label: t("notifications"), path: "/notifications",        testId: "nav-notifications" },
     { icon: "mail",           label: t("messages"),      path: "/messages",             testId: "nav-messages" },
     { icon: "account_circle", label: t("profile"),       path: `/profil/${user.id}`,    testId: "nav-profile" },
-    { icon: "bookmark",       label: "Enregistrés",      path: "/enregistres",          testId: "nav-saved" },
+    { icon: "bookmark",       label: t("nav.saved"),      path: "/enregistres",          testId: "nav-saved" },
     { icon: "workspace_premium", label: "Premium",       path: "/premium",              testId: "nav-premium" },
     { icon: "settings",       label: t("settings.title"),      path: "/settings",             testId: "nav-settings" },
   ];
@@ -417,14 +417,14 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
 
           <footer className="mt-auto pt-8">
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-medium" style={{ color: "#3c494c" }}>
-              <Link to="/a-propos" className="hover:text-slate-400">À propos</Link>
-              <Link to="/comment-ca-marche" className="hover:text-slate-400">Comment ça marche</Link>
-              <Link to="/guides" className="hover:text-slate-400">Guides</Link>
-              <Link to="/faq" className="hover:text-slate-400">FAQ</Link>
-              <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">Conditions</a>
-              <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">Confidentialité</a>
-              <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">Cookies</a>
-              <span>© 2026 Nexus Social</span>
+              <Link to="/a-propos" className="hover:text-slate-400">{t("nav.about")}</Link>
+              <Link to="/comment-ca-marche" className="hover:text-slate-400">{t("nav.how")}</Link>
+              <Link to="/guides" className="hover:text-slate-400">{t("nav.guides")}</Link>
+              <Link to="/faq" className="hover:text-slate-400">{t("nav.faq")}</Link>
+              <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">{t("nav.terms")}</a>
+              <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">{t("nav.privacy")}</a>
+              <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">{t("nav.cookies")}</a>
+              <span>{t("nav.copyright")}</span>
             </div>
           </footer>
         </aside>
@@ -459,8 +459,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         {(location.pathname === "/feed" || location.pathname === "/") && (
           <div className="flex items-center justify-center gap-8 pb-2">
             {[
-              { key: "foryou", label: "Pour vous" },
-              { key: "following", label: "Abonnements" },
+              { key: "foryou", label: t("feed.tab_foryou") },
+              { key: "following", label: t("feed.tab_following") },
             ].map(({ key, label }) => {
               const active = feedTab === key;
               return (

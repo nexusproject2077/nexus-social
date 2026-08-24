@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
@@ -37,6 +38,7 @@ const fmtRel = (d) => { try { return formatDistanceToNow(new Date(d), { addSuffi
 
 // Un commentaire de clip : like, réponses, et suppression par son auteur.
 function CommentItem({ comment, currentUser, onDeleted }) {
+  const { t } = useTranslation();
   const [liked, setLiked]   = useState(comment.is_liked || false);
   const [likes, setLikes]   = useState(comment.likes_count || 0);
   const [repCount, setRepCount] = useState(comment.replies_count || 0);
@@ -77,7 +79,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
       setRepCount((n) => n + 1);
       setReplyText("");
       setShowReplies(true);
-    } catch { toast.error("Erreur"); }
+    } catch { toast.error(t("clips.err_generic")); }
   };
 
   const deleteReply = async (rid) => {
@@ -85,7 +87,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
       await axios.delete(`${API}/comments/${comment.id}/replies/${rid}`);
       setReplies((prev) => prev.filter((x) => x.id !== rid));
       setRepCount((n) => Math.max(0, n - 1));
-    } catch { toast.error("Erreur"); }
+    } catch { toast.error(t("clips.err_generic")); }
   };
 
   const Avatar = ({ pic, name, size = "w-7 h-7" }) => (
@@ -118,7 +120,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
           )}
           {currentUser?.id === comment.author_id && (
             <button onClick={() => onDeleted?.(comment.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>
-              Supprimer
+              {t("clips.delete")}
             </button>
           )}
         </div>
@@ -151,7 +153,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
                 <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(rp.created_at)}</span>
                 {currentUser?.id === rp.author_id && (
                   <button onClick={() => deleteReply(rp.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>
-                    Supprimer
+                    {t("clips.delete")}
                   </button>
                 )}
               </div>
@@ -172,6 +174,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
 }
 
 function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete }) {
+  const { t } = useTranslation();
   const navigate  = useNavigate();
   const videoRef  = useRef(null);
   const sceneRef  = useRef(null);
@@ -464,7 +467,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     const url = `${API.replace(/\/api\/?$/, "")}/clip/${post.id}`;
     try {
       if (navigator.share) await navigator.share({ title: "Nexus Clips", url });
-      else { await navigator.clipboard.writeText(url); toast.success("Lien copié"); }
+      else { await navigator.clipboard.writeText(url); toast.success(t("clips.link_copied")); }
     } catch { /* annulé */ }
   };
 
@@ -478,7 +481,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       toast.success(res.data.saved ? "Clip enregistré" : "Retiré des enregistrements");
     } catch {
       setSaved(!next);
-      toast.error("Erreur lors de l'enregistrement");
+      toast.error(t("clips.err_save"));
     }
   };
 
@@ -488,7 +491,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       const res = await axios.post(`${API}/posts/${post.id}/like`);
       setIsLiked(res.data.liked);
       setLikes(p => res.data.liked ? p + 1 : p - 1);
-    } catch { toast.error("Erreur"); }
+    } catch { toast.error(t("clips.err_generic")); }
   };
 
   // Suivre l'auteur depuis le fil : sur confirmation serveur, le « + » disparaît
@@ -507,7 +510,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         toast.success(status === "pending" ? "Demande d'abonnement envoyée" : `Abonné à @${post.author_username}`);
       }
     } catch {
-      toast.error("Impossible de s'abonner");
+      toast.error(t("clips.err_subscribe"));
     } finally {
       setFollowBusy(false);
     }
@@ -517,17 +520,17 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const handleRepost = async (e) => {
     e.stopPropagation();
     if (repostBusy) return;
-    if (isOwnClip) { toast.error("Vous ne pouvez pas reposter votre propre clip"); return; }
+    if (isOwnClip) { toast.error(t("clips.err_repost_own")); return; }
     setRepostBusy(true);
     try {
       if (reposted) {
         await axios.delete(`${API}/posts/${post.id}/repost`);
         setReposted(false);
-        toast.success("Republication annulée");
+        toast.success(t("clips.repost_undone"));
       } else {
         await axios.post(`${API}/posts/${post.id}/repost`);
         setReposted(true);
-        toast.success("Clip republié !");
+        toast.success(t("clips.reposted"));
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors du repost");
@@ -545,8 +548,8 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         content_type: "clip",
         reason: "inappropriate",
       });
-      toast.success("Signalement envoyé. Merci.");
-    } catch { toast.error("Impossible d'envoyer le signalement"); }
+      toast.success(t("clips.report_sent"));
+    } catch { toast.error(t("clips.err_report")); }
   };
 
   const handleSendComment = async () => {
@@ -558,7 +561,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       if (res.data && res.data.id) setCommentsList((prev) => [res.data, ...prev]);
       else setCommentsList((prev) => [{ id: `tmp-${Date.now()}`, author_username: currentUser?.username, content: commentText, created_at: new Date().toISOString() }, ...prev]);
       setCommentText("");
-    } catch { toast.error("Erreur"); }
+    } catch { toast.error(t("clips.err_generic")); }
   };
 
   const handleDeleteComment = async (commentId) => {
@@ -566,7 +569,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       await axios.delete(`${API}/posts/${post.id}/comments/${commentId}`);
       setCommentsList((prev) => prev.filter((c) => c.id !== commentId));
       setComments((p) => Math.max(0, p - 1));
-    } catch { toast.error("Erreur"); }
+    } catch { toast.error(t("clips.err_generic")); }
   };
 
   const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1) + "k" : n;
@@ -693,7 +696,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
               {fmt(comments)}
             </span>
             <span className="ml-auto text-xs opacity-80">Double-tap : ±5 s · Appui long : 2x</span>
-            <button onClick={toggleFullscreen} className="flex items-center justify-center w-9 h-9 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} title="Quitter le plein écran">
+            <button onClick={toggleFullscreen} className="flex items-center justify-center w-9 h-9 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} title={t("clips.exit_fullscreen")}>
               <span className="material-symbols-outlined text-white text-xl">fullscreen_exit</span>
             </button>
           </div>
@@ -721,7 +724,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
           {!isOwnClip && !following && (
             <span
               role="button"
-              aria-label={`S'abonner à ${post.author_username}`}
+              aria-label={t("clips.subscribe_to", { name: post.author_username })}
               data-testid="clip-follow"
               onClick={handleFollow}
               className="absolute -bottom-1.5 left-1/2 w-4 h-4 rounded-full flex items-center justify-center"
@@ -753,7 +756,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         </button>
 
         {/* Republier (viralité) — icône fine, cohérente avec le reste de la colonne */}
-        <button onClick={handleRepost} disabled={repostBusy} title={reposted ? "Annuler la republication" : "Reposter"} className="flex flex-col items-center" data-testid="repost-clip">
+        <button onClick={handleRepost} disabled={repostBusy} title={reposted ? t("clips.cancel_repost") : t("clips.repost")} className="flex flex-col items-center" data-testid="repost-clip">
           <span className="material-symbols-outlined text-[30px]" style={{ color: reposted ? C.cyan : "#fff", fontVariationSettings: `'FILL' ${reposted ? 1 : 0}, 'wght' 300`, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))", opacity: repostBusy ? 0.6 : 1 }}>repeat</span>
         </button>
 
@@ -778,8 +781,8 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         <button
           onClick={(e) => { e.stopPropagation(); setShowOptions(true); }}
           data-testid="clip-options"
-          title="Options"
-          aria-label="Options du clip"
+          title={t("clips.options")}
+          aria-label={t("clips.options_aria")}
           className="flex flex-col items-center"
         >
           <span className="material-symbols-outlined text-[28px] text-white" style={{ fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>more_horiz</span>
@@ -791,7 +794,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         <button onClick={() => navigate(`/profile/${post.author_id}`)} className="font-bold text-white text-sm mb-1 hover:text-cyan-300 transition-colors inline-flex items-center gap-1">
           @{post.author_username}
           {post.author_is_premium && (
-            <span className="material-symbols-outlined text-sm" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }} title="Membre Nexus Premium">workspace_premium</span>
+            <span className="material-symbols-outlined text-sm" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }} title={t("clips.premium_member")}>workspace_premium</span>
           )}
         </button>
         <p className="text-white/80 text-sm leading-snug line-clamp-2">{post.content}</p>
@@ -818,9 +821,9 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
           {/* Liste des commentaires */}
           <div className="max-h-[40vh] overflow-y-auto space-y-3 mb-3" style={{ scrollbarWidth: "none" }}>
             {loadingComments ? (
-              <p className="text-xs text-center py-4" style={{ color: C.outline }}>Chargement…</p>
+              <p className="text-xs text-center py-4" style={{ color: C.outline }}>{t("clips.loading")}</p>
             ) : commentsList.length === 0 ? (
-              <p className="text-xs text-center py-4" style={{ color: C.outline }}>Aucun commentaire. Soyez le premier !</p>
+              <p className="text-xs text-center py-4" style={{ color: C.outline }}>{t("clips.no_comments")}</p>
             ) : (
               commentsList.map((c) => (
                 <CommentItem
@@ -837,7 +840,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
             <input
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Ajouter un commentaire…"
+              placeholder={t("clips.add_comment")}
               className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500 py-2 px-3 rounded-xl"
               style={{ backgroundColor: C.high, color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}
               onKeyDown={(e) => { if (e.key === "Enter") handleSendComment(); }}
@@ -867,7 +870,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
               className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-white text-[15px] font-medium active:bg-white/5"
             >
               <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'wght' 300" }}>share</span>
-              Partager le clip
+              {t("clips.share_clip")}
             </button>
             {isOwnClip ? (
               <button
@@ -877,7 +880,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
                 style={{ color: "#f87171" }}
               >
                 <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'wght' 300" }}>delete</span>
-                Supprimer le clip
+                {t("clips.delete_clip")}
               </button>
             ) : (
               <button
@@ -887,14 +890,14 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
                 style={{ color: "#f87171" }}
               >
                 <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'wght' 300" }}>flag</span>
-                Signaler le clip
+                {t("clips.report_clip")}
               </button>
             )}
             <button
               onClick={(e) => { e.stopPropagation(); setShowOptions(false); }}
               className="w-full text-center px-4 py-3.5 mt-1 rounded-2xl text-white/60 text-[15px] font-medium active:bg-white/5"
             >
-              Annuler
+              {t("clips.cancel")}
             </button>
           </div>
         </div>
@@ -905,6 +908,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
 }
 
 export default function ClipsPage({ user, setUser }) {
+  const { t } = useTranslation();
   const [clips, setClips]         = useState([]);
   const [loading, setLoading]     = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -1069,7 +1073,7 @@ export default function ClipsPage({ user, setUser }) {
       setHasMore(videos.length >= PAGE);
     } catch (err) {
       console.error("Erreur clips:", err);
-      if (reset) toast.error("Erreur lors du chargement des clips");
+      if (reset) toast.error(t("clips.err_load"));
     } finally {
       setLoading(false); setLoadingMore(false);
     }
@@ -1080,7 +1084,7 @@ export default function ClipsPage({ user, setUser }) {
   const handleUploadClick = () => fileInputRef.current?.click();
 
   const handleDeleteClip = async (clipId) => {
-    if (!window.confirm("Supprimer définitivement ce clip ?")) return;
+    if (!window.confirm(t("clips.confirm_delete"))) return;
     try {
       await axios.delete(`${API}/posts/${clipId}`);
       setClips((prev) => {
@@ -1088,10 +1092,10 @@ export default function ClipsPage({ user, setUser }) {
         setActiveIndex((idx) => Math.max(0, Math.min(idx, next.length - 1)));
         return next;
       });
-      toast.success("Clip supprimé");
+      toast.success(t("clips.deleted"));
     } catch (err) {
       console.error("Erreur suppression clip:", err);
-      toast.error("Erreur lors de la suppression");
+      toast.error(t("clips.err_delete"));
     }
   };
 
@@ -1100,7 +1104,7 @@ export default function ClipsPage({ user, setUser }) {
     e.target.value = ""; // permet de re-sélectionner le même fichier
     if (!file) return;
     if (!file.type.startsWith("video/")) {
-      toast.error("Veuillez choisir un fichier vidéo");
+      toast.error(t("clips.err_choose_video"));
       return;
     }
     // Sans Firebase, on garde l'ancien chemin (base64 via le backend) qui
@@ -1151,7 +1155,7 @@ export default function ClipsPage({ user, setUser }) {
           },
         });
       }
-      toast.success("Clip publié !");
+      toast.success(t("clips.published"));
       setActiveIndex(0);
       skipRef.current = 0;
       await fetchClips(true);
@@ -1182,7 +1186,7 @@ export default function ClipsPage({ user, setUser }) {
         onContextMenu={(e) => { e.preventDefault(); openImport(); }}
         disabled={uploading}
         data-testid="upload-clip"
-        title="Créer un clip (caméra) — appui long : importer"
+        title={t("clips.create_clip")}
         className="fixed z-50 top-[calc(4rem_+_env(safe-area-inset-top))] right-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
         style={{
           background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
@@ -1227,7 +1231,7 @@ export default function ClipsPage({ user, setUser }) {
     <button
       onClick={() => navigate("/nexus-clips/recherche")}
       data-testid="clips-search"
-      title="Rechercher des clips"
+      title={t("clips.search_clips")}
       className="fixed z-50 top-[calc(1rem_+_env(safe-area-inset-top))] right-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
       style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
     >
@@ -1250,7 +1254,7 @@ export default function ClipsPage({ user, setUser }) {
       <Layout user={user} setUser={setUser} compact hideMobileHeader>
         <div className="flex flex-col items-center justify-center h-screen gap-4">
           <span className="material-symbols-outlined text-6xl" style={{ color: C.outline, opacity: 0.4 }}>play_circle</span>
-          <p className="text-sm font-bold uppercase tracking-widest" style={{ color: C.outline }}>Aucun clip disponible</p>
+          <p className="text-sm font-bold uppercase tracking-widest" style={{ color: C.outline }}>{t("clips.no_clips")}</p>
           <p className="text-xs text-center max-w-xs" style={{ color: C.outline }}>
             Publiez une vidéo pour qu'elle apparaisse ici
           </p>
