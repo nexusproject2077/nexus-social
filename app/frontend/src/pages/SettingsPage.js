@@ -175,7 +175,7 @@ export default function SettingsPage({ user, setUser }) {
     try {
       await axios.put(`${API}/notifications/settings`, { disabled_types: next });
     } catch {
-      toast.error("Impossible d'enregistrer la préférence");
+      toast.error(t("settings.err_save_pref"));
     }
   };
 
@@ -190,7 +190,7 @@ export default function SettingsPage({ user, setUser }) {
       } else {
         await disablePush();
         setPushOn(false);
-        toast.success("Notifications push désactivées");
+        toast.success(t("settings.push_disabled"));
       }
     } finally {
       setPushBusy(false);
@@ -205,8 +205,8 @@ export default function SettingsPage({ user, setUser }) {
   const saveCryptoWallet = async () => {
     try {
       await axios.put(`${API}/users/me/profile-details`, { crypto_wallet: profileData.crypto_wallet });
-      toast.success("Wallet enregistré");
-    } catch { toast.error("Erreur"); }
+      toast.success(t("settings.wallet_saved"));
+    } catch { toast.error(t("settings.err_generic")); }
   };
 
   const savePaypal = async () => {
@@ -215,7 +215,7 @@ export default function SettingsPage({ user, setUser }) {
       const saved = res.data?.user?.paypal_link ?? "";
       setProfileData((p) => ({ ...p, paypal_link: saved }));
       toast.success(saved ? "Lien PayPal enregistré" : "Lien PayPal retiré");
-    } catch { toast.error("Lien PayPal invalide"); }
+    } catch { toast.error(t("settings.err_paypal_invalid")); }
   };
 
   // Widgets sportifs : préférences utilisateur (foot + MMA, défaut affiché).
@@ -230,7 +230,7 @@ export default function SettingsPage({ user, setUser }) {
     } catch {
       setShowSports(!value);
       setUser?.((prev) => (prev ? { ...prev, show_sports: !value } : prev));
-      toast.error("Erreur");
+      toast.error(t("settings.err_generic"));
     }
   };
   const toggleShowMma = async (value) => {
@@ -242,7 +242,7 @@ export default function SettingsPage({ user, setUser }) {
     } catch {
       setShowMma(!value);
       setUser?.((prev) => (prev ? { ...prev, show_mma: !value } : prev));
-      toast.error("Erreur");
+      toast.error(t("settings.err_generic"));
     }
   };
 
@@ -257,7 +257,7 @@ export default function SettingsPage({ user, setUser }) {
       await axios.put(`${API}/users/me/time-limit`, { daily_time_limit: v || null });
       toast.success(v ? `Limite fixée à ${v} min/jour` : "Limite de temps désactivée");
     } catch {
-      toast.error("Erreur");
+      toast.error(t("settings.err_generic"));
     }
   };
   const toggleTimeLimit = async (value) => {
@@ -267,7 +267,7 @@ export default function SettingsPage({ user, setUser }) {
       await axios.put(`${API}/users/me/time-limit`, { time_limit_enabled: value });
     } catch {
       setTimeLimitOn(!value);
-      toast.error("Erreur");
+      toast.error(t("settings.err_generic"));
     }
   };
 
@@ -283,14 +283,14 @@ export default function SettingsPage({ user, setUser }) {
       try {
         const res = await enablePush({ interactive: true });
         setPushOn(res.ok);
-        if (!res.ok) toast.error("Autorise les notifications pour recevoir les alertes");
+        if (!res.ok) toast.error(t("settings.err_allow_notif"));
       } catch { /* noop */ }
     }
     try {
       await axios.put(`${API}/users/me/sport-alerts`, { [key]: value });
     } catch {
       setSportAlerts((prev) => ({ ...prev, [key]: !value }));
-      toast.error("Erreur");
+      toast.error(t("settings.err_generic"));
     }
   };
 
@@ -305,7 +305,7 @@ export default function SettingsPage({ user, setUser }) {
     try {
       const r = await axios.post(`${API}/billing/connect/onboard`);
       if (r.data?.url) window.location.href = r.data.url;
-      else { toast.error("Activation indisponible"); setConnectBusy(false); }
+      else { toast.error(t("settings.err_activation")); setConnectBusy(false); }
     } catch (e) {
       toast.error(e.response?.data?.detail || "Activation indisponible");
       setConnectBusy(false);
@@ -323,7 +323,7 @@ export default function SettingsPage({ user, setUser }) {
     try {
       const r = await axios.post(`${API}/billing/paypal/onboard`);
       if (r.data?.url) window.location.href = r.data.url;
-      else { toast.error("Activation PayPal indisponible"); setPaypalBusy(false); }
+      else { toast.error(t("settings.err_paypal_activation")); setPaypalBusy(false); }
     } catch (e) {
       toast.error(e.response?.data?.detail || "Activation PayPal indisponible");
       setPaypalBusy(false);
@@ -334,7 +334,7 @@ export default function SettingsPage({ user, setUser }) {
     try {
       const res = await axios.post(`${API}/billing/create-checkout-session`);
       if (res.data?.url) window.location.href = res.data.url;
-      else toast.error("Abonnement indisponible");
+      else toast.error(t("settings.err_subscription"));
     } catch (e) {
       toast.error(e.response?.data?.detail || "Les paiements ne sont pas encore configurés");
     }
@@ -342,8 +342,8 @@ export default function SettingsPage({ user, setUser }) {
 
   useEffect(() => {
     const sub = new URLSearchParams(window.location.search).get("sub");
-    if (sub === "success") toast.success("Abonnement activé — bienvenue chez Premium 🎉");
-    else if (sub === "cancel") toast.info("Abonnement annulé");
+    if (sub === "success") toast.success(t("settings.sub_activated"));
+    else if (sub === "cancel") toast.info(t("settings.sub_canceled"));
   }, []);
   const [creatorStats, setCreatorStats] = useState(null);
 
@@ -364,7 +364,7 @@ export default function SettingsPage({ user, setUser }) {
       const res = await axios.get(`${API}/users/me/settings`);
       setSettings(res.data);
       if (res.data?.profile) setProfileData(res.data.profile);
-    } catch { toast.error("Erreur chargement"); }
+    } catch { toast.error(t("settings.err_loading")); }
     finally { setLoading(false); }
   };
 
@@ -379,18 +379,18 @@ export default function SettingsPage({ user, setUser }) {
     try {
       await axios.put(`${API}/users/me/privacy`, { [key]: value });
       setSettings(prev => ({ ...prev, privacy: { ...prev?.privacy, [key]: value } }));
-      toast.success("Mis à jour");
-    } catch { toast.error("Erreur"); }
+      toast.success(t("settings.updated"));
+    } catch { toast.error(t("settings.err_generic")); }
   };
 
   const updateProfile = async () => {
     setSaving(true);
     try {
       await axios.put(`${API}/users/me/profile-details`, profileData);
-      toast.success("Profil mis à jour !");
+      toast.success(t("settings.profile_updated"));
       setEditMode(false);
       fetchSettings();
-    } catch { toast.error("Erreur"); }
+    } catch { toast.error(t("settings.err_generic")); }
     finally { setSaving(false); }
   };
 
@@ -402,15 +402,15 @@ export default function SettingsPage({ user, setUser }) {
 
   const handleDataExport = async () => {
     try {
-      toast.info("Export en cours...");
+      toast.info(t("settings.export_running"));
       const res = await axios.get(`${API}/users/me/data-export`);
       const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
       a.href = url; a.download = "nexus-data-export.json"; a.click();
       URL.revokeObjectURL(url);
-      toast.success("Export téléchargé !");
-    } catch { toast.error("Export échoué"); }
+      toast.success(t("settings.export_done"));
+    } catch { toast.error(t("settings.export_failed")); }
   };
 
   const navSections = [
@@ -440,32 +440,32 @@ export default function SettingsPage({ user, setUser }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.your_account")}</h2>
-        <p className="text-sm" style={{ color: C.outline }}>Gérez vos informations personnelles et vos préférences</p>
+        <p className="text-sm" style={{ color: C.outline }}>{t("settings.account_desc")}</p>
       </div>
 
       {/* Profile info card */}
       <Card>
-        <CardHeader title="Informations du profil" icon="person" />
+        <CardHeader title={t("settings.profile_info")} icon="person" />
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <InputField label="Nom d'utilisateur" value={settings?.account?.username} disabled />
-            <InputField label="Email" value={settings?.account?.email} disabled />
-            <InputField label="Prénom" value={profileData.first_name} onChange={e => setProfileData(p => ({ ...p, first_name: e.target.value }))} disabled={!editMode} />
-            <InputField label="Nom" value={profileData.last_name} onChange={e => setProfileData(p => ({ ...p, last_name: e.target.value }))} disabled={!editMode} />
-            <InputField label="Téléphone" type="tel" value={profileData.phone} onChange={e => setProfileData(p => ({ ...p, phone: e.target.value }))} disabled={!editMode} />
-            <InputField label="Date de naissance" type="date" value={profileData.birthdate} onChange={e => setProfileData(p => ({ ...p, birthdate: e.target.value }))} disabled={!editMode} />
-            <InputField label="Localisation" value={profileData.location} onChange={e => setProfileData(p => ({ ...p, location: e.target.value }))} disabled={!editMode} />
-            <InputField label="Site web" type="url" value={profileData.website} onChange={e => setProfileData(p => ({ ...p, website: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("settings.username")} value={settings?.account?.username} disabled />
+            <InputField label={t("settings.email")} value={settings?.account?.email} disabled />
+            <InputField label={t("settings.first_name")} value={profileData.first_name} onChange={e => setProfileData(p => ({ ...p, first_name: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("settings.last_name")} value={profileData.last_name} onChange={e => setProfileData(p => ({ ...p, last_name: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("settings.phone")} type="tel" value={profileData.phone} onChange={e => setProfileData(p => ({ ...p, phone: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("settings.birthdate")} type="date" value={profileData.birthdate} onChange={e => setProfileData(p => ({ ...p, birthdate: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("settings.location")} value={profileData.location} onChange={e => setProfileData(p => ({ ...p, location: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("settings.website")} type="url" value={profileData.website} onChange={e => setProfileData(p => ({ ...p, website: e.target.value }))} disabled={!editMode} />
           </div>
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: C.outline }}>Bio</label>
+            <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: C.outline }}>{t("settings.bio")}</label>
             <textarea
               value={profileData.bio || ""}
               onChange={e => setProfileData(p => ({ ...p, bio: e.target.value }))}
               disabled={!editMode}
               rows={3}
               maxLength={160}
-              placeholder="Parlez de vous..."
+              placeholder={t("settings.bio_placeholder")}
               className="w-full px-4 py-2.5 rounded-xl text-sm resize-none border-none outline-none transition-all focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-600 disabled:opacity-50"
               style={{ background: C.high, color: C.onSurface }}
             />
@@ -496,10 +496,10 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Account actions */}
       <Card>
-        <CardHeader title="Gestion du compte" icon="settings" />
-        <RowItem icon="lock" label="Changer le mot de passe" sublabel="Mettre à jour votre mot de passe" onClick={() => setShowPasswordModal(true)} />
-        <RowItem icon="download" label="Exporter mes données" sublabel="Télécharger une copie de vos données (RGPD)" onClick={handleDataExport} />
-        <RowItem icon="logout" label="Se déconnecter" sublabel="Terminer la session en cours" onClick={handleLogout} danger />
+        <CardHeader title={t("settings.account_mgmt")} icon="settings" />
+        <RowItem icon="lock" label={t("settings.change_password")} sublabel={t("settings.change_password_sub")} onClick={() => setShowPasswordModal(true)} />
+        <RowItem icon="download" label={t("settings.export_data")} sublabel={t("settings.export_data_sub")} onClick={handleDataExport} />
+        <RowItem icon="logout" label={t("settings.logout")} sublabel={t("settings.logout_sub")} onClick={handleLogout} danger />
       </Card>
     </div>
   );
@@ -514,8 +514,8 @@ export default function SettingsPage({ user, setUser }) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Espace créateur</h2>
-          <p className="text-sm" style={{ color: C.outline }}>Suivez vos performances et gérez la monétisation de vos contenus</p>
+          <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.creator_space")}</h2>
+          <p className="text-sm" style={{ color: C.outline }}>{t("settings.creator_desc")}</p>
         </div>
 
         {/* Aperçu des statistiques */}
@@ -531,7 +531,7 @@ export default function SettingsPage({ user, setUser }) {
 
         {/* Abonnement Premium */}
         <Card>
-          <CardHeader title="Nexus Premium" icon="workspace_premium" />
+          <CardHeader title={t("settings.premium_title")} icon="workspace_premium" />
           <div className="p-5 space-y-3">
             {user?.is_premium ? (
               <p className="text-sm font-bold flex items-center gap-2" style={{ color: C.cyan }}>
@@ -559,11 +559,11 @@ export default function SettingsPage({ user, setUser }) {
 
         {/* Analytique */}
         <Card>
-          <CardHeader title="Analytique" icon="insights" />
+          <CardHeader title={t("settings.analytics")} icon="insights" />
           <RowItem
             icon="bar_chart"
-            label="Tableau de bord analytique"
-            sublabel="Vues, engagement et croissance détaillés"
+            label={t("settings.analytics_dashboard")}
+            sublabel={t("settings.analytics_dashboard_sub")}
             onClick={() => navigate("/analytics")}
           />
         </Card>
@@ -574,9 +574,9 @@ export default function SettingsPage({ user, setUser }) {
             activer un ou plusieurs). Le bouton « Pourboire » apparaît sur ton
             profil dès qu'au moins un moyen est actif. */}
         <Card>
-          <CardHeader title="Recevoir des pourboires" icon="volunteer_activism" />
+          <CardHeader title={t("settings.receive_tips")} icon="volunteer_activism" />
           <div className="px-5 pt-3 pb-1 text-sm" style={{ color: C.outline }}>
-            Active un ou plusieurs moyens ci-dessous. Un bouton <b style={{ color: C.onSurface }}>Pourboire</b> apparaîtra
+            Active un ou plusieurs moyens ci-dessous. Un bouton <b style={{ color: C.onSurface }}>{t("settings.tip")}</b> apparaîtra
             alors sur ton profil pour que tes abonnés puissent te soutenir.
           </div>
 
@@ -585,7 +585,7 @@ export default function SettingsPage({ user, setUser }) {
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined" style={{ color: C.cyan }}>credit_card</span>
               <div className="flex-1">
-                <p className="text-sm font-bold" style={{ color: C.onSurface }}>Carte bancaire (Stripe)</p>
+                <p className="text-sm font-bold" style={{ color: C.onSurface }}>{t("settings.bank_card")}</p>
                 <p className="text-xs" style={{ color: C.outline }}>Le plus simple pour tes abonnés — paiement sécurisé, versé sur ton compte.</p>
               </div>
               {connect?.charges_enabled && (
@@ -617,7 +617,7 @@ export default function SettingsPage({ user, setUser }) {
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined" style={{ color: C.cyan }}>account_balance_wallet</span>
               <div className="flex-1">
-                <p className="text-sm font-bold" style={{ color: C.onSurface }}>PayPal</p>
+                <p className="text-sm font-bold" style={{ color: C.onSurface }}>{t("settings.paypal")}</p>
                 <p className="text-xs" style={{ color: C.outline }}>
                   {paypalStatus?.enabled
                     ? "Connecte ton compte PayPal : tu es payé directement, la commission est prélevée automatiquement."
@@ -649,10 +649,10 @@ export default function SettingsPage({ user, setUser }) {
             ) : (
               <>
                 <InputField
-                  label="Pseudo ou lien PayPal.me"
+                  label={t("settings.paypal_label")}
                   value={profileData.paypal_link}
                   onChange={(e) => setProfileData((p) => ({ ...p, paypal_link: e.target.value }))}
-                  placeholder="Ex : moncompte  (ou paypal.me/moncompte)"
+                  placeholder={t("settings.paypal_placeholder")}
                 />
                 <button onClick={savePaypal} data-testid="save-paypal"
                   className="px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
@@ -668,15 +668,15 @@ export default function SettingsPage({ user, setUser }) {
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined" style={{ color: C.cyan }}>currency_bitcoin</span>
               <div className="flex-1">
-                <p className="text-sm font-bold" style={{ color: C.onSurface }}>Crypto</p>
+                <p className="text-sm font-bold" style={{ color: C.onSurface }}>{t("settings.crypto")}</p>
                 <p className="text-xs" style={{ color: C.outline }}>Adresse Solana / USDT / BTC — sans intermédiaire ni frais de plateforme.</p>
               </div>
             </div>
             <InputField
-              label="Adresse wallet"
+              label={t("settings.wallet_label")}
               value={profileData.crypto_wallet}
               onChange={(e) => setProfileData((p) => ({ ...p, crypto_wallet: e.target.value }))}
-              placeholder="Ex : 7xKX…（Solana / USDT / BTC）"
+              placeholder={t("settings.wallet_placeholder")}
             />
             <button onClick={saveCryptoWallet} data-testid="save-wallet"
               className="px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
@@ -693,7 +693,7 @@ export default function SettingsPage({ user, setUser }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.privacy_title")}</h2>
-        <p className="text-sm" style={{ color: C.outline }}>Contrôlez qui peut voir votre contenu et vos informations</p>
+        <p className="text-sm" style={{ color: C.outline }}>{t("settings.privacy_desc")}</p>
       </div>
 
       {/* RGPD Notice */}
@@ -702,7 +702,7 @@ export default function SettingsPage({ user, setUser }) {
           <span className="material-symbols-outlined text-lg" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}>verified_user</span>
         </div>
         <div>
-          <p className="text-sm font-bold mb-1" style={{ color: C.onSurface }}>Conformité RGPD active</p>
+          <p className="text-sm font-bold mb-1" style={{ color: C.onSurface }}>{t("settings.gdpr_active")}</p>
           <p className="text-xs" style={{ color: C.outline }}>Vos données sont traitées conformément au RGPD. Vous avez le droit d'accéder, de corriger et de supprimer vos données.</p>
         </div>
       </div>
@@ -718,7 +718,7 @@ export default function SettingsPage({ user, setUser }) {
             toast.success(v ? "Mode Confidentialité stricte activé" : "Mode Confidentialité stricte désactivé");
           } catch {
             setPrivacyStrict(!v); // rollback si le serveur refuse
-            toast.error("Impossible d'enregistrer le réglage");
+            toast.error(t("settings.err_save_setting"));
           }
         };
         return (
@@ -729,7 +729,7 @@ export default function SettingsPage({ user, setUser }) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-base font-black" style={{ color: C.onSurface }}>Mode Confidentialité stricte</p>
+                  <p className="text-base font-black" style={{ color: C.onSurface }}>{t("settings.strict_privacy")}</p>
                   <Toggle checked={strict} onChange={setStrict} />
                 </div>
                 <p className="text-xs mt-1" style={{ color: C.outline }}>
@@ -759,10 +759,10 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Privacy toggles */}
       <Card>
-        <CardHeader title="Visibilité du compte" icon="visibility" />
-        <ToggleRow icon="lock" label="Compte privé" sublabel="Seuls vos abonnés voient vos publications" checked={settings?.privacy?.is_private || false} onChange={v => updatePrivacy("is_private", v)} />
-        <ToggleRow icon="chat" label="Autoriser les réponses aux stories" sublabel="Les autres peuvent répondre à vos stories" checked={settings?.privacy?.allow_story_replies !== false} onChange={v => updatePrivacy("allow_story_replies", v)} />
-        <ToggleRow icon="alternate_email" label="Autoriser les mentions" sublabel="Permettre aux autres de vous mentionner" checked={settings?.privacy?.allow_mentions !== false} onChange={v => updatePrivacy("allow_mentions", v)} />
+        <CardHeader title={t("settings.account_visibility")} icon="visibility" />
+        <ToggleRow icon="lock" label={t("settings.private_account")} sublabel={t("settings.private_account_sub")} checked={settings?.privacy?.is_private || false} onChange={v => updatePrivacy("is_private", v)} />
+        <ToggleRow icon="chat" label={t("settings.allow_story_replies")} sublabel={t("settings.allow_story_replies_sub")} checked={settings?.privacy?.allow_story_replies !== false} onChange={v => updatePrivacy("allow_story_replies", v)} />
+        <ToggleRow icon="alternate_email" label={t("settings.allow_mentions")} sublabel={t("settings.allow_mentions_sub")} checked={settings?.privacy?.allow_mentions !== false} onChange={v => updatePrivacy("allow_mentions", v)} />
       </Card>
 
       {/* Messages et réponses — confidentialité de la messagerie (façon Instagram) */}
@@ -770,17 +770,17 @@ export default function SettingsPage({ user, setUser }) {
         const savePref = async (key, value) => {
           if (setUser && user) setUser({ ...user, [key]: value });  // optimiste
           try { await axios.put(`${API}/users/me/preferences`, { [key]: value }); }
-          catch { if (setUser && user) setUser({ ...user, [key]: !value }); toast.error("Échec de l'enregistrement"); }
+          catch { if (setUser && user) setUser({ ...user, [key]: !value }); toast.error(t("settings.err_save")); }
         };
         return (
           <Card>
-            <CardHeader title="Messages et réponses" icon="forum" />
-            <ToggleRow icon="radio_button_checked" label="Afficher le statut en ligne"
-              sublabel="Les autres voient votre point de présence et votre dernière connexion"
+            <CardHeader title={t("settings.messages_replies")} icon="forum" />
+            <ToggleRow icon="radio_button_checked" label={t("settings.show_online")}
+              sublabel={t("settings.show_online_sub")}
               checked={user?.show_active_status !== false}
               onChange={(v) => savePref("show_active_status", v)} />
-            <ToggleRow icon="done_all" label="Confirmation de lecture"
-              sublabel="Si désactivé, personne ne verra le « Vu » sous vos messages"
+            <ToggleRow icon="done_all" label={t("settings.read_receipts")}
+              sublabel={t("settings.read_receipts_sub")}
               checked={user?.read_receipts !== false}
               onChange={(v) => savePref("read_receipts", v)} />
           </Card>
@@ -795,7 +795,7 @@ export default function SettingsPage({ user, setUser }) {
             await axios.put(`${API}/users/me/privacy`, { muted_words: list });
             if (setUser && user) setUser({ ...user, muted_words: list });
           } catch {
-            toast.error("Impossible d'enregistrer les mots masqués");
+            toast.error(t("settings.err_save_muted"));
           }
         };
         const addMuted = () => {
@@ -808,7 +808,7 @@ export default function SettingsPage({ user, setUser }) {
         const removeMuted = (w) => saveMuted(words.filter((x) => x !== w));
         return (
           <Card>
-            <CardHeader title="Mots masqués" icon="filter_alt" />
+            <CardHeader title={t("settings.muted_words_title")} icon="filter_alt" />
             <div className="px-4 pb-4">
               <p className="text-xs mb-3" style={{ color: C.outline }}>
                 Les publications, clips et notifications contenant l'un de ces mots ou expressions seront masqués pour vous. Insensible à la casse et aux accents.
@@ -818,7 +818,7 @@ export default function SettingsPage({ user, setUser }) {
                   value={mutedInput}
                   onChange={(e) => setMutedInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMuted(); } }}
-                  placeholder="Ajouter un mot ou une expression…"
+                  placeholder={t("settings.add_word_placeholder")}
                   maxLength={60}
                   className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
                   style={{ backgroundColor: "#171f33", color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}
@@ -846,7 +846,7 @@ export default function SettingsPage({ user, setUser }) {
                   ))}
                 </div>
               ) : (
-                <p className="text-xs mt-3" style={{ color: C.outline }}>Aucun mot masqué pour l'instant.</p>
+                <p className="text-xs mt-3" style={{ color: C.outline }}>{t("settings.no_muted")}</p>
               )}
             </div>
           </Card>
@@ -855,17 +855,17 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Data controls */}
       <Card>
-        <CardHeader title="Contrôle des données" icon="database" />
-        <RowItem icon="download" label="Exporter mes données" sublabel="Télécharger toutes vos données personnelles" onClick={handleDataExport} />
-        <RowItem icon="delete_forever" label="Demander la suppression" sublabel="Supprimer définitivement votre compte" onClick={() => toast.info("Contactez support@nexus-social.com")} danger />
+        <CardHeader title={t("settings.data_control")} icon="database" />
+        <RowItem icon="download" label={t("settings.export_data")} sublabel={t("settings.export_all_sub")} onClick={handleDataExport} />
+        <RowItem icon="delete_forever" label={t("settings.request_deletion")} sublabel={t("settings.request_deletion_sub")} onClick={() => toast.info(t("settings.contact_support"))} danger />
       </Card>
 
       {/* Ad targeting */}
       <Card>
-        <CardHeader title="Ciblage publicitaire (DMA)" icon="target" />
-        <ToggleRow label="Publicités personnalisées" sublabel="Basées sur votre activité Nexus" checked={true} onChange={() => toast.info("Paramètre à venir")} />
-        <ToggleRow label="Données tierces" sublabel="Informations reçues de nos partenaires" checked={false} onChange={() => toast.info("Paramètre à venir")} />
-        <ToggleRow label="Ciblage géographique" sublabel="Utilisation de votre localisation GPS" checked={false} onChange={() => toast.info("Paramètre à venir")} />
+        <CardHeader title={t("settings.ad_targeting")} icon="target" />
+        <ToggleRow label={t("settings.personalized_ads")} sublabel={t("settings.personalized_ads_sub")} checked={true} onChange={() => toast.info(t("settings.setting_soon"))} />
+        <ToggleRow label={t("settings.third_party_data")} sublabel={t("settings.third_party_data_sub")} checked={false} onChange={() => toast.info(t("settings.setting_soon"))} />
+        <ToggleRow label={t("settings.geo_targeting")} sublabel={t("settings.geo_targeting_sub")} checked={false} onChange={() => toast.info(t("settings.setting_soon"))} />
       </Card>
     </div>
   );
@@ -873,24 +873,24 @@ export default function SettingsPage({ user, setUser }) {
   const renderSecurity = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Sécurité</h2>
-        <p className="text-sm" style={{ color: C.outline }}>Protégez votre compte et gérez vos sessions actives</p>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.security")}</h2>
+        <p className="text-sm" style={{ color: C.outline }}>{t("settings.security_desc")}</p>
       </div>
 
       {/* 2FA — code de connexion envoyé par email */}
       <Card>
-        <CardHeader title="Authentification à deux facteurs" icon="security" />
+        <CardHeader title={t("settings.twofa")} icon="security" />
         <div className="p-5">
           <div className="flex items-center justify-between">
             <div className="pr-3">
-              <p className="text-sm font-bold" style={{ color: C.onSurface }}>Code de connexion par email</p>
+              <p className="text-sm font-bold" style={{ color: C.onSurface }}>{t("settings.email_login_code")}</p>
               <p className="text-xs mt-0.5" style={{ color: C.outline }}>
                 À chaque connexion, un code à 6 chiffres est envoyé à ton email pour confirmer que c'est bien toi.
               </p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               {user?.twofa_enabled && (
-                <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase" style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80" }}>Actif</span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase" style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80" }}>{t("settings.active")}</span>
               )}
               <Toggle checked={!!user?.twofa_enabled} onChange={async () => {
                 const next = !user?.twofa_enabled;
@@ -908,7 +908,7 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Sessions */}
       <Card>
-        <CardHeader title="Sessions actives" icon="devices" />
+        <CardHeader title={t("settings.active_sessions")} icon="devices" />
         <div className="p-5 space-y-3">
           {[
             { icon: "laptop", name: "Navigateur Web", detail: "Cette session • Actif maintenant", active: true },
@@ -919,11 +919,11 @@ export default function SettingsPage({ user, setUser }) {
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold" style={{ color: C.onSurface }}>{s.name}</p>
                 <p className="text-[10px]" style={{ color: C.outline }}>{s.detail}</p>
-                {s.active && <p className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: C.cyan }}>Session actuelle</p>}
+                {s.active && <p className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: C.cyan }}>{t("settings.current_session")}</p>}
               </div>
             </div>
           ))}
-          <button onClick={() => toast.info("Déconnexion des autres sessions...")} className="w-full mt-2 py-2 text-xs font-bold rounded-xl transition-all hover:opacity-80"
+          <button onClick={() => toast.info(t("settings.logout_others"))} className="w-full mt-2 py-2 text-xs font-bold rounded-xl transition-all hover:opacity-80"
             style={{ border: `1px solid ${C.outlineVar}`, color: C.outline }}>
             Déconnecter tous les autres appareils
           </button>
@@ -932,8 +932,8 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Password */}
       <Card>
-        <CardHeader title="Mot de passe" icon="key" />
-        <RowItem icon="lock_reset" label="Changer le mot de passe" sublabel="Mettez à jour votre mot de passe régulièrement" onClick={() => setShowPasswordModal(true)} />
+        <CardHeader title={t("settings.password")} icon="key" />
+        <RowItem icon="lock_reset" label={t("settings.change_password")} sublabel={t("settings.change_password_sub2")} onClick={() => setShowPasswordModal(true)} />
       </Card>
     </div>
   );
@@ -941,22 +941,22 @@ export default function SettingsPage({ user, setUser }) {
   const renderContent = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Préférences de contenu</h2>
-        <p className="text-sm" style={{ color: C.outline }}>Personnalisez ce que vous voyez sur Nexus</p>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.content_prefs")}</h2>
+        <p className="text-sm" style={{ color: C.outline }}>{t("settings.content_prefs_desc")}</p>
       </div>
       <Card>
-        <CardHeader title="Widgets du fil" icon="widgets" />
+        <CardHeader title={t("settings.feed_widgets")} icon="widgets" />
         <ToggleRow
           icon="sports_soccer"
-          label="Scores de foot en direct"
-          sublabel="Le widget football en haut du fil (mobile) et dans la colonne de droite (PC)"
+          label={t("settings.football_scores")}
+          sublabel={t("settings.football_scores_sub")}
           checked={showSports}
           onChange={toggleShowSports}
         />
         <ToggleRow
           icon="sports_mma"
-          label="Combats MMA / UFC"
-          sublabel="Les cartes de combat UFC dans le même widget sportif"
+          label={t("settings.mma_fights")}
+          sublabel={t("settings.mma_fights_sub")}
           checked={showMma}
           onChange={toggleShowMma}
         />
@@ -966,15 +966,15 @@ export default function SettingsPage({ user, setUser }) {
         const savePol = async (v) => {
           if (setUser && user) setUser({ ...user, hide_political: v });
           try { await axios.put(`${API}/users/me/preferences`, { hide_political: v }); }
-          catch { if (setUser && user) setUser({ ...user, hide_political: !v }); toast.error("Échec de l'enregistrement"); }
+          catch { if (setUser && user) setUser({ ...user, hide_political: !v }); toast.error(t("settings.err_save")); }
         };
         return (
           <Card>
-            <CardHeader title="Sujets sensibles" icon="filter_alt" />
+            <CardHeader title={t("settings.sensitive_topics")} icon="filter_alt" />
             <ToggleRow
               icon="gavel"
-              label="Masquer les contenus politiques"
-              sublabel="L'algorithme retire les publications liées à l'actualité politique de votre fil, pour préserver votre sérénité"
+              label={t("settings.hide_political")}
+              sublabel={t("settings.hide_political_sub")}
               checked={user?.hide_political === true}
               onChange={savePol}
             />
@@ -983,17 +983,17 @@ export default function SettingsPage({ user, setUser }) {
       })()}
       {/* Bien-être numérique : limite de temps quotidienne + fin du scroll infini. */}
       <Card>
-        <CardHeader title="Bien-être numérique" icon="self_improvement" />
+        <CardHeader title={t("settings.digital_wellbeing")} icon="self_improvement" />
         <ToggleRow
           icon="hourglass_top"
-          label="Limite de temps quotidienne"
-          sublabel="Un écran bienveillant t'invite à faire une pause une fois la durée atteinte"
+          label={t("settings.daily_limit")}
+          sublabel={t("settings.daily_limit_sub")}
           checked={timeLimitOn}
           onChange={toggleTimeLimit}
         />
         {timeLimitOn && (
           <div className="px-5 pb-5 pt-1">
-            <p className="text-xs mb-2" style={{ color: C.outline }}>Durée par jour sur les flux (fil + clips)</p>
+            <p className="text-xs mb-2" style={{ color: C.outline }}>{t("settings.daily_duration")}</p>
             <div className="flex flex-wrap gap-2">
               {[
                 { v: 0, l: "Aucune" },
@@ -1019,25 +1019,25 @@ export default function SettingsPage({ user, setUser }) {
         )}
       </Card>
       <Card>
-        <CardHeader title="Alertes sportives (notifications)" icon="notifications_active" />
+        <CardHeader title={t("settings.sport_alerts")} icon="notifications_active" />
         <ToggleRow
           icon="sports_soccer"
-          label="Buts de foot"
-          sublabel="Une notif à chaque but de tes ligues / équipes favorites"
+          label={t("settings.football_goals")}
+          sublabel={t("settings.football_goals_sub")}
           checked={sportAlerts.goals}
           onChange={(v) => toggleSportAlert("goals", v)}
         />
         <ToggleRow
           icon="schedule"
-          label="Début et fin de match"
-          sublabel="Coup d'envoi et coup de sifflet final (favoris)"
+          label={t("settings.match_start_end")}
+          sublabel={t("settings.match_start_end_sub")}
           checked={sportAlerts.match}
           onChange={(v) => toggleSportAlert("match", v)}
         />
         <ToggleRow
           icon="sports_mma"
-          label="Résultats MMA / UFC"
-          sublabel="Le vainqueur et la méthode dès la fin du combat"
+          label={t("settings.mma_results")}
+          sublabel={t("settings.mma_results_sub")}
           checked={sportAlerts.mma}
           onChange={(v) => toggleSportAlert("mma", v)}
         />
@@ -1046,13 +1046,13 @@ export default function SettingsPage({ user, setUser }) {
         </div>
       </Card>
       <Card>
-        <CardHeader title="Filtre de contenu" icon="filter_alt" />
-        <ToggleRow label="Contenu sensible" sublabel="Afficher le contenu marqué comme sensible" checked={false} onChange={() => toast.info("Paramètre à venir")} />
-        <ToggleRow label="Lecture auto des vidéos" sublabel="Les vidéos se lancent automatiquement" checked={true} onChange={() => toast.info("Paramètre à venir")} />
-        <ToggleRow label="Suggestion algorithmique" sublabel="Contenu basé sur vos interactions" checked={true} onChange={() => toast.info("Paramètre à venir")} />
+        <CardHeader title={t("settings.content_filter")} icon="filter_alt" />
+        <ToggleRow label={t("settings.sensitive_content")} sublabel={t("settings.sensitive_content_sub")} checked={false} onChange={() => toast.info(t("settings.setting_soon"))} />
+        <ToggleRow label={t("settings.autoplay")} sublabel={t("settings.autoplay_sub")} checked={true} onChange={() => toast.info(t("settings.setting_soon"))} />
+        <ToggleRow label={t("settings.algo_suggestion")} sublabel={t("settings.algo_suggestion_sub")} checked={true} onChange={() => toast.info(t("settings.setting_soon"))} />
       </Card>
       <Card>
-        <CardHeader title="Transparence algorithmique (DSA)" icon="analytics" />
+        <CardHeader title={t("settings.algo_transparency")} icon="analytics" />
         <div className="p-5">
           <p className="text-sm mb-4" style={{ color: C.outline }}>Conformément au Digital Services Act, vous avez le droit de comprendre pourquoi vous voyez certains contenus.</p>
           <button onClick={() => setShowAlgoModal(true)} className="px-5 py-2 rounded-xl font-bold text-sm transition-all hover:opacity-80"
@@ -1062,9 +1062,9 @@ export default function SettingsPage({ user, setUser }) {
         </div>
       </Card>
       <Card>
-        <CardHeader title="Comptes bloqués et muets" icon="block" />
-        <RowItem icon="block" label="Comptes bloqués" sublabel="Gérer les utilisateurs bloqués" onClick={() => toast.info("Liste à venir")} />
-        <RowItem icon="volume_off" label="Mots-clés muets" sublabel="Masquer certains mots du fil" onClick={() => toast.info("Configuration à venir")} />
+        <CardHeader title={t("settings.blocked_muted")} icon="block" />
+        <RowItem icon="block" label={t("settings.blocked_accounts")} sublabel={t("settings.blocked_accounts_sub")} onClick={() => toast.info(t("settings.list_soon"))} />
+        <RowItem icon="volume_off" label={t("settings.muted_keywords")} sublabel={t("settings.muted_keywords_sub")} onClick={() => toast.info(t("settings.config_soon"))} />
       </Card>
     </div>
   );
@@ -1072,16 +1072,16 @@ export default function SettingsPage({ user, setUser }) {
   const renderNotifications = () => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Notifications</h2>
-        <p className="text-sm" style={{ color: C.outline }}>Choisissez ce qui vous alerte, et où.</p>
+        <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.notifications")}</h2>
+        <p className="text-sm" style={{ color: C.outline }}>{t("settings.notif_desc")}</p>
       </div>
 
       <Card>
-        <CardHeader title="Notifications push" icon="notifications_active" />
+        <CardHeader title={t("settings.push_notifications")} icon="notifications_active" />
         <ToggleRow
           icon="phonelink_ring"
-          label="Recevoir les push"
-          sublabel="Être prévenu même quand l'app est fermée"
+          label={t("settings.receive_push")}
+          sublabel={t("settings.receive_push_sub")}
           checked={pushOn}
           onChange={togglePush}
           disabled={pushBusy}
@@ -1089,7 +1089,7 @@ export default function SettingsPage({ user, setUser }) {
       </Card>
 
       <Card>
-        <CardHeader title="Types de notification" icon="tune" />
+        <CardHeader title={t("settings.notif_types")} icon="tune" />
         {notifTypes.map((type) => (
           <ToggleRow
             key={type}
@@ -1099,7 +1099,7 @@ export default function SettingsPage({ user, setUser }) {
           />
         ))}
         {notifTypes.length === 0 && (
-          <div className="p-5 text-sm" style={{ color: C.outline }}>Chargement des préférences…</div>
+          <div className="p-5 text-sm" style={{ color: C.outline }}>{t("settings.loading_prefs")}</div>
         )}
       </Card>
     </div>
@@ -1109,16 +1109,16 @@ export default function SettingsPage({ user, setUser }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.display_title")}</h2>
-        <p className="text-sm" style={{ color: C.outline }}>Personnalisez l'apparence de Nexus</p>
+        <p className="text-sm" style={{ color: C.outline }}>{t("settings.display_desc")}</p>
       </div>
       <Card>
-        <CardHeader title="Thème" icon="dark_mode" />
-        <ToggleRow icon="dark_mode" label="Mode sombre" sublabel="Toujours activé sur Nexus" checked={true} onChange={() => {}} disabled />
+        <CardHeader title={t("settings.theme")} icon="dark_mode" />
+        <ToggleRow icon="dark_mode" label={t("settings.dark_mode")} sublabel={t("settings.dark_mode_sub")} checked={true} onChange={() => {}} disabled />
       </Card>
       <Card>
-        <CardHeader title="Couleur d'accentuation" icon="palette" />
+        <CardHeader title={t("settings.accent_color")} icon="palette" />
         <div className="p-5">
-          <p className="text-sm mb-4" style={{ color: C.outline }}>Choisissez la couleur principale de l'interface</p>
+          <p className="text-sm mb-4" style={{ color: C.outline }}>{t("settings.accent_desc")}</p>
           {(() => {
             const isSel = (v) => accent.toLowerCase() === v.toLowerCase();
             const apply = (a) => {
@@ -1143,7 +1143,7 @@ export default function SettingsPage({ user, setUser }) {
                 {/* Thèmes Premium (dégradés) */}
                 <div className="flex items-center gap-2 mt-5 mb-3">
                   <span className="material-symbols-outlined" style={{ color: "#e0a92e", fontSize: 18 }}>workspace_premium</span>
-                  <span className="text-xs font-black uppercase tracking-widest" style={{ color: "#c9b06a" }}>Thèmes de luxe · Premium</span>
+                  <span className="text-xs font-black uppercase tracking-widest" style={{ color: "#c9b06a" }}>{t("settings.luxury_themes")}</span>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   {PREMIUM_ACCENTS.map((a) => {
@@ -1178,11 +1178,11 @@ export default function SettingsPage({ user, setUser }) {
       </Card>
       <PremiumModal open={!!premiumPitch} feature={premiumPitch} onClose={() => setPremiumPitch(null)} />
       <Card>
-        <CardHeader title="Langue" icon="language" />
+        <CardHeader title={t("settings.lang")} icon="language" />
         <div className="p-5 flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold" style={{ color: C.onSurface }}>Langue de l'interface</p>
-            <p className="text-xs mt-0.5" style={{ color: C.outline }}>Détectée automatiquement selon votre pays</p>
+            <p className="text-sm font-semibold" style={{ color: C.onSurface }}>{t("settings.interface_language")}</p>
+            <p className="text-xs mt-0.5" style={{ color: C.outline }}>{t("settings.lang_auto")}</p>
           </div>
           <LanguageSwitcher />
         </div>
@@ -1193,18 +1193,18 @@ export default function SettingsPage({ user, setUser }) {
   const renderActivity = () => {
     const items = watchHistory || [];
     const clearHistory = async () => {
-      try { await axios.delete(`${API}/users/me/watch-history`); setWatchHistory([]); toast.success("Historique effacé"); }
-      catch { toast.error("Échec de l'effacement"); }
+      try { await axios.delete(`${API}/users/me/watch-history`); setWatchHistory([]); toast.success(t("settings.history_cleared")); }
+      catch { toast.error(t("settings.err_clear")); }
     };
     return (
       <div className="space-y-6">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Historique de visionnage</h2>
+            <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.watch_history")}</h2>
             <p className="text-sm" style={{ color: C.outline }}>Les Clips et publications vus récemment — pour les retrouver, liker ou partager.</p>
           </div>
           {items.length > 0 && (
-            <button onClick={clearHistory} className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: C.high, color: "#f87171" }}>Effacer</button>
+            <button onClick={clearHistory} className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: C.high, color: "#f87171" }}>{t("settings.clear")}</button>
           )}
         </div>
         {watchHistory === null ? (
@@ -1212,7 +1212,7 @@ export default function SettingsPage({ user, setUser }) {
         ) : items.length === 0 ? (
           <div className="text-center py-16">
             <span className="material-symbols-outlined text-4xl" style={{ color: C.outline }}>history_toggle_off</span>
-            <p className="text-sm mt-2" style={{ color: C.outline }}>Aucun visionnage pour l'instant.</p>
+            <p className="text-sm mt-2" style={{ color: C.outline }}>{t("settings.no_watch")}</p>
           </div>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -1266,7 +1266,7 @@ export default function SettingsPage({ user, setUser }) {
                 <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>manage_accounts</span>
               </div>
               <div>
-                <h2 className="text-sm font-black" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Paramètres</h2>
+                <h2 className="text-sm font-black" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.title")}</h2>
                 <p className="text-[9px] uppercase tracking-[0.2em] font-bold" style={{ color: C.outline }}>Nexus Governance</p>
               </div>
             </div>
@@ -1308,13 +1308,13 @@ export default function SettingsPage({ user, setUser }) {
 
           {/* Footer */}
           <div className="px-8 py-6 flex flex-wrap gap-x-6 gap-y-2 text-[10px] font-bold uppercase tracking-widest" style={{ borderTop: `1px solid rgba(255,255,255,0.04)`, color: C.outlineVar }}>
-            <Link to="/a-propos" className="hover:text-cyan-400 transition-colors">À propos</Link>
-            <Link to="/comment-ca-marche" className="hover:text-cyan-400 transition-colors">Comment ça marche</Link>
-            <Link to="/guides" className="hover:text-cyan-400 transition-colors">Guides</Link>
-            <Link to="/faq" className="hover:text-cyan-400 transition-colors">FAQ</Link>
-            <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Conditions</a>
-            <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Politique de confidentialité</a>
-            <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">Cookies</a>
+            <Link to="/a-propos" className="hover:text-cyan-400 transition-colors">{t("settings.about")}</Link>
+            <Link to="/comment-ca-marche" className="hover:text-cyan-400 transition-colors">{t("settings.how")}</Link>
+            <Link to="/guides" className="hover:text-cyan-400 transition-colors">{t("settings.guides")}</Link>
+            <Link to="/faq" className="hover:text-cyan-400 transition-colors">{t("settings.faq")}</Link>
+            <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">{t("settings.terms")}</a>
+            <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">{t("settings.privacy_policy")}</a>
+            <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-400 transition-colors">{t("settings.cookies")}</a>
             <span>Nexus v4.0 · EEA Node</span>
           </div>
         </main>
