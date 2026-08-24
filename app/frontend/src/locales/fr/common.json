@@ -269,5 +269,49 @@
     "sched_tonight": "Ce soir {{time}}",
     "sched_tomorrow": "Demain {{time}}",
     "custom": "Personnalisé"
+  },
+  "widgets": {
+    "football": "Football",
+    "mma": "MMA / UFC",
+    "trends": "Tendances",
+    "weather": "Météo",
+    "finance": "Finance",
+    "screentime": "Temps d'écran",
+    "profile_views": "Visites du profil",
+    "ai_analytics": "AI Analytics",
+    "astro_lifestyle": "Astro Néon"
+  },
+  "astro": {
+    "hint": "Horoscope quotidien exclusif.",
+    "choose_sign": "Choisis ton signe :",
+    "change": "changer",
+    "sign": {
+      "belier": "Bélier", "taureau": "Taureau", "gemeaux": "Gémeaux", "cancer": "Cancer",
+      "lion": "Lion", "vierge": "Vierge", "balance": "Balance", "scorpion": "Scorpion",
+      "sagittaire": "Sagittaire", "capricorne": "Capricorne", "verseau": "Verseau", "poissons": "Poissons"
+    },
+    "metric": { "amour": "Amour", "chance": "Chance", "energie": "Énergie" }
+  },
+  "stack": {
+    "edit_title": "Modifier la pile",
+    "edit_hint": "Réordonne (glisse la poignée), retire (balaye vers la gauche) ou ajoute un widget.",
+    "smart_rotate": "Rotation intelligente",
+    "smart_rotate_hint": "Bascule sur le direct, alterne sinon",
+    "remove": "Retirer",
+    "move": "Déplacer",
+    "erase": "Effacer",
+    "add": "Ajouter",
+    "searching": "Recherche…",
+    "no_club": "Aucun club trouvé.",
+    "search_club": "Rechercher un club (Real, PSG, Dortmund…)",
+    "search_city": "Rechercher une ville…",
+    "auto_location": "Localisation auto",
+    "customize": "Personnaliser",
+    "customize_widget": "Personnaliser ce widget",
+    "screentime_hint": "Fixe une limite dans Réglages → Bien-être numérique.",
+    "loading_prices": "Chargement des cours…",
+    "weather_permission": "Autorise la localisation pour la météo.",
+    "no_visits": "Aucune visite récente pour l'instant.",
+    "trends_hint": "Publie avec des #hashtags pour lancer les tendances."
   }
 }

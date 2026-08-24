@@ -4,6 +4,7 @@
 // (bottom sheet : toggle rotation, réordonnancement Drag & Drop, swipe-to-delete).
 // Config persistée dans user.widget_stack_config = { smart_rotate, order }.
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
@@ -193,6 +194,7 @@ function WeatherIcon({ cond, isDay = true, size = 56 }) {
 
 // ─────────────────────────── Éditeur (bottom sheet) ───────────────────────────
 function StackEditor({ order, smartRotate, onChange, onClose }) {
+  const { t } = useTranslation();
   const [list, setList] = useState(order);
   const [smart, setSmart] = useState(smartRotate);
   const [drag, setDrag] = useState(null);        // { index, hover, dy }
@@ -266,8 +268,8 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
         onTouchMove={(e) => e.stopPropagation()}
         style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "85vh", WebkitOverflowScrolling: "touch", paddingTop: "calc(env(safe-area-inset-top,0px) + 2rem)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
         <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.22)" }} />
-        <h3 className="text-white font-black text-lg mb-1">Modifier la pile</h3>
-        <p className="text-xs mb-4" style={{ color: "#859397" }}>Réordonne (glisse la poignée), retire (balaye vers la gauche) ou ajoute un widget.</p>
+        <h3 className="text-white font-black text-lg mb-1">{t("stack.edit_title")}</h3>
+        <p className="text-xs mb-4" style={{ color: "#859397" }}>{t("stack.edit_hint")}</p>
 
         {/* Rotation intelligente */}
         <button onClick={toggleSmart}
@@ -276,8 +278,8 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined" style={{ color: smart ? NEON : "#8b96a8" }}>auto_mode</span>
             <div className="text-left">
-              <p className="text-sm font-bold text-white">Rotation intelligente</p>
-              <p className="text-[11px]" style={{ color: "#859397" }}>Bascule sur le direct, alterne sinon</p>
+              <p className="text-sm font-bold text-white">{t("stack.smart_rotate")}</p>
+              <p className="text-[11px]" style={{ color: "#859397" }}>{t("stack.smart_rotate_hint")}</p>
             </div>
           </div>
           <span className="relative flex-shrink-0" style={{ width: 42, height: 24, borderRadius: 999, background: smart ? NEON : "#333d52", transition: "background 0.2s" }}>
@@ -294,7 +296,7 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
             return (
               <div key={id} className="absolute left-0 right-0" style={{ top: i * ROW_H, height: ROW_H, transform: rowTransform(i), transition: dragging ? "none" : "transform 0.18s ease", zIndex: dragging ? 5 : 1 }}>
                 {/* Bouton supprimer (révélé au swipe) */}
-                <button onClick={() => remove(id)} aria-label="Retirer"
+                <button onClick={() => remove(id)} aria-label={t("stack.remove")}
                   className="absolute right-0 top-1 bottom-1 flex items-center justify-center rounded-2xl"
                   style={{ width: 64, background: "#f87171", color: "#2a0808" }}>
                   <span className="material-symbols-outlined">delete</span>
@@ -304,11 +306,11 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
                   style={{ background: dragging ? "#232c40" : "#1a2234", boxShadow: dragging ? "0 8px 22px rgba(0,0,0,0.5)" : "none", transform: `translateX(${isSwiped ? -72 : 0}px)`, transition: "transform 0.2s ease, background 0.15s" }}
                   onTouchStart={(e) => onRowTouchStart(id, e)} onTouchMove={(e) => onRowTouchMove(id, e)}
                   onClick={() => isSwiped && setSwiped(null)}>
-                  <span onPointerDown={(e) => startDrag(i, e)} className="flex-shrink-0 touch-none cursor-grab active:cursor-grabbing" style={{ color: "#5b6577" }} aria-label="Déplacer">
+                  <span onPointerDown={(e) => startDrag(i, e)} className="flex-shrink-0 touch-none cursor-grab active:cursor-grabbing" style={{ color: "#5b6577" }} aria-label={t("stack.move")}>
                     <span className="material-symbols-outlined">drag_indicator</span>
                   </span>
                   <span className="material-symbols-outlined" style={{ color: w.color }}>{w.icon}</span>
-                  <span className="text-sm font-bold text-white flex-1">{w.label}</span>
+                  <span className="text-sm font-bold text-white flex-1">{t("widgets." + id)}</span>
                 </div>
               </div>
             );
@@ -318,14 +320,14 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
         {/* Widgets retirés (à ré-ajouter) */}
         {removed.length > 0 && (
           <div className="mt-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#6b7686" }}>Ajouter</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#6b7686" }}>{t("stack.add")}</p>
             <div className="flex flex-wrap gap-2">
               {removed.map((id) => (
                 <button key={id} onClick={() => add(id)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
                   style={{ background: "#1a2234", color: "#c7d0e0", border: "1px solid rgba(255,255,255,0.08)" }}>
                   <span className="material-symbols-outlined text-base" style={{ color: WIDGETS[id].color }}>{WIDGETS[id].icon}</span>
-                  {WIDGETS[id].label}
+                  {t("widgets." + id)}
                   <span className="material-symbols-outlined text-base">add</span>
                 </button>
               ))}
@@ -349,6 +351,7 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
 // Ouvert par les 3 points d'un widget : formulaire adapté au widget actif
 // (ligues pour le Foot, cryptos pour la Finance, ville pour la Météo).
 function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSaveFav, onSaveFinance, onSaveCity, onToggleTeam, onClose }) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   // Verrou du défilement de l'arrière-plan pendant que la feuille est ouverte.
   useEffect(() => {
@@ -367,7 +370,7 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
   const [teamSearching, setTeamSearching] = useState(false);
   const [openSections, setOpenSections] = useState(() => new Set(["france"])); // Accordéon : France ouverte par défaut
   const [natIds, setNatIds] = useState({});                                    // key sélection → id ESPN résolu (exact)
-  const label = WIDGETS[widgetId]?.label || "Widget";
+  const label = WIDGETS[widgetId] ? t("widgets." + widgetId) : "Widget";
 
   const toggleSection = (key) => setOpenSections((p) => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
@@ -448,11 +451,11 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
               style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)" }}>
               <span className="material-symbols-outlined flex-shrink-0" style={{ color: "#6b7686", fontSize: 20 }}>search</span>
               <input value={teamQ} onChange={(e) => setTeamQ(e.target.value)}
-                placeholder="Rechercher un club (Real, PSG, Dortmund…)"
+                placeholder={t("stack.search_club")}
                 className="flex-1 bg-transparent text-sm text-white outline-none min-w-0"
                 style={{ caretColor: NEON }} />
               {teamQ && (
-                <button onClick={() => setTeamQ("")} className="flex-shrink-0" aria-label="Effacer">
+                <button onClick={() => setTeamQ("")} className="flex-shrink-0" aria-label={t("stack.erase")}>
                   <span className="material-symbols-outlined" style={{ color: "#6b7686", fontSize: 18 }}>close</span>
                 </button>
               )}
@@ -462,9 +465,9 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
             {teamQ.trim().length >= 2 && (
               <div className="mb-3">
                 {teamSearching && teamResults.length === 0 ? (
-                  <p className="text-xs px-1 py-2" style={{ color: "#6b7686" }}>Recherche…</p>
+                  <p className="text-xs px-1 py-2" style={{ color: "#6b7686" }}>{t("stack.searching")}</p>
                 ) : teamResults.length === 0 ? (
-                  <p className="text-xs px-1 py-2" style={{ color: "#6b7686" }}>Aucun club trouvé.</p>
+                  <p className="text-xs px-1 py-2" style={{ color: "#6b7686" }}>{t("stack.no_club")}</p>
                 ) : (
                   <div className="space-y-0.5">
                     {teamResults.map((t) => {
@@ -572,7 +575,7 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
           <div>
             <div className="flex gap-2">
               <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && searchCity()}
-                placeholder="Rechercher une ville…"
+                placeholder={t("stack.search_city")}
                 className="flex-1 px-4 py-2.5 rounded-2xl text-sm text-white outline-none"
                 style={{ background: "#1a2234", border: "1px solid rgba(255,255,255,0.08)" }} />
               <button onClick={searchCity} className="px-4 rounded-2xl font-bold text-sm" style={{ background: "#232c40", color: "#c7d0e0" }}>
@@ -583,11 +586,11 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
               <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-2xl" style={{ background: "#fbbf2414" }}>
                 <span className="material-symbols-outlined" style={{ color: "#fbbf24", fontSize: 18 }}>location_on</span>
                 <span className="text-sm font-bold text-white flex-1">{picked.name}</span>
-                <button onClick={() => { setPicked(null); setResults([]); setQ(""); }} className="text-xs font-bold" style={{ color: "#8b96a8" }}>Localisation auto</button>
+                <button onClick={() => { setPicked(null); setResults([]); setQ(""); }} className="text-xs font-bold" style={{ color: "#8b96a8" }}>{t("stack.auto_location")}</button>
               </div>
             )}
             <div className="mt-2 max-h-[34vh] overflow-y-auto no-scrollbar">
-              {searching && <p className="text-xs py-2" style={{ color: "#6b7686" }}>Recherche…</p>}
+              {searching && <p className="text-xs py-2" style={{ color: "#6b7686" }}>{t("stack.searching")}</p>}
               {results.map((r) => (
                 <button key={`${r.id}`} onClick={() => { setPicked({ name: [r.name, r.admin1, r.country_code].filter(Boolean).join(", "), lat: r.latitude, lon: r.longitude }); setResults([]); }}
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left" style={{ color: "#dae2fd" }}>
@@ -611,6 +614,7 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
 
 // ─────────────────────────────── Pile principale ──────────────────────────────
 export default function WidgetStack({ user, setUser }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const showFoot = user?.show_sports !== false;
   const showMma = user?.show_mma !== false;
@@ -927,11 +931,11 @@ export default function WidgetStack({ user, setUser }) {
       <div className="flex items-center justify-between mb-1.5 px-0.5">
         <div className="flex items-center gap-1.5">
           <span className="material-symbols-outlined" style={{ color: w.color, fontSize: 15 }}>{w.icon}</span>
-          <span className="text-[11px] font-black uppercase tracking-wider" style={{ color: "#8b96a8" }}>{w.label}</span>
+          <span className="text-[11px] font-black uppercase tracking-wider" style={{ color: "#8b96a8" }}>{t("widgets." + id)}</span>
         </div>
-        <button onClick={() => openWidgetMenu(id)} aria-label="Personnaliser ce widget"
+        <button onClick={() => openWidgetMenu(id)} aria-label={t("stack.customize_widget")}
           className="flex items-center justify-center -m-1 p-1 rounded-lg active:scale-90 transition-transform">
-          <span className="material-symbols-outlined" style={{ color: "#6b7686", fontSize: 16 }} title="Personnaliser">more_horiz</span>
+          <span className="material-symbols-outlined" style={{ color: "#6b7686", fontSize: 16 }} title={t("stack.customize")}>more_horiz</span>
         </button>
       </div>
     );
@@ -989,7 +993,7 @@ export default function WidgetStack({ user, setUser }) {
                 </p>
               </div>
             ) : (
-              <p className="text-[11px] mt-2" style={{ color: "#6b7686" }}>Fixe une limite dans Réglages → Bien-être numérique.</p>
+              <p className="text-[11px] mt-2" style={{ color: "#6b7686" }}>{t("stack.screentime_hint")}</p>
             )}
           </div>
         </div>
@@ -1000,7 +1004,7 @@ export default function WidgetStack({ user, setUser }) {
         <PageHeader id="finance" />
         <div className="flex-1 overflow-y-auto no-scrollbar">
           {finance.length === 0 ? (
-            <p className="text-xs pt-2" style={{ color: "#6b7686" }}>Chargement des cours…</p>
+            <p className="text-xs pt-2" style={{ color: "#6b7686" }}>{t("stack.loading_prices")}</p>
           ) : finance.map((a) => {
             const chg = a.change_24h;
             const up = (chg || 0) >= 0;
@@ -1045,7 +1049,7 @@ export default function WidgetStack({ user, setUser }) {
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-xs" style={{ color: "#6b7686" }}>Autorise la localisation pour la météo.</p>
+            <p className="text-xs" style={{ color: "#6b7686" }}>{t("stack.weather_permission")}</p>
           </div>
         )}
       </div>
@@ -1079,7 +1083,7 @@ export default function WidgetStack({ user, setUser }) {
                     v.profile_pic
                       ? <img key={v.id} src={v.profile_pic} alt="" className="w-7 h-7 rounded-full object-cover -ml-2 first:ml-0" style={{ border: "2px solid #0d1424", zIndex: 20 - i }} loading="lazy" />
                       : <span key={v.id} className="w-7 h-7 rounded-full -ml-2 first:ml-0 flex items-center justify-center text-[10px] font-bold text-white" style={{ background: "#334155", border: "2px solid #0d1424", zIndex: 20 - i }}>{(v.username || "?").slice(0, 1).toUpperCase()}</span>
-                  )) : <span className="text-[11px]" style={{ color: "#6b7686" }}>Aucune visite récente pour l'instant.</span>}
+                  )) : <span className="text-[11px]" style={{ color: "#6b7686" }}>{t("stack.no_visits")}</span>}
                 </div>
               </>
             ) : (
@@ -1171,18 +1175,18 @@ export default function WidgetStack({ user, setUser }) {
                 <p className="text-sm font-bold text-white flex items-center gap-1">
                   <span className="material-symbols-outlined" style={{ fontSize: 15, color: "#a78bfa" }}>lock</span>Astro Néon
                 </p>
-                <p className="text-[11px]" style={{ color: "#8b96a8" }}>Horoscope quotidien exclusif.</p>
+                <p className="text-[11px]" style={{ color: "#8b96a8" }}>{t("astro.hint")}</p>
                 {unlockCTA("Astro Néon est réservé aux abonnés Premium.")}
               </div>
             </div>
           ) : !astroSign ? (
             <div className="flex-1 overflow-y-auto no-scrollbar">
-              <p className="text-[11px] mb-1.5" style={{ color: "#8b96a8" }}>Choisis ton signe :</p>
+              <p className="text-[11px] mb-1.5" style={{ color: "#8b96a8" }}>{t("astro.choose_sign")}</p>
               <div className="flex flex-wrap gap-1.5">
                 {ASTRO_SIGNS.map((s) => (
                   <button key={s.key} onClick={() => { setAstroSign(s.key); try { localStorage.setItem("nexus_astro_sign", s.key); } catch { /* ignore */ } }}
                     className="px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ background: "#1a2234", color: "#c4b5fd", border: "1px solid rgba(167,139,250,0.3)" }}>
-                    {s.label}
+                    {t("astro.sign." + s.key)}
                   </button>
                 ))}
               </div>
@@ -1190,15 +1194,15 @@ export default function WidgetStack({ user, setUser }) {
           ) : (
             <div className="flex-1 flex flex-col justify-center gap-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-black" style={{ color: "#c4b5fd" }}>{ASTRO_SIGNS.find((s) => s.key === astroSign)?.label}</span>
+                <span className="text-sm font-black" style={{ color: "#c4b5fd" }}>{t("astro.sign." + astroSign)}</span>
                 <button onClick={() => { setAstroSign(""); try { localStorage.removeItem("nexus_astro_sign"); } catch { /* ignore */ } }}
-                  className="text-[10px] font-bold" style={{ color: "#6b7686" }}>changer</button>
+                  className="text-[10px] font-bold" style={{ color: "#6b7686" }}>{t("astro.change")}</button>
               </div>
               {metrics.map((m) => {
                 const v = astroScore(astroSign, m.key);
                 return (
                   <div key={m.key} className="flex items-center gap-2">
-                    <span className="text-[11px] w-12 flex-shrink-0" style={{ color: "#9fb0c8" }}>{m.label}</span>
+                    <span className="text-[11px] w-12 flex-shrink-0" style={{ color: "#9fb0c8" }}>{t("astro.metric." + m.key)}</span>
                     <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "#1a2234" }}>
                       <div className="h-full rounded-full" style={{ width: `${v}%`, background: m.color, boxShadow: `0 0 8px ${m.color}` }} />
                     </div>
@@ -1217,7 +1221,7 @@ export default function WidgetStack({ user, setUser }) {
         <PageHeader id="trends" />
         <div className="flex-1 overflow-y-auto no-scrollbar">
           {trends.length === 0 ? (
-            <p className="text-xs pt-2" style={{ color: "#6b7686" }}>Publie avec des #hashtags pour lancer les tendances.</p>
+            <p className="text-xs pt-2" style={{ color: "#6b7686" }}>{t("stack.trends_hint")}</p>
           ) : trends.slice(0, 4).map((t, i) => (
             <button key={t.normalized || t.tag} onClick={() => navigate(`/search?q=${encodeURIComponent(t.tag)}`)}
               className="w-full flex items-center justify-between gap-2 py-1 text-left">
