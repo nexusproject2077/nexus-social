@@ -220,10 +220,16 @@ export default function SearchPage({ user }) {
   const sentinelRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Accès rapide (appui long sur la Loupe) : ?focus=1 → focus immédiat du champ,
-  // même si la page de recherche est déjà montée (autoFocus ne couvre que le montage).
+  // Recherche discrète (incognito) : ouverte par appui long sur la Loupe
+  // (?focus=1) → la grille de Découverte/Tendances est MASQUÉE tant que rien
+  // n'est tapé, pour ne pas exposer de contenu non sollicité à l'entourage.
+  const [discreet, setDiscreet] = useState(searchParams.get("focus") === "1");
+
+  // Accès rapide : ?focus=1 → focus immédiat du champ, même si la page est déjà
+  // montée (autoFocus ne couvre que le montage).
   useEffect(() => {
     if (searchParams.get("focus") === "1") {
+      setDiscreet(true);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [searchParams]);
@@ -316,7 +322,7 @@ export default function SearchPage({ user }) {
                 ref={inputRef}
                 data-testid="search-input"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => { setQuery(e.target.value); if (discreet && e.target.value) setDiscreet(false); }}
                 placeholder="Rechercher sur Nexus"
                 autoFocus
                 className="flex-1 bg-transparent border-none outline-none text-sm select-text"
@@ -354,6 +360,19 @@ export default function SearchPage({ user }) {
         <div className="pb-24 lg:pb-8">
           {tab === "lists" ? (
             <ListsPanel user={user} />
+          ) : emptyQuery && discreet ? (
+            /* Recherche discrète : Découverte masquée tant que rien n'est tapé. */
+            <div className="flex flex-col items-center justify-center text-center px-8"
+              style={{ minHeight: "50vh", animation: "fadeIn 0.3s ease" }}>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "rgba(34,211,238,0.1)" }}>
+                <span className="material-symbols-outlined" style={{ color: CY, fontSize: 32 }}>visibility_off</span>
+              </div>
+              <h2 className="text-lg font-black mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: "#dae2fd" }}>Recherche privée</h2>
+              <p className="text-sm" style={{ color: "#859397" }}>Tapez le nom d'un ami, d'une équipe ou d'un hashtag. La grille Découverte reste masquée.</p>
+              <button onClick={() => setDiscreet(false)} className="mt-5 text-xs font-bold px-4 py-2 rounded-full" style={{ background: "#131b2e", color: "#859397" }}>
+                Afficher les tendances
+              </button>
+            </div>
           ) : emptyQuery ? (
             /* État vide : tendances */
             <div className="pt-2">
