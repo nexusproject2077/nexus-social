@@ -126,6 +126,78 @@ export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) 
   return [...footResults.flat(), ...mmaResult];
 }
 
+// ───────────────────── Recherche d'équipes (mise en favori) ────────────────────
+// Annuaire construit à partir des endpoints /teams d'ESPN (même hôte que les
+// scoreboards, donc CORS OK et MÊMES IDs d'équipe → le tri « favori » marche).
+// Chargé une seule fois puis mis en cache mémoire.
+
+const TEAM_DIR_LEAGUES = [
+  "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", // top 5
+  "eng.2", "esp.2", "ita.2", "ger.2", "fra.2", // 2es divisions
+  "ned.1", "por.1", "tur.1", "sco.1", "bel.1", "gre.1", "sui.1", "aut.1", // Europe
+  "usa.1", "mex.1", "bra.1", "arg.1", "sau.1", // Amériques + Saudi
+];
+
+let _teamDirCache = null; // Promise<Team[]>
+
+function extractTeams(data, slug) {
+  const out = [];
+  const leagues = data?.sports?.[0]?.leagues || [];
+  for (const lg of leagues) {
+    for (const item of lg.teams || []) {
+      const t = item.team || item;
+      const logos = t.logos || [];
+      const id = String(t.id || "");
+      if (!id) continue;
+      out.push({
+        id,
+        name: t.displayName || t.name || t.shortDisplayName || "",
+        shortName: t.shortDisplayName || t.abbreviation || "",
+        logo: logos[0]?.href || t.logo || null,
+        league_slug: slug,
+      });
+    }
+  }
+  return out;
+}
+
+function loadTeamDirectory() {
+  if (_teamDirCache) return _teamDirCache;
+  _teamDirCache = (async () => {
+    const jobs = TEAM_DIR_LEAGUES.map((slug) =>
+      fetchJson(`${SOCCER_BASE}/${slug}/teams`).then((d) => extractTeams(d, slug))
+    );
+    const all = (await Promise.all(jobs)).flat();
+    // Dédoublonnage par id (une équipe peut apparaître dans plusieurs listes).
+    const map = new Map();
+    for (const t of all) if (!map.has(t.id)) map.set(t.id, t);
+    return [...map.values()];
+  })().catch(() => {
+    _teamDirCache = null; // on pourra réessayer au prochain appel
+    return [];
+  });
+  return _teamDirCache;
+}
+
+// Recherche floue par nom : correspondance exacte > préfixe > sous-chaîne.
+export async function searchTeamsFromEspn(query, limit = 24) {
+  const q = (query || "").trim().toLowerCase();
+  if (q.length < 2) return [];
+  const dir = await loadTeamDirectory();
+  const scored = [];
+  for (const t of dir) {
+    const name = t.name.toLowerCase();
+    const short = (t.shortName || "").toLowerCase();
+    let score = -1;
+    if (name === q || short === q) score = 0;
+    else if (name.startsWith(q)) score = 1;
+    else if (name.includes(q) || short.includes(q)) score = 2;
+    if (score >= 0) scored.push([score, t]);
+  }
+  scored.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name));
+  return scored.slice(0, limit).map((x) => x[1]);
+}
+
 // ─────────────── Détail d'un match : chronologie des événements ────────────────
 // Identique à _espn_map_event_type / _espn_fetch_match_sync du backend, mais
 // exécuté dans le navigateur (l'endpoint summary est aussi bloqué depuis Cloud Run).

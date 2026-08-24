@@ -10,7 +10,7 @@ import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
 import { MatchCard, MmaCard, displayMatches, MAJOR_LEAGUES } from "@/components/LiveScores";
 import { getTodayMinutes } from "@/lib/screenTime";
-import { fetchLiveScoresFromEspn } from "@/lib/espnClient";
+import { fetchLiveScoresFromEspn, searchTeamsFromEspn } from "@/lib/espnClient";
 
 const NEON = "#4ade80";
 const STACK_H = 150;
@@ -278,7 +278,7 @@ function StackEditor({ order, smartRotate, financeAssets, onChange, onClose }) {
 // ─────────────── Personnalisation par widget (bottom sheet « ... ») ────────────
 // Ouvert par les 3 points d'un widget : formulaire adapté au widget actif
 // (ligues pour le Foot, cryptos pour la Finance, ville pour la Météo).
-function WidgetConfig({ widgetId, favL, financeAssets, weatherCity, onSaveFav, onSaveFinance, onSaveCity, onClose }) {
+function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSaveFav, onSaveFinance, onSaveCity, onToggleTeam, onClose }) {
   const [busy, setBusy] = useState(false);
   const [leagues, setLeagues] = useState(() => new Set(favL));                 // Foot
   const [assets, setAssets] = useState(() => (financeAssets || []).slice());   // Finance
@@ -286,10 +286,27 @@ function WidgetConfig({ widgetId, favL, financeAssets, weatherCity, onSaveFav, o
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [picked, setPicked] = useState(weatherCity || null);
+  const [teamQ, setTeamQ] = useState("");                                       // Recherche d'équipe (Foot)
+  const [teamResults, setTeamResults] = useState([]);
+  const [teamSearching, setTeamSearching] = useState(false);
   const label = WIDGETS[widgetId]?.label || "Widget";
 
   const toggleLeague = (id) => setLeagues((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAsset = (id) => setAssets((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  // Recherche d'équipe (debounce 300 ms) : annuaire ESPN /teams, filtré côté client.
+  useEffect(() => {
+    if (widgetId !== "football") return;
+    const term = teamQ.trim();
+    if (term.length < 2) { setTeamResults([]); setTeamSearching(false); return; }
+    setTeamSearching(true);
+    let alive = true;
+    const t = setTimeout(async () => {
+      const res = await searchTeamsFromEspn(term).catch(() => []);
+      if (alive) { setTeamResults(res); setTeamSearching(false); }
+    }, 300);
+    return () => { alive = false; clearTimeout(t); };
+  }, [teamQ, widgetId]);
 
   const searchCity = async () => {
     const term = q.trim();
@@ -325,9 +342,63 @@ function WidgetConfig({ widgetId, favL, financeAssets, weatherCity, onSaveFav, o
           <h3 className="text-white font-black text-lg">Personnaliser · {label}</h3>
         </div>
 
-        {/* Foot : cocher les ligues favorites */}
+        {/* Foot : recherche d'équipe (favori immédiat) + ligues favorites */}
         {widgetId === "football" && (
-          <div className="max-h-[46vh] overflow-y-auto no-scrollbar space-y-1.5">
+          <div className="max-h-[52vh] overflow-y-auto no-scrollbar">
+            {/* Barre de recherche épurée */}
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-full mb-3"
+              style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <span className="material-symbols-outlined flex-shrink-0" style={{ color: "#6b7686", fontSize: 20 }}>search</span>
+              <input value={teamQ} onChange={(e) => setTeamQ(e.target.value)}
+                placeholder="Rechercher un club (Real, PSG, Dortmund…)"
+                className="flex-1 bg-transparent text-sm text-white outline-none min-w-0"
+                style={{ caretColor: NEON }} />
+              {teamQ && (
+                <button onClick={() => setTeamQ("")} className="flex-shrink-0" aria-label="Effacer">
+                  <span className="material-symbols-outlined" style={{ color: "#6b7686", fontSize: 18 }}>close</span>
+                </button>
+              )}
+            </div>
+
+            {/* Résultats de recherche : logo · nom · étoile */}
+            {teamQ.trim().length >= 2 && (
+              <div className="mb-3">
+                {teamSearching && teamResults.length === 0 ? (
+                  <p className="text-xs px-1 py-2" style={{ color: "#6b7686" }}>Recherche…</p>
+                ) : teamResults.length === 0 ? (
+                  <p className="text-xs px-1 py-2" style={{ color: "#6b7686" }}>Aucun club trouvé.</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    {teamResults.map((t) => {
+                      const on = favT?.has(t.id);
+                      return (
+                        <div key={t.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl" style={{ background: "#141c2e" }}>
+                          {t.logo ? (
+                            <img src={t.logo} alt="" className="w-6 h-6 object-contain flex-shrink-0" loading="lazy" />
+                          ) : (
+                            <span className="w-6 h-6 rounded-full flex-shrink-0" style={{ background: "#2a3446" }} />
+                          )}
+                          <span className="text-sm flex-1 truncate" style={{ color: "#dae2fd" }}>{t.name}</span>
+                          <button onClick={() => onToggleTeam?.(t.id)} aria-label={on ? "Retirer des favoris" : "Ajouter aux favoris"}
+                            className="flex items-center justify-center flex-shrink-0 w-8 h-8 active:scale-90 transition-transform">
+                            <span className="material-symbols-outlined" style={{
+                              fontSize: 20,
+                              color: on ? NEON : "#5b6577",
+                              fontVariationSettings: `'FILL' ${on ? 1 : 0}`,
+                              filter: on ? `drop-shadow(0 0 5px ${NEON}77)` : "none",
+                            }}>star</span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Ligues favorites (remontent en tête du widget) */}
+            <p className="text-[10px] font-bold uppercase tracking-widest px-1 mb-2" style={{ color: "#6b7686" }}>Compétitions</p>
+            <div className="space-y-1.5">
             {MAJOR_LEAGUES.map((l) => {
               const on = leagues.has(l.id);
               return (
@@ -341,6 +412,7 @@ function WidgetConfig({ widgetId, favL, financeAssets, weatherCity, onSaveFav, o
                 </button>
               );
             })}
+            </div>
           </div>
         )}
 
@@ -853,11 +925,13 @@ export default function WidgetStack({ user, setUser }) {
         <WidgetConfig
           widgetId={configWidget}
           favL={favL}
+          favT={favT}
           financeAssets={financeAssets}
           weatherCity={weatherCity}
           onSaveFav={saveLeagues}
           onSaveFinance={saveFinance}
           onSaveCity={saveCity}
+          onToggleTeam={(id) => toggleFav("team", id)}
           onClose={() => setConfigWidget(null)}
         />
       )}
