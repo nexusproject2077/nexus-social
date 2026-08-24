@@ -192,21 +192,13 @@ function WeatherIcon({ cond, isDay = true, size = 56 }) {
 }
 
 // ─────────────────────────── Éditeur (bottom sheet) ───────────────────────────
-function StackEditor({ order, smartRotate, financeAssets, onChange, onClose }) {
+function StackEditor({ order, smartRotate, onChange, onClose }) {
   const [list, setList] = useState(order);
   const [smart, setSmart] = useState(smartRotate);
-  const [fin, setFin] = useState(financeAssets);
   const [drag, setDrag] = useState(null);        // { index, hover, dy }
   const [swiped, setSwiped] = useState(null);    // id dont la suppression est révélée
   const dragRef = useRef(null);
   const removed = Object.keys(WIDGETS).filter((id) => !list.includes(id));
-
-  // Actifs crypto suivis (cases à cocher) — au moins un doit rester sélectionné.
-  const toggleAsset = (id) => {
-    const next = fin.includes(id) ? fin.filter((x) => x !== id) : [...fin, id];
-    if (!next.length) return;
-    setFin(next); onChange({ finance_assets: next });
-  };
 
   const commit = (next) => { setList(next); onChange({ order: next }); };
 
@@ -262,8 +254,8 @@ function StackEditor({ order, smartRotate, financeAssets, onChange, onClose }) {
     <div className="fixed inset-0 z-[80] flex items-end justify-center"
       style={{ background: "rgba(2,6,20,0.82)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full sm:max-w-md rounded-t-3xl p-5"
-        style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.08)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
+      <div className="w-full sm:max-w-md rounded-t-3xl px-5 overflow-y-auto no-scrollbar"
+        style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "92vh", paddingTop: "calc(env(safe-area-inset-top,0px) + 2rem)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
         <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.22)" }} />
         <h3 className="text-white font-black text-lg mb-1">Modifier la pile</h3>
         <p className="text-xs mb-4" style={{ color: "#859397" }}>Réordonne (glisse la poignée), retire (balaye vers la gauche) ou ajoute un widget.</p>
@@ -332,25 +324,9 @@ function StackEditor({ order, smartRotate, financeAssets, onChange, onClose }) {
           </div>
         )}
 
-        {/* Actifs suivis (visible si le widget Finance est dans la pile) */}
-        {list.includes("finance") && (
-          <div className="mt-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#6b7686" }}>Actifs suivis</p>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(FINANCE_CATALOG).map(([id, a]) => {
-                const on = fin.includes(id);
-                return (
-                  <button key={id} onClick={() => toggleAsset(id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-colors"
-                    style={{ background: on ? "#a78bfa22" : "#1a2234", color: on ? "#c4b5fd" : "#8b96a8", border: `1px solid ${on ? "#a78bfa66" : "rgba(255,255,255,0.08)"}` }}>
-                    <span className="material-symbols-outlined text-base">{on ? "check_circle" : "radio_button_unchecked"}</span>
-                    {a.symbol}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* La sélection des cryptos (« Actifs suivis ») a été déplacée dans la
+            modale contextuelle du widget Finance (bouton « … ») pour alléger cet
+            écran de gestion générale. */}
 
         <button onClick={onClose} className="w-full mt-5 py-3 rounded-2xl font-black text-sm" style={{ background: `linear-gradient(135deg,${NEON},#22d3ee)`, color: "#04250f" }}>
           Terminé
@@ -922,7 +898,12 @@ export default function WidgetStack({ user, setUser }) {
   // Pour les widgets sans réglage propre (tendances, MMA, temps d'écran), on
   // ouvre le mode Édition global de la pile.
   const CONFIGURABLE = { football: 1, finance: 1, weather: 1 };
-  const openWidgetMenu = (id) => { if (CONFIGURABLE[id]) setConfigWidget(id); else setEditing(true); };
+  const openWidgetMenu = (id) => {
+    // La personnalisation des cryptos (widget Finance) est réservée aux abonnés
+    // Premium → sinon on ouvre le paywall Stripe.
+    if (id === "finance" && !isPremium) { setPremiumPitch("Personnalise les cryptos suivies avec Nexus Premium."); return; }
+    if (CONFIGURABLE[id]) setConfigWidget(id); else setEditing(true);
+  };
 
   const PageHeader = ({ id }) => {
     const w = WIDGETS[id];
@@ -1253,7 +1234,7 @@ export default function WidgetStack({ user, setUser }) {
       </div>
       {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
       {editing && (
-        <StackEditor order={configOrder} smartRotate={smartRotate} financeAssets={financeAssets} onChange={applyConfig} onClose={() => setEditing(false)} />
+        <StackEditor order={configOrder} smartRotate={smartRotate} onChange={applyConfig} onClose={() => setEditing(false)} />
       )}
       {configWidget && (
         <WidgetConfig
