@@ -152,7 +152,8 @@ function extractTeams(data, slug) {
       out.push({
         id,
         name: t.displayName || t.name || t.shortDisplayName || "",
-        shortName: t.shortDisplayName || t.abbreviation || "",
+        shortName: t.shortDisplayName || "",
+        abbrev: t.abbreviation || "",
         logo: logos[0]?.href || t.logo || null,
         league_slug: slug,
       });
@@ -171,27 +172,36 @@ function loadTeamDirectory() {
     // Dédoublonnage par id (une équipe peut apparaître dans plusieurs listes).
     const map = new Map();
     for (const t of all) if (!map.has(t.id)) map.set(t.id, t);
-    return [...map.values()];
+    const list = [...map.values()];
+    // Ne PAS mettre en cache un annuaire vide (échec réseau ponctuel) → on
+    // pourra réessayer à la prochaine recherche.
+    if (!list.length) throw new Error("annuaire vide");
+    return list;
   })().catch(() => {
-    _teamDirCache = null; // on pourra réessayer au prochain appel
+    _teamDirCache = null;
     return [];
   });
   return _teamDirCache;
 }
 
-// Recherche floue par nom : correspondance exacte > préfixe > sous-chaîne.
+// Minuscule + suppression des accents (« münchen » ≈ « munchen »).
+const _DIACRITICS = new RegExp("[\\u0300-\\u036f]", "g");
+const _fold = (s) => (s || "").toLowerCase().normalize("NFD").replace(_DIACRITICS, "");
+
+// Recherche floue : nom / nom court / ABRÉVIATION (« PSG »), exact > préfixe > sous-chaîne.
 export async function searchTeamsFromEspn(query, limit = 24) {
-  const q = (query || "").trim().toLowerCase();
+  const q = _fold((query || "").trim());
   if (q.length < 2) return [];
   const dir = await loadTeamDirectory();
   const scored = [];
   for (const t of dir) {
-    const name = t.name.toLowerCase();
-    const short = (t.shortName || "").toLowerCase();
+    const name = _fold(t.name);
+    const short = _fold(t.shortName);
+    const abbr = _fold(t.abbrev);
     let score = -1;
-    if (name === q || short === q) score = 0;
-    else if (name.startsWith(q)) score = 1;
-    else if (name.includes(q) || short.includes(q)) score = 2;
+    if (abbr === q || name === q || short === q) score = 0;
+    else if (name.startsWith(q) || short.startsWith(q)) score = 1;
+    else if (name.includes(q) || short.includes(q) || abbr.includes(q)) score = 2;
     if (score >= 0) scored.push([score, t]);
   }
   scored.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name));
