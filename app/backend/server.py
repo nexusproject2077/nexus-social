@@ -2236,6 +2236,9 @@ async def billing_plan(debug: int = 0):
     if STRIPE_ENABLED:
         try:
             price = stripe.Price.retrieve(STRIPE_PRICE_ID)
+            # stripe v12+ : les objets ressources ne supportent plus .get()
+            # (« a Price is not a dict »). On repasse en dict simple (JSON).
+            price = json.loads(str(price))
             out["amount"] = (price.get("unit_amount") or 0) / 100.0
             out["currency"] = (price.get("currency") or "eur").upper()
             rec = price.get("recurring") or {}
@@ -2711,6 +2714,10 @@ async def stripe_webhook(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Signature webhook invalide")
 
+    # stripe v12+ : les StripeObject ne supportent plus .get() (« is not a dict »).
+    # Sans cette conversion, TOUT le handler ci-dessous (Premium, cadeaux,
+    # pourboires) planterait en AttributeError et aucun paiement ne serait validé.
+    event = json.loads(str(event))
     etype = event["type"]
     obj = event["data"]["object"]
     meta = obj.get("metadata") or {}
