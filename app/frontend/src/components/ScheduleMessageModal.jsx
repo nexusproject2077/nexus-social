@@ -1,6 +1,8 @@
 // Sélecteur d'heure pour planifier un message (DM). Raccourcis rapides +
 // sélecteur date/heure. Renvoie une date ISO à l'appelant.
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
 function atToday(h, m = 0) {
   const d = new Date();
@@ -17,7 +19,7 @@ function tomorrowAt(h, m = 0) {
 function inHours(h) {
   return new Date(Date.now() + h * 3600 * 1000);
 }
-const fmt = (d) => d.toLocaleString("fr-FR", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const fmt = (d) => d.toLocaleString(i18n.language || undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
 
 // Valeur pour <input type="datetime-local"> (local, sans secondes), min = maintenant+5 min.
 function toLocalInput(d) {
@@ -25,15 +27,16 @@ function toLocalInput(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-export default function ScheduleMessageModal({ open, onClose, onConfirm, title = "Planifier le message" }) {
+export default function ScheduleMessageModal({ open, onClose, onConfirm, title }) {
+  const { t } = useTranslation();
   const [custom, setCustom] = useState("");
   if (!open) return null;
 
   const quick = [
-    { label: "Dans 1 heure", d: inHours(1) },
-    { label: "Ce soir 18:00", d: atToday(18) },
-    { label: "Ce soir 21:00", d: atToday(21) },
-    { label: "Demain 10:00", d: tomorrowAt(10) },
+    { label: t("dm.sched_in_1h"), d: inHours(1) },
+    { label: t("dm.sched_tonight", { time: "18:00" }), d: atToday(18) },
+    { label: t("dm.sched_tonight", { time: "21:00" }), d: atToday(21) },
+    { label: t("dm.sched_tomorrow", { time: "10:00" }), d: tomorrowAt(10) },
   ];
   const confirm = (d) => { onConfirm?.(d.toISOString()); onClose?.(); };
 
@@ -46,7 +49,7 @@ export default function ScheduleMessageModal({ open, onClose, onConfirm, title =
         <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.22)" }} />
         <div className="flex items-center gap-2 mb-4">
           <span className="material-symbols-outlined" style={{ color: "var(--nexus-accent-solid,#22d3ee)" }}>schedule_send</span>
-          <h3 className="text-white font-black text-lg">{title}</h3>
+          <h3 className="text-white font-black text-lg">{title || t("dm.schedule_title")}</h3>
         </div>
         <div className="space-y-2">
           {quick.map((q) => (
@@ -59,7 +62,7 @@ export default function ScheduleMessageModal({ open, onClose, onConfirm, title =
           ))}
         </div>
         <div className="mt-4">
-          <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: "#6b7686" }}>Personnalisé</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: "#6b7686" }}>{t("dm.custom")}</p>
           <div className="flex gap-2">
             <input type="datetime-local" value={custom} min={toLocalInput(inHours(0))}
               onChange={(e) => setCustom(e.target.value)}
@@ -70,7 +73,7 @@ export default function ScheduleMessageModal({ open, onClose, onConfirm, title =
               style={{ background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#04121a" }}>OK</button>
           </div>
         </div>
-        <button onClick={onClose} className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold" style={{ background: "#1a2234", color: "#a7b3cc" }}>Annuler</button>
+        <button onClick={onClose} className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold" style={{ background: "#1a2234", color: "#a7b3cc" }}>{t("dm.cancel")}</button>
       </div>
     </div>
   );

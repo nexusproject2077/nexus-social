@@ -2,6 +2,7 @@
 // Fond sombre, pinceau NÉON à la couleur d'accentuation. Valider → envoie
 // le dessin sous forme d'image PNG dans le fil.
 import { useRef, useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 function accentColor() {
   try {
@@ -13,6 +14,7 @@ function accentColor() {
 }
 
 export default function DrawCanvasModal({ open, onClose, onSubmit }) {
+  const { t } = useTranslation();
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const drawing = useRef(false);
@@ -90,11 +92,11 @@ export default function DrawCanvasModal({ open, onClose, onSubmit }) {
   return (
     <div className="fixed inset-0 z-[95] flex flex-col" style={{ background: "rgba(2,6,20,0.92)" }}>
       <div className="flex items-center justify-between px-4 py-3">
-        <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }} aria-label="Annuler">
+        <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }} aria-label={t("dm.cancel")}>
           <span className="material-symbols-outlined" style={{ color: "#dae2fd" }}>close</span>
         </button>
-        <span className="text-sm font-bold" style={{ color: "#dae2fd" }}>Dessiner</span>
-        <button onClick={clear} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }} aria-label="Effacer">
+        <span className="text-sm font-bold" style={{ color: "#dae2fd" }}>{t("dm.draw")}</span>
+        <button onClick={clear} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }} aria-label={t("dm.erase")}>
           <span className="material-symbols-outlined" style={{ color: "#dae2fd" }}>ink_eraser</span>
         </button>
       </div>
@@ -110,7 +112,7 @@ export default function DrawCanvasModal({ open, onClose, onSubmit }) {
         <button onClick={validate} disabled={!dirty}
           className="w-full py-3 rounded-2xl font-black text-sm disabled:opacity-40 active:scale-[0.98] transition-transform"
           style={{ background: dirty ? "linear-gradient(135deg,var(--nexus-accent),#3b82f6)" : "#1a2234", color: dirty ? "#04121a" : "#64748b" }}>
-          Envoyer le dessin
+          {t("dm.send_drawing")}
         </button>
       </div>
     </div>

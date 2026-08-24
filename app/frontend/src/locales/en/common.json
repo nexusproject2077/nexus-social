@@ -260,6 +260,14 @@
     "you_left_group": "You left the group",
     "err_select_person": "Select at least one person",
     "chat_deleted": "Chat deleted",
-    "report_sent": "Report sent"
+    "report_sent": "Report sent",
+    "cancel": "Cancel",
+    "erase": "Erase",
+    "send_drawing": "Send drawing",
+    "schedule_title": "Schedule message",
+    "sched_in_1h": "In 1 hour",
+    "sched_tonight": "Tonight {{time}}",
+    "sched_tomorrow": "Tomorrow {{time}}",
+    "custom": "Custom"
   }
 }

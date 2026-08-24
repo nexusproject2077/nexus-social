@@ -260,6 +260,14 @@
     "you_left_group": "Vous avez quitté le groupe",
     "err_select_person": "Sélectionnez au moins une personne",
     "chat_deleted": "Discussion supprimée",
-    "report_sent": "Signalement envoyé"
+    "report_sent": "Signalement envoyé",
+    "cancel": "Annuler",
+    "erase": "Effacer",
+    "send_drawing": "Envoyer le dessin",
+    "schedule_title": "Planifier le message",
+    "sched_in_1h": "Dans 1 heure",
+    "sched_tonight": "Ce soir {{time}}",
+    "sched_tomorrow": "Demain {{time}}",
+    "custom": "Personnalisé"
   }
 }
