@@ -49,28 +49,54 @@ const DEFAULT_FINANCE_ASSETS = ["bitcoin", "ethereum", "solana"];
 // nations[].id = id ESPN de SECOURS ; il est écrasé par l'id EXACT résolu depuis
 // l'annuaire (resolveTeamIdByName) quand la sélection y figure (CdM/Euro).
 const FOOT_SECTIONS = [
-  { key: "europe", code: "eu", label: "Europe",
-    leagues: [["uefa.champions", "Ligue des Champions"], ["uefa.europa", "Ligue Europa"], ["uefa.europa.conf", "Ligue Conférence"]], nations: [] },
+  { key: "europe", code: "eu", label: "Compétitions européennes",
+    leagues: [["uefa.champions", "Ligue des Champions"], ["uefa.europa", "Ligue Europa"], ["uefa.europa.conf", "Ligue Conférence"], ["uefa.super_cup", "Supercoupe d'Europe"], ["uefa.wchampions", "Ligue des Champions (F)"], ["uefa.nations", "Ligue des Nations"]], nations: [] },
   { key: "france", code: "fr", label: "France",
-    leagues: [["fra.1", "Ligue 1"], ["fra.2", "Ligue 2"], ["fra.coupe_de_france", "Coupe de France"]],
+    leagues: [["fra.1", "Ligue 1"], ["fra.2", "Ligue 2"], ["fra.coupe_de_france", "Coupe de France"], ["fra.super_cup", "Trophée des Champions"], ["fra.w.1", "Première Ligue (F)"]],
     nations: [{ key: "fr_nt", label: "Équipe de France", aliases: ["France"], id: "478" }] },
   { key: "angleterre", code: "en", label: "Angleterre",
-    leagues: [["eng.1", "Premier League"], ["eng.2", "Championship"], ["eng.fa", "FA Cup"]],
+    leagues: [["eng.1", "Premier League"], ["eng.2", "Championship"], ["eng.3", "League One"], ["eng.4", "League Two"], ["eng.fa", "FA Cup"], ["eng.league_cup", "Carabao Cup"], ["eng.charity", "Community Shield"], ["eng.w.1", "Women's Super League"]],
     nations: [{ key: "en_nt", label: "Équipe d'Angleterre", aliases: ["England"], id: "448" }] },
   { key: "espagne", code: "es", label: "Espagne",
-    leagues: [["esp.1", "LaLiga"], ["esp.2", "LaLiga 2"], ["esp.copa_del_rey", "Coupe du Roi"]],
+    leagues: [["esp.1", "LaLiga"], ["esp.2", "LaLiga 2"], ["esp.copa_del_rey", "Coupe du Roi"], ["esp.super_cup", "Supercoupe d'Espagne"], ["esp.w.1", "Liga F (F)"]],
     nations: [{ key: "es_nt", label: "Équipe d'Espagne", aliases: ["Spain"], id: "164" }] },
   { key: "italie", code: "it", label: "Italie",
-    leagues: [["ita.1", "Serie A"], ["ita.2", "Serie B"], ["ita.coppa_italia", "Coupe d'Italie"]],
+    leagues: [["ita.1", "Serie A"], ["ita.2", "Serie B"], ["ita.coppa_italia", "Coupe d'Italie"], ["ita.super_cup", "Supercoupe d'Italie"]],
     nations: [{ key: "it_nt", label: "Équipe d'Italie", aliases: ["Italy"], id: "2925" }] },
   { key: "allemagne", code: "de", label: "Allemagne",
-    leagues: [["ger.1", "Bundesliga"], ["ger.2", "2. Bundesliga"], ["ger.dfb_pokal", "DFB-Pokal"]],
+    leagues: [["ger.1", "Bundesliga"], ["ger.2", "2. Bundesliga"], ["ger.dfb_pokal", "DFB-Pokal"], ["ger.super_cup", "Supercoupe d'Allemagne"]],
     nations: [{ key: "de_nt", label: "Équipe d'Allemagne", aliases: ["Germany"], id: "714" }] },
+  { key: "portugal", code: "pt", label: "Portugal",
+    leagues: [["por.1", "Liga Portugal"], ["por.taca.portugal", "Coupe du Portugal"]], nations: [] },
+  { key: "paysbas", code: "nl", label: "Pays-Bas",
+    leagues: [["ned.1", "Eredivisie"], ["ned.2", "Keuken Kampioen Divisie"], ["ned.cup", "KNVB Beker"], ["ned.supercup", "Johan Cruyff Shield"]], nations: [] },
+  { key: "belgique", code: "be", label: "Belgique",
+    leagues: [["bel.1", "Jupiler Pro League"]], nations: [] },
+  { key: "ecosse", code: "sco", label: "Écosse",
+    leagues: [["sco.1", "Scottish Premiership"], ["sco.2", "Scottish Championship"], ["sco.tennents", "Scottish Cup"], ["sco.cis", "Scottish League Cup"]], nations: [] },
   { key: "turquie", code: "tr", label: "Turquie",
     leagues: [["tur.1", "Süper Lig"]],
     nations: [{ key: "tr_nt", label: "Équipe de Turquie", aliases: ["Türkiye", "Turkey"], id: null }] },
+  { key: "autreseurope", code: "eu", label: "Autres Europe",
+    leagues: [["aut.1", "Bundesliga Autriche"], ["gre.1", "Super League Grèce"], ["den.1", "Superliga Danemark"], ["nor.1", "Eliteserien Norvège"], ["swe.1", "Allsvenskan Suède"], ["rus.1", "Premier League Russie"], ["irl.1", "Premier Division Irlande"]], nations: [] },
+  { key: "saoudite", code: "sa", label: "Arabie Saoudite",
+    leagues: [["ksa.1", "Saudi Pro League"], ["ksa.kings.cup", "King's Cup"]], nations: [] },
+  { key: "usa", code: "us", label: "États-Unis / Concacaf",
+    leagues: [["usa.1", "MLS"], ["usa.nwsl", "NWSL"], ["usa.open", "US Open Cup"], ["usa.usl.1", "USL Championship"], ["concacaf.champions", "Concacaf Champions Cup"], ["concacaf.leagues.cup", "Leagues Cup"], ["concacaf.gold", "Gold Cup"], ["concacaf.nations.league", "Nations League"]], nations: [] },
+  { key: "mexique", code: "mx", label: "Mexique",
+    leagues: [["mex.1", "Liga MX"], ["mex.2", "Liga de Expansión MX"]], nations: [] },
+  { key: "bresil", code: "br", label: "Brésil",
+    leagues: [["bra.1", "Brasileirão Série A"], ["bra.2", "Brasileirão Série B"], ["bra.copa_do_brazil", "Copa do Brasil"]], nations: [] },
+  { key: "argentine", code: "ar", label: "Argentine",
+    leagues: [["arg.1", "Liga Profesional"], ["arg.copa", "Copa Argentina"]], nations: [] },
+  { key: "conmebol", code: "globe", label: "Amérique du Sud / CONMEBOL",
+    leagues: [["conmebol.libertadores", "Copa Libertadores"], ["conmebol.sudamericana", "Copa Sudamericana"], ["conmebol.recopa", "Recopa Sudamericana"], ["chi.1", "Primera División Chili"], ["col.1", "Primera A Colombie"], ["per.1", "Liga 1 Pérou"], ["uru.1", "Liga AUF Uruguay"], ["ecu.1", "LigaPro Équateur"]], nations: [] },
+  { key: "afrique", code: "globe", label: "Afrique / CAF",
+    leagues: [["caf.nations", "CAN (Coupe d'Afrique)"], ["caf.champions", "CAF Champions League"], ["caf.confed", "CAF Confederation Cup"], ["rsa.1", "Premiership Afrique du Sud"], ["nga.1", "Nigerian Professional League"]], nations: [] },
+  { key: "asie", code: "globe", label: "Asie / Océanie",
+    leagues: [["afc.champions", "AFC Champions League Elite"], ["afc.cup", "AFC Champions League Two"], ["afc.asian.cup", "Coupe d'Asie"], ["jpn.1", "J.League Japon"], ["chn.1", "Chinese Super League"], ["ind.1", "Indian Super League"], ["aus.1", "A-League Men"], ["aus.w.1", "A-League Women"]], nations: [] },
   { key: "international", code: "globe", label: "International",
-    leagues: [["fifa.world", "Coupe du Monde"], ["uefa.euro", "Euro"], ["conmebol.america", "Copa América"], ["caf.nations", "CAN"]], nations: [] },
+    leagues: [["fifa.world", "Coupe du Monde"], ["fifa.wwc", "Coupe du Monde Féminine"], ["uefa.euro", "Euro"], ["conmebol.america", "Copa América"], ["caf.nations", "CAN"], ["fifa.cwc", "Coupe du Monde des Clubs"], ["fifa.olympics", "Jeux Olympiques (H)"], ["fifa.w.olympics", "Jeux Olympiques (F)"], ["fifa.friendly", "Matchs amicaux"]], nations: [] },
 ];
 
 // Interrupteur (même style partout).
@@ -471,7 +497,7 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
                       style={{ color: "#6b7686", fontSize: 20, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.25s ease" }}>expand_more</span>
                   </button>
                   {/* Corps de la section (collapse fluide) */}
-                  <div style={{ maxHeight: open ? 480 : 0, overflow: "hidden", transition: "max-height 0.3s ease" }}>
+                  <div style={{ maxHeight: open ? 720 : 0, overflow: "hidden", transition: "max-height 0.3s ease" }}>
                     <div className="space-y-1.5 pt-1 pb-1">
                       {/* Ligues → favorite_leagues (commit à « Enregistrer ») */}
                       {s.leagues.map(([id, name]) => {
