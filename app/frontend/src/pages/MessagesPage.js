@@ -12,6 +12,7 @@ import InstantsEntry from "@/components/instants/InstantsEntry";
 import NexusAIChat from "@/components/NexusAIChat";
 import { SURFACE, TEXT, OUTLINE, ACCENT, glass as sharedGlass } from "@/lib/theme";
 import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
+import DrawCanvasModal from "@/components/DrawCanvasModal";
 
 // Un message vocal ne doit pas non plus réclamer la session « Now Playing »
 // iOS : on route son son par Web Audio quand l'URL est CORS-safe (Cloudinary /
@@ -479,6 +480,8 @@ export default function MessagesPage({ user }) {
 
   // Image en attente d'envoi (data URL compressée) + sélecteur de fichier.
   const [pendingImage, setPendingImage] = useState(null);
+  const [showDraw, setShowDraw] = useState(false);      // canevas de dessin (DM)
+  const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [compressing, setCompressing] = useState(false);
   const imageInputRef = useRef(null);
 
@@ -1128,6 +1131,29 @@ export default function MessagesPage({ user }) {
       setMessageContent(""); setReplyingTo(null); setPendingImage(null); setPendingAudio(null);
       fetchConversations();
       if (isGroup) fetchGroups();  // remonte le groupe en haut de la liste
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erreur lors de l'envoi");
+    }
+  };
+
+  // Envoie un dessin (canevas → PNG) comme image, en réutilisant le pipeline média.
+  const postDrawing = async (dataUrl) => {
+    if (!dataUrl) return;
+    try {
+      if (isGroup && selectedGroupId) {
+        const res = await axios.post(`${API}/messages/groups/${selectedGroupId}/messages`, {
+          content: "", media_urls: [dataUrl], reply_to_id: replyingTo?.id,
+        });
+        if (res.data?.message) setMessages((p) => [...p, res.data.message]);
+      } else if (selectedUserId) {
+        const res = await axios.post(`${API}/messages`, {
+          recipient_id: selectedUserId, content: "", media_url: dataUrl, media_type: "image", reply_to_id: replyingTo?.id,
+        });
+        if (res.data) setMessages((p) => [...p, res.data]);
+      }
+      setReplyingTo(null);
+      fetchConversations();
+      if (isGroup) fetchGroups();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors de l'envoi");
     }
@@ -2085,6 +2111,26 @@ export default function MessagesPage({ user }) {
                   style={{ color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) handleSendMessage(e); }}
                 />
+                {/* « + » → menu d'outils (Dessiner). */}
+                <div className="relative">
+                  <button type="button" onClick={() => setShowPlusMenu((v) => !v)}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90"
+                    style={{ background: C.high, color: C.cyan }} title="Plus d'outils">
+                    <span className="material-symbols-outlined text-sm" style={{ transform: showPlusMenu ? "rotate(45deg)" : "none", transition: "transform 0.2s" }}>add</span>
+                  </button>
+                  {showPlusMenu && (
+                    <>
+                      <div className="fixed inset-0 z-[60]" onClick={() => setShowPlusMenu(false)} />
+                      <div className="absolute bottom-11 right-0 z-[61] rounded-2xl overflow-hidden" style={{ background: C.surface, border: `1px solid ${C.high}`, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+                        <button type="button" onClick={() => { setShowPlusMenu(false); setShowDraw(true); }}
+                          className="flex items-center gap-2 px-4 py-3 w-40 text-left active:scale-[0.98]" style={{ color: C.onSurface }}>
+                          <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>brush</span>
+                          <span className="text-sm font-semibold">Dessiner</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
                 <button type="submit" disabled={!messageContent.trim() && !pendingImage && !pendingAudio}
                   className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-40"
                   style={{ background: (messageContent.trim() || pendingImage || pendingAudio) ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: (messageContent.trim() || pendingImage || pendingAudio) ? C.onPrimary : C.outline }}>
@@ -2120,6 +2166,7 @@ export default function MessagesPage({ user }) {
           </button>
         </div>
       )}
+      <DrawCanvasModal open={showDraw} onClose={() => setShowDraw(false)} onSubmit={postDrawing} />
     </div>
   );
 
