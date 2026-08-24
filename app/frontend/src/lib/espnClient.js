@@ -228,6 +228,18 @@ function loadTeamDirectory() {
 const _DIACRITICS = new RegExp("[\\u0300-\\u036f]", "g");
 const _fold = (s) => (s || "").toLowerCase().normalize("NFD").replace(_DIACRITICS, "");
 
+// Résout l'ID ESPN EXACT d'une sélection nationale (ou club) à partir de son nom
+// officiel (« France », « Türkiye »…), en interrogeant l'annuaire (qui inclut
+// fifa.world / uefa.euro). Renvoie null si aucune correspondance exacte → l'appelant
+// peut alors se rabattre sur un id de secours. Garantit qu'on ne stocke jamais un
+// mauvais id (pas de correspondance approximative ici).
+export async function resolveTeamIdByName(names) {
+  const wanted = (Array.isArray(names) ? names : [names]).map(_fold);
+  const dir = await loadTeamDirectory();
+  const hit = dir.find((t) => wanted.includes(_fold(t.name)) || wanted.includes(_fold(t.shortName)));
+  return hit ? hit.id : null;
+}
+
 // Recherche floue : nom / nom court / ABRÉVIATION (« PSG »), exact > préfixe > sous-chaîne.
 export async function searchTeamsFromEspn(query, limit = 24) {
   const q = _fold((query || "").trim());

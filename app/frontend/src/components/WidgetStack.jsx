@@ -10,7 +10,8 @@ import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
 import { MatchCard, MmaCard, displayMatches } from "@/components/LiveScores";
 import { getTodayMinutes } from "@/lib/screenTime";
-import { fetchLiveScoresFromEspn, searchTeamsFromEspn } from "@/lib/espnClient";
+import { fetchLiveScoresFromEspn, searchTeamsFromEspn, resolveTeamIdByName } from "@/lib/espnClient";
+import Flag from "@/components/Flags";
 
 const NEON = "#4ade80";
 const STACK_H = 150;
@@ -45,20 +46,30 @@ const DEFAULT_FINANCE_ASSETS = ["bitcoin", "ethereum", "solana"];
 // Compétitions foot rangées par zone/pays (slugs ESPN). Les sélections
 // nationales sont des favoris d'ÉQUIPE (favorite_teams) via leur id ESPN, ce qui
 // les lie automatiquement aux matchs de Coupe du Monde / Euro.
+// nations[].id = id ESPN de SECOURS ; il est écrasé par l'id EXACT résolu depuis
+// l'annuaire (resolveTeamIdByName) quand la sélection y figure (CdM/Euro).
 const FOOT_SECTIONS = [
-  { key: "europe", flag: "🇪🇺", label: "Europe",
+  { key: "europe", code: "eu", label: "Europe",
     leagues: [["uefa.champions", "Ligue des Champions"], ["uefa.europa", "Ligue Europa"], ["uefa.europa.conf", "Ligue Conférence"]], nations: [] },
-  { key: "france", flag: "🇫🇷", label: "France",
-    leagues: [["fra.1", "Ligue 1"], ["fra.2", "Ligue 2"], ["fra.coupe_de_france", "Coupe de France"]], nations: [["478", "Équipe de France"]] },
-  { key: "angleterre", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", label: "Angleterre",
-    leagues: [["eng.1", "Premier League"], ["eng.2", "Championship"], ["eng.fa", "FA Cup"]], nations: [["448", "Équipe d'Angleterre"]] },
-  { key: "espagne", flag: "🇪🇸", label: "Espagne",
-    leagues: [["esp.1", "LaLiga"], ["esp.2", "LaLiga 2"], ["esp.copa_del_rey", "Coupe du Roi"]], nations: [["164", "Équipe d'Espagne"]] },
-  { key: "italie", flag: "🇮🇹", label: "Italie",
-    leagues: [["ita.1", "Serie A"], ["ita.2", "Serie B"], ["ita.coppa_italia", "Coupe d'Italie"]], nations: [["2925", "Équipe d'Italie"]] },
-  { key: "allemagne", flag: "🇩🇪", label: "Allemagne",
-    leagues: [["ger.1", "Bundesliga"], ["ger.2", "2. Bundesliga"], ["ger.dfb_pokal", "DFB-Pokal"]], nations: [["714", "Équipe d'Allemagne"]] },
-  { key: "international", flag: "🌍", label: "International",
+  { key: "france", code: "fr", label: "France",
+    leagues: [["fra.1", "Ligue 1"], ["fra.2", "Ligue 2"], ["fra.coupe_de_france", "Coupe de France"]],
+    nations: [{ key: "fr_nt", label: "Équipe de France", aliases: ["France"], id: "478" }] },
+  { key: "angleterre", code: "en", label: "Angleterre",
+    leagues: [["eng.1", "Premier League"], ["eng.2", "Championship"], ["eng.fa", "FA Cup"]],
+    nations: [{ key: "en_nt", label: "Équipe d'Angleterre", aliases: ["England"], id: "448" }] },
+  { key: "espagne", code: "es", label: "Espagne",
+    leagues: [["esp.1", "LaLiga"], ["esp.2", "LaLiga 2"], ["esp.copa_del_rey", "Coupe du Roi"]],
+    nations: [{ key: "es_nt", label: "Équipe d'Espagne", aliases: ["Spain"], id: "164" }] },
+  { key: "italie", code: "it", label: "Italie",
+    leagues: [["ita.1", "Serie A"], ["ita.2", "Serie B"], ["ita.coppa_italia", "Coupe d'Italie"]],
+    nations: [{ key: "it_nt", label: "Équipe d'Italie", aliases: ["Italy"], id: "2925" }] },
+  { key: "allemagne", code: "de", label: "Allemagne",
+    leagues: [["ger.1", "Bundesliga"], ["ger.2", "2. Bundesliga"], ["ger.dfb_pokal", "DFB-Pokal"]],
+    nations: [{ key: "de_nt", label: "Équipe d'Allemagne", aliases: ["Germany"], id: "714" }] },
+  { key: "turquie", code: "tr", label: "Turquie",
+    leagues: [["tur.1", "Süper Lig"]],
+    nations: [{ key: "tr_nt", label: "Équipe de Turquie", aliases: ["Türkiye", "Turkey"], id: null }] },
+  { key: "international", code: "globe", label: "International",
     leagues: [["fifa.world", "Coupe du Monde"], ["uefa.euro", "Euro"], ["conmebol.america", "Copa América"], ["caf.nations", "CAN"]], nations: [] },
 ];
 
@@ -317,9 +328,27 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
   const [teamResults, setTeamResults] = useState([]);
   const [teamSearching, setTeamSearching] = useState(false);
   const [openSections, setOpenSections] = useState(() => new Set(["france"])); // Accordéon : France ouverte par défaut
+  const [natIds, setNatIds] = useState({});                                    // key sélection → id ESPN résolu (exact)
   const label = WIDGETS[widgetId]?.label || "Widget";
 
   const toggleSection = (key) => setOpenSections((p) => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  // Résout les IDs ESPN EXACTS des sélections nationales via l'annuaire (garantis
+  // justes) ; l'id de secours prend le relais si la sélection n'y figure pas.
+  useEffect(() => {
+    if (widgetId !== "football") return;
+    let alive = true;
+    (async () => {
+      const nats = FOOT_SECTIONS.flatMap((s) => s.nations);
+      const out = {};
+      for (const n of nats) {
+        const id = await resolveTeamIdByName(n.aliases).catch(() => null);
+        if (id) out[n.key] = id;
+      }
+      if (alive && Object.keys(out).length) setNatIds((prev) => ({ ...prev, ...out }));
+    })();
+    return () => { alive = false; };
+  }, [widgetId]);
 
   const toggleLeague = (id) => setLeagues((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAsset = (id) => setAssets((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -435,7 +464,7 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
                   <button onClick={() => toggleSection(s.key)}
                     className="w-full flex items-center justify-between px-1 py-2 active:opacity-70 transition-opacity">
                     <span className="flex items-center gap-2 min-w-0">
-                      <span style={{ fontSize: 16, lineHeight: 1 }}>{s.flag}</span>
+                      <Flag code={s.code} size={20} />
                       <span className="text-[11px] font-bold uppercase tracking-widest truncate" style={{ color: "#8b96a8" }}>{s.label}</span>
                     </span>
                     <span className="material-symbols-outlined flex-shrink-0"
@@ -456,16 +485,19 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
                           </button>
                         );
                       })}
-                      {/* Sélection nationale → favorite_teams (favori immédiat) */}
-                      {s.nations.map(([id, name]) => {
+                      {/* Sélection nationale → favorite_teams (favori immédiat).
+                          id effectif = résolu (exact) sinon secours ; masquée si aucun. */}
+                      {s.nations.map((nt) => {
+                        const id = natIds[nt.key] || nt.id;
+                        if (!id) return null;
                         const on = favT?.has(id);
                         return (
-                          <button key={id} onClick={() => onToggleTeam?.(id)}
+                          <button key={nt.key} onClick={() => onToggleTeam?.(id)}
                             className="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl"
                             style={{ background: on ? NEON + "14" : "#1a2234" }}>
                             <span className="flex items-center gap-2 min-w-0">
                               <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 16, color: on ? NEON : "#6b7686" }}>flag</span>
-                              <span className="text-sm font-semibold truncate" style={{ color: on ? "#eaf7ee" : "#c7d0e0" }}>{name}</span>
+                              <span className="text-sm font-semibold truncate" style={{ color: on ? "#eaf7ee" : "#c7d0e0" }}>{nt.label}</span>
                             </span>
                             <Switch on={on} />
                           </button>
