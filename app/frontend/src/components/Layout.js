@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import axios from "axios";
@@ -11,6 +11,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
+  const searchLpTimer = useRef(null);   // appui long sur la Loupe (nav mobile)
+  const searchLpFired = useRef(false);
   const [suggestedUsers, setSuggestedUsers] = useState([]);
   const [trending, setTrending] = useState([]);
   // Sidebar PC : repliée par défaut (pictogrammes seuls), se déploie au survol.
@@ -505,7 +507,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         }}
       >
         {/* Le bouton « + » n'est plus au centre : il flotte en bas à droite (FAB,
-            page d'accueil uniquement). Recherche = pictogramme entre Messages et Profil. */}
+            page d'accueil uniquement). Recherche = pictogramme entre Messages et Profil.
+            Appui LONG (1 s) sur la Loupe → ouvre la recherche + focus immédiat du champ. */}
         {[
           { icon: "home",           path: "/feed",               label: t("home"),      testId: "nav-home" },
           { icon: "play_circle",    path: "/nexus-clips",        label: "Nexus Clips",  testId: "nav-clips" },
@@ -514,8 +517,22 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           { icon: "account_circle", path: `/profil/${user.id}`,  label: t("profile"),   testId: "nav-profile" },
         ].map((item) => {
           const active = isActive(item.path);
+          const isSearch = item.icon === "search";
+          const lpProps = isSearch ? {
+            onPointerDown: () => {
+              searchLpFired.current = false;
+              clearTimeout(searchLpTimer.current);
+              searchLpTimer.current = setTimeout(() => { searchLpFired.current = true; navigate("/search?focus=1"); }, 1000);
+            },
+            onPointerUp: () => clearTimeout(searchLpTimer.current),
+            onPointerLeave: () => clearTimeout(searchLpTimer.current),
+            onContextMenu: (e) => e.preventDefault(),
+          } : {};
           return (
-            <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "var(--nexus-accent)" : "#859397" }}>
+            <button key={item.path} data-testid={item.testId}
+              onClick={() => { if (isSearch && searchLpFired.current) { searchLpFired.current = false; return; } navigate(item.path); }}
+              {...lpProps}
+              className="flex flex-col items-center gap-0.5 select-none" style={{ color: active ? "var(--nexus-accent)" : "#859397", touchAction: "manipulation" }}>
               <span className="relative material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>
                 {item.icon}
                 {badgeFor(item.path) > 0 && (

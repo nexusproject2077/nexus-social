@@ -220,6 +220,14 @@ export default function SearchPage({ user }) {
   const sentinelRef = useRef(null);
   const inputRef = useRef(null);
 
+  // Accès rapide (appui long sur la Loupe) : ?focus=1 → focus immédiat du champ,
+  // même si la page de recherche est déjà montée (autoFocus ne couvre que le montage).
+  useEffect(() => {
+    if (searchParams.get("focus") === "1") {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [searchParams]);
+
   const activeType = TABS.find((t) => t.key === tab)?.type || "all";
 
   // Met en évidence les occurrences de la requête (façon X).

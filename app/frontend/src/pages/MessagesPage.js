@@ -1434,6 +1434,8 @@ export default function MessagesPage({ user }) {
       >
         <div className="relative">
           <UserAvatar username={conv.username} pic={conv.profile_pic} size={10} />
+          {/* Présence : point vert « en ligne » (masqué si l'interlocuteur a caché son statut). */}
+          {conv.is_online && <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full" style={{ background: "#22c55e", border: `2px solid ${C.surface}`, boxShadow: "0 0 6px rgba(34,197,94,0.6)" }} />}
           {unread && <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full" style={{ background: "#3b82f6", border: `2px solid ${C.surface}` }} />}
         </div>
         <div className="flex-1 min-w-0 flex flex-col justify-center">

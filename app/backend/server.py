@@ -32,6 +32,7 @@ import hmac
 import random
 import math
 import re
+import unicodedata
 import html as _html
 
 # E2EE (chiffrement des messages / données sensibles)
@@ -1313,6 +1314,10 @@ class User(BaseModel):
     time_limit_enabled: bool = True
     show_sports: bool = True            # widget scores de foot en direct (désactivable)
     show_mma: bool = True               # cartes de combat MMA/UFC (désactivable)
+    # Confidentialité messagerie (façon Instagram).
+    show_active_status: bool = True     # affiche le point de présence + « dernière connexion » aux autres
+    read_receipts: bool = True          # confirmation de lecture (« Vu ») ; si False, réciproque coupée
+    hide_political: bool = False        # exclut les contenus politiques du fil (bien-être)
     widget_stack_config: Optional[dict] = None  # pile de widgets : {smart_rotate, order}
     privacy_strict: bool = False        # Mode Confidentialité stricte : coupe les
                                         # analytics non essentiels + les pubs ciblées
@@ -1462,6 +1467,7 @@ class Conversation(BaseModel):
     pinned: bool = False
     muted: bool = False
     marked_unread: bool = False
+    is_online: bool = False             # présence de l'interlocuteur (si son statut est visible)
 
 class Notification(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -2002,6 +2008,9 @@ def _auth_payload(user: dict) -> dict:
             "daily_time_limit": user.get("daily_time_limit"),
             "time_limit_enabled": user.get("time_limit_enabled", True),
             "privacy_strict": bool(user.get("privacy_strict")),
+            "show_active_status": user.get("show_active_status") is not False,
+            "read_receipts": user.get("read_receipts") is not False,
+            "hide_political": bool(user.get("hide_political")),
             "muted_words": user.get("muted_words") or [],
             "created_at": user.get("created_at"),
         },
@@ -2146,6 +2155,22 @@ async def update_appearance(
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
     return {"success": True, **update_data}
+
+
+@api_router.put("/users/me/preferences")
+async def update_preferences(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Préférences booléennes de confidentialité/contenu (façon Instagram) :
+    - show_active_status : afficher le statut en ligne aux autres ;
+    - read_receipts : confirmation de lecture (« Vu ») ;
+    - hide_political : masquer les contenus politiques du fil.
+    Seuls les champs fournis sont modifiés (mise à jour partielle)."""
+    allowed = ("show_active_status", "read_receipts", "hide_political")
+    update = {k: bool(data[k]) for k in allowed if k in data}
+    if not update:
+        raise HTTPException(status_code=400, detail="Aucune préférence valide")
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one({"id": current_user["id"]}, {"$set": update})
+    return {"success": True, **{k: update[k] for k in update if k != "updated_at"}}
 
 
 # ==================== BILLING (abonnements Stripe) ====================
@@ -3327,6 +3352,48 @@ async def vote_poll(post_id: str, vote: PollVote, current_user: dict = Depends(g
     post["is_liked"] = bool(like_raw)
     return Post(**post)
 
+# ── Filtre éthique « contenu politique » (bien-être) ────────────────────────
+# Termes/hashtags à signal politique FORT (curés pour limiter les faux positifs).
+# Quand `hide_political` est activé, ces publications sont retirées des fils algo.
+_POLITICAL_TERMS = {
+    "politique", "presidentielle", "election", "elections", "gouvernement",
+    "ministre", "assemblee nationale", "senat", "depute", "parlement", "elysee",
+    "matignon", "referendum", "campagne electorale", "reforme des retraites",
+    "extreme droite", "extreme gauche", "rassemblement national", "front national",
+    "macron", "le pen", "melenchon", "zemmour", "bardella", "trump", "biden",
+    "poutine", "geopolitique", "parti politique", "scrutin", "legislatives",
+}
+
+
+def _norm_txt(s: str) -> str:
+    s = (s or "").lower()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9# ]+", " ", s)
+
+
+def _is_political(text: str) -> bool:
+    norm = _norm_txt(text)
+    if not norm:
+        return False
+    padded = f" {norm} "
+    for kw in _POLITICAL_TERMS:
+        needle = f" {kw} " if " " in kw else None
+        if needle:
+            if needle in padded:
+                return True
+        elif f" {kw} " in padded or f" #{kw} " in padded:
+            return True
+    return False
+
+
+def _drop_political(posts, enabled):
+    """Retire les publications à contenu politique si l'utilisateur l'a demandé."""
+    if not enabled:
+        return posts
+    return [p for p in posts if not _is_political(getattr(p, "content", None) if not isinstance(p, dict) else p.get("content"))]
+
+
 @api_router.get("/posts/feed", response_model=List[Post])
 async def get_posts_feed(request: Request, skip: int = 0, limit: int = 10, current_user: dict = Depends(get_current_user)):
     """Feed « Abonnements » (comptes suivis), paginé (skip/limit) pour un premier
@@ -3408,7 +3475,7 @@ async def get_posts_feed(request: Request, skip: int = 0, limit: int = 10, curre
         except Exception as e:
             logger.warning(f"/posts/feed — post ignoré {post_raw.get('id')}: {e}")
 
-    return posts
+    return _drop_political(posts, current_user.get("hide_political") is True)
 
 # IMPORTANT : cette route doit être déclarée AVANT `/posts/{post_id}`, sinon
 # FastAPI interprète « saved » comme un post_id et renvoie 404.
@@ -4837,8 +4904,11 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     # agrégation pour tous les compteurs de non-lus — au lieu de 2 requêtes PAR
     # conversation (find_one utilisateur + count_documents non-lus).
     users_by_id = {u.get("id"): convert_mongo_doc_to_dict(u) for u in await db.users.find(
-        {"id": {"$in": peer_ids}}, {"id": 1, "username": 1, "profile_pic": 1}
+        {"id": {"$in": peer_ids}}, {"id": 1, "username": 1, "profile_pic": 1, "last_active": 1, "show_active_status": 1}
     ).to_list(length=len(peer_ids))}
+    # Présence : « en ligne » = actif il y a moins de 2 min, ET l'interlocuteur
+    # n'a PAS masqué son statut (show_active_status). Respect de la vie privée.
+    _online_cutoff = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
     unread_by_peer = {r.get("_id"): r.get("n", 0) for r in await db.messages.aggregate([
         {"$match": {"sender_id": {"$in": peer_ids}, "recipient_id": current_user["id"], "read": False}},
         {"$group": {"_id": "$sender_id", "n": {"$sum": 1}}},
@@ -4863,6 +4933,8 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
         else:
             preview = ""
         p = prefs.get(other_user_id, {})
+        peer_online = (other_user.get("show_active_status") is not False
+                       and (other_user.get("last_active") or "") >= _online_cutoff)
         conversations.append(Conversation(
             user_id=other_user["id"],
             username=other_user["username"],
@@ -4873,6 +4945,7 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
             pinned=p.get("pinned", False),
             muted=p.get("muted", False),
             marked_unread=p.get("marked_unread", False),
+            is_online=peer_online,
         ))
 
     return conversations
@@ -5166,17 +5239,25 @@ async def get_messages_with_user(user_id: str, request: Request, current_user: d
         _resolve_media_sentinel(msg, media_base, "message")
         messages.append(Message(**msg))
 
-    # Marquer les messages reçus comme lus + prévenir l'expéditeur (« Vu »).
+    # Marquer les messages reçus comme lus. Confirmation de lecture (« Vu ») :
+    # seulement si le LECTEUR l'autorise (read_receipts). Sinon on marque lu pour
+    # SON propre compteur de non-lus, mais on ne révèle RIEN à l'expéditeur.
     now_read = datetime.now(timezone.utc).isoformat()
-    res = await db.messages.update_many(
-        {"sender_id": user_id, "recipient_id": current_user["id"], "read": False},
-        {"$set": {"read": True, "status": "read", "read_at": now_read}}
-    )
-    if res.modified_count:
-        await push_realtime(user_id, {
-            "type": "messages_read",
-            "data": {"reader_id": current_user["id"], "read_at": now_read},
-        })
+    if current_user.get("read_receipts") is not False:
+        res = await db.messages.update_many(
+            {"sender_id": user_id, "recipient_id": current_user["id"], "read": False},
+            {"$set": {"read": True, "status": "read", "read_at": now_read}}
+        )
+        if res.modified_count:
+            await push_realtime(user_id, {
+                "type": "messages_read",
+                "data": {"reader_id": current_user["id"], "read_at": now_read},
+            })
+    else:
+        await db.messages.update_many(
+            {"sender_id": user_id, "recipient_id": current_user["id"], "read": False},
+            {"$set": {"read": True}}  # pas de status/read_at → aucun « Vu »
+        )
 
     return messages
 
@@ -5423,8 +5504,14 @@ async def update_message_status(
         raise HTTPException(status_code=403, detail="Not authorized")
     
     now = datetime.now(timezone.utc).isoformat()
+    # Confirmation de lecture désactivée par le lecteur → on ne révèle pas « Vu » :
+    # on marque lu pour son compteur, sans exposer le statut « read » à l'expéditeur.
+    hide_read = (status == "read") and (current_user.get("read_receipts") is False)
+    if hide_read:
+        await db.messages.update_one({"id": message_id}, {"$set": {"read": True, "updated_at": now}})
+        return {"success": True, "status": "delivered"}
+
     updates = {"status": status, "updated_at": now}
-    
     if status == "delivered" and not message.get("delivered_at"):
         updates["delivered_at"] = now
     elif status == "read" and not message.get("read_at"):
@@ -5432,12 +5519,12 @@ async def update_message_status(
         updates["read"] = True  # Backward compatibility
         if not message.get("delivered_at"):
             updates["delivered_at"] = now
-    
+
     await db.messages.update_one(
         {"id": message_id},
         {"$set": updates}
     )
-    
+
     return {"success": True, "status": status}
 
 @api_router.put("/messages/mark-as-read/{user_id}")
@@ -5447,21 +5534,16 @@ async def mark_conversation_as_read(
 ):
     """Marquer tous les messages d'une conversation comme lus"""
     now = datetime.now(timezone.utc).isoformat()
-    
+    reveal = current_user.get("read_receipts") is not False  # confirmation de lecture
+
     result = await db.messages.update_many(
         {
             "sender_id": user_id,
             "recipient_id": current_user["id"],
             "read": False
         },
-        {
-            "$set": {
-                "status": "read",
-                "read": True,
-                "read_at": now,
-                "updated_at": now
-            }
-        }
+        {"$set": ({"status": "read", "read": True, "read_at": now, "updated_at": now}
+                  if reveal else {"read": True, "updated_at": now})}
     )
 
     # Ouvrir/lire une conversation annule le « marqué comme non lu » manuel.
@@ -5470,8 +5552,9 @@ async def mark_conversation_as_read(
         {"$set": {"marked_unread": False}},
     )
 
-    # Prévient l'expéditeur en temps réel pour afficher « Vu ».
-    if result.modified_count:
+    # Prévient l'expéditeur (« Vu ») UNIQUEMENT si le lecteur autorise les
+    # confirmations de lecture.
+    if result.modified_count and reveal:
         await push_realtime(user_id, {
             "type": "messages_read",
             "data": {"reader_id": current_user["id"], "read_at": now},
@@ -9526,7 +9609,7 @@ async def _ranked_ids(kind, user_id, eu):
     return ids
 
 
-async def _fetch_posts_in_order(ids, user_id, media_base="", viewer_is_minor=False):
+async def _fetch_posts_in_order(ids, user_id, media_base="", viewer_is_minor=False, hide_political=False):
     """Récupère et enrichit des posts en respectant l'ordre de `ids`.
 
     Le base64 des médias N'EST PAS chargé (étape d'agrégation → sentinel), pour
@@ -9586,7 +9669,7 @@ async def _fetch_posts_in_order(ids, user_id, media_base="", viewer_is_minor=Fal
             out.append(Post(**post))
         except Exception as e:
             logger.warning(f"Clip/post ignoré (invalide) {post.get('id')}: {e}")
-    return out
+    return _drop_political(out, hide_political)
 
 
 @api_router.get("/media/{kind}/{media_id}")
@@ -9840,7 +9923,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
         eu = CLIPS_EU_GEO_BLOCK and is_eu_request(request)
         ids = await _ranked_ids("clips", current_user["id"], eu)
         page = ids[skip: skip + limit]
-        clips = await _fetch_posts_in_order(page, current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")))
+        clips = await _fetch_posts_in_order(page, current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")), hide_political=current_user.get("hide_political") is True)
 
         # Filet de sécurité : si le scroll dépasse le pool classé, on complète en
         # chronologique (clips plus anciens non inclus dans le pool). Projection
@@ -9851,7 +9934,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
                 base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
             extra_skip = skip - len(ids)
             raw = await db.posts.find(base, {"id": 1, "_id": 0}).sort("created_at", -1).allow_disk_use(True).skip(max(0, extra_skip)).limit(limit).to_list(length=limit)
-            clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")))
+            clips = await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")), hide_political=current_user.get("hide_political") is True)
         return clips
     except Exception as e:
         # Le classement a échoué → repli CHRONOLOGIQUE simple pour ne jamais
@@ -9861,7 +9944,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
             raw = await db.posts.find(
                 {"media_type": "video", "media_url": {"$ne": None}, "repost_of": None}, {"id": 1, "_id": 0}
             ).sort("created_at", -1).allow_disk_use(True).skip(max(0, skip)).limit(limit).to_list(length=limit)
-            return await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")))
+            return await _fetch_posts_in_order([p.get("id") for p in raw], current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")), hide_political=current_user.get("hide_political") is True)
         except Exception as e2:
             logger.exception(f"/clips repli chronologique a aussi échoué: {e2}")
             return []
@@ -10465,7 +10548,7 @@ async def _foryou_chronological(request, current_user, limit, skip):
             posts.append(Post(**post))
         except Exception as e:
             logger.warning(f"/feed/foryou — post ignoré {post_raw.get('id')}: {e}")
-    return posts
+    return _drop_political(posts, current_user.get("hide_political") is True)
 
 
 @api_router.get("/feed/foryou", response_model=List[Post])
@@ -10496,7 +10579,7 @@ async def for_you_feed(request: Request, limit: int = 10, skip: int = 0,
         ids = await (_mixed_ids(current_user["id"]) if mode == "mix"
                      else _ranked_ids("foryou", current_user["id"], False))
         page = ids[skip: skip + limit]
-        posts = await _fetch_posts_in_order(page, current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")))
+        posts = await _fetch_posts_in_order(page, current_user["id"], media_base, viewer_is_minor=bool(current_user.get("is_minor")), hide_political=current_user.get("hide_political") is True)
 
         # Pool épuisé (scroll au-delà du classement) → on complète en
         # chronologique pour garder un scroll infini fluide.

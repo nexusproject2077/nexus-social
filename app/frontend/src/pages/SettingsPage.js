@@ -753,6 +753,28 @@ export default function SettingsPage({ user, setUser }) {
         <ToggleRow icon="alternate_email" label="Autoriser les mentions" sublabel="Permettre aux autres de vous mentionner" checked={settings?.privacy?.allow_mentions !== false} onChange={v => updatePrivacy("allow_mentions", v)} />
       </Card>
 
+      {/* Messages et réponses — confidentialité de la messagerie (façon Instagram) */}
+      {(() => {
+        const savePref = async (key, value) => {
+          if (setUser && user) setUser({ ...user, [key]: value });  // optimiste
+          try { await axios.put(`${API}/users/me/preferences`, { [key]: value }); }
+          catch { if (setUser && user) setUser({ ...user, [key]: !value }); toast.error("Échec de l'enregistrement"); }
+        };
+        return (
+          <Card>
+            <CardHeader title="Messages et réponses" icon="forum" />
+            <ToggleRow icon="radio_button_checked" label="Afficher le statut en ligne"
+              sublabel="Les autres voient votre point de présence et votre dernière connexion"
+              checked={user?.show_active_status !== false}
+              onChange={(v) => savePref("show_active_status", v)} />
+            <ToggleRow icon="done_all" label="Confirmation de lecture"
+              sublabel="Si désactivé, personne ne verra le « Vu » sous vos messages"
+              checked={user?.read_receipts !== false}
+              onChange={(v) => savePref("read_receipts", v)} />
+          </Card>
+        );
+      })()}
+
       {/* Mots masqués — filtre personnel (fil + notifications) */}
       {(() => {
         const words = Array.isArray(user?.muted_words) ? user.muted_words : [];
@@ -927,6 +949,26 @@ export default function SettingsPage({ user, setUser }) {
           onChange={toggleShowMma}
         />
       </Card>
+      {/* Filtre éthique : masquer les contenus politiques (bien-être) */}
+      {(() => {
+        const savePol = async (v) => {
+          if (setUser && user) setUser({ ...user, hide_political: v });
+          try { await axios.put(`${API}/users/me/preferences`, { hide_political: v }); }
+          catch { if (setUser && user) setUser({ ...user, hide_political: !v }); toast.error("Échec de l'enregistrement"); }
+        };
+        return (
+          <Card>
+            <CardHeader title="Sujets sensibles" icon="filter_alt" />
+            <ToggleRow
+              icon="gavel"
+              label="Masquer les contenus politiques"
+              sublabel="L'algorithme retire les publications liées à l'actualité politique de votre fil, pour préserver votre sérénité"
+              checked={user?.hide_political === true}
+              onChange={savePol}
+            />
+          </Card>
+        );
+      })()}
       {/* Bien-être numérique : limite de temps quotidienne + fin du scroll infini. */}
       <Card>
         <CardHeader title="Bien-être numérique" icon="self_improvement" />
