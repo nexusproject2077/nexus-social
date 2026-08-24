@@ -552,7 +552,10 @@ STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID", "")  # prix d'abonnement (re
 # Deux offres Premium : Mensuel 3,99 €/mois et Annuel 34,99 €/an (−25 %).
 STRIPE_PRICE_ID_MONTHLY = os.environ.get("STRIPE_PRICE_ID_MONTHLY", "") or STRIPE_PRICE_ID
 STRIPE_PRICE_ID_ANNUAL = os.environ.get("STRIPE_PRICE_ID_ANNUAL", "")
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://nexus-social-3ta5.onrender.com")
+# URL du front (redirections Stripe/PayPal succès·annulation, liens Connect,
+# retours OAuth…). Défaut = le front Cloudflare actuel (l'ancienne URL Render
+# était morte depuis la migration). Surchargeable via la variable FRONTEND_URL.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://nexus-social.merickoken54.workers.dev")
 # Commission de la plateforme sur chaque cadeau reversé au créateur (Stripe Connect).
 try:
     PLATFORM_FEE_PERCENT = max(0, min(100, int(os.environ.get("PLATFORM_FEE_PERCENT", "20"))))
