@@ -1947,7 +1947,8 @@ async def geo_status(request: Request):
     """
     country = country_for_request(request)
     prof = legal_profile_for_country(country)
-    return {**prof, "restricted": prof["eu"]}
+    # Langue suggérée d'après le pays (signal géo combiné à navigator côté front).
+    return {**prof, "restricted": prof["eu"], "suggested_language": lang_for_country(country)}
 
 
 # ==================== AUTH ROUTES ====================

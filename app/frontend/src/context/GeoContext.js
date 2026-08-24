@@ -5,6 +5,23 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import axios from "axios";
 import { API } from "@/App";
+import i18n, { hasExplicitLanguageChoice, SUPPORTED_LANGUAGES } from "@/i18n";
+
+const CATALOG_CODES = new Set(SUPPORTED_LANGUAGES.map((l) => l.code));
+
+// Combine les deux signaux de langue : la préférence de l'APPAREIL (navigator,
+// gérée par i18next) est prioritaire ; la langue déduite du PAYS ne s'applique que
+// si l'utilisateur n'a pas choisi explicitement ET que navigator n'a rien donné de
+// mieux que le repli anglais. Un francophone de passage en Turquie garde le français.
+function applyCountryLanguage(suggested) {
+  if (!suggested || suggested === "en") return;
+  if (hasExplicitLanguageChoice()) return;
+  if (!CATALOG_CODES.has(suggested)) return;
+  const current = (i18n.resolvedLanguage || i18n.language || "en").split("-")[0];
+  if (current === "en" && suggested !== current) {
+    i18n.changeLanguage(suggested);
+  }
+}
 
 const DEFAULT_GEO = {
   loaded: false,
@@ -33,6 +50,8 @@ export function GeoProvider({ children }) {
       .then((res) => {
         if (cancelled) return;
         const d = res.data || {};
+        // Signal géo → langue par défaut (si pas de choix explicite de l'utilisateur).
+        applyCountryLanguage(d.suggested_language);
         setGeo({
           loaded: true,
           country: d.country || null,

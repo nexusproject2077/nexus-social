@@ -2,24 +2,16 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
+// Langues TOUJOURS embarquées dans le bundle principal : repli instantané, aucun
+// « flash » de texte non traduit au premier rendu. Tout le RESTE est chargé À LA
+// DEMANDE (un chunk webpack par langue) → on peut viser 240+ langues sans alourdir
+// le bundle. Ajouter une langue = déposer ./locales/<code>/common.json (via le
+// script de traduction) puis, pour l'afficher dans le sélecteur, l'ajouter ci-dessous.
 import en from './locales/en/common.json';
 import fr from './locales/fr/common.json';
-import es from './locales/es/common.json';
-import de from './locales/de/common.json';
-import it from './locales/it/common.json';
-import pt from './locales/pt/common.json';
-import nl from './locales/nl/common.json';
-import pl from './locales/pl/common.json';
-import tr from './locales/tr/common.json';
-import ru from './locales/ru/common.json';
-import uk from './locales/uk/common.json';
-import ar from './locales/ar/common.json';
-import hi from './locales/hi/common.json';
-import zh from './locales/zh/common.json';
-import ja from './locales/ja/common.json';
-import ko from './locales/ko/common.json';
 
-// Liste des langues proposées dans le sélecteur (nom affiché dans la langue elle-même).
+// Catalogue proposé dans le sélecteur (nom natif). N'importe quelle langue listée
+// ici et disposant d'un fichier de locale est chargée dynamiquement à la sélection.
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'fr', label: 'Français' },
@@ -39,26 +31,26 @@ export const SUPPORTED_LANGUAGES = [
   { code: 'ko', label: '한국어' },
 ];
 
-// Langues écrites de droite à gauche.
-const RTL_LANGUAGES = ['ar'];
+// Langues écrites de droite à gauche (prévu pour l'expansion : hébreu, persan, ourdou…).
+const RTL_LANGUAGES = ['ar', 'he', 'fa', 'ur', 'ps', 'sd', 'ug'];
 
-const resources = {
-  en: { common: en },
-  fr: { common: fr },
-  es: { common: es },
-  de: { common: de },
-  it: { common: it },
-  pt: { common: pt },
-  nl: { common: nl },
-  pl: { common: pl },
-  tr: { common: tr },
-  ru: { common: ru },
-  uk: { common: uk },
-  ar: { common: ar },
-  hi: { common: hi },
-  zh: { common: zh },
-  ja: { common: ja },
-  ko: { common: ko },
+// Backend « lazy » : importe dynamiquement ./locales/<lng>/common.json. Webpack
+// crée un chunk séparé par langue (rien n'est embarqué hormis en/fr). Si le fichier
+// est absent ou illisible → objet vide → i18next retombe sur `fallbackLng` (en).
+const lazyBackend = {
+  type: 'backend',
+  init() {},
+  read(lng, ns, callback) {
+    const base = (lng || 'en').split('-')[0];
+    if (base === 'en') return callback(null, en);
+    if (base === 'fr') return callback(null, fr);
+    import(
+      /* webpackChunkName: "locale-[request]" */
+      `./locales/${base}/common.json`
+    )
+      .then((m) => callback(null, m.default || m))
+      .catch(() => callback(null, {}));
+  },
 };
 
 // Applique la direction du texte (LTR/RTL) selon la langue active.
@@ -71,18 +63,21 @@ function applyDirection(lng) {
 }
 
 i18n
+  .use(lazyBackend)
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    resources,
+    // en/fr embarqués + reste via le backend lazy (combinaison autorisée par i18next).
+    partialBundledLanguages: true,
+    resources: { en: { common: en }, fr: { common: fr } },
     fallbackLng: 'en',
-    supportedLngs: SUPPORTED_LANGUAGES.map((l) => l.code),
+    // On autorise N'IMPORTE QUEL code (catalogue mondial) : le backend gère l'absence.
+    supportedLngs: false,
     nonExplicitSupportedLngs: true,
+    load: 'languageOnly',   // 'fr-CA' → 'fr'
     defaultNS: 'common',
     ns: ['common'],
-    interpolation: {
-      escapeValue: false,
-    },
+    interpolation: { escapeValue: false },
     detection: {
       order: ['localStorage', 'navigator', 'htmlTag'],
       caches: ['localStorage'],
@@ -92,5 +87,11 @@ i18n
 
 applyDirection(i18n.resolvedLanguage || i18n.language);
 i18n.on('languageChanged', applyDirection);
+
+// A-t-on un choix de langue EXPLICITE de l'utilisateur ? (sinon on peut affiner
+// automatiquement via le pays). Utilisé par GeoContext pour combiner les signaux.
+export function hasExplicitLanguageChoice() {
+  try { return !!localStorage.getItem('nexus_lang'); } catch { return false; }
+}
 
 export default i18n;
