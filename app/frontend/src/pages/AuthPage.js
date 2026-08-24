@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { useGeo } from "@/context/GeoContext";
 
 export default function AuthPage({ setUser }) {
+  const { t } = useTranslation();
   const geo = useGeo();
   const [isLogin, setIsLogin] = useState(false);
   const [formData, setFormData] = useState({
@@ -54,9 +56,9 @@ export default function AuthPage({ setUser }) {
     try {
       const r = await axios.post(`${API}/auth/login/2fa`, { email: twofa.email, code: twofaCode.trim() });
       await finishAuth(r.data);
-      toast.success("Connexion réussie !");
+      toast.success(t("auth.login_success"));
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Code invalide ou expiré.");
+      toast.error(err.response?.data?.detail || t("auth.err_code_invalid"));
     } finally { setLoading(false); }
   };
 
@@ -67,17 +69,17 @@ export default function AuthPage({ setUser }) {
     try {
       if (forgot.step === 0) {
         await axios.post(`${API}/auth/password/forgot`, { email: forgot.email });
-        toast.success("Si un compte existe, un code a été envoyé par email.");
+        toast.success(t("auth.forgot_sent"));
         setForgot((f) => ({ ...f, step: 1 }));
       } else {
-        if ((forgot.pw || "").length < 6) { toast.error("Mot de passe : 6 caractères minimum."); setLoading(false); return; }
-        if (forgot.pw !== forgot.pw2) { toast.error("Les mots de passe ne correspondent pas."); setLoading(false); return; }
+        if ((forgot.pw || "").length < 6) { toast.error(t("auth.err_pw_min")); setLoading(false); return; }
+        if (forgot.pw !== forgot.pw2) { toast.error(t("auth.err_pw_mismatch")); setLoading(false); return; }
         await axios.post(`${API}/auth/password/reset`, { email: forgot.email, code: (forgot.code || "").trim(), new_password: forgot.pw });
-        toast.success("Mot de passe réinitialisé. Connecte-toi.");
+        toast.success(t("auth.pw_reset_done"));
         setForgot(null); setIsLogin(true);
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Échec de la réinitialisation.");
+      toast.error(err.response?.data?.detail || t("auth.err_reset"));
     } finally { setLoading(false); }
   };
 
@@ -85,24 +87,24 @@ export default function AuthPage({ setUser }) {
     e.preventDefault();
 
     if (!isLogin && formData.password !== formData.confirmPassword) {
-      toast.error("Les mots de passe ne correspondent pas.");
+      toast.error(t("auth.err_pw_mismatch"));
       return;
     }
     if (!isLogin && !termsAccepted) {
-      toast.error("Veuillez accepter les conditions d'utilisation.");
+      toast.error(t("auth.err_terms"));
       return;
     }
     // Pays en mode consultation (RU/CN) : pas de création de compte (le backend
     // refuse de toute façon, mais on l'explique clairement avant l'envoi).
     if (!isLogin && geo.readOnly) {
-      toast.error(geo.readOnlyMessage || "Inscription indisponible dans votre pays.");
+      toast.error(geo.readOnlyMessage || t("auth.err_signup_blocked"));
       return;
     }
     // Contrôle d'âge : le seuil dépend du pays (COPPA 13 US, RGPD 15/16 UE…).
     // La vérification finale est faite côté serveur (source de vérité géo).
     if (!isLogin) {
       if (!formData.birthdate) {
-        toast.error("Indique ta date de naissance.");
+        toast.error(t("auth.err_birthdate_required"));
         return;
       }
       const b = new Date(formData.birthdate);
@@ -111,12 +113,12 @@ export default function AuthPage({ setUser }) {
       const m = now.getMonth() - b.getMonth();
       if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
       if (Number.isNaN(age)) {
-        toast.error("Date de naissance invalide.");
+        toast.error(t("auth.err_birthdate_invalid"));
         return;
       }
       const minAge = geo.minAge || 13;  // plancher permissif : le serveur tranche
       if (age < minAge) {
-        toast.error(`Inscription impossible : l'âge minimum requis dans votre pays est de ${minAge} ans.`);
+        toast.error(t("auth.err_min_age", { n: minAge }));
         return;
       }
     }
@@ -154,14 +156,14 @@ export default function AuthPage({ setUser }) {
       if (response.data?.twofa_required) {
         setTwofa({ email: response.data.email || formData.email });
         setTwofaCode("");
-        toast.message("Code de connexion envoyé par email.", { description: "Vérifie ta boîte (et les spams)." });
+        toast.message(t("auth.twofa_sent_title"), { description: t("auth.twofa_sent_desc") });
         return;
       }
 
       await finishAuth(response.data);
-      toast.success(isLogin ? "Connexion réussie!" : "Inscription réussie!");
+      toast.success(isLogin ? t("auth.login_success") : t("auth.register_success"));
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Une erreur s'est produite");
+      toast.error(error.response?.data?.detail || t("auth.err_generic"));
     } finally {
       setLoading(false);
     }
@@ -264,12 +266,10 @@ export default function AuthPage({ setUser }) {
                 className="font-headline text-2xl sm:text-3xl font-bold tracking-tight mb-1"
                 style={{ color: "#dae2fd" }}
               >
-                {isLogin ? "Connexion" : "Inscription"}
+                {isLogin ? t("auth.title_login") : t("auth.title_register")}
               </h2>
               <p className="text-sm" style={{ color: "#bbc9cd" }}>
-                {isLogin
-                  ? "Bienvenue de retour sur Nexus Social."
-                  : "Créez votre profil pour commencer l'aventure."}
+                {isLogin ? t("auth.subtitle_login") : t("auth.subtitle_register")}
               </p>
             </header>
 
@@ -283,7 +283,7 @@ export default function AuthPage({ setUser }) {
                       style={{ color: "#bbc9cd" }}
                       htmlFor="name"
                     >
-                      Nom complet
+                      {t("auth.name")}
                     </label>
                     <div className="relative group">
                       <div
@@ -300,7 +300,7 @@ export default function AuthPage({ setUser }) {
                         required
                         value={formData.name}
                         onChange={handleChange("name")}
-                        placeholder="Alexandre Martin"
+                        placeholder={t("auth.name_placeholder")}
                         className={inputClass}
                         style={{ backgroundColor: "#131b2e" }}
                       />
@@ -315,7 +315,7 @@ export default function AuthPage({ setUser }) {
                     style={{ color: "#bbc9cd" }}
                     htmlFor="email"
                   >
-                    Email
+                    {t("auth.email")}
                   </label>
                   <div className="relative group">
                     <div
@@ -347,7 +347,7 @@ export default function AuthPage({ setUser }) {
                       style={{ color: "#bbc9cd" }}
                       htmlFor="birthdate"
                     >
-                      Date de naissance
+                      {t("auth.birthdate")}
                     </label>
                     <div className="relative group">
                       <div
@@ -368,7 +368,7 @@ export default function AuthPage({ setUser }) {
                       />
                     </div>
                     <p className="text-[11px] ml-1" style={{ color: "#5b6b8c" }}>
-                      Tu dois avoir au moins 15 ans pour t'inscrire (loi française).
+                      {t("auth.age_hint", { n: geo.minAge || 15 })}
                     </p>
                   </div>
                 )}
@@ -381,7 +381,7 @@ export default function AuthPage({ setUser }) {
                       style={{ color: "#bbc9cd" }}
                       htmlFor="password"
                     >
-                      Mot de passe
+                      {t("auth.password")}
                     </label>
                     <div className="relative group">
                       <div
@@ -407,7 +407,7 @@ export default function AuthPage({ setUser }) {
                       <button type="button"
                         onClick={() => setForgot({ step: 0, email: formData.email, code: "", pw: "", pw2: "" })}
                         className="text-xs hover:underline bg-transparent border-none cursor-pointer" style={{ color: "#8aebff" }}>
-                        Mot de passe oublié ?
+                        {t("auth.forgot_link")}
                       </button>
                     </div>
                   </div>
@@ -420,7 +420,7 @@ export default function AuthPage({ setUser }) {
                         style={{ color: "#bbc9cd" }}
                         htmlFor="password"
                       >
-                        Mot de passe
+                        {t("auth.password")}
                       </label>
                       <div className="relative group">
                         <div
@@ -450,7 +450,7 @@ export default function AuthPage({ setUser }) {
                         style={{ color: "#bbc9cd" }}
                         htmlFor="confirm-password"
                       >
-                        Confirmer
+                        {t("auth.confirm")}
                       </label>
                       <div className="relative group">
                         <div
@@ -493,7 +493,7 @@ export default function AuthPage({ setUser }) {
                     style={{ color: "#bbc9cd" }}
                     htmlFor="terms"
                   >
-                    J'accepte les{" "}
+                    {t("auth.terms_accept")}{" "}
                     <a
                       className="hover:underline transition-all"
                       style={{ color: "#8aebff" }}
@@ -501,7 +501,7 @@ export default function AuthPage({ setUser }) {
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      conditions d'utilisation
+                      {t("auth.terms_link")}
                     </a>
                   </label>
                 </div>
@@ -519,9 +519,9 @@ export default function AuthPage({ setUser }) {
                     style={{ accentColor: "#8aebff" }}
                   />
                   <label className="text-sm cursor-pointer" style={{ color: "#bbc9cd" }} htmlFor="private-account">
-                    Compte privé
+                    {t("auth.private_account")}
                     <span className="block text-xs" style={{ color: "#859397" }}>
-                      Seuls les abonnés que vous approuvez voient votre contenu. Modifiable à tout moment dans les réglages.
+                      {t("auth.private_hint")}
                     </span>
                   </label>
                 </div>
@@ -541,32 +541,32 @@ export default function AuthPage({ setUser }) {
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current" />
                   </div>
                 ) : isLogin ? (
-                  "Se connecter"
+                  t("auth.btn_login")
                 ) : (
-                  "Créer un compte"
+                  t("auth.btn_register")
                 )}
               </button>
             </form>
 
             <footer className="text-center pt-2">
               <p className="text-sm" style={{ color: "#bbc9cd" }}>
-                {isLogin ? "Pas encore inscrit ?" : "Déjà inscrit ?"}{" "}
+                {isLogin ? t("auth.no_account") : t("auth.have_account")}{" "}
                 <button
                   onClick={() => setIsLogin(!isLogin)}
                   className="font-medium hover:underline ml-1 transition-all bg-transparent border-none cursor-pointer"
                   style={{ color: "#8aebff" }}
                 >
-                  {isLogin ? "Créez un compte" : "Connectez-vous ici"}
+                  {isLogin ? t("auth.cta_register") : t("auth.cta_login")}
                 </button>
               </p>
               <nav className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1.5 text-[11px]">
-                <Link to="/a-propos" className="hover:underline" style={{ color: "#859397" }}>À propos</Link>
-                <Link to="/comment-ca-marche" className="hover:underline" style={{ color: "#859397" }}>Comment ça marche</Link>
-                <Link to="/guides" className="hover:underline" style={{ color: "#859397" }}>Guides</Link>
-                <Link to="/faq" className="hover:underline" style={{ color: "#859397" }}>FAQ</Link>
-                <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#859397" }}>Conditions</a>
-                <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#859397" }}>Confidentialité</a>
-                <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#859397" }}>Cookies</a>
+                <Link to="/a-propos" className="hover:underline" style={{ color: "#859397" }}>{t("auth.nav_about")}</Link>
+                <Link to="/comment-ca-marche" className="hover:underline" style={{ color: "#859397" }}>{t("auth.nav_how")}</Link>
+                <Link to="/guides" className="hover:underline" style={{ color: "#859397" }}>{t("auth.nav_guides")}</Link>
+                <Link to="/faq" className="hover:underline" style={{ color: "#859397" }}>{t("auth.nav_faq")}</Link>
+                <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#859397" }}>{t("auth.nav_terms")}</a>
+                <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#859397" }}>{t("auth.nav_privacy")}</a>
+                <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#859397" }}>{t("auth.nav_cookies")}</a>
               </nav>
             </footer>
           </div>
@@ -579,17 +579,17 @@ export default function AuthPage({ setUser }) {
           <form onSubmit={submit2fa} className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#0b1326", border: "1px solid rgba(255,255,255,0.08)" }}>
             <div className="text-center mb-4">
               <span className="material-symbols-outlined text-4xl mb-1" style={{ color: "#22d3ee" }}>encrypted</span>
-              <h2 className="font-black text-lg" style={{ color: "#dae2fd" }}>Code de connexion</h2>
-              <p className="text-sm mt-1" style={{ color: "#859397" }}>Un code a été envoyé à <b style={{ color: "#dae2fd" }}>{twofa.email}</b>.</p>
+              <h2 className="font-black text-lg" style={{ color: "#dae2fd" }}>{t("auth.twofa_title")}</h2>
+              <p className="text-sm mt-1" style={{ color: "#859397" }}>{t("auth.twofa_sent_to")} <b style={{ color: "#dae2fd" }}>{twofa.email}</b>.</p>
             </div>
             <input autoFocus value={twofaCode} onChange={(e) => setTwofaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              inputMode="numeric" maxLength={6} placeholder="Code à 6 chiffres"
+              inputMode="numeric" maxLength={6} placeholder={t("auth.code_placeholder")}
               className="w-full mb-3 px-4 py-3 rounded-2xl outline-none text-center text-lg tracking-[0.4em] font-bold"
               style={{ background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" }} />
             <button type="submit" disabled={loading} className="w-full py-3 rounded-2xl font-black disabled:opacity-40" style={{ background: "#22d3ee", color: "#00363e" }}>
-              {loading ? "Vérification…" : "Se connecter"}
+              {loading ? t("auth.verifying") : t("auth.btn_login")}
             </button>
-            <button type="button" onClick={() => { setTwofa(null); setTwofaCode(""); }} className="w-full mt-2 py-2 text-xs" style={{ color: "#859397" }}>Annuler</button>
+            <button type="button" onClick={() => { setTwofa(null); setTwofaCode(""); }} className="w-full mt-2 py-2 text-xs" style={{ color: "#859397" }}>{t("auth.cancel")}</button>
           </form>
         </div>
       )}
@@ -600,33 +600,33 @@ export default function AuthPage({ setUser }) {
           <form onSubmit={submitForgot} className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#0b1326", border: "1px solid rgba(255,255,255,0.08)" }}>
             <div className="text-center mb-4">
               <span className="material-symbols-outlined text-4xl mb-1" style={{ color: "#22d3ee" }}>lock_reset</span>
-              <h2 className="font-black text-lg" style={{ color: "#dae2fd" }}>Mot de passe oublié</h2>
+              <h2 className="font-black text-lg" style={{ color: "#dae2fd" }}>{t("auth.forgot_title")}</h2>
               <p className="text-sm mt-1" style={{ color: "#859397" }}>
-                {forgot.step === 0 ? "Entre ton email : on t'envoie un code." : `Code envoyé à ${forgot.email}. Choisis un nouveau mot de passe.`}
+                {forgot.step === 0 ? t("auth.forgot_step0") : t("auth.forgot_step1", { email: forgot.email })}
               </p>
             </div>
             {forgot.step === 0 ? (
               <input autoFocus type="email" required value={forgot.email} onChange={(e) => setForgot((f) => ({ ...f, email: e.target.value }))}
-                placeholder="ton@email.com" className="w-full mb-3 px-4 py-3 rounded-2xl outline-none text-sm"
+                placeholder={t("auth.email_placeholder")} className="w-full mb-3 px-4 py-3 rounded-2xl outline-none text-sm"
                 style={{ background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" }} />
             ) : (
               <>
                 <input autoFocus value={forgot.code} onChange={(e) => setForgot((f) => ({ ...f, code: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
-                  inputMode="numeric" maxLength={6} placeholder="Code à 6 chiffres"
+                  inputMode="numeric" maxLength={6} placeholder={t("auth.code_placeholder")}
                   className="w-full mb-2 px-4 py-3 rounded-2xl outline-none text-center tracking-[0.3em] font-bold"
                   style={{ background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" }} />
                 <input type="password" value={forgot.pw} onChange={(e) => setForgot((f) => ({ ...f, pw: e.target.value }))}
-                  placeholder="Nouveau mot de passe" className="w-full mb-2 px-4 py-3 rounded-2xl outline-none text-sm"
+                  placeholder={t("auth.new_pw_placeholder")} className="w-full mb-2 px-4 py-3 rounded-2xl outline-none text-sm"
                   style={{ background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" }} />
                 <input type="password" value={forgot.pw2} onChange={(e) => setForgot((f) => ({ ...f, pw2: e.target.value }))}
-                  placeholder="Confirme le mot de passe" className="w-full mb-3 px-4 py-3 rounded-2xl outline-none text-sm"
+                  placeholder={t("auth.confirm_pw_placeholder")} className="w-full mb-3 px-4 py-3 rounded-2xl outline-none text-sm"
                   style={{ background: "#131b2e", color: "#dae2fd", border: "1px solid #2a3550" }} />
               </>
             )}
             <button type="submit" disabled={loading} className="w-full py-3 rounded-2xl font-black disabled:opacity-40" style={{ background: "#22d3ee", color: "#00363e" }}>
-              {loading ? "…" : forgot.step === 0 ? "Envoyer le code" : "Réinitialiser"}
+              {loading ? "…" : forgot.step === 0 ? t("auth.send_code") : t("auth.reset")}
             </button>
-            <button type="button" onClick={() => setForgot(null)} className="w-full mt-2 py-2 text-xs" style={{ color: "#859397" }}>Annuler</button>
+            <button type="button" onClick={() => setForgot(null)} className="w-full mt-2 py-2 text-xs" style={{ color: "#859397" }}>{t("auth.cancel")}</button>
           </form>
         </div>
       )}
