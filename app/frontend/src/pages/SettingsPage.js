@@ -349,6 +349,16 @@ export default function SettingsPage({ user, setUser }) {
 
   useEffect(() => { fetchSettings(); fetchCreatorStats(); }, []);
 
+  // Charge l'historique de visionnage à l'ouverture de l'onglet « Votre activité ».
+  // (Doit rester AVANT le `if (loading) return` plus bas — sinon l'ordre des hooks
+  // change entre les rendus → erreur React #310.)
+  useEffect(() => {
+    if (activeSection !== "activity" || watchHistory !== null) return;
+    axios.get(`${API}/users/me/watch-history`, { params: { limit: 40 } })
+      .then((r) => setWatchHistory(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setWatchHistory([]));
+  }, [activeSection, watchHistory]);
+
   const fetchSettings = async () => {
     try {
       const res = await axios.get(`${API}/users/me/settings`);
@@ -1179,14 +1189,6 @@ export default function SettingsPage({ user, setUser }) {
       </Card>
     </div>
   );
-
-  // Charge l'historique de visionnage à l'ouverture de l'onglet « Votre activité ».
-  useEffect(() => {
-    if (activeSection !== "activity" || watchHistory !== null) return;
-    axios.get(`${API}/users/me/watch-history`, { params: { limit: 40 } })
-      .then((r) => setWatchHistory(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setWatchHistory([]));
-  }, [activeSection, watchHistory]);
 
   const renderActivity = () => {
     const items = watchHistory || [];
