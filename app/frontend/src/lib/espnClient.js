@@ -133,6 +133,7 @@ export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) 
 
 const TEAM_DIR_LEAGUES = [
   "uefa.champions", "uefa.europa",          // Coupes d'Europe → élite de tous les pays
+  "fifa.world", "uefa.euro",                // Sélections nationales (CdM / Euro)
   "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", // top 5
   "eng.2", "ned.1", "por.1", "tur.1",        // autres championnats européens
   "usa.1", "mex.1", "bra.1", "arg.1", "sau.1", // Amériques + Saudi

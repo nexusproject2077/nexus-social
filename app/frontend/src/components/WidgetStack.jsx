@@ -8,7 +8,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
-import { MatchCard, MmaCard, displayMatches, MAJOR_LEAGUES } from "@/components/LiveScores";
+import { MatchCard, MmaCard, displayMatches } from "@/components/LiveScores";
 import { getTodayMinutes } from "@/lib/screenTime";
 import { fetchLiveScoresFromEspn, searchTeamsFromEspn } from "@/lib/espnClient";
 
@@ -41,6 +41,33 @@ const FINANCE_CATALOG = {
   "matic-network": { symbol: "MATIC", name: "Polygon" },
 };
 const DEFAULT_FINANCE_ASSETS = ["bitcoin", "ethereum", "solana"];
+
+// Compétitions foot rangées par zone/pays (slugs ESPN). Les sélections
+// nationales sont des favoris d'ÉQUIPE (favorite_teams) via leur id ESPN, ce qui
+// les lie automatiquement aux matchs de Coupe du Monde / Euro.
+const FOOT_SECTIONS = [
+  { key: "europe", flag: "🇪🇺", label: "Europe",
+    leagues: [["uefa.champions", "Ligue des Champions"], ["uefa.europa", "Ligue Europa"], ["uefa.europa.conf", "Ligue Conférence"]], nations: [] },
+  { key: "france", flag: "🇫🇷", label: "France",
+    leagues: [["fra.1", "Ligue 1"], ["fra.2", "Ligue 2"], ["fra.coupe_de_france", "Coupe de France"]], nations: [["478", "Équipe de France"]] },
+  { key: "angleterre", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", label: "Angleterre",
+    leagues: [["eng.1", "Premier League"], ["eng.2", "Championship"], ["eng.fa", "FA Cup"]], nations: [["448", "Équipe d'Angleterre"]] },
+  { key: "espagne", flag: "🇪🇸", label: "Espagne",
+    leagues: [["esp.1", "LaLiga"], ["esp.2", "LaLiga 2"], ["esp.copa_del_rey", "Coupe du Roi"]], nations: [["164", "Équipe d'Espagne"]] },
+  { key: "italie", flag: "🇮🇹", label: "Italie",
+    leagues: [["ita.1", "Serie A"], ["ita.2", "Serie B"], ["ita.coppa_italia", "Coupe d'Italie"]], nations: [["2925", "Équipe d'Italie"]] },
+  { key: "allemagne", flag: "🇩🇪", label: "Allemagne",
+    leagues: [["ger.1", "Bundesliga"], ["ger.2", "2. Bundesliga"], ["ger.dfb_pokal", "DFB-Pokal"]], nations: [["714", "Équipe d'Allemagne"]] },
+  { key: "international", flag: "🌍", label: "International",
+    leagues: [["fifa.world", "Coupe du Monde"], ["uefa.euro", "Euro"], ["conmebol.america", "Copa América"], ["caf.nations", "CAN"]], nations: [] },
+];
+
+// Interrupteur (même style partout).
+const Switch = ({ on }) => (
+  <span className="relative flex-shrink-0" style={{ width: 40, height: 22, borderRadius: 999, background: on ? NEON : "#333d52", transition: "background 0.2s" }}>
+    <span className="absolute top-0.5 rounded-full bg-white" style={{ width: 18, height: 18, left: on ? 20 : 2, transition: "left 0.2s" }} />
+  </span>
+);
 
 // Données de DÉMO (opt-in) : n'apparaissent QUE si le foot réel est vide ET que
 // le mode démo est activé (?demo=1 ou localStorage nexus_demo_scores=1). Toujours
@@ -289,7 +316,10 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
   const [teamQ, setTeamQ] = useState("");                                       // Recherche d'équipe (Foot)
   const [teamResults, setTeamResults] = useState([]);
   const [teamSearching, setTeamSearching] = useState(false);
+  const [openSections, setOpenSections] = useState(() => new Set(["france"])); // Accordéon : France ouverte par défaut
   const label = WIDGETS[widgetId]?.label || "Widget";
+
+  const toggleSection = (key) => setOpenSections((p) => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   const toggleLeague = (id) => setLeagues((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAsset = (id) => setAssets((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -396,23 +426,56 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
               </div>
             )}
 
-            {/* Ligues favorites (remontent en tête du widget) */}
-            <p className="text-[10px] font-bold uppercase tracking-widest px-1 mb-2" style={{ color: "#6b7686" }}>Compétitions</p>
-            <div className="space-y-1.5">
-            {MAJOR_LEAGUES.map((l) => {
-              const on = leagues.has(l.id);
+            {/* Compétitions rangées par pays/zone (accordéon) */}
+            {FOOT_SECTIONS.map((s) => {
+              const open = openSections.has(s.key);
               return (
-                <button key={l.id} onClick={() => toggleLeague(l.id)}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl"
-                  style={{ background: on ? NEON + "14" : "#1a2234" }}>
-                  <span className="text-sm font-semibold" style={{ color: on ? "#eaf7ee" : "#c7d0e0" }}>{l.name}</span>
-                  <span className="relative flex-shrink-0" style={{ width: 40, height: 22, borderRadius: 999, background: on ? NEON : "#333d52", transition: "background 0.2s" }}>
-                    <span className="absolute top-0.5 rounded-full bg-white" style={{ width: 18, height: 18, left: on ? 20 : 2, transition: "left 0.2s" }} />
-                  </span>
-                </button>
+                <div key={s.key} className="mt-3 first:mt-0">
+                  {/* En-tête de section cliquable */}
+                  <button onClick={() => toggleSection(s.key)}
+                    className="w-full flex items-center justify-between px-1 py-2 active:opacity-70 transition-opacity">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span style={{ fontSize: 16, lineHeight: 1 }}>{s.flag}</span>
+                      <span className="text-[11px] font-bold uppercase tracking-widest truncate" style={{ color: "#8b96a8" }}>{s.label}</span>
+                    </span>
+                    <span className="material-symbols-outlined flex-shrink-0"
+                      style={{ color: "#6b7686", fontSize: 20, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.25s ease" }}>expand_more</span>
+                  </button>
+                  {/* Corps de la section (collapse fluide) */}
+                  <div style={{ maxHeight: open ? 480 : 0, overflow: "hidden", transition: "max-height 0.3s ease" }}>
+                    <div className="space-y-1.5 pt-1 pb-1">
+                      {/* Ligues → favorite_leagues (commit à « Enregistrer ») */}
+                      {s.leagues.map(([id, name]) => {
+                        const on = leagues.has(id);
+                        return (
+                          <button key={id} onClick={() => toggleLeague(id)}
+                            className="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl"
+                            style={{ background: on ? NEON + "14" : "#1a2234" }}>
+                            <span className="text-sm font-semibold" style={{ color: on ? "#eaf7ee" : "#c7d0e0" }}>{name}</span>
+                            <Switch on={on} />
+                          </button>
+                        );
+                      })}
+                      {/* Sélection nationale → favorite_teams (favori immédiat) */}
+                      {s.nations.map(([id, name]) => {
+                        const on = favT?.has(id);
+                        return (
+                          <button key={id} onClick={() => onToggleTeam?.(id)}
+                            className="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl"
+                            style={{ background: on ? NEON + "14" : "#1a2234" }}>
+                            <span className="flex items-center gap-2 min-w-0">
+                              <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 16, color: on ? NEON : "#6b7686" }}>flag</span>
+                              <span className="text-sm font-semibold truncate" style={{ color: on ? "#eaf7ee" : "#c7d0e0" }}>{name}</span>
+                            </span>
+                            <Switch on={on} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               );
             })}
-            </div>
           </div>
         )}
 
