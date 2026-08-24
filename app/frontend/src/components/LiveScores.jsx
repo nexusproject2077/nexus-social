@@ -159,8 +159,8 @@ export function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onTog
         width: compact ? "auto" : 178, minHeight: 98,
       }}
     >
-      <div className="flex items-center justify-between gap-1.5 mb-2">
-        <div className="flex items-center gap-1 min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-1 min-w-0 flex-1">
           <StarBtn active={favL.has(m.league_slug)} onClick={() => onToggleLeague(m.league_slug)} size={13} />
           <span className="text-[10px] font-bold uppercase tracking-wider truncate" style={{ color: "#6b7686" }}>{m.league}</span>
         </div>
@@ -212,9 +212,10 @@ export function MmaCard({ m, compact, flash }) {
   return (
     <div className={`rounded-2xl p-3 flex flex-col justify-between ${compact ? "" : "flex-shrink-0"}`}
       style={{ background: "#111827", border: `1px solid ${live ? NEON + "33" : "rgba(255,255,255,0.06)"}`, width: compact ? "auto" : 178, minHeight: 98 }}>
-      <div className="flex items-center justify-between gap-1.5 mb-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider truncate flex items-center gap-1" style={{ color: "#6b7686" }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 12, color: "#ef4444" }}>sports_mma</span>{m.event}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider truncate flex items-center gap-1 min-w-0 flex-1" style={{ color: "#6b7686" }}>
+          <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 12, color: "#ef4444" }}>sports_mma</span>
+          <span className="truncate">{m.event}</span>
         </span>
         {demo ? <DemoBadge /> : live ? <LiveBadge /> : upcoming ? <UpcomingBadge /> : null}
       </div>
