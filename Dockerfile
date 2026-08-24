@@ -13,6 +13,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Certificats racine système : indispensables pour la vérification TLS des
+# clients HTTP qui utilisent le magasin système (ex. le SDK Stripe via urllib).
+# Sans eux, api.stripe.com échoue en « APIConnectionError » sur l'image slim.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Dépendances Python d'abord (cache Docker efficace).
 COPY app/backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt

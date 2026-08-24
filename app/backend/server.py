@@ -564,6 +564,13 @@ except ValueError:
 STRIPE_ENABLED = bool(stripe and STRIPE_SECRET_KEY and STRIPE_PRICE_ID)
 if STRIPE_ENABLED:
     stripe.api_key = STRIPE_SECRET_KEY
+    # Force le client HTTP `requests` (CA certifi embarqué) au lieu du repli
+    # urllib qui, sur l'image slim, échouait la vérification TLS vers Stripe.
+    try:
+        import stripe.http_client as _stripe_http
+        stripe.default_http_client = _stripe_http.RequestsClient()
+    except Exception as _e:
+        print(f"ℹ️ Stripe: client requests non forcé ({_e})")
     print("✅ Stripe activé (abonnements)")
 elif stripe is None:
     print("ℹ️ Stripe indisponible (SDK non installé) — abonnements désactivés")
