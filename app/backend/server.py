@@ -548,7 +548,10 @@ def decrypt_message(value):
 # absentes : les endpoints renvoient 503 et rien n'est facturé.
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID", "")  # prix d'abonnement récurrent
+STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID", "")  # prix d'abonnement (repli / mensuel)
+# Deux offres Premium : Mensuel 3,99 €/mois et Annuel 34,99 €/an (−25 %).
+STRIPE_PRICE_ID_MONTHLY = os.environ.get("STRIPE_PRICE_ID_MONTHLY", "") or STRIPE_PRICE_ID
+STRIPE_PRICE_ID_ANNUAL = os.environ.get("STRIPE_PRICE_ID_ANNUAL", "")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://nexus-social-3ta5.onrender.com")
 # Commission de la plateforme sur chaque cadeau reversé au créateur (Stripe Connect).
 try:
@@ -2204,24 +2207,73 @@ async def billing_plan():
 
 
 @api_router.post("/billing/create-checkout-session")
-async def create_checkout_session(current_user: dict = Depends(get_current_user)):
-    """Crée une session Stripe Checkout d'abonnement et renvoie l'URL de paiement."""
+async def create_checkout_session(data: dict = Body(default={}), current_user: dict = Depends(get_current_user)):
+    """Crée une session Stripe Checkout d'abonnement et renvoie l'URL de paiement.
+    Corps : {plan: "monthly" | "annual"}. Mensuel 3,99 €, Annuel 34,99 €."""
     if not STRIPE_ENABLED:
         raise HTTPException(status_code=503, detail="Les paiements ne sont pas configurés")
+    plan = (data.get("plan") or "monthly").lower()
+    if plan == "annual" and STRIPE_PRICE_ID_ANNUAL:
+        price_id = STRIPE_PRICE_ID_ANNUAL
+    else:
+        plan = "monthly"
+        price_id = STRIPE_PRICE_ID_MONTHLY or STRIPE_PRICE_ID
     try:
         session = stripe.checkout.Session.create(
             mode="subscription",
-            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            line_items=[{"price": price_id, "quantity": 1}],
             customer_email=current_user.get("email"),
             client_reference_id=current_user["id"],
-            metadata={"user_id": current_user["id"]},
-            subscription_data={"metadata": {"user_id": current_user["id"]}},
+            metadata={"user_id": current_user["id"], "plan": plan},
+            subscription_data={"metadata": {"user_id": current_user["id"], "plan": plan}},
             success_url=f"{FRONTEND_URL}/settings?sub=success",
             cancel_url=f"{FRONTEND_URL}/settings?sub=cancel",
         )
         return {"url": session.url}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erreur Stripe: {e}")
+
+
+async def _activate_premium(user_id: str, plan: str = None, customer: str = None, subscription: str = None):
+    """Passe un compte en Premium : is_premium=True + fin d'abonnement (premium_until)
+    calculée selon l'offre (mensuel ≈ 31 j, annuel ≈ 366 j). Idempotent."""
+    if not user_id:
+        return None
+    now = datetime.now(timezone.utc)
+    days = 366 if (plan == "annual") else 31
+    until = (now + timedelta(days=days)).isoformat()
+    fields = {
+        "is_premium": True,
+        "subscription_status": "active",
+        "premium_until": until,
+        "updated_at": now.isoformat(),
+    }
+    if plan:
+        fields["premium_plan"] = plan
+    if customer:
+        fields["stripe_customer_id"] = customer
+    if subscription:
+        fields["stripe_subscription_id"] = subscription
+    await db.users.update_one({"id": user_id}, {"$set": fields})
+    return until
+
+
+@api_router.post("/premium/subscribe")
+async def premium_subscribe(request: Request, data: dict = Body(...)):
+    """Active l'abonnement Premium d'un utilisateur (is_premium=True) en base.
+    Route INTERNE, appelée par le webhook Stripe / les opérations : protégée par
+    la clé interne (x-poll-key). N'expose jamais l'auto-attribution côté client."""
+    if not SPORTS_POLL_KEY:
+        raise HTTPException(status_code=503, detail="Activation non configurée")
+    key = request.headers.get("x-poll-key") or request.query_params.get("key") or ""
+    if key != SPORTS_POLL_KEY:
+        raise HTTPException(status_code=403, detail="Clé invalide")
+    user_id = str(data.get("user_id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id requis")
+    plan = (data.get("plan") or "").lower() or None
+    until = await _activate_premium(user_id, plan, data.get("customer"), data.get("subscription"))
+    return {"success": True, "user_id": user_id, "premium_until": until}
 
 
 @api_router.post("/live/gift-checkout")
@@ -2684,14 +2736,12 @@ async def stripe_webhook(request: Request):
         return {"received": True}
 
     if etype == "checkout.session.completed":
-        user_id = (obj.get("metadata") or {}).get("user_id") or obj.get("client_reference_id")
-        if user_id:
-            await db.users.update_one({"id": user_id}, {"$set": {
-                "is_premium": True,
-                "subscription_status": "active",
-                "stripe_customer_id": obj.get("customer"),
-                "stripe_subscription_id": obj.get("subscription"),
-            }})
+        meta_sub = obj.get("metadata") or {}
+        user_id = meta_sub.get("user_id") or obj.get("client_reference_id")
+        if user_id and meta_sub.get("type") not in ("gift", "tip"):
+            # Abonnement Premium validé → is_premium=True + premium_until (helper).
+            await _activate_premium(user_id, plan=(meta_sub.get("plan") or "monthly"),
+                                    customer=obj.get("customer"), subscription=obj.get("subscription"))
             if send_brevo_email:
                 u = await db.users.find_one({"id": user_id})
                 if u and u.get("email"):
