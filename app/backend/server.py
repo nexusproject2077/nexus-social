@@ -2223,10 +2223,14 @@ async def billing_status(current_user: dict = Depends(get_current_user)):
 
 
 @api_router.get("/billing/plan")
-async def billing_plan():
+async def billing_plan(debug: int = 0):
     """Infos publiques du plan Premium (prix réel Stripe) pour la page « Devenir
     Premium ». Public : pas d'auth requise. Ne renvoie jamais de prix inventé —
     si Stripe n'est pas branché, `enabled=false` et le prix est nul.
+
+    `?debug=1` ajoute un diagnostic non sensible (type + message d'erreur Stripe,
+    identifiant de prix, longueur/empreinte de la clé) pour dépanner sans fouiller
+    les logs Cloud Run. Aucune donnée secrète n'est exposée (jamais la clé brute).
     """
     out = {"enabled": STRIPE_ENABLED, "amount": None, "currency": None, "interval": None}
     if STRIPE_ENABLED:
@@ -2237,7 +2241,18 @@ async def billing_plan():
             rec = price.get("recurring") or {}
             out["interval"] = rec.get("interval")  # "month" | "year"
         except Exception as e:
-            print(f"⚠️ billing_plan: prix Stripe illisible ({e})")
+            print(f"⚠️ billing_plan: prix Stripe illisible ({type(e).__name__}: {e})")
+            if debug:
+                k = STRIPE_SECRET_KEY or ""
+                out["debug"] = {
+                    "error_type": type(e).__name__,
+                    "error": str(e)[:400],
+                    "price_id": STRIPE_PRICE_ID,
+                    "key_prefix": (k[:8] + "…") if k else "(vide)",
+                    "key_len": len(k),
+                    "key_all_ascii": all(33 <= ord(c) <= 126 for c in k),
+                    "mode": ("test" if k.startswith("sk_test_") else ("live" if k.startswith("sk_live_") else "?")),
+                }
     return out
 
 
