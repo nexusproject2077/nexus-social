@@ -1291,7 +1291,8 @@ class User(BaseModel):
     followers_count: int = 0
     following_count: int = 0
     is_verified: bool = False           # badge « identité vérifiée » (pièce validée)
-    is_premium: bool = False
+    is_premium: bool = False            # abonné Nexus Premium (badge + avantages réels)
+    premium_until: Optional[str] = None  # fin d'abonnement (ISO) ; None si non abonné
     is_admin: bool = False
     # Vérification d'identité (RGPD : on n'expose JAMAIS la pièce ni la date de
     # naissance en clair ; seuls des statuts/booléens sont renvoyés au client).
@@ -1418,6 +1419,7 @@ class Comment(BaseModel):
     author_username: str
     author_profile_pic: Optional[str] = None
     author_is_verified: bool = False
+    author_is_premium: bool = False     # commentaire d'un abonné Premium (remonté en tête)
     content: str
     likes_count: int = 0
     replies_count: int = 0
@@ -3743,14 +3745,22 @@ async def get_post_comments(post_id: str, current_user: dict = Depends(get_curre
         ).to_list(length=len(comment_ids))
         liked_ids = {l.get("comment_id") for l in likes}
 
+    # Abonnés Premium parmi les auteurs → badge + remontée en tête (avantage réel).
+    premium_ids = await _premium_author_ids([c.get("author_id") for c in comments_raw])
+
     minor = bool(current_user.get("is_minor"))
     comments = []
     for comment_raw in comments_raw:
         comment = convert_mongo_doc_to_dict(comment_raw)
         comment["is_liked"] = comment.get("id") in liked_ids
+        comment["author_is_premium"] = comment.get("author_id") in premium_ids
         if minor and comment.get("content"):
             comment["content"] = _mask_profanity(comment["content"])
         comments.append(Comment(**comment))
+
+    # Les commentaires des abonnés Premium remontent EN TÊTE (l'ordre par date
+    # récente est conservé à l'intérieur de chaque groupe — tri stable).
+    comments.sort(key=lambda c: 0 if c.author_is_premium else 1)
 
     return comments
 
