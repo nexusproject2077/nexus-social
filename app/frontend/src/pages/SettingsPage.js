@@ -153,6 +153,7 @@ export default function SettingsPage({ user, setUser }) {
   const [accent, setAccent] = useState(getAccent());
   const [mutedInput, setMutedInput] = useState("");
   const [premiumPitch, setPremiumPitch] = useState(null);   // texte de la modale Premium (null = fermée)
+  const [watchHistory, setWatchHistory] = useState(null);   // historique de visionnage (null = pas encore chargé)
 
   // Notifications : préférences par type + état de l'abonnement push.
   const [notifTypes, setNotifTypes]       = useState([]);
@@ -404,6 +405,7 @@ export default function SettingsPage({ user, setUser }) {
 
   const navSections = [
     { id: "account",  icon: "manage_accounts",  label: t("settings.account") },
+    { id: "activity", icon: "history",           label: "Votre activité" },
     { id: "creator",  icon: "paid",              label: t("settings.creator") },
     { id: "privacy",  icon: "gavel",             label: t("settings.privacy") },
     { id: "notifications", icon: "notifications", label: "Notifications" },
@@ -1178,8 +1180,70 @@ export default function SettingsPage({ user, setUser }) {
     </div>
   );
 
+  // Charge l'historique de visionnage à l'ouverture de l'onglet « Votre activité ».
+  useEffect(() => {
+    if (activeSection !== "activity" || watchHistory !== null) return;
+    axios.get(`${API}/users/me/watch-history`, { params: { limit: 40 } })
+      .then((r) => setWatchHistory(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setWatchHistory([]));
+  }, [activeSection, watchHistory]);
+
+  const renderActivity = () => {
+    const items = watchHistory || [];
+    const clearHistory = async () => {
+      try { await axios.delete(`${API}/users/me/watch-history`); setWatchHistory([]); toast.success("Historique effacé"); }
+      catch { toast.error("Échec de l'effacement"); }
+    };
+    return (
+      <div className="space-y-6">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Historique de visionnage</h2>
+            <p className="text-sm" style={{ color: C.outline }}>Les Clips et publications vus récemment — pour les retrouver, liker ou partager.</p>
+          </div>
+          {items.length > 0 && (
+            <button onClick={clearHistory} className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: C.high, color: "#f87171" }}>Effacer</button>
+          )}
+        </div>
+        {watchHistory === null ? (
+          <div className="flex justify-center py-16"><div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} /></div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-16">
+            <span className="material-symbols-outlined text-4xl" style={{ color: C.outline }}>history_toggle_off</span>
+            <p className="text-sm mt-2" style={{ color: C.outline }}>Aucun visionnage pour l'instant.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {items.map((p) => {
+              const isVideo = p.media_type === "video";
+              return (
+                <button key={p.id} onClick={() => navigate(`/post/${p.id}`)}
+                  className="relative aspect-square rounded-xl overflow-hidden active:scale-[0.97] transition-transform"
+                  style={{ background: C.high, border: `1px solid rgba(255,255,255,0.06)` }}>
+                  {p.media_url ? (
+                    isVideo
+                      ? <video src={p.media_url} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                      : <img src={p.media_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                  ) : (
+                    <span className="absolute inset-0 flex items-center justify-center p-2 text-[11px] text-center" style={{ color: C.outline }}>
+                      {(p.content || "Publication").slice(0, 60)}
+                    </span>
+                  )}
+                  {isVideo && (
+                    <span className="absolute top-1.5 right-1.5 material-symbols-outlined" style={{ fontSize: 16, color: "#fff", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.6))", fontVariationSettings: "'FILL' 1" }}>play_circle</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const sectionMap = {
     account:  renderAccount,
+    activity: renderActivity,
     creator:  renderCreator,
     privacy:  renderPrivacy,
     notifications: renderNotifications,

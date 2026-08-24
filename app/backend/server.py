@@ -10477,7 +10477,45 @@ async def register_clip_watch(clip_id: str, data: dict = Body(default={}),
         )
     except Exception:
         return {"success": False}
+
+    # Historique de visionnage : on mémorise le clip dès 4 s de visionnage,
+    # dédoublonné par (utilisateur, post) et rafraîchi à la dernière vue.
+    if watched_ms >= 4000:
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            await db.watch_history.update_one(
+                {"user_id": current_user["id"], "post_id": clip_id},
+                {"$set": {"ts": now, "kind": "clip"},
+                 "$setOnInsert": {"user_id": current_user["id"], "post_id": clip_id, "created_at": now}},
+                upsert=True,
+            )
+        except Exception as e:
+            logger.warning(f"watch_history: enregistrement échoué ({e})")
     return {"success": True, "counted": True}
+
+
+@api_router.get("/users/me/watch-history", response_model=List[Post])
+async def my_watch_history(request: Request, skip: int = 0, limit: int = 30,
+                           current_user: dict = Depends(get_current_user)):
+    """Historique de visionnage (clips/posts vus > 4 s), du plus récent au plus
+    ancien — pour retrouver, liker ou partager facilement un contenu."""
+    limit = max(1, min(limit, 60))
+    rows = await db.watch_history.find(
+        {"user_id": current_user["id"]}
+    ).sort("ts", -1).skip(max(0, skip)).limit(limit).to_list(length=limit)
+    ids = [r.get("post_id") for r in rows if r.get("post_id")]
+    if not ids:
+        return []
+    media_base = _media_public_base(request)
+    return await _fetch_posts_in_order(ids, current_user["id"], media_base,
+                                       viewer_is_minor=bool(current_user.get("is_minor")))
+
+
+@api_router.delete("/users/me/watch-history")
+async def clear_watch_history(current_user: dict = Depends(get_current_user)):
+    """Efface tout l'historique de visionnage de l'utilisateur."""
+    res = await db.watch_history.delete_many({"user_id": current_user["id"]})
+    return {"success": True, "deleted": res.deleted_count}
 
 
 _mix_cache: Dict[str, tuple] = {}
