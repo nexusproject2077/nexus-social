@@ -123,6 +123,21 @@ const ENGINES = { libre: translateLibre, deepl: translateDeepl, google: translat
 const engine = ENGINES[PROVIDER];
 if (!engine) { console.error(`Moteur inconnu : ${PROVIDER}`); process.exit(1); }
 
+// Garde-fou clé DeepL : un en-tête HTTP n'accepte que l'ASCII. Détecte notamment
+// le placeholder « … » (U+2026) collé par erreur à la place de la vraie clé, qui
+// faisait planter fetch avec une erreur cryptique « ByteString … value 8230 ».
+if (PROVIDER === "deepl") {
+  const k = process.env.DEEPL_API_KEY || "";
+  if (!k.trim()) {
+    console.error("DEEPL_API_KEY manquante. Exporte ta vraie clé DeepL (ex. abcd-1234-…-efgh:fx pour l'offre Free).");
+    process.exit(1);
+  }
+  if (/[^\x21-\x7e]/.test(k)) {
+    console.error("DEEPL_API_KEY invalide : caractère non-ASCII détecté. As-tu bien remplacé le placeholder « … » par ta VRAIE clé DeepL ?");
+    process.exit(1);
+  }
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- Traduction par LOTS (batch) : indispensable pour éviter les 429 ----
