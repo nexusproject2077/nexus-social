@@ -371,9 +371,9 @@ export default function SearchPage({ user }) {
                 <span className="material-symbols-outlined" style={{ color: CY, fontSize: 32 }}>visibility_off</span>
               </div>
               <h2 className="text-lg font-black mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: "#dae2fd" }}>{t("searchpage.private_search")}</h2>
-              <p className="text-sm" style={{ color: "#859397" }}>Tapez le nom d'un ami, d'une équipe ou d'un hashtag. La grille Découverte reste masquée.</p>
+              <p className="text-sm" style={{ color: "#859397" }}>{t("searchpage.private_search_hint")}</p>
               <button onClick={() => setDiscreet(false)} className="mt-5 text-xs font-bold px-4 py-2 rounded-full" style={{ background: "#131b2e", color: "#859397" }}>
-                Afficher les tendances
+                {t("searchpage.show_trends")}
               </button>
             </div>
           ) : emptyQuery ? (

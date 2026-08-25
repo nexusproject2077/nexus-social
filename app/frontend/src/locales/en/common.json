@@ -177,7 +177,10 @@
     "faq": "FAQ",
     "terms": "Terms",
     "privacy_policy": "Privacy policy",
-    "cookies": "Cookies"
+    "cookies": "Cookies",
+    "card_not_configured": "Card payments aren't set up on the platform yet.",
+    "gdpr_desc": "Your data is processed in accordance with the GDPR. You have the right to access, correct and delete your data.",
+    "dsa_desc": "In accordance with the Digital Services Act, you have the right to understand why you see certain content."
   },
   "browser": "Browser",
   "logout": "Log out",
@@ -539,7 +542,8 @@
     "create_clip": "Create a clip (camera) — long press: import",
     "search_clips": "Search clips",
     "no_clips": "No clips available",
-    "add_comment": "Add a comment…"
+    "add_comment": "Add a comment…",
+    "clip_caption_prompt": "Clip caption (optional)"
   },
   "postcard": {
     "unmute": "Unmute",
@@ -578,7 +582,8 @@
     "share_text": "Check out this post on Nexus",
     "err_action": "Action not possible",
     "err_repost": "Error while reposting",
-    "err_vote": "Error while voting"
+    "err_vote": "Error while voting",
+    "reposted_suffix": "reposted"
   },
   "notif": {
     "today": "Today",
@@ -685,7 +690,9 @@
     "no_lists": "No lists. Create one to group accounts.",
     "no_trends": "No trends yet. Post with #hashtags!",
     "no_results": "No results for « {{query}} »",
-    "confirm_delete_list": "Delete this list?"
+    "confirm_delete_list": "Delete this list?",
+    "private_search_hint": "Type a friend's, team's or hashtag's name. The Discover grid stays hidden.",
+    "show_trends": "Show trends"
   },
   "tipmodal": {
     "support": "Support",
@@ -1294,7 +1301,8 @@
     "top_empty": "Publish content to see your best performances here",
     "no_text": "(no text)",
     "pts": "{{count}} pts",
-    "following_line": "You follow <a>{{following}}</a> accounts · <b>{{followers}}</b> followers"
+    "following_line": "You follow <a>{{following}}</a> accounts · <b>{{followers}}</b> followers",
+    "err_load": "Error loading data"
   },
   "cookieconsent": {
     "notice": "We use cookies to improve your experience.",

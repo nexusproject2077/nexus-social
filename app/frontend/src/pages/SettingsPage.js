@@ -595,7 +595,7 @@ export default function SettingsPage({ user, setUser }) {
               )}
             </div>
             {connect && connect.enabled === false ? (
-              <p className="text-xs" style={{ color: C.outline }}>Les paiements par carte ne sont pas encore configurés sur la plateforme.</p>
+              <p className="text-xs" style={{ color: C.outline }}>{t("settings.card_not_configured")}</p>
             ) : connect?.charges_enabled ? (
               <button onClick={activateStripe} disabled={connectBusy}
                 className="text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 disabled:opacity-50"
@@ -703,7 +703,7 @@ export default function SettingsPage({ user, setUser }) {
         </div>
         <div>
           <p className="text-sm font-bold mb-1" style={{ color: C.onSurface }}>{t("settings.gdpr_active")}</p>
-          <p className="text-xs" style={{ color: C.outline }}>Vos données sont traitées conformément au RGPD. Vous avez le droit d'accéder, de corriger et de supprimer vos données.</p>
+          <p className="text-xs" style={{ color: C.outline }}>{t("settings.gdpr_desc")}</p>
         </div>
       </div>
 
@@ -1054,7 +1054,7 @@ export default function SettingsPage({ user, setUser }) {
       <Card>
         <CardHeader title={t("settings.algo_transparency")} icon="analytics" />
         <div className="p-5">
-          <p className="text-sm mb-4" style={{ color: C.outline }}>Conformément au Digital Services Act, vous avez le droit de comprendre pourquoi vous voyez certains contenus.</p>
+          <p className="text-sm mb-4" style={{ color: C.outline }}>{t("settings.dsa_desc")}</p>
           <button onClick={() => setShowAlgoModal(true)} className="px-5 py-2 rounded-xl font-bold text-sm transition-all hover:opacity-80"
             style={{ background: `${C.cyan}15`, color: C.cyan, border: `1px solid ${C.cyan}30` }}>
             Inspecter l'algorithme

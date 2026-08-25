@@ -313,7 +313,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
       {post.repost_of && (
         <div className="flex items-center gap-2 pt-3 text-xs font-bold" style={{ color: C.outline }}>
           <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>repeat</span>
-          <span><Link to={`/profile/${post.author_id}`} style={{ color: C.cyan }} className="hover:text-cyan-400">@{post.author_username}</Link> a republié</span>
+          <span><Link to={`/profile/${post.author_id}`} style={{ color: C.cyan }} className="hover:text-cyan-400">@{post.author_username}</Link> {t("postcard.reposted_suffix")}</span>
         </div>
       )}
 

@@ -1115,7 +1115,7 @@ export default function ClipsPage({ user, setUser }) {
       return;
     }
 
-    const caption = window.prompt("Légende de votre clip (optionnel)") || "";
+    const caption = window.prompt(t("clips.clip_caption_prompt")) || "";
     const euBlocked = window.confirm(
       "Restreindre ce clip dans l'Union européenne ?\n\nOK = masqué aux visiteurs de l'UE • Annuler = visible partout"
     );

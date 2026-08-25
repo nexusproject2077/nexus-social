@@ -177,7 +177,10 @@
     "faq": "FAQ",
     "terms": "Conditions",
     "privacy_policy": "Politique de confidentialité",
-    "cookies": "Cookies"
+    "cookies": "Cookies",
+    "card_not_configured": "Les paiements par carte ne sont pas encore configurés sur la plateforme.",
+    "gdpr_desc": "Vos données sont traitées conformément au RGPD. Vous avez le droit d'accéder, de corriger et de supprimer vos données.",
+    "dsa_desc": "Conformément au Digital Services Act, vous avez le droit de comprendre pourquoi vous voyez certains contenus."
   },
   "browser": "Navigateur",
   "logout": "Se déconnecter",
@@ -539,7 +542,8 @@
     "create_clip": "Créer un clip (caméra) — appui long : importer",
     "search_clips": "Rechercher des clips",
     "no_clips": "Aucun clip disponible",
-    "add_comment": "Ajouter un commentaire…"
+    "add_comment": "Ajouter un commentaire…",
+    "clip_caption_prompt": "Légende de votre clip (optionnel)"
   },
   "postcard": {
     "unmute": "Activer le son",
@@ -578,7 +582,8 @@
     "share_text": "Découvre cette publication sur Nexus",
     "err_action": "Action impossible",
     "err_repost": "Erreur lors du repost",
-    "err_vote": "Erreur lors du vote"
+    "err_vote": "Erreur lors du vote",
+    "reposted_suffix": "a republié"
   },
   "notif": {
     "today": "Aujourd'hui",
@@ -685,7 +690,9 @@
     "no_lists": "Aucune liste. Créez-en une pour regrouper des comptes.",
     "no_trends": "Aucune tendance pour l'instant. Publiez avec des #hashtags !",
     "no_results": "Aucun résultat pour « {{query}} »",
-    "confirm_delete_list": "Supprimer cette liste ?"
+    "confirm_delete_list": "Supprimer cette liste ?",
+    "private_search_hint": "Tapez le nom d'un ami, d'une équipe ou d'un hashtag. La grille Découverte reste masquée.",
+    "show_trends": "Afficher les tendances"
   },
   "tipmodal": {
     "support": "Soutenir",
@@ -1294,7 +1301,8 @@
     "top_empty": "Publiez du contenu pour voir vos meilleures performances ici",
     "no_text": "(sans texte)",
     "pts": "{{count}} pts",
-    "following_line": "Vous suivez <a>{{following}}</a> comptes · <b>{{followers}}</b> abonnés"
+    "following_line": "Vous suivez <a>{{following}}</a> comptes · <b>{{followers}}</b> abonnés",
+    "err_load": "Erreur de chargement des données"
   },
   "cookieconsent": {
     "notice": "Nous utilisons des cookies pour améliorer votre expérience.",

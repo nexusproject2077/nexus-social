@@ -82,7 +82,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
       axios.get(`${API}/users/me/tips`).then((r) => setTips(r.data)).catch(() => {});
     } catch (error) {
       console.error("Erreur chargement données:", error);
-      toast.error("Erreur de chargement des données");
+      toast.error(t("analytics.err_load"));
     } finally {
       setLoading(false);
     }
