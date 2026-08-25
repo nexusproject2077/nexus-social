@@ -15,6 +15,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
+import i18n from "@/i18n";
 
 const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
 const C = {
@@ -175,7 +176,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: f }, audio: false });
       }
     } catch {
-      toast.error("Caméra inaccessible — autorise l'accès à l'appareil photo.");
+      toast.error(i18n.t("instants.err_camera"));
       return;
     }
     streamRef.current = stream;
@@ -215,7 +216,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       if (pipRef.current) { pipRef.current.srcObject = s2; await pipRef.current.play().catch(() => {}); }
       setDual(true);
     } catch {
-      toast.error("Double caméra non prise en charge sur cet appareil.");
+      toast.error(i18n.t("instants.err_dual_unsupported"));
       setDual(false);
       // L'accès secondaire a pu perturber la caméra principale : on la relance.
       startMain(facing);
@@ -227,7 +228,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
     // iOS/Safari n'autorise qu'UNE caméra à la fois : ouvrir un 2e flux couperait
     // la caméra principale (aperçu noir). La double caméra simultanée n'existe
     // pas en web sur iPhone → on l'annonce sans toucher au flux principal.
-    if (IS_IOS) { toast("Double caméra indisponible sur iPhone (limite de Safari)."); return; }
+    if (IS_IOS) { toast(i18n.t("instants.dual_ios")); return; }
     if (!localStorage.getItem(DUAL_PROMO_KEY)) { setPromo(true); return; }
     await enableDual();
   };
@@ -248,7 +249,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
     }
     // Pas de vrai flash : on simule un éclair blanc à la capture.
     setTorch((t) => !t);
-    if (!torch) toast("Flash simulé (éclair à la capture)", { duration: 1500 });
+    if (!torch) toast(i18n.t("instants.flash_simulated"), { duration: 1500 });
   };
 
   const roundRect = (ctx, x, y, w, h, r) => {
@@ -273,14 +274,14 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       recipient_ids: aud === "manual" ? list.map((u) => u.id) : [],
     })
       .then(({ data }) => onSent(data.instant, data.recipients))
-      .catch((e) => toast.error(e.response?.data?.detail || "Envoi impossible."));
+      .catch((e) => toast.error(e.response?.data?.detail || i18n.t("instants.err_send")));
     setCaption("");
   };
 
   // Capture PHOTO (appui court) → envoi direct immédiat.
   const capture = () => {
     const v = videoRef.current;
-    if (!v || !v.videoWidth) { toast.error("Caméra pas encore prête."); return; }
+    if (!v || !v.videoWidth) { toast.error(i18n.t("instants.err_cam_not_ready")); return; }
     if (torch) { setFlashPulse(true); setTimeout(() => setFlashPulse(false), 220); }
     // Recadrage CARRÉ centré (le viseur est carré) → la photo correspond à ce
     // qui est affiché.
@@ -324,7 +325,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
   const startRecording = () => {
     const stream = streamRef.current;
     if (!stream || typeof MediaRecorder === "undefined") {
-      toast.error("Vidéo non prise en charge sur cet appareil.");
+      toast.error(i18n.t("instants.err_video_unsupported"));
       return;
     }
     let mime = "";
@@ -335,7 +336,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
     try {
       rec = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 2_500_000 });
     } catch {
-      toast.error("Vidéo non prise en charge sur cet appareil.");
+      toast.error(i18n.t("instants.err_video_unsupported"));
       return;
     }
     chunksRef.current = [];
@@ -375,18 +376,18 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
     if (!pressRef.current.longPress) capture();
   };
 
-  const audienceLabel = { mutuals: "Mutuels", close_friends: "Ami·e·s proches", manual: manual.length ? `Sélection (${manual.length})` : "Sélection" }[audience];
+  const audienceLabel = { mutuals: i18n.t("instants.aud_mutuals"), close_friends: i18n.t("instants.aud_close"), manual: manual.length ? i18n.t("instants.aud_manual_count", { count: manual.length }) : i18n.t("instants.aud_manual") }[audience];
 
   return (
     <div className="fixed inset-0 z-[80] flex flex-col select-none"
       style={{ background: C.bg, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
       {/* Barre supérieure */}
       <div className="flex items-center justify-between px-4 pt-3 pb-2" style={{ paddingTop: "max(env(safe-area-inset-top), 12px)" }}>
-        <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10" aria-label="Fermer">
+        <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10" aria-label={i18n.t("instants.close")}>
           <span className="material-symbols-outlined" style={{ color: "#fff" }}>close</span>
         </button>
-        <span className="font-bold text-white">Nouvel instantané</span>
-        <button onClick={onOpenArchive} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10" aria-label="Archive">
+        <span className="font-bold text-white">{i18n.t("instants.new_instant")}</span>
+        <button onClick={onOpenArchive} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10" aria-label={i18n.t("instants.archive")}>
           <span className="material-symbols-outlined" style={{ color: "#fff" }}>grid_view</span>
         </button>
       </div>
@@ -406,7 +407,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
             {!ready && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ background: "rgba(0,0,0,0.35)" }}>
                 <div className="animate-spin rounded-full h-9 w-9 border-b-2" style={{ borderColor: C.accent }} />
-                <span className="text-[12px] text-white/70">Initialisation de la caméra…</span>
+                <span className="text-[12px] text-white/70">{i18n.t("instants.init_camera")}</span>
               </div>
             )}
             {recording && (
@@ -419,7 +420,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
             {showHint && !IS_IOS && (
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] px-3 py-1 rounded-full text-white/80 transition-opacity"
                 style={{ background: "rgba(0,0,0,0.4)" }}>
-                Double-appui : {dual ? "désactiver" : "activer"} la double caméra
+                {dual ? i18n.t("instants.dual_hint_off") : i18n.t("instants.dual_hint_on")}
               </div>
             )}
           </div>
@@ -428,7 +429,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
           <input
             value={caption}
             onChange={(e) => setCaption(e.target.value.slice(0, 200))}
-            placeholder="Ajouter une légende…"
+            placeholder={i18n.t("instants.add_caption")}
             className="mt-4 w-full text-center text-sm px-4 py-2.5 rounded-full border-none outline-none placeholder:text-white/40"
             style={{ background: "rgba(255,255,255,0.08)", color: "#fff", WebkitUserSelect: "text", userSelect: "text" }}
           />
@@ -439,7 +440,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       <div className="px-6 pb-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
         <div className="flex items-center justify-between">
           <button onClick={toggleTorch} className="w-14 h-14 rounded-full flex items-center justify-center"
-            style={{ background: "rgba(255,255,255,0.1)" }} aria-label="Flash">
+            style={{ background: "rgba(255,255,255,0.1)" }} aria-label={i18n.t("instants.flash")}>
             <span className="material-symbols-outlined" style={{ color: torch ? C.accent : "#fff" }}>
               {torch ? "flash_on" : "flash_off"}
             </span>
@@ -453,7 +454,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
             disabled={!ready}
             style={{ touchAction: "none" }}
             className="relative w-[76px] h-[76px] rounded-full active:scale-95 transition-transform disabled:opacity-40"
-            aria-label="Appui court : photo · Appui long : vidéo (max 6 s)">
+            aria-label={i18n.t("instants.shutter_aria")}>
             <span className="absolute inset-0 rounded-full border-4" style={{ borderColor: recording ? "#ef4444" : "rgba(255,255,255,0.7)" }} />
             {recording
               ? <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md bg-red-500" style={{ width: 28, height: 28 }} />
@@ -468,7 +469,7 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
           </button>
 
           <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
-            className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.1)" }} aria-label="Changer de caméra">
+            className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.1)" }} aria-label={i18n.t("instants.switch_camera")}>
             <span className="material-symbols-outlined" style={{ color: "#fff" }}>cameraswitch</span>
           </button>
         </div>
@@ -499,14 +500,14 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
       {promo && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => { localStorage.setItem(DUAL_PROMO_KEY, "1"); setPromo(false); }}>
           <div className="w-full max-w-md m-3 mb-6 rounded-3xl p-6" style={{ background: C.container }} onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-2xl font-black text-white leading-tight mb-2">Créez des instantanés avec vos 2 caméras simultanément</h3>
-            <p className="text-sm mb-6" style={{ color: C.onVariant }}>Vous pouvez désormais utiliser vos caméras avant et arrière en même temps.</p>
+            <h3 className="text-2xl font-black text-white leading-tight mb-2">{i18n.t("instants.promo_title")}</h3>
+            <p className="text-sm mb-6" style={{ color: C.onVariant }}>{i18n.t("instants.promo_body")}</p>
             <button onClick={() => { localStorage.setItem(DUAL_PROMO_KEY, "1"); setPromo(false); enableDual(); }}
               className="w-full py-3.5 rounded-2xl font-black mb-2" style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>
-              Essayer
+              {i18n.t("instants.try_it")}
             </button>
             <button onClick={() => { localStorage.setItem(DUAL_PROMO_KEY, "1"); setPromo(false); }}
-              className="w-full py-3 rounded-2xl font-bold" style={{ color: C.accent }}>Plus tard</button>
+              className="w-full py-3 rounded-2xl font-bold" style={{ color: C.accent }}>{i18n.t("instants.later")}</button>
           </div>
         </div>
       )}
@@ -567,20 +568,20 @@ function AudienceSheet({ user, audience, manual, onClose, onPick, initialMode = 
 
         {!mode ? (
           <>
-            <h3 className="font-black text-lg mb-3 px-1" style={{ color: C.onSurface }}>Envoyer à…</h3>
+            <h3 className="font-black text-lg mb-3 px-1" style={{ color: C.onSurface }}>{i18n.t("instants.send_to")}</h3>
             <Row onClick={() => onPick("mutuals")} active={audience === "mutuals"}>
               <span className="material-symbols-outlined" style={{ color: C.accent }}>groups</span>
-              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>Mutuels</p><p className="text-xs" style={{ color: C.outline }}>Les personnes qui vous suivent mutuellement</p></div>
+              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>{i18n.t("instants.aud_mutuals")}</p><p className="text-xs" style={{ color: C.outline }}>{i18n.t("instants.mutuals_desc")}</p></div>
               {audience === "mutuals" && <span className="material-symbols-outlined" style={{ color: C.accent }}>check_circle</span>}
             </Row>
             <Row onClick={() => setMode("close")} active={audience === "close_friends"}>
               <span className="material-symbols-outlined" style={{ color: "#22c55e" }}>star</span>
-              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>Ami·e·s proches</p><p className="text-xs" style={{ color: C.outline }}>Votre liste privée (modifiable)</p></div>
+              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>{i18n.t("instants.aud_close")}</p><p className="text-xs" style={{ color: C.outline }}>{i18n.t("instants.close_desc")}</p></div>
               <span className="material-symbols-outlined" style={{ color: C.outline }}>chevron_right</span>
             </Row>
             <Row onClick={() => { setSelected(manual || []); setMode("manual"); }} active={audience === "manual"}>
               <span className="material-symbols-outlined" style={{ color: C.accent }}>person_add</span>
-              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>Sélection</p><p className="text-xs" style={{ color: C.outline }}>Choisir des destinataires précis</p></div>
+              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>{i18n.t("instants.aud_manual")}</p><p className="text-xs" style={{ color: C.outline }}>{i18n.t("instants.manual_desc")}</p></div>
               <span className="material-symbols-outlined" style={{ color: C.outline }}>chevron_right</span>
             </Row>
           </>
@@ -590,9 +591,9 @@ function AudienceSheet({ user, audience, manual, onClose, onPick, initialMode = 
               <button onClick={() => setMode(null)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/5">
                 <span className="material-symbols-outlined" style={{ color: C.onSurface }}>arrow_back</span>
               </button>
-              <h3 className="font-black text-lg" style={{ color: C.onSurface }}>{mode === "close" ? "Ami·e·s proches" : "Sélection"}</h3>
+              <h3 className="font-black text-lg" style={{ color: C.onSurface }}>{mode === "close" ? i18n.t("instants.aud_close") : i18n.t("instants.aud_manual")}</h3>
             </div>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un·e utilisateur·rice…"
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={i18n.t("instants.search_user")}
               className="w-full text-sm px-4 py-2.5 rounded-xl border-none outline-none mb-3 placeholder:text-slate-500"
               style={{ background: C.high, color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }} />
             {selected.length > 0 && (
@@ -620,7 +621,7 @@ function AudienceSheet({ user, audience, manual, onClose, onPick, initialMode = 
             <button onClick={confirm} disabled={saving || selected.length === 0}
               className="w-full py-3 rounded-2xl font-black disabled:opacity-40"
               style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>
-              {saving ? "Enregistrement…" : mode === "close" ? "Enregistrer & choisir" : `Envoyer à ${selected.length || 0} destinataire${selected.length > 1 ? "s" : ""}`}
+              {saving ? i18n.t("instants.saving") : mode === "close" ? i18n.t("instants.save_choose") : i18n.t("instants.send_to_n", { count: selected.length || 0 })}
             </button>
           </>
         )}
@@ -651,15 +652,15 @@ function InstantViewer({ item, onClose, onConsumed }) {
       } catch (e) {
         setGone(true);
         onConsumed?.(item.id);
-        toast(e.response?.data?.detail || "Cet instantané a disparu.");
+        toast(e.response?.data?.detail || i18n.t("instants.gone"));
       }
     })();
   }, [item, onConsumed]);
 
   const react = async (emoji) => {
     setReacted(emoji);
-    try { await axios.post(`${API}/instants/${item.id}/react`, { emoji }); toast("Réaction envoyée"); }
-    catch (e) { toast.error(e.response?.data?.detail || "Impossible de réagir."); }
+    try { await axios.post(`${API}/instants/${item.id}/react`, { emoji }); toast(i18n.t("instants.reaction_sent")); }
+    catch (e) { toast.error(e.response?.data?.detail || i18n.t("instants.err_react")); }
   };
 
   const sendReply = async () => {
@@ -668,8 +669,8 @@ function InstantViewer({ item, onClose, onConsumed }) {
     try {
       await axios.post(`${API}/instants/${item.id}/reply`, { content: reply.trim() });
       setReply("");
-      toast("Réponse envoyée en message privé");
-    } catch (e) { toast.error(e.response?.data?.detail || "Réponse impossible."); }
+      toast(i18n.t("instants.reply_sent"));
+    } catch (e) { toast.error(e.response?.data?.detail || i18n.t("instants.err_reply")); }
     finally { setBusy(false); }
   };
 
@@ -688,13 +689,13 @@ function InstantViewer({ item, onClose, onConsumed }) {
         {gone ? (
           <div className="text-center px-6">
             <span className="material-symbols-outlined text-5xl mb-2" style={{ color: C.outline }}>visibility_off</span>
-            <p className="text-white/80">Cet instantané n'est plus disponible.</p>
+            <p className="text-white/80">{i18n.t("instants.unavailable")}</p>
           </div>
         ) : data ? (
           <div className="relative w-full h-full flex items-center justify-center">
             {isVideoMedia(data.media_url)
               ? <video src={data.media_url} className="max-w-full max-h-full object-contain rounded-2xl" autoPlay playsInline muted loop />
-              : <img src={data.media_url} alt="Instantané" className="max-w-full max-h-full object-contain rounded-2xl" />}
+              : <img src={data.media_url} alt={i18n.t("instants.media_alt")} className="max-w-full max-h-full object-contain rounded-2xl" />}
             {data.caption && (
               <p className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[90%] text-center text-white text-sm px-4 py-2 rounded-2xl"
                 style={{ background: "rgba(0,0,0,0.45)" }}>{data.caption}</p>
@@ -716,7 +717,7 @@ function InstantViewer({ item, onClose, onConsumed }) {
           <div className="flex items-center gap-2">
             <input value={reply} onChange={(e) => setReply(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") sendReply(); }}
-              placeholder="Répondre en privé…"
+              placeholder={i18n.t("instants.reply_private")}
               className="flex-1 text-sm px-4 py-3 rounded-full border-none outline-none placeholder:text-white/40"
               style={{ background: "rgba(255,255,255,0.1)", color: "#fff", WebkitUserSelect: "text", userSelect: "text" }} />
             <button onClick={sendReply} disabled={busy || !reply.trim()} className="w-11 h-11 rounded-full flex items-center justify-center disabled:opacity-40"
@@ -748,8 +749,8 @@ function InstantsArchive({ onClose, onChanged }) {
       setItems((prev) => (prev || []).map((i) => (i.id === id ? { ...i, canceled: true, active: false } : i)));
       setOpen(null);
       onChanged?.();
-      toast("Instantané annulé");
-    } catch (e) { toast.error(e.response?.data?.detail || "Annulation impossible."); }
+      toast(i18n.t("instants.canceled_toast"));
+    } catch (e) { toast.error(e.response?.data?.detail || i18n.t("instants.err_cancel")); }
   };
 
   return (
@@ -760,8 +761,8 @@ function InstantsArchive({ onClose, onChanged }) {
           <span className="material-symbols-outlined text-white">arrow_back</span>
         </button>
         <div className="flex-1">
-          <p className="font-bold text-white">Vos instantanés</p>
-          <p className="text-[11px]" style={{ color: C.outline }}>Archive privée · conservés 1 an</p>
+          <p className="font-bold text-white">{i18n.t("instants.your_snaps")}</p>
+          <p className="text-[11px]" style={{ color: C.outline }}>{i18n.t("instants.archive_sub")}</p>
         </div>
       </div>
 
@@ -771,7 +772,7 @@ function InstantsArchive({ onClose, onChanged }) {
         ) : items.length === 0 ? (
           <div className="text-center pt-20 px-8">
             <span className="material-symbols-outlined text-5xl mb-2" style={{ color: C.outline }}>bolt</span>
-            <p style={{ color: C.onVariant }}>Aucun instantané envoyé pour le moment.</p>
+            <p style={{ color: C.onVariant }}>{i18n.t("instants.archive_empty")}</p>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-2">
@@ -786,7 +787,7 @@ function InstantsArchive({ onClose, onChanged }) {
                 <div className="absolute bottom-0 inset-x-0 px-1.5 py-1 flex items-center justify-between text-[10px] font-bold text-white"
                   style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent)" }}>
                   <span className="flex items-center gap-0.5"><span className="material-symbols-outlined text-[13px]">visibility</span>{it.seen}/{it.recipients}</span>
-                  {it.canceled ? <span style={{ color: "#f87171" }}>Annulé</span> : it.active ? <span style={{ color: C.accent }}>Actif</span> : <span style={{ color: C.outline }}>Expiré</span>}
+                  {it.canceled ? <span style={{ color: "#f87171" }}>{i18n.t("instants.status_canceled")}</span> : it.active ? <span style={{ color: C.accent }}>{i18n.t("instants.status_active")}</span> : <span style={{ color: C.outline }}>{i18n.t("instants.status_expired")}</span>}
                 </div>
               </button>
             ))}
@@ -807,12 +808,12 @@ function InstantsArchive({ onClose, onChanged }) {
           <div className="px-4 pb-6 pt-3" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}>
             {open.caption && <p className="text-center text-white/90 text-sm mb-2">{open.caption}</p>}
             <p className="text-center text-xs mb-3" style={{ color: C.outline }}>
-              Vu par {open.seen}/{open.recipients} · {open.reactions?.length || 0} réaction{(open.reactions?.length || 0) > 1 ? "s" : ""}
+              {i18n.t("instants.seen_line", { seen: open.seen, total: open.recipients, count: open.reactions?.length || 0 })}
               {open.reactions?.length ? "  " + open.reactions.map((r) => r.emoji).join(" ") : ""}
             </p>
             {!open.canceled && open.active && (
               <button onClick={() => cancel(open.id)} className="w-full py-3 rounded-2xl font-bold" style={{ background: "rgba(248,113,113,0.15)", color: "#f87171" }}>
-                Annuler cet instantané
+                {i18n.t("instants.cancel_snap")}
               </button>
             )}
           </div>
@@ -867,8 +868,8 @@ export default function InstantsEntry({ user, hidden = false }) {
   const onSent = (instant, recipients) => {
     // On NE ferme PAS la caméra : l'utilisateur reste pour enchaîner.
     toast.success(recipients > 0
-      ? `Instantané envoyé à ${recipients} destinataire${recipients > 1 ? "s" : ""}`
-      : "Instantané publié");
+      ? i18n.t("instants.sent_to_n", { count: recipients })
+      : i18n.t("instants.published"));
     // Fenêtre d'annulation ~6 s.
     setUndo({ id: instant.id });
     clearTimeout(undoTimer.current);
@@ -879,8 +880,8 @@ export default function InstantsEntry({ user, hidden = false }) {
     if (!undo) return;
     const id = undo.id;
     setUndo(null); clearTimeout(undoTimer.current);
-    try { await axios.delete(`${API}/instants/${id}`); toast("Envoi annulé"); }
-    catch (e) { toast.error(e.response?.data?.detail || "Trop tard pour annuler."); }
+    try { await axios.delete(`${API}/instants/${id}`); toast(i18n.t("instants.send_canceled")); }
+    catch (e) { toast.error(e.response?.data?.detail || i18n.t("instants.err_too_late")); }
   };
 
   const consume = (id) => setInbox((prev) => prev.filter((i) => i.id !== id));
@@ -901,7 +902,7 @@ export default function InstantsEntry({ user, hidden = false }) {
               ))}
             </div>
             <span className="text-sm font-bold" style={{ color: C.onSurface }}>
-              {inbox.length} instantané{inbox.length > 1 ? "s" : ""}
+              {i18n.t("instants.count", { count: inbox.length })}
             </span>
           </button>
         </div>
@@ -911,7 +912,7 @@ export default function InstantsEntry({ user, hidden = false }) {
           Cercle parfait, discret : anthracite semi-transparent + backdrop-blur,
           icône blanche fine, flottant au-dessus de la navbar sans coller aux bords. */}
       {!hidden && !screen && !viewing && (
-        <button onClick={() => setScreen("camera")} aria-label="Nouvel instantané"
+        <button onClick={() => setScreen("camera")} aria-label={i18n.t("instants.new_instant")}
           className="fixed z-[55] rounded-full flex items-center justify-center active:scale-95 transition-transform"
           style={{
             width: 52, height: 52,
@@ -933,8 +934,8 @@ export default function InstantsEntry({ user, hidden = false }) {
       {undo && (
         <div className="fixed z-[95] left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl"
           style={{ top: "calc(env(safe-area-inset-top, 0px) + 60px)", background: C.high, color: C.onSurface }}>
-          <span className="text-sm font-semibold">Instantané envoyé</span>
-          <button onClick={doUndo} className="text-sm font-black" style={{ color: C.accent }}>Annuler</button>
+          <span className="text-sm font-semibold">{i18n.t("instants.sent_snack")}</span>
+          <button onClick={doUndo} className="text-sm font-black" style={{ color: C.accent }}>{i18n.t("instants.cancel")}</button>
         </div>
       )}
 
