@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { API } from "@/App";
@@ -46,6 +47,7 @@ function AuthorAvatar({ username, profilePic, size = 8 }) {
 }
 
 export default function CommentsSection({ postId, currentUser, onCommentAdded, onCommentDeleted }) {
+  const { t } = useTranslation();
   const [comments,    setComments]    = useState([]);
   const [newComment,  setNewComment]  = useState("");
   const [replyingTo,  setReplyingTo]  = useState(null);
@@ -82,7 +84,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
       setComments(prev => [{ ...res.data, isLiked: false, likesCount: 0, repliesCount: 0, showReplies: false, replies: [] }, ...prev]);
       setNewComment("");
       onCommentAdded?.();
-    } catch { toast.error("Erreur lors de l'ajout du commentaire"); }
+    } catch { toast.error(t("comments.err_add_comment")); }
     finally { setSubmitting(false); }
   };
 
@@ -103,7 +105,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
       setComments(prev => prev.map(c =>
         c.id === commentId ? { ...c, isLiked: res.data.liked, likesCount: c.likesCount + (res.data.liked ? 1 : -1) } : c
       ));
-    } catch { toast.error("Erreur lors du like"); }
+    } catch { toast.error(t("comments.err_like")); }
   };
 
   const handleReply = async (commentId) => {
@@ -115,7 +117,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
       ));
       setReplyText("");
       setReplyingTo(null);
-    } catch { toast.error("Erreur lors de l'ajout de la réponse"); }
+    } catch { toast.error(t("comments.err_add_reply")); }
   };
 
   const toggleReplies = async (commentId) => {
@@ -148,7 +150,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
           <input
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Ajouter un commentaire..."
+            placeholder={t("comments.add_comment")}
             className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500"
             style={{ color: C.onSurface }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitComment(e); } }}
@@ -170,7 +172,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
           <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
         </div>
       ) : comments.length === 0 ? (
-        <p className="text-xs text-center py-3" style={{ color: C.outline }}>Aucun commentaire — soyez le premier !</p>
+        <p className="text-xs text-center py-3" style={{ color: C.outline }}>{t("comments.empty")}</p>
       ) : (
         <div className="space-y-3 max-h-96 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin", scrollbarColor: `${C.high} transparent` }}>
           {comments.map((comment) => (
@@ -210,11 +212,11 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
                       className="text-[10px] font-bold transition-colors hover:text-cyan-400"
                       style={{ color: replyingTo === comment.id ? C.cyan : C.outline }}
                     >
-                      Répondre
+                      {t("comments.reply")}
                     </button>
                     {comment.repliesCount > 0 && (
                       <button onClick={() => toggleReplies(comment.id)} className="text-[10px] font-bold transition-colors hover:text-cyan-400" style={{ color: C.outline }}>
-                        {comment.showReplies ? "▲ Masquer" : `▼ ${comment.repliesCount} réponse${comment.repliesCount > 1 ? "s" : ""}`}
+                        {comment.showReplies ? t("comments.hide_replies") : t("comments.view_replies", { count: comment.repliesCount })}
                       </button>
                     )}
                   </div>
@@ -232,7 +234,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
                     <input
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
-                      placeholder={`Répondre à ${comment.author_username}…`}
+                      placeholder={t("comments.reply_to_placeholder", { user: comment.author_username })}
                       className="flex-1 bg-transparent border-none outline-none text-xs placeholder:text-slate-500"
                       style={{ color: C.onSurface }}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(comment.id); } }}

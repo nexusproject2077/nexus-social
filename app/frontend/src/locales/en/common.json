@@ -616,5 +616,17 @@
     "confirm_clear_all": "Delete all notifications?",
     "accepted_request": "You accepted @{{user}}",
     "now_following": "You now follow @{{user}}"
+  },
+  "comments": {
+    "add_comment": "Add a comment...",
+    "empty": "No comments — be the first!",
+    "reply": "Reply",
+    "hide_replies": "▲ Hide",
+    "reply_to_placeholder": "Reply to {{user}}…",
+    "err_add_comment": "Error adding the comment",
+    "err_like": "Error while liking",
+    "err_add_reply": "Error adding the reply",
+    "view_replies_one": "▼ {{count}} reply",
+    "view_replies_other": "▼ {{count}} replies"
   }
 }

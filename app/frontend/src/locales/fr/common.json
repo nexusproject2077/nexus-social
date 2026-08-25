@@ -616,5 +616,17 @@
     "confirm_clear_all": "Supprimer toutes les notifications ?",
     "accepted_request": "Vous avez accepté @{{user}}",
     "now_following": "Vous suivez @{{user}}"
+  },
+  "comments": {
+    "add_comment": "Ajouter un commentaire...",
+    "empty": "Aucun commentaire — soyez le premier !",
+    "reply": "Répondre",
+    "hide_replies": "▲ Masquer",
+    "reply_to_placeholder": "Répondre à {{user}}…",
+    "err_add_comment": "Erreur lors de l'ajout du commentaire",
+    "err_like": "Erreur lors du like",
+    "err_add_reply": "Erreur lors de l'ajout de la réponse",
+    "view_replies_one": "▼ {{count}} réponse",
+    "view_replies_other": "▼ {{count}} réponses"
   }
 }
