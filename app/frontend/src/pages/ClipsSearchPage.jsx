@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
 import Layout from "../components/Layout";
+import i18n from "@/i18n";
 
 const C = {
   bg: "#0b1326", surface: "#171f33", high: "#222a3d",
@@ -11,12 +12,7 @@ const C = {
 };
 
 const TABS = [
-  { key: "top", label: "Top" },
-  { key: "videos", label: "Vidéos" },
-  { key: "users", label: "Comptes" },
-  { key: "posts", label: "Posts" },
-  { key: "hashtags", label: "Hashtags" },
-  { key: "live", label: "LIVE" },
+  { key: "top" }, { key: "videos" }, { key: "users" }, { key: "posts" }, { key: "hashtags" }, { key: "live" },
 ];
 
 const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n || 0);
@@ -140,7 +136,7 @@ export default function ClipsSearchPage({ user, setUser }) {
           @{u.username}
           {u.is_premium && <span className="material-symbols-outlined text-sm" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>}
         </p>
-        <p className="text-xs truncate" style={{ color: C.outline }}>{fmt(u.followers_count)} abonnés{u.bio ? ` · ${u.bio}` : ""}</p>
+        <p className="text-xs truncate" style={{ color: C.outline }}>{fmt(u.followers_count)} {i18n.t("clipssearch.followers")}{u.bio ? ` · ${u.bio}` : ""}</p>
       </div>
     </button>
   );
@@ -152,7 +148,7 @@ export default function ClipsSearchPage({ user, setUser }) {
       </div>
       <div>
         <p className="font-bold text-sm" style={{ color: C.onSurface }}>{t.tag}</p>
-        <p className="text-xs" style={{ color: C.outline }}>{t.post_count} clip{t.post_count > 1 ? "s" : ""}</p>
+        <p className="text-xs" style={{ color: C.outline }}>{i18n.t("clipssearch.clip_count", { count: t.post_count })}</p>
       </div>
     </button>
   );
@@ -177,29 +173,29 @@ export default function ClipsSearchPage({ user, setUser }) {
   );
 
   const Empty = ({ label }) => (
-    <p className="text-center text-sm py-10" style={{ color: C.outline }}>{q.trim() ? `Aucun résultat pour « ${q} »` : label}</p>
+    <p className="text-center text-sm py-10" style={{ color: C.outline }}>{q.trim() ? i18n.t("clipssearch.no_results", { q }) : label}</p>
   );
 
   const renderTab = () => {
-    if (loading && page === 0) return <p className="text-center text-sm py-10" style={{ color: C.outline }}>Recherche…</p>;
+    if (loading && page === 0) return <p className="text-center text-sm py-10" style={{ color: C.outline }}>{i18n.t("clipssearch.searching")}</p>;
     if (tab === "top") {
       const nothing = !data.videos.length && !data.users.length && !data.hashtags.length && !data.posts.length && !data.lives.length;
-      if (nothing) return <Empty label="Cherche des clips, comptes ou #hashtags" />;
+      if (nothing) return <Empty label={i18n.t("clipssearch.empty_top")} />;
       return (
         <div className="space-y-5">
-          {data.lives.length > 0 && <div><h3 className="text-xs font-bold uppercase mb-1" style={{ color: C.cyan }}>En direct</h3>{data.lives.map((l) => <LiveRow key={l.room_id} l={l} />)}</div>}
-          {data.users.length > 0 && <div><h3 className="text-xs font-bold uppercase mb-1" style={{ color: C.cyan }}>Comptes</h3>{data.users.map((u) => <UserRow key={u.id} u={u} />)}</div>}
-          {data.hashtags.length > 0 && <div><h3 className="text-xs font-bold uppercase mb-1" style={{ color: C.cyan }}>Hashtags</h3>{data.hashtags.slice(0, 5).map((t) => <HashRow key={t.tag} t={t} />)}</div>}
-          {data.videos.length > 0 && <div><h3 className="text-xs font-bold uppercase mb-2" style={{ color: C.cyan }}>Vidéos</h3><VideoGrid items={data.videos} /></div>}
-          {data.posts.length > 0 && <div><h3 className="text-xs font-bold uppercase mb-1" style={{ color: C.cyan }}>Posts</h3>{data.posts.map((p) => <PostRow key={p.id} p={p} />)}</div>}
+          {data.lives.length > 0 && <div><h3 className="text-xs font-bold uppercase mb-1" style={{ color: C.cyan }}>{i18n.t("clipssearch.sec_live")}</h3>{data.lives.map((l) => <LiveRow key={l.room_id} l={l} />)}</div>}
+          {data.users.length > 0 && <div><h3 className="text-xs font-bold uppercase mb-1" style={{ color: C.cyan }}>{i18n.t("clipssearch.sec_users")}</h3>{data.users.map((u) => <UserRow key={u.id} u={u} />)}</div>}
+          {data.hashtags.length > 0 && <div><h3 className="text-xs font-bold uppercase mb-1" style={{ color: C.cyan }}>{i18n.t("clipssearch.sec_hashtags")}</h3>{data.hashtags.slice(0, 5).map((t) => <HashRow key={t.tag} t={t} />)}</div>}
+          {data.videos.length > 0 && <div><h3 className="text-xs font-bold uppercase mb-2" style={{ color: C.cyan }}>{i18n.t("clipssearch.sec_videos")}</h3><VideoGrid items={data.videos} /></div>}
+          {data.posts.length > 0 && <div><h3 className="text-xs font-bold uppercase mb-1" style={{ color: C.cyan }}>{i18n.t("clipssearch.sec_posts")}</h3>{data.posts.map((p) => <PostRow key={p.id} p={p} />)}</div>}
         </div>
       );
     }
-    if (tab === "videos") return data.videos.length ? <VideoGrid items={data.videos} /> : <Empty label="Cherche des vidéos" />;
-    if (tab === "users") return data.users.length ? <div>{data.users.map((u) => <UserRow key={u.id} u={u} />)}</div> : <Empty label="Cherche des comptes" />;
-    if (tab === "posts") return data.posts.length ? <div>{data.posts.map((p) => <PostRow key={p.id} p={p} />)}</div> : <Empty label="Cherche des posts" />;
-    if (tab === "hashtags") return data.hashtags.length ? <div>{data.hashtags.map((t) => <HashRow key={t.tag} t={t} />)}</div> : <Empty label="Cherche des hashtags" />;
-    if (tab === "live") return data.lives.length ? <div>{data.lives.map((l) => <LiveRow key={l.room_id} l={l} />)}</div> : <Empty label="Aucun direct" />;
+    if (tab === "videos") return data.videos.length ? <VideoGrid items={data.videos} /> : <Empty label={i18n.t("clipssearch.empty_videos")} />;
+    if (tab === "users") return data.users.length ? <div>{data.users.map((u) => <UserRow key={u.id} u={u} />)}</div> : <Empty label={i18n.t("clipssearch.empty_users")} />;
+    if (tab === "posts") return data.posts.length ? <div>{data.posts.map((p) => <PostRow key={p.id} p={p} />)}</div> : <Empty label={i18n.t("clipssearch.empty_posts")} />;
+    if (tab === "hashtags") return data.hashtags.length ? <div>{data.hashtags.map((t) => <HashRow key={t.tag} t={t} />)}</div> : <Empty label={i18n.t("clipssearch.empty_hashtags")} />;
+    if (tab === "live") return data.lives.length ? <div>{data.lives.map((l) => <LiveRow key={l.room_id} l={l} />)}</div> : <Empty label={i18n.t("clipssearch.empty_live")} />;
     return null;
   };
 
@@ -219,7 +215,7 @@ export default function ClipsSearchPage({ user, setUser }) {
                 value={q}
                 onChange={(e) => { setQ(e.target.value); setShowSuggest(true); }}
                 onFocus={() => setShowSuggest(true)}
-                placeholder="Rechercher clips, @comptes, #hashtags"
+                placeholder={i18n.t("clipssearch.placeholder")}
                 className="flex-1 bg-transparent outline-none text-sm"
                 style={{ color: C.onSurface }}
                 autoFocus
@@ -248,7 +244,7 @@ export default function ClipsSearchPage({ user, setUser }) {
                 <button key={t.key} onClick={() => { setTab(t.key); setShowSuggest(false); }}
                         className="px-3.5 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors"
                         style={{ background: active ? C.cyan : "transparent", color: active ? "#00363e" : C.outline }}>
-                  {t.label}
+                  {i18n.t("clipssearch.tab_"+t.key)}
                 </button>
               );
             })}
@@ -259,7 +255,7 @@ export default function ClipsSearchPage({ user, setUser }) {
         <div className="px-3 py-3" onClick={() => setShowSuggest(false)}>
           {renderTab()}
           <div ref={sentinelRef} />
-          {loading && page > 0 && <p className="text-center text-xs py-4" style={{ color: C.outline }}>Chargement…</p>}
+          {loading && page > 0 && <p className="text-center text-xs py-4" style={{ color: C.outline }}>{i18n.t("clipssearch.loading")}</p>}
         </div>
       </div>
     </Layout>

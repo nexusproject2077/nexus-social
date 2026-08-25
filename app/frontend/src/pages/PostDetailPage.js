@@ -6,8 +6,10 @@ import Layout from "@/components/Layout";
 import PostCard from "@/components/PostCard";
 import CommentCard from "@/components/CommentCard";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export default function PostDetailPage({ user }) {
+  const { t } = useTranslation();
   const { postId } = useParams();
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
@@ -24,7 +26,7 @@ export default function PostDetailPage({ user }) {
       const response = await axios.get(`${API}/posts/${postId}`);
       setPost(response.data);
     } catch (error) {
-      toast.error("Erreur lors du chargement de la publication");
+      toast.error(t("postdetail.err_load_post"));
     } finally {
       setLoading(false);
     }
@@ -35,7 +37,7 @@ export default function PostDetailPage({ user }) {
       const response = await axios.get(`${API}/posts/${postId}/comments`);
       setComments(response.data);
     } catch (error) {
-      toast.error("Erreur lors du chargement des commentaires");
+      toast.error(t("postdetail.err_load_comments"));
     }
   };
 
@@ -51,9 +53,9 @@ export default function PostDetailPage({ user }) {
       setCommentContent("");
       // Update post comments count
       setPost({ ...post, comments_count: post.comments_count + 1 });
-      toast.success("Commentaire publié");
+      toast.success(t("postdetail.comment_posted"));
     } catch (error) {
-      toast.error("Erreur lors de la publication du commentaire");
+      toast.error(t("postdetail.err_post_comment"));
     }
   };
 
@@ -75,7 +77,7 @@ export default function PostDetailPage({ user }) {
     return (
       <Layout user={user}>
         <div className="text-center py-12 text-slate-400">
-          <p>Publication introuvable</p>
+          <p>{t("postdetail.not_found")}</p>
         </div>
       </Layout>
     );
@@ -85,7 +87,7 @@ export default function PostDetailPage({ user }) {
     <Layout user={user}>
       <div className="max-w-2xl mx-auto">
         <div className="sticky top-0 z-10 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800 p-4">
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Publication</h1>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{t("postdetail.title")}</h1>
         </div>
 
         <div className="p-4">
@@ -116,7 +118,7 @@ export default function PostDetailPage({ user }) {
                   e.target.style.height = "auto";
                   e.target.style.height = `${e.target.scrollHeight}px`;
                 }}
-                placeholder="Poster votre réponse"
+                placeholder={t("postdetail.reply_placeholder")}
                 rows={1}
                 className="w-full bg-transparent border-none outline-none resize-none text-white placeholder:text-slate-500 text-[15px] leading-6 py-1.5"
                 style={{ minHeight: 36 }}
@@ -132,7 +134,7 @@ export default function PostDetailPage({ user }) {
                     color: commentContent.trim() ? "#04121a" : "#64748b",
                   }}
                 >
-                  Répondre
+                  {t("postdetail.reply")}
                 </button>
               </div>
             </div>
@@ -140,7 +142,7 @@ export default function PostDetailPage({ user }) {
 
           {comments.length === 0 ? (
             <div className="text-center py-10">
-              <p className="text-sm text-slate-500">Soyez le premier à répondre</p>
+              <p className="text-sm text-slate-500">{t("postdetail.be_first")}</p>
             </div>
           ) : (
             <div className="pb-6">

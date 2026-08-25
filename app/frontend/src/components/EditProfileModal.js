@@ -14,8 +14,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Camera } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export default function EditProfileModal({ open, onClose, user, onUpdate }) {
+  const { t } = useTranslation();
   const [bio, setBio] = useState(user.bio || "");
   const [profilePic, setProfilePic] = useState(null);
   const [profilePicPreview, setProfilePicPreview] = useState(user.profile_pic);
@@ -68,9 +70,9 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
       });
 
       onUpdate(response.data);
-      toast.success("Profil mis à jour avec succès");
+      toast.success(t("editprofile.success"));
     } catch (error) {
-      toast.error("Erreur lors de la mise à jour du profil");
+      toast.error(t("editprofile.err"));
     } finally {
       setLoading(false);
     }
@@ -80,7 +82,7 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl">Modifier le profil</DialogTitle>
+          <DialogTitle className="text-xl">{t("editprofile.title")}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -89,7 +91,7 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
             <div className="relative h-32 overflow-hidden bg-slate-800"
               style={{ background: coverPicPreview ? undefined : "linear-gradient(135deg,#0d1e3d,#0b1326)" }}>
               {coverPicPreview && (
-                <img src={coverPicPreview} alt="Bannière" className="w-full h-full object-cover" />
+                <img src={coverPicPreview} alt={t("editprofile.cover_alt")} className="w-full h-full object-cover" />
               )}
               <div className="absolute inset-0" style={{ background: "rgba(2,6,23,0.25)" }} />
               <Label
@@ -137,13 +139,13 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
           <div className="h-12" aria-hidden />
 
           <div>
-            <Label htmlFor="bio">Bio</Label>
+            <Label htmlFor="bio">{t("editprofile.bio")}</Label>
             <Textarea
               id="bio"
               data-testid="edit-bio-input"
               value={bio}
               onChange={(e) => setBio(e.target.value)}
-              placeholder="Parlez-nous de vous..."
+              placeholder={t("editprofile.bio_placeholder")}
               className="bg-slate-800 border-slate-700 text-white"
               rows={4}
             />
@@ -157,7 +159,7 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
               className="border-slate-700"
               data-testid="cancel-edit-button"
             >
-              Annuler
+              {t("editprofile.cancel")}
             </Button>
             <Button
               type="submit"
@@ -165,7 +167,7 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
               className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
               data-testid="save-profile-button"
             >
-              {loading ? "Enregistrement..." : "Enregistrer"}
+              {loading ? t("editprofile.saving") : t("editprofile.save")}
             </Button>
           </div>
         </form>
