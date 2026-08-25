@@ -13,16 +13,6 @@ import PremiumModal from '@/components/PremiumModal';
 import { enablePush, disablePush, isPushEnabled, pushReasonLabel } from '@/lib/push';
 import { isPrivacyStrict, setPrivacyStrict } from '@/lib/privacyStrict';
 
-// Libellés FR des types de notification (pour les réglages).
-const NOTIF_TYPE_LABELS = {
-  like: "J'aime", comment: "Commentaires", comment_reply: "Réponses à vos commentaires",
-  mention: "Mentions", tag: "Identifications", follow: "Nouveaux abonnés",
-  follow_request: "Demandes d'abonnement", follow_accepted: "Demandes acceptées",
-  live: "Directs des abonnements", message: "Messages privés", group_message: "Messages de groupe",
-  story_reply: "Réponses à vos stories", story_reaction: "Réactions à vos stories",
-  trending: "Tendances", security: "Sécurité",
-};
-
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
   surface:   "#0b1326",
@@ -226,7 +216,7 @@ export default function SettingsPage({ user, setUser }) {
     setUser?.((prev) => (prev ? { ...prev, show_sports: value } : prev));
     try {
       await axios.put(`${API}/users/me/show-sports`, { show_sports: value });
-      toast.success(value ? "Scores de foot affichés" : "Scores de foot masqués");
+      toast.success(value ? t("settings.scores_shown") : t("settings.scores_hidden"));
     } catch {
       setShowSports(!value);
       setUser?.((prev) => (prev ? { ...prev, show_sports: !value } : prev));
@@ -238,7 +228,7 @@ export default function SettingsPage({ user, setUser }) {
     setUser?.((prev) => (prev ? { ...prev, show_mma: value } : prev));
     try {
       await axios.put(`${API}/users/me/show-sports`, { show_mma: value });
-      toast.success(value ? "Combats MMA affichés" : "Combats MMA masqués");
+      toast.success(value ? t("settings.mma_shown") : t("settings.mma_hidden"));
     } catch {
       setShowMma(!value);
       setUser?.((prev) => (prev ? { ...prev, show_mma: !value } : prev));
@@ -255,7 +245,7 @@ export default function SettingsPage({ user, setUser }) {
     setUser?.((prev) => (prev ? { ...prev, daily_time_limit: v || null } : prev));
     try {
       await axios.put(`${API}/users/me/time-limit`, { daily_time_limit: v || null });
-      toast.success(v ? `Limite fixée à ${v} min/jour` : "Limite de temps désactivée");
+      toast.success(v ? t("settings.limit_set", { v }) : t("settings.limit_off"));
     } catch {
       toast.error(t("settings.err_generic"));
     }
@@ -307,7 +297,7 @@ export default function SettingsPage({ user, setUser }) {
       if (r.data?.url) window.location.href = r.data.url;
       else { toast.error(t("settings.err_activation")); setConnectBusy(false); }
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Activation indisponible");
+      toast.error(e.response?.data?.detail || t("settings.activation_unavailable"));
       setConnectBusy(false);
     }
   };
@@ -336,7 +326,7 @@ export default function SettingsPage({ user, setUser }) {
       if (res.data?.url) window.location.href = res.data.url;
       else toast.error(t("settings.err_subscription"));
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Les paiements ne sont pas encore configurés");
+      toast.error(e.response?.data?.detail || t("settings.payments_not_configured"));
     }
   };
 
@@ -415,10 +405,10 @@ export default function SettingsPage({ user, setUser }) {
 
   const navSections = [
     { id: "account",  icon: "manage_accounts",  label: t("settings.account") },
-    { id: "activity", icon: "history",           label: "Votre activité" },
+    { id: "activity", icon: "history",           label: t("settings.activity") },
     { id: "creator",  icon: "paid",              label: t("settings.creator") },
     { id: "privacy",  icon: "gavel",             label: t("settings.privacy") },
-    { id: "notifications", icon: "notifications", label: "Notifications" },
+    { id: "notifications", icon: "notifications", label: t("settings.notifications") },
     { id: "security", icon: "shield",            label: t("settings.security") },
     { id: "content",  icon: "tune",              label: t("settings.content") },
     { id: "display",  icon: "palette",           label: t("settings.display") },
@@ -506,10 +496,10 @@ export default function SettingsPage({ user, setUser }) {
 
   const renderCreator = () => {
     const stats = [
-      { label: "Abonnés",       value: creatorStats?.followers_count, icon: "group" },
-      { label: "J'aime reçus",  value: creatorStats?.total_likes,     icon: "favorite" },
-      { label: "Publications",  value: creatorStats?.posts_count,     icon: "article" },
-      { label: "Commentaires",  value: creatorStats?.total_comments,  icon: "chat_bubble" },
+      { label: t("settings.stat_followers"), value: creatorStats?.followers_count, icon: "group" },
+      { label: t("settings.stat_likes"),     value: creatorStats?.total_likes,     icon: "favorite" },
+      { label: t("settings.stat_posts"),     value: creatorStats?.posts_count,     icon: "article" },
+      { label: t("settings.stat_comments"),  value: creatorStats?.total_comments,  icon: "chat_bubble" },
     ];
     return (
       <div className="space-y-6">
@@ -607,7 +597,7 @@ export default function SettingsPage({ user, setUser }) {
                 data-testid="activate-stripe-tips"
                 className="text-sm font-bold px-5 py-2.5 rounded-xl transition-all active:scale-95 disabled:opacity-50"
                 style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
-                {connectBusy ? "Redirection…" : (connect?.connected ? "Terminer l'activation" : "Activer les pourboires par carte")}
+                {connectBusy ? t("settings.redirecting") : (connect?.connected ? t("settings.finish_activation") : t("settings.activate_card_tips"))}
               </button>
             )}
           </div>
@@ -715,7 +705,7 @@ export default function SettingsPage({ user, setUser }) {
           try {
             await axios.put(`${API}/users/me/privacy`, { privacy_strict: v });
             if (setUser && user) setUser({ ...user, privacy_strict: v });
-            toast.success(v ? "Mode Confidentialité stricte activé" : "Mode Confidentialité stricte désactivé");
+            toast.success(v ? t("settings.strict_on") : t("settings.strict_off"));
           } catch {
             setPrivacyStrict(!v); // rollback si le serveur refuse
             toast.error(t("settings.err_save_setting"));
@@ -733,12 +723,12 @@ export default function SettingsPage({ user, setUser }) {
                   <Toggle checked={strict} onChange={setStrict} />
                 </div>
                 <p className="text-xs mt-1" style={{ color: C.outline }}>
-                  En un clic, coupe tout ce qui n'est pas essentiel au service. Les fonctions restent identiques.
+                  {t("settings.strict_desc")}
                 </p>
                 <div className="mt-3 space-y-1.5">
                   {[
-                    ["query_stats", "Aucun suivi du temps d'écran (analytics comportemental désactivé)"],
-                    ["ads_click", "Aucune publicité ciblée ni personnalisée"],
+                    ["query_stats", t("settings.priv_no_screentime")],
+                    ["ads_click", t("settings.priv_no_ads")],
                   ].map(([ic, txt]) => (
                     <div key={ic} className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-sm" style={{ color: strict ? C.cyan : C.outline }}>{strict ? "check_circle" : ic}</span>
@@ -899,7 +889,7 @@ export default function SettingsPage({ user, setUser }) {
                   const me = await axios.get(`${API}/auth/me`);
                   setUser && setUser(me.data);
                   toast.success(next ? "2FA activée" : "2FA désactivée");
-                } catch (e) { toast.error(e.response?.data?.detail || "Action impossible."); }
+                } catch (e) { toast.error(e.response?.data?.detail || t("settings.action_failed")); }
               }} />
             </div>
           </div>
@@ -911,8 +901,8 @@ export default function SettingsPage({ user, setUser }) {
         <CardHeader title={t("settings.active_sessions")} icon="devices" />
         <div className="p-5 space-y-3">
           {[
-            { icon: "laptop", name: "Navigateur Web", detail: "Cette session • Actif maintenant", active: true },
-            { icon: "smartphone", name: "Mobile", detail: "Dernière activité il y a 2h", active: false },
+            { icon: "laptop", name: t("settings.dev_web"), detail: t("settings.dev_web_detail"), active: true },
+            { icon: "smartphone", name: t("settings.dev_mobile"), detail: t("settings.dev_mobile_detail"), active: false },
           ].map((s, i) => (
             <div key={i} className="flex items-center gap-4 p-3 rounded-xl" style={{ background: C.high }}>
               <span className="material-symbols-outlined text-lg" style={{ color: s.active ? C.cyan : C.outline }}>{s.icon}</span>
@@ -925,7 +915,7 @@ export default function SettingsPage({ user, setUser }) {
           ))}
           <button onClick={() => toast.info(t("settings.logout_others"))} className="w-full mt-2 py-2 text-xs font-bold rounded-xl transition-all hover:opacity-80"
             style={{ border: `1px solid ${C.outlineVar}`, color: C.outline }}>
-            Déconnecter tous les autres appareils
+            {t("settings.logout_all_others")}
           </button>
         </div>
       </Card>
@@ -1042,7 +1032,7 @@ export default function SettingsPage({ user, setUser }) {
           onChange={(v) => toggleSportAlert("mma", v)}
         />
         <div className="px-5 pb-4 pt-1 text-xs" style={{ color: C.outline }}>
-          {pushOn ? "Notifications activées sur cet appareil." : "Active une alerte pour autoriser les notifications."}
+          {pushOn ? t("settings.push_on_msg") : t("settings.push_off_msg")}
         </div>
       </Card>
       <Card>
@@ -1093,7 +1083,7 @@ export default function SettingsPage({ user, setUser }) {
         {notifTypes.map((type) => (
           <ToggleRow
             key={type}
-            label={NOTIF_TYPE_LABELS[type] || type}
+            label={t("settings.nt_" + type, { defaultValue: type })}
             checked={!disabledTypes.includes(type)}
             onChange={(v) => toggleNotifType(type, v)}
           />

@@ -5,6 +5,7 @@ import { API } from "../App";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { useGeo } from "@/context/GeoContext";
+import LanguageSwitcher from "../components/LanguageSwitcher";
 
 export default function AuthPage({ setUser }) {
   const { t } = useTranslation();
@@ -198,6 +199,12 @@ export default function AuthPage({ setUser }) {
         className="min-h-[100dvh] lg:h-screen grid lg:grid-cols-2"
         style={{ backgroundColor: "#0b1326", color: "#dae2fd" }}
       >
+        {/* Sélecteur de langue — accessible dès l'arrivée sur la page. */}
+        <div className="fixed top-3 right-3 z-50 rounded-full px-1.5 py-0.5"
+          style={{ background: "rgba(11,19,38,0.7)", backdropFilter: "blur(8px)", colorScheme: "dark" }}>
+          <LanguageSwitcher />
+        </div>
+
         {/* Left Column: Branding */}
         <section
           className="hidden lg:flex flex-col justify-center p-16 relative overflow-hidden"
@@ -232,18 +239,16 @@ export default function AuthPage({ setUser }) {
 
           <div className="relative z-10 max-w-lg">
             <h2 className="font-headline text-6xl font-bold leading-[1.1] mb-8">
-              Ton réseau social,{" "}
+              {t("auth.hero_title_1")}{" "}
               <span style={{ color: "rgba(218,226,253,0.5)" }}>
-                à ta façon.
+                {t("auth.hero_title_2")}
               </span>
             </h2>
             <p
               className="text-lg leading-relaxed font-light"
               style={{ color: "#bbc9cd" }}
             >
-              Ta vie privée d'abord, tes créateurs mis en avant, et la liberté de
-              t'exprimer. Poste, filme, discute et soutiens ta communauté, sans
-              suivi caché ni bruit inutile.
+              {t("auth.hero_body")}
             </p>
           </div>
         </section>
