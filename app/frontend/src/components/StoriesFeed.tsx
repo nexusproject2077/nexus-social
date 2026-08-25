@@ -6,6 +6,7 @@ import StoryViewer from "./StoryViewer";
 import StoryComposer from "./StoryComposer";
 import { API } from "../App";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface LiveSession {
   host_id: string;
