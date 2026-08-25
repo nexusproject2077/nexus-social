@@ -4,50 +4,25 @@ import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 import { getPushState, enablePush, disablePush } from "@/lib/push";
+import i18n from "@/i18n";
 
 const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
 
 // Regroupé par catégorie pour une UI lisible.
 const GROUPS = [
-  {
-    title: "Messages",
-    items: [{ key: "message", label: "Messages privés & de groupe" }],
-  },
-  {
-    title: "Interactions",
-    items: [
-      { key: "like", label: "J'aime (posts, clips, stories)" },
-      { key: "comment", label: "Commentaires" },
-      { key: "comment_reply", label: "Réponses à un commentaire" },
-      { key: "mention", label: "Mentions (@)" },
-      { key: "tag", label: "Identifications (tags)" },
-    ],
-  },
-  {
-    title: "Abonnements",
-    items: [
-      { key: "follow", label: "Nouvel abonné" },
-      { key: "follow_request", label: "Demande d'abonnement" },
-      { key: "follow_accepted", label: "Abonnement accepté" },
-    ],
-  },
-  {
-    title: "Stories & Instantanés",
-    items: [
-      { key: "story_reply", label: "Réponse à ta story" },
-      { key: "story_reaction", label: "Réaction sur ta story" },
-      { key: "instant", label: "Instantané reçu" },
-      { key: "instant_reaction", label: "Réaction sur ton instantané" },
-    ],
-  },
-  {
-    title: "Live & Divers",
-    items: [
-      { key: "live", label: "Un compte suivi est en live" },
-      { key: "trending", label: "Post dans les tendances" },
-      { key: "security", label: "Sécurité (connexion inhabituelle)" },
-    ],
-  },
+  { gkey: "messages", items: [{ key: "message" }] },
+  { gkey: "interactions", items: [
+      { key: "like" }, { key: "comment" }, { key: "comment_reply" }, { key: "mention" }, { key: "tag" },
+    ] },
+  { gkey: "follows", items: [
+      { key: "follow" }, { key: "follow_request" }, { key: "follow_accepted" },
+    ] },
+  { gkey: "stories", items: [
+      { key: "story_reply" }, { key: "story_reaction" }, { key: "instant" }, { key: "instant_reaction" },
+    ] },
+  { gkey: "live", items: [
+      { key: "live" }, { key: "trending" }, { key: "security" },
+    ] },
 ];
 
 function Toggle({ on, onChange }) {
@@ -76,22 +51,22 @@ export default function NotificationSettings({ onClose }) {
     try {
       if (push.subscribed) {
         await disablePush();
-        toast.success("Notifications push désactivées");
+        toast.success(i18n.t("notifsettings.push_disabled"));
       } else {
         const res = await enablePush();
         if (!res.ok) {
           const msg = {
-            "ios-install": "Sur iPhone/iPad : ajoutez d'abord Nexus à l'écran d'accueil (Partager → Sur l'écran d'accueil), puis réessayez.",
-            denied: "Autorisez les notifications dans les réglages de votre navigateur.",
-            unsupported: "Votre navigateur ne prend pas en charge les notifications push.",
-            "no-key": "Serveur indisponible, réessayez plus tard.",
-            "subscribe-failed": "Impossible de s'abonner aux notifications.",
-            "backend-failed": "Échec de l'enregistrement, réessayez.",
-            "no-sw": "Service worker indisponible.",
-          }[res.reason] || "Activation impossible.";
+            "ios-install": i18n.t("notifsettings.reason_ios_install"),
+            denied: i18n.t("notifsettings.reason_denied"),
+            unsupported: i18n.t("notifsettings.reason_unsupported"),
+            "no-key": i18n.t("notifsettings.reason_no_key"),
+            "subscribe-failed": i18n.t("notifsettings.reason_subscribe_failed"),
+            "backend-failed": i18n.t("notifsettings.reason_backend_failed"),
+            "no-sw": i18n.t("notifsettings.reason_no_sw"),
+          }[res.reason] || i18n.t("notifsettings.reason_default");
           toast.error(msg);
         } else {
-          toast.success("Notifications push activées 🔔");
+          toast.success(i18n.t("notifsettings.push_enabled"));
         }
       }
     } finally {
@@ -106,7 +81,7 @@ export default function NotificationSettings({ onClose }) {
     setPrefs(next);
     setSaving(true);
     axios.put(`${API}/notifications/preferences`, { prefs: next })
-      .catch(() => toast.error("Échec de l'enregistrement"))
+      .catch(() => toast.error(i18n.t("notifsettings.err_save")))
       .finally(() => setSaving(false));
   };
 
@@ -116,7 +91,7 @@ export default function NotificationSettings({ onClose }) {
         style={{ background: "#0b1326", paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }} onClick={(e) => e.stopPropagation()}>
         <div className="w-10 h-1.5 rounded-full mx-auto mb-4 sm:hidden" style={{ background: "#222a3d" }} />
         <div className="flex items-center justify-between mb-4 px-1">
-          <h3 className="font-black text-lg" style={{ color: "#dae2fd" }}>Notifications</h3>
+          <h3 className="font-black text-lg" style={{ color: "#dae2fd" }}>{i18n.t("notifsettings.title")}</h3>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/5">
             <span className="material-symbols-outlined" style={{ color: "#dae2fd" }}>close</span>
           </button>
@@ -125,17 +100,17 @@ export default function NotificationSettings({ onClose }) {
         {/* Web Push : notifications même quand l'app est fermée. */}
         {push && (
           <div className="mb-5">
-            <p className="text-[11px] font-bold uppercase tracking-widest mb-2 px-1" style={{ color: "#859397" }}>Notifications push</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest mb-2 px-1" style={{ color: "#859397" }}>{i18n.t("notifsettings.push_hdr")}</p>
             <div className="rounded-2xl overflow-hidden" style={{ background: "#171f33" }}>
               <div className="flex items-center gap-3 px-4 py-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm" style={{ color: "#dae2fd" }}>Notifications sur cet appareil</p>
+                  <p className="text-sm" style={{ color: "#dae2fd" }}>{i18n.t("notifsettings.push_device")}</p>
                   <p className="text-[11px] mt-0.5" style={{ color: "#5b6b8c" }}>
-                    Reçois les alertes même quand l'app est fermée.
+                    {i18n.t("notifsettings.push_sub")}
                   </p>
                 </div>
                 {!push.supported ? (
-                  <span className="text-[11px] flex-shrink-0" style={{ color: "#5b6b8c" }}>Non pris en charge</span>
+                  <span className="text-[11px] flex-shrink-0" style={{ color: "#5b6b8c" }}>{i18n.t("notifsettings.push_unsupported")}</span>
                 ) : pushBusy ? (
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 flex-shrink-0" style={{ borderColor: ACCENT }} />
                 ) : (
@@ -145,14 +120,14 @@ export default function NotificationSettings({ onClose }) {
               {push.supported && push.ios && !push.standalone && (
                 <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                   <p className="text-[11px]" style={{ color: "#f0b429" }}>
-                    Sur iPhone/iPad : ouvre le menu Partager puis « Sur l'écran d'accueil » pour installer Nexus. Les notifications push deviennent alors disponibles.
+                    {i18n.t("notifsettings.ios_hint")}
                   </p>
                 </div>
               )}
               {push.supported && push.permission === "denied" && (
                 <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                   <p className="text-[11px]" style={{ color: "#f0b429" }}>
-                    Les notifications sont bloquées pour ce site. Autorise-les dans les réglages de ton navigateur pour les réactiver.
+                    {i18n.t("notifsettings.denied_hint")}
                   </p>
                 </div>
               )}
@@ -164,12 +139,12 @@ export default function NotificationSettings({ onClose }) {
           <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: ACCENT }} /></div>
         ) : (
           GROUPS.map((g) => (
-            <div key={g.title} className="mb-5">
-              <p className="text-[11px] font-bold uppercase tracking-widest mb-2 px-1" style={{ color: "#859397" }}>{g.title}</p>
+            <div key={g.gkey} className="mb-5">
+              <p className="text-[11px] font-bold uppercase tracking-widest mb-2 px-1" style={{ color: "#859397" }}>{i18n.t("notifsettings.group_"+g.gkey)}</p>
               <div className="rounded-2xl overflow-hidden" style={{ background: "#171f33" }}>
                 {g.items.map((it, i) => (
                   <div key={it.key} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
-                    <span className="flex-1 text-sm" style={{ color: "#dae2fd" }}>{it.label}</span>
+                    <span className="flex-1 text-sm" style={{ color: "#dae2fd" }}>{i18n.t("notifsettings.item_"+it.key)}</span>
                     <Toggle on={prefs[it.key] !== false} onChange={(v) => toggle(it.key, v)} />
                   </div>
                 ))}
@@ -178,7 +153,7 @@ export default function NotificationSettings({ onClose }) {
           ))
         )}
         <p className="text-center text-[11px] mt-1" style={{ color: "#5b6b8c" }}>
-          {saving ? "Enregistrement…" : "Les changements sont enregistrés automatiquement."}
+          {saving ? i18n.t("notifsettings.saving") : i18n.t("notifsettings.auto_saved")}
         </p>
       </div>
     </div>
