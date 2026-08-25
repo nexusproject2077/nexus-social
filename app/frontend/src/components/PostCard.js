@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import { formatDistanceToNow } from "date-fns";
@@ -26,6 +27,7 @@ const C = {
  * son permet de réactiver l'audio ; les contrôles natifs restent disponibles.
  */
 function FeedVideo({ src }) {
+  const { t } = useTranslation();
   const ref = useRef(null);
   const [muted, setMuted] = useState(true);
 
@@ -67,7 +69,7 @@ function FeedVideo({ src }) {
         onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }}
         className="absolute bottom-3 right-3 w-9 h-9 rounded-full flex items-center justify-center"
         style={{ background: "rgba(0,0,0,0.55)" }}
-        title={muted ? "Activer le son" : "Couper le son"}
+        title={muted ? t("postcard.unmute") : t("postcard.mute")}
       >
         <span className="material-symbols-outlined text-white text-lg">{muted ? "volume_off" : "volume_up"}</span>
       </button>
@@ -76,6 +78,7 @@ function FeedVideo({ src }) {
 }
 
 export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [isLiked, setIsLiked]         = useState(post.is_liked || false);
   const [likesCount, setLikesCount]   = useState(post.likes_count || 0);
@@ -107,7 +110,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
       setIsLiked(res.data.liked);
       setLikesCount((p) => (res.data.liked ? p + 1 : p - 1));
     } catch {
-      toast.error("Erreur lors du like");
+      toast.error(t("postcard.err_like"));
     }
   };
 
@@ -118,10 +121,10 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     try {
       const res = await axios.post(`${API}/posts/${post.id}/save`);
       setIsSaved(res.data.saved);
-      toast.success(res.data.saved ? "Enregistré" : "Retiré des enregistrements");
+      toast.success(res.data.saved ? t("postcard.saved") : t("postcard.unsaved"));
     } catch {
       setIsSaved(!next);
-      toast.error("Erreur lors de l'enregistrement");
+      toast.error(t("postcard.err_save"));
     }
   };
 
@@ -131,8 +134,8 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     // (WhatsApp/Discord/iMessage) + CTA « Ouvrir dans Nexus ».
     const url = `${API.replace(/\/api\/?$/, "")}/post/${originalId}`;
     const shareData = {
-      title: `${displayAuthorName} sur Nexus`,
-      text: post.content ? post.content.slice(0, 120) : "Découvre cette publication sur Nexus",
+      title: t("postcard.share_title", { name: displayAuthorName }),
+      text: post.content ? post.content.slice(0, 120) : t("postcard.share_text"),
       url,
     };
     try {
@@ -140,13 +143,13 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         await navigator.share(shareData);
       } else {
         await navigator.clipboard.writeText(url);
-        toast.success("Lien copié dans le presse-papiers");
+        toast.success(t("postcard.link_copied_clipboard"));
       }
     } catch (err) {
       // L'utilisateur a annulé le partage natif → on ne fait rien.
       if (err && err.name !== "AbortError") {
-        try { await navigator.clipboard.writeText(url); toast.success("Lien copié"); }
-        catch { toast.error("Impossible de partager"); }
+        try { await navigator.clipboard.writeText(url); toast.success(t("postcard.link_copied")); }
+        catch { toast.error(t("postcard.err_share")); }
       }
     }
   };
@@ -156,10 +159,10 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     try {
       const res = await axios.post(`${API}/posts/${post.id}/pin`);
       setPinned(res.data.pinned);
-      toast.success(res.data.pinned ? "Publication épinglée en haut du profil" : "Publication désépinglée");
+      toast.success(res.data.pinned ? t("postcard.pinned") : t("postcard.unpinned"));
       onUpdate?.({ ...post, is_pinned: res.data.pinned });
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Action impossible");
+      toast.error(e.response?.data?.detail || t("postcard.err_action"));
     }
   };
 
@@ -183,9 +186,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   };
 
   const handleRepost = async () => {
-    if (!currentUser) { toast.error("Vous devez être connecté"); return; }
+    if (!currentUser) { toast.error(t("postcard.err_login_required")); return; }
     if (repostLoading) return;
-    if (displayAuthorId === currentUser.id) { toast.error("Vous ne pouvez pas reposter votre propre publication"); return; }
+    if (displayAuthorId === currentUser.id) { toast.error(t("postcard.err_repost_own")); return; }
 
     try {
       setRepostLoading(true);
@@ -194,17 +197,17 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         const res = await axios.delete(`${API}/posts/${originalId}/repost`);
         setReposted(false);
         setSharesCount((p) => (typeof res.data?.shares_count === "number" ? res.data.shares_count : Math.max(0, p - 1)));
-        toast.success("Republication annulée");
+        toast.success(t("postcard.repost_undone"));
         // Si on regardait notre propre repost, il disparaît de la liste.
         if (isRepost && post.author_id === currentUser.id) onDelete?.(post.id);
       } else {
         await axios.post(`${API}/posts/${originalId}/repost`);
         setReposted(true);
         setSharesCount((p) => p + 1);
-        toast.success("Publication repostée !");
+        toast.success(t("postcard.reposted"));
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erreur lors du repost");
+      toast.error(err.response?.data?.detail || t("postcard.err_repost"));
     } finally {
       setRepostLoading(false);
     }
@@ -213,19 +216,19 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const handleDelete = async () => {
     // Pour un repost, « supprimer » = annuler la republication (met à jour le
     // compteur de partages de l'original et retire le repost du profil).
-    const label = isRepost ? "Annuler cette republication ?" : "Êtes-vous sûr de vouloir supprimer ce post ?";
+    const label = isRepost ? t("postcard.confirm_unrepost") : t("postcard.confirm_delete");
     if (!window.confirm(label)) return;
     try {
       if (isRepost) {
         await axios.delete(`${API}/posts/${originalId}/repost`);
-        toast.success("Republication annulée");
+        toast.success(t("postcard.repost_undone"));
       } else {
         await axios.delete(`${API}/posts/${post.id}`);
-        toast.success("Post supprimé avec succès");
+        toast.success(t("postcard.deleted"));
       }
       onDelete?.(post.id);
     } catch {
-      toast.error("Erreur lors de la suppression");
+      toast.error(t("postcard.err_delete"));
     }
   };
 
@@ -237,7 +240,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
       setPoll(res.data.poll);
       setPollVote(res.data.poll_user_vote);
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erreur lors du vote");
+      toast.error(err.response?.data?.detail || t("postcard.err_vote"));
     } finally {
       setPollLoading(false);
     }
@@ -334,7 +337,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                   <span
                     className="material-symbols-outlined text-sm"
                     style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}
-                    title="Membre Nexus Premium"
+                    title={t("postcard.premium_member")}
                   >
                     workspace_premium
                   </span>
@@ -343,7 +346,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               </p>
               <p className="text-xs flex items-center gap-1" style={{ color: C.outline }}>
                 {post.is_pinned && (
-                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title="Publication épinglée">
+                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title={t("postcard.pinned_badge")}>
                     <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>push_pin</span>
                     Épinglé ·
                   </span>
@@ -360,12 +363,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                   onClick={handlePin}
                   className="transition-colors hover:text-cyan-400"
                   style={{ color: pinned ? C.cyan : C.outline }}
-                  title={pinned ? "Désépingler" : "Épingler en haut du profil (Premium)"}
+                  title={pinned ? t("postcard.unpin") : t("postcard.pin")}
                 >
                   <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: pinned ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
                 </button>
               )}
-              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title="Supprimer">
+              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title={t("postcard.delete")}>
                 <span className="material-symbols-outlined text-xl">delete</span>
               </button>
             </div>
@@ -497,7 +500,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           {/* Like */}
           <button
             onClick={handleLike}
-            title="J'aime"
+            title={t("postcard.like")}
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: isLiked ? "#f87171" : C.idleIcon }}
           >
@@ -510,7 +513,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           {/* Comment — ouvre le composeur / fil de commentaires */}
           <button
             onClick={() => setShowComments(!showComments)}
-            title="Commenter"
+            title={t("postcard.comment")}
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: showComments ? C.cyan : C.idleIcon }}
           >
@@ -525,7 +528,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             <button
               onClick={handleRepost}
               disabled={repostLoading}
-              title={reposted ? "Annuler la republication" : "Reposter"}
+              title={reposted ? t("postcard.cancel_repost") : t("postcard.repost")}
               className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
               style={{ color: reposted ? C.cyan : C.idleIcon, opacity: repostLoading ? 0.6 : 1 }}
             >
@@ -538,7 +541,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             </button>
           ) : (
             sharesCount > 0 && (
-              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.idleIcon }} title="Republications">
+              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.idleIcon }} title={t("postcard.reposts")}>
                 <span className="material-symbols-outlined text-[15px]">repeat</span>
                 {sharesCount}
               </span>
@@ -548,7 +551,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           {/* Share */}
           <button
             onClick={handleShare}
-            title="Partager"
+            title={t("postcard.share")}
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: C.idleIcon }}
           >
@@ -558,7 +561,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           {/* Save / Enregistrer */}
           <button
             onClick={handleSave}
-            title={isSaved ? "Retirer des enregistrements" : "Enregistrer"}
+            title={isSaved ? t("postcard.unsave") : t("postcard.save")}
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: isSaved ? C.cyan : C.idleIcon }}
           >
