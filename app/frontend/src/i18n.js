@@ -29,6 +29,21 @@ export const SUPPORTED_LANGUAGES = [
   { code: 'zh', label: '中文' },
   { code: 'ja', label: '日本語' },
   { code: 'ko', label: '한국어' },
+  { code: 'id', label: 'Bahasa Indonesia' },
+  { code: 'el', label: 'Ελληνικά' },
+  { code: 'cs', label: 'Čeština' },
+  { code: 'ro', label: 'Română' },
+  { code: 'hu', label: 'Magyar' },
+  { code: 'sv', label: 'Svenska' },
+  { code: 'da', label: 'Dansk' },
+  { code: 'fi', label: 'Suomi' },
+  { code: 'sk', label: 'Slovenčina' },
+  { code: 'bg', label: 'Български' },
+  { code: 'sl', label: 'Slovenščina' },
+  { code: 'lt', label: 'Lietuvių' },
+  { code: 'lv', label: 'Latviešu' },
+  { code: 'et', label: 'Eesti' },
+  { code: 'he', label: 'עברית' },
 ];
 
 // Langues écrites de droite à gauche (prévu pour l'expansion : hébreu, persan, ourdou…).
