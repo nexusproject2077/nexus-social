@@ -123,54 +123,113 @@ const ENGINES = { libre: translateLibre, deepl: translateDeepl, google: translat
 const engine = ENGINES[PROVIDER];
 if (!engine) { console.error(`Moteur inconnu : ${PROVIDER}`); process.exit(1); }
 
-async function translate(text, target) {
-  if (!text || !String(text).trim()) return text;
-  const { shielded, vars } = shield(text);
-  const out = await engine(shielded, target);
-  return unshield(out, vars);
-}
-
-// ---- Parcours recursif de l'objet de locale ----
-function loadJson(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return {}; } }
-const source = loadJson(path.join(LOCALES_DIR, SOURCE_LANG, `${NS}.json`));
-if (!Object.keys(source).length) { console.error(`Source ${SOURCE_LANG}/${NS}.json vide/absente.`); process.exit(1); }
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function translateTree(src, existing, target, stats) {
-  const out = Array.isArray(src) ? [] : {};
-  for (const [k, v] of Object.entries(src)) {
-    if (v && typeof v === "object") {
-      out[k] = await translateTree(v, existing?.[k] || {}, target, stats);
-    } else if (!FORCE && existing && typeof existing[k] === "string" && existing[k].trim()) {
-      out[k] = existing[k]; stats.kept++;
-    } else {
-      try { out[k] = await translate(v, target); stats.done++; await sleep(120); }
-      catch (e) {
-        // En cas d'échec : on garde une éventuelle traduction existante, sinon on
-        // N'ÉCRIT PAS la clé (elle reste « à traduire » au prochain run ; i18next
-        // retombe sur `fallbackLng`). Surtout PAS le texte source, sinon les runs
-        // suivants la croiraient déjà traduite et la conserveraient à tort.
-        if (existing && typeof existing[k] === "string" && existing[k].trim()) out[k] = existing[k];
-        stats.failed++; if (stats.failed <= 3) console.warn(`  ! ${k}: ${e.message}`);
-      }
-    }
-  }
+// ---- Traduction par LOTS (batch) : indispensable pour éviter les 429 ----
+// DeepL accepte plusieurs `text` par requête → 1 appel pour ~40 chaînes au lieu
+// de 40 appels. Les autres moteurs retombent sur des appels unitaires.
+const BATCH_SIZE = PROVIDER === "deepl" ? 40 : (PROVIDER === "openai" ? 20 : 1);
+
+async function deeplBatch(texts, target) {
+  const key = process.env.DEEPL_API_KEY;
+  const host = key?.endsWith(":fx") ? "https://api-free.deepl.com" : "https://api.deepl.com";
+  const params = new URLSearchParams({ source_lang: SOURCE_LANG.toUpperCase(), target_lang: target.toUpperCase() });
+  for (const t of texts) params.append("text", t);
+  const r = await fetch(`${host}/v2/translate`, {
+    method: "POST",
+    headers: { "Authorization": `DeepL-Auth-Key ${key}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  });
+  if (r.status === 429) { const e = new Error("DeepL 429 (rate limit)"); e.retry = true; throw e; }
+  if (!r.ok) throw new Error(`DeepL ${r.status}: ${(await r.text()).slice(0, 160)}`);
+  return (await r.json()).translations.map((x) => x.text);
+}
+
+// Un lot → tableau de traductions (même ordre). DeepL natif ; sinon séquentiel.
+async function translateChunk(texts, target) {
+  if (PROVIDER === "deepl") return deeplBatch(texts, target);
+  const out = [];
+  for (const t of texts) { out.push(await engine(t, target)); await sleep(120); }
   return out;
 }
 
+// Retry avec backoff exponentiel sur 429 / erreurs transitoires.
+async function translateChunkRetry(texts, target, tries = 6) {
+  let delay = 2000;
+  for (let i = 0; i < tries; i++) {
+    try { return await translateChunk(texts, target); }
+    catch (e) {
+      const transient = e.retry || /429|too many|timeout|ECONNRESET|ETIMEDOUT|fetch failed/i.test(e.message || "");
+      if (i === tries - 1 || !transient) throw e;
+      await sleep(delay); delay = Math.min(delay * 2, 30000);
+    }
+  }
+}
+
+// ---- Aplatissement / reconstruction (préserve la structure imbriquée) ----
+function loadJson(p) { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return {}; } }
+function flatten(obj, prefix = "", out = {}) {
+  for (const [k, v] of Object.entries(obj)) {
+    const p = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === "object" && !Array.isArray(v)) flatten(v, p, out);
+    else out[p] = v;
+  }
+  return out;
+}
+const getPath = (obj, path) => path.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), obj);
+function setPath(obj, path, val) {
+  const parts = path.split("."); let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) { cur[parts[i]] = cur[parts[i]] || {}; cur = cur[parts[i]]; }
+  cur[parts[parts.length - 1]] = val;
+}
+
+const source = loadJson(path.join(LOCALES_DIR, SOURCE_LANG, `${NS}.json`));
+if (!Object.keys(source).length) { console.error(`Source ${SOURCE_LANG}/${NS}.json vide/absente.`); process.exit(1); }
+const srcFlat = flatten(source);
+const allPaths = Object.keys(srcFlat).filter((p) => typeof srcFlat[p] === "string");
+
 // ---- Boucle principale ----
-console.log(`Moteur=${PROVIDER} - source=${SOURCE_LANG} - cibles=${TARGETS.join(",")}`);
+console.log(`Moteur=${PROVIDER} (lots de ${BATCH_SIZE}) - source=${SOURCE_LANG} - cibles=${TARGETS.join(",")}`);
 for (const target of TARGETS) {
   if (target === SOURCE_LANG) continue;
   const dir = path.join(LOCALES_DIR, target);
   const file = path.join(dir, `${NS}.json`);
   const existing = loadJson(file);
   const stats = { done: 0, kept: 0, failed: 0 };
-  process.stdout.write(`-> ${target} ... `);
-  const result = await translateTree(source, existing, target, stats);
+  const result = {};
+  const todo = [];
+
+  for (const p of allPaths) {
+    const cur = getPath(existing, p);
+    if (!FORCE && typeof cur === "string" && cur.trim()) { setPath(result, p, cur); stats.kept++; }
+    else todo.push(p);
+  }
+
+  process.stdout.write(`-> ${target} `);
+  const shielded = todo.map((p) => shield(srcFlat[p]));
+  for (let i = 0; i < todo.length; i += BATCH_SIZE) {
+    const idx = todo.slice(i, i + BATCH_SIZE);
+    const chunk = shielded.slice(i, i + BATCH_SIZE).map((s) => s.shielded);
+    try {
+      const outs = await translateChunkRetry(chunk, target);
+      idx.forEach((p, j) => {
+        const sh = shielded[i + j];
+        if (outs && outs[j] != null) { setPath(result, p, unshield(outs[j], sh.vars)); stats.done++; }
+        else { // pas de sortie → on garde l'existant si dispo, sinon clé omise (jamais le texte source)
+          const cur = getPath(existing, p);
+          if (typeof cur === "string" && cur.trim()) setPath(result, p, cur);
+          stats.failed++;
+        }
+      });
+    } catch (e) {
+      idx.forEach((p) => { const cur = getPath(existing, p); if (typeof cur === "string" && cur.trim()) setPath(result, p, cur); stats.failed++; });
+      if (stats.failed <= BATCH_SIZE) console.warn(`\n  ! lot ${target}: ${String(e.message).slice(0, 140)}`);
+    }
+    process.stdout.write(".");
+    await sleep(300);
+  }
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(file, JSON.stringify(result, null, 2) + "\n", "utf8");
-  console.log(`ok (${stats.done} traduites, ${stats.kept} conservees, ${stats.failed} echecs)`);
+  console.log(` ok (${stats.done} traduites, ${stats.kept} conservees, ${stats.failed} echecs)`);
 }
 console.log("Termine. Ajoute les nouveaux codes a SUPPORTED_LANGUAGES (src/i18n.js) pour les afficher dans le selecteur.");
