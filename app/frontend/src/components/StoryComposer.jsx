@@ -14,6 +14,7 @@ import axios from "axios";
 import { API } from "../App";
 import { toast } from "sonner";
 import { PreviewAudio } from "@/lib/silentAudio";
+import i18n from "@/i18n";
 
 const ACCENT = (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
 const C = {
@@ -274,7 +275,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: true }); }
     catch {
       try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: f } }, audio: false }); }
-      catch { toast.error("Caméra inaccessible — tu peux importer depuis la galerie."); return; }
+      catch { toast.error(i18n.t("story.err_camera")); return; }
     }
     streamRef.current = stream;
     attach(stream);
@@ -341,12 +342,12 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
   // La caméra frontale sera remise « à l'endroit » via un flag « mirror ».
   const startRec = () => {
     const src = streamRef.current;
-    if (!src || typeof MediaRecorder === "undefined") { toast.error("Vidéo non prise en charge."); return; }
+    if (!src || typeof MediaRecorder === "undefined") { toast.error(i18n.t("story.err_video_unsupported")); return; }
     let mime = "";
     for (const m of ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]) { if (MediaRecorder.isTypeSupported?.(m)) { mime = m; break; } }
     let r;
     try { r = new MediaRecorder(src, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 3_000_000 }); }
-    catch { toast.error("Vidéo non prise en charge."); return; }
+    catch { toast.error(i18n.t("story.err_video_unsupported")); return; }
     const mir = facing === "user";
     chunksRef.current = [];
     r.ondataavailable = (e) => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
@@ -384,9 +385,9 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
   const onImport = (e) => {
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f) return;
-    if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) { toast.error("Image ou vidéo uniquement."); return; }
+    if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) { toast.error(i18n.t("story.err_img_video_only")); return; }
     const limit = isClip ? MAX_IMPORT_CLIP : MAX_IMPORT;
-    if (f.size > limit) { toast.error(`Fichier trop lourd (max ${Math.round(limit / 1024 / 1024)} Mo).`); return; }
+    if (f.size > limit) { toast.error(i18n.t("story.file_too_large", { mb: Math.round(limit / 1024 / 1024) })); return; }
     if (f.type.startsWith("video/")) {
       // Vidéo : aperçu via blob URL (fiable iOS), base64 à la publication.
       toEdit(URL.createObjectURL(f), "video", "cover", { blob: f });
@@ -400,9 +401,9 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
   const onModeTap = (m) => {
     setShowLabels(true); clearTimeout(maxRef.current);
     if (m === "create") { toEdit(null, "background", "cover", { bg: BACKGROUNDS[0] }); return; }
-    if (m === "boomerang") { setCamMode("boomerang"); toast("Appuie pour un Boomerang (≈1,5 s)"); }
+    if (m === "boomerang") { setCamMode("boomerang"); toast(i18n.t("story.boomerang_hint")); }
     else if (m === "layout") { setCamMode("layout"); setLayoutN(null); setLayoutCells([]); }
-    else if (m === "hands") { setCamMode("hands"); toast("Appuie une fois pour démarrer, une fois pour arrêter"); }
+    else if (m === "hands") { setCamMode("hands"); toast(i18n.t("story.hands_hint")); }
     setTimeout(() => setShowLabels(false), 3500);
   };
 
@@ -437,7 +438,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
       if (typeof out.captureStream !== "function") {
         // iOS/Safari sans captureStream : repli → court clip vidéo (bouclé).
         setMakingBoomerang(false);
-        toast("Boomerang non pris en charge ici — clip court à la place.");
+        toast(i18n.t("story.boomerang_fallback"));
         startRec(); setTimeout(stopRec, 1400);
         return;
       }
@@ -457,7 +458,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
       toEdit(URL.createObjectURL(blob), "video", "cover", { blob });
     } catch {
       setMakingBoomerang(false);
-      toast.error("Boomerang impossible sur cet appareil.");
+      toast.error(i18n.t("story.err_boomerang"));
     }
   };
 
@@ -483,7 +484,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     fr.readAsDataURL(f);
   };
   const finishLayout = async () => {
-    if (layoutCells.some((c) => !c)) { toast.error("Remplis toutes les cases."); return; }
+    if (layoutCells.some((c) => !c)) { toast.error(i18n.t("story.err_fill_all")); return; }
     const grid = { 2: [1, 2], 3: [1, 3], 4: [2, 2], 6: [2, 3] }[layoutN];
     const [cols, rows] = grid;
     const W = 1080, H = 1920;
@@ -642,7 +643,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     setStickerMenu(false);
     const fallback = () => addOverlay({ type: "weather", temp: null, icon: "🌡️" });
     if (!navigator.geolocation) return fallback();
-    toast.message("Localisation en cours…");
+    toast.message(i18n.t("story.locating"));
     navigator.geolocation.getCurrentPosition(async (pos) => {
       try {
         const { latitude, longitude } = pos.coords;
@@ -743,7 +744,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     else if (o.type === "slider") {
       const w = S * 0.74, pad = S * 0.045;
       ctx.font = `700 ${Math.round(S * 0.042)}px sans-serif`;
-      const lines = wrap(ctx, o.q || "Fais glisser", w - pad * 2);
+      const lines = wrap(ctx, o.q || i18n.t("story.slider_default"), w - pad * 2);
       const lh = S * 0.055, trackH = S * 0.02, h = pad + lh * lines.length + pad + S * 0.08 + pad;
       ctx.fillStyle = "#fff"; roundRect(ctx, px - w / 2, py - h / 2, w, h, S * 0.04); ctx.fill();
       ctx.fillStyle = "#111";
@@ -762,7 +763,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
       ctx.fillStyle = "#fff"; ctx.font = `900 ${Math.round(S * 0.052)}px sans-serif`;
       ctx.fillText(parts, px, py - S * 0.02);
       ctx.font = `700 ${Math.round(S * 0.03)}px sans-serif`; ctx.fillStyle = "rgba(255,255,255,0.9)";
-      ctx.fillText((o.title || "Compte à rebours").slice(0, 30), px, py + S * 0.045);
+      ctx.fillText((o.title || i18n.t("story.countdown_default")).slice(0, 30), px, py + S * 0.045);
     }
     else if (o.type === "text") {
       const size = Math.round(S * 0.06);
@@ -790,7 +791,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
       ctx.fillStyle = "#111";
       lines.forEach((ln, i) => ctx.fillText(ln, px, py - h / 2 + pad + lh / 2 + i * lh));
       ctx.font = `500 ${Math.round(S * 0.034)}px sans-serif`; ctx.fillStyle = "#9aa";
-      ctx.fillText("Répondre…", px, py + h / 2 - S * 0.05);
+      ctx.fillText(i18n.t("story.reply"), px, py + h / 2 - S * 0.05);
     } else if (o.type === "poll") {
       const w = S * 0.72, pad = S * 0.035;
       ctx.font = `700 ${Math.round(S * 0.045)}px sans-serif`;
@@ -839,19 +840,19 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
       const curSeg = await packCurrentBaked();
       const all = [...segments]; if (curSeg) all.push(curSeg);
       const seg = all.find((s) => s.type === "video") || all[0];
-      if (!seg) { toast.error("Enregistre une vidéo pour ton clip."); setPublishing(false); return; }
-      if (seg.type !== "video") { toast.error("Un clip doit être une vidéo (mode CAMÉRA en enregistrant)."); setPublishing(false); return; }
+      if (!seg) { toast.error(i18n.t("story.err_record_clip")); setPublishing(false); return; }
+      if (seg.type !== "video") { toast.error(i18n.t("story.err_clip_video")); setPublishing(false); return; }
       const blob = await (await fetch(seg.media)).blob();
       const file = new File([blob], `clip_${Date.now()}.mp4`, { type: blob.type || "video/mp4" });
       const fd = new FormData();
       fd.append("file", file);
       fd.append("caption", (seg.text || text || "").slice(0, 500));
       await axios.post(`${API}/clips`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success("Clip publié 🎬");
+      toast.success(i18n.t("story.clip_published"));
       onPublished?.();
       onClose();
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Publication impossible.");
+      toast.error(e.response?.data?.detail || i18n.t("story.publish_failed"));
       setPublishing(false);
     }
   };
@@ -862,7 +863,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
     try {
       const curSeg = await packCurrentBaked();
       const all = [...segments]; if (curSeg) all.push(curSeg);
-      if (all.length === 0) { toast.error("Ajoute au moins un média."); setPublishing(false); return; }
+      if (all.length === 0) { toast.error(i18n.t("story.err_add_media")); setPublishing(false); return; }
       for (const s of all) {
         const fd = new FormData();
         fd.append("media_url", s.media);
@@ -875,11 +876,11 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
         await axios.post(`${API}/stories/`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       }
       window.dispatchEvent(new CustomEvent("nexus:realtime", { detail: { type: "story" } }));
-      toast.success(all.length > 1 ? `Story publiée (${all.length} médias)` : "Story publiée");
+      toast.success(all.length > 1 ? i18n.t("story.story_published_multi", { count: all.length }) : i18n.t("story.story_published"));
       onPublished?.();
       onClose();
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Publication impossible.");
+      toast.error(e.response?.data?.detail || i18n.t("story.publish_failed"));
       setPublishing(false);
     }
   };
@@ -906,7 +907,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
           {!ready && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
               <div className="animate-spin rounded-full h-9 w-9 border-b-2" style={{ borderColor: C.accent }} />
-              <span className="text-[12px] text-white/70">Initialisation de la caméra…</span>
+              <span className="text-[12px] text-white/70">{i18n.t("story.init_camera")}</span>
             </div>
           )}
 
@@ -919,24 +920,24 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
 
           {/* Barre supérieure : fermer + capsule « Ajouter un son » */}
           <div className="absolute top-0 left-0 right-0 flex items-center px-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
-            <button onClick={onClose} className="w-10 h-10 flex items-center justify-center" aria-label="Fermer">
+            <button onClick={onClose} className="w-10 h-10 flex items-center justify-center" aria-label={i18n.t("story.close")}>
               <span className="material-symbols-outlined text-white" style={{ fontSize: 30, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }}>close</span>
             </button>
             <button onClick={() => setMusicOpen(true)}
               className="mx-auto flex items-center gap-1.5 px-4 h-9 rounded-full active:scale-95 transition-transform"
               style={{ background: "rgba(0,0,0,0.42)", backdropFilter: "blur(6px)" }}>
               <span className="material-symbols-outlined text-white" style={{ fontSize: 18 }}>music_note</span>
-              <span className="text-white text-[13px] font-semibold truncate max-w-[46vw]">{music ? music.title : "Ajouter un son"}</span>
+              <span className="text-white text-[13px] font-semibold truncate max-w-[46vw]">{music ? music.title : i18n.t("story.add_sound")}</span>
             </button>
             <div className="w-10 h-10" aria-hidden />
           </div>
 
           {/* Barre d'outils verticale (droite) */}
           <div className="absolute right-2.5 flex flex-col gap-5 items-center" style={{ top: "calc(max(env(safe-area-inset-top), 14px) + 64px)" }}>
-            {tool("cameraswitch", "Retourner", false, () => setFacing((f) => (f === "user" ? "environment" : "user")))}
-            {tool("auto_fix_high", "Filtres", showFilters, () => setShowFilters((v) => !v))}
-            {tool("face_retouching_natural", "Retouche", beauty, () => setBeauty((v) => !v))}
-            {tool("timer", timerSec ? `${timerSec}s` : "Minuteur", timerSec > 0, cycleTimer)}
+            {tool("cameraswitch", i18n.t("story.flip"), false, () => setFacing((f) => (f === "user" ? "environment" : "user")))}
+            {tool("auto_fix_high", i18n.t("story.filters"), showFilters, () => setShowFilters((v) => !v))}
+            {tool("face_retouching_natural", i18n.t("story.retouch"), beauty, () => setBeauty((v) => !v))}
+            {tool("timer", timerSec ? `${timerSec}s` : i18n.t("story.timer"), timerSec > 0, cycleTimer)}
           </div>
 
           {/* Indicateur d'enregistrement */}
@@ -953,7 +954,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
               {FILTERS.map((f) => (
                 <button key={f.key} onClick={() => setFilter(f.key)} className="flex flex-col items-center gap-1 shrink-0">
                   <span className="w-12 h-12 rounded-full border-2 overflow-hidden" style={{ borderColor: filter === f.key ? C.accent : "rgba(255,255,255,0.5)", filter: f.css === "none" ? "none" : f.css, background: "linear-gradient(135deg,#22d3ee,#3b82f6)" }} />
-                  <span className="text-white text-[10px]" style={{ opacity: filter === f.key ? 1 : 0.75 }}>{f.label}</span>
+                  <span className="text-white text-[10px]" style={{ opacity: filter === f.key ? 1 : 0.75 }}>{i18n.t("story.f_"+f.key)}</span>
                 </button>
               ))}
             </div>
@@ -967,14 +968,14 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
                   <button key={f.key} onClick={() => pickFormat(f)}
                     className="shrink-0 text-[13px] font-bold tracking-wide transition-all"
                     style={{ color: clipFmt === f.key ? "#fff" : "rgba(255,255,255,0.55)", textShadow: "0 1px 3px rgba(0,0,0,0.6)", transform: clipFmt === f.key ? "scale(1.06)" : "scale(1)" }}>
-                    {f.label}
+                    {i18n.t("story.fmt_"+f.key)}
                   </button>
                 ))}
               </div>
             )}
             <div className="flex items-center justify-between px-9">
               {/* Galerie (bas-gauche) */}
-              <button onClick={() => fileRef.current?.click()} className="w-11 h-11 rounded-xl flex items-center justify-center border-2 border-white/70" style={{ background: "rgba(255,255,255,0.12)", visibility: recording ? "hidden" : "visible" }} aria-label="Galerie">
+              <button onClick={() => fileRef.current?.click()} className="w-11 h-11 rounded-xl flex items-center justify-center border-2 border-white/70" style={{ background: "rgba(255,255,255,0.12)", visibility: recording ? "hidden" : "visible" }} aria-label={i18n.t("story.gallery")}>
                 <span className="material-symbols-outlined text-white" style={{ fontSize: 24 }}>photo_library</span>
               </button>
               <input ref={fileRef} type="file" accept="image/*,video/*" onChange={onImport} className="hidden" />
@@ -982,7 +983,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
               {/* Obturateur double-cercle */}
               <button onClick={onClipShutter} disabled={!ready}
                 className="relative w-[84px] h-[84px] rounded-full active:scale-95 transition-transform disabled:opacity-40"
-                aria-label={recording ? "Arrêter" : "Enregistrer"}>
+                aria-label={recording ? i18n.t("story.stop") : i18n.t("story.record")}>
                 <span className="absolute inset-0 rounded-full border-[5px]" style={{ borderColor: recording ? "#ef4444" : "rgba(255,255,255,0.9)" }} />
                 {recording
                   ? <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-red-500" style={{ width: 30, height: 30 }} />
@@ -996,7 +997,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
               </button>
 
               {/* Effets (miniature façon carrousel) */}
-              <button onClick={() => setShowFilters((v) => !v)} className="w-11 h-11 rounded-xl flex items-center justify-center border-2 border-white/70" style={{ background: "rgba(255,255,255,0.12)", visibility: recording ? "hidden" : "visible" }} aria-label="Effets">
+              <button onClick={() => setShowFilters((v) => !v)} className="w-11 h-11 rounded-xl flex items-center justify-center border-2 border-white/70" style={{ background: "rgba(255,255,255,0.12)", visibility: recording ? "hidden" : "visible" }} aria-label={i18n.t("story.effects")}>
                 <span className="material-symbols-outlined text-white" style={{ fontSize: 24, color: showFilters ? C.accent : "#fff" }}>auto_awesome</span>
               </button>
             </div>
@@ -1017,7 +1018,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
         {!ready && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <div className="animate-spin rounded-full h-9 w-9 border-b-2" style={{ borderColor: C.accent }} />
-            <span className="text-[12px] text-white/70">Initialisation de la caméra…</span>
+            <span className="text-[12px] text-white/70">{i18n.t("story.init_camera")}</span>
           </div>
         )}
 
@@ -1030,7 +1031,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
           <button onClick={toggleTorch} className="w-10 h-10 flex items-center justify-center rounded-full">
             <span className="material-symbols-outlined text-white">{torch ? "flash_on" : "flash_off"}</span>
           </button>
-          <button onClick={() => setSheet(true)} className="w-10 h-10 flex items-center justify-center rounded-full" aria-label="Visibilité">
+          <button onClick={() => setSheet(true)} className="w-10 h-10 flex items-center justify-center rounded-full" aria-label={i18n.t("story.visibility")}>
             <span className="material-symbols-outlined text-white">settings</span>
           </button>
         </div>
@@ -1045,7 +1046,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
                   : <span className="material-symbols-outlined text-white" style={{ fontSize: 28 }}>{m.icon}</span>}
               </span>
               <span className="text-white font-bold text-base transition-opacity duration-500"
-                style={{ opacity: showLabels ? 1 : 0, textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>{m.label}</span>
+                style={{ opacity: showLabels ? 1 : 0, textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>{i18n.t("story.m_"+m.key)}</span>
             </button>
           ))}
         </div>
@@ -1062,7 +1063,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
         {makingBoomerang && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ background: "rgba(0,0,0,0.55)" }}>
             <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: C.accent }} />
-            <span className="text-white/85 text-sm">Création du Boomerang…</span>
+            <span className="text-white/85 text-sm">{i18n.t("story.creating_boomerang")}</span>
           </div>
         )}
 
@@ -1086,31 +1087,31 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
           {camMode === "layout" ? (
             !layoutN ? (
               <div className="flex flex-col items-center gap-3">
-                <p className="text-white font-semibold text-sm">Choisis une grille</p>
+                <p className="text-white font-semibold text-sm">{i18n.t("story.choose_grid")}</p>
                 <div className="flex gap-3">
                   {LAYOUTS.map((n) => (
                     <button key={n} onClick={() => { setLayoutN(n); setLayoutCells(Array(n).fill(null)); }}
                       className="w-14 h-14 rounded-xl flex items-center justify-center font-black text-lg" style={{ background: "rgba(255,255,255,0.15)", color: "#fff" }}>{n}</button>
                   ))}
                 </div>
-                <button onClick={() => setCamMode("normal")} className="text-white/70 text-sm mt-1">Annuler</button>
+                <button onClick={() => setCamMode("normal")} className="text-white/70 text-sm mt-1">{i18n.t("story.cancel")}</button>
               </div>
             ) : (
               <div className="flex items-center justify-between">
                 <button onClick={() => { const i = layoutNextEmpty(); layoutTargetRef.current = i < 0 ? 0 : i; layoutFileRef.current?.click(); }} disabled={layoutNextEmpty() < 0}
-                  className="w-11 h-11 rounded-lg flex items-center justify-center disabled:opacity-40" style={{ background: "rgba(255,255,255,0.15)" }} aria-label="Importer">
+                  className="w-11 h-11 rounded-lg flex items-center justify-center disabled:opacity-40" style={{ background: "rgba(255,255,255,0.15)" }} aria-label={i18n.t("story.import")}>
                   <span className="material-symbols-outlined text-white">photo_library</span>
                 </button>
                 <input ref={layoutFileRef} type="file" accept="image/*" onChange={importLayoutCell} className="hidden" />
                 {layoutNextEmpty() >= 0 ? (
-                  <button onClick={captureLayoutCell} disabled={!ready} className="relative w-[76px] h-[76px] rounded-full active:scale-95 disabled:opacity-40" aria-label="Remplir la case">
+                  <button onClick={captureLayoutCell} disabled={!ready} className="relative w-[76px] h-[76px] rounded-full active:scale-95 disabled:opacity-40" aria-label={i18n.t("story.fill_cell")}>
                     <span className="absolute inset-0 rounded-full border-[5px] border-white" />
                     <span className="absolute inset-[7px] rounded-full" style={{ background: "rgba(255,255,255,0.9)" }} />
                   </button>
                 ) : (
-                  <button onClick={finishLayout} className="px-6 h-12 rounded-full font-black" style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>Terminé</button>
+                  <button onClick={finishLayout} className="px-6 h-12 rounded-full font-black" style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>{i18n.t("story.done")}</button>
                 )}
-                <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label="Changer de caméra">
+                <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label={i18n.t("story.switch_camera")}>
                   <span className="material-symbols-outlined text-white">cameraswitch</span>
                 </button>
               </div>
@@ -1118,7 +1119,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
           ) : (
             <>
               <div className="flex items-center justify-between">
-                <button onClick={() => fileRef.current?.click()} className="w-11 h-11 rounded-lg overflow-hidden flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label="Galerie">
+                <button onClick={() => fileRef.current?.click()} className="w-11 h-11 rounded-lg overflow-hidden flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label={i18n.t("story.gallery")}>
                   <span className="material-symbols-outlined text-white">photo_library</span>
                 </button>
                 <input ref={fileRef} type="file" accept="image/*,video/*" onChange={onImport} className="hidden" />
@@ -1127,7 +1128,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
                   onContextMenu={(e) => e.preventDefault()} disabled={!ready || makingBoomerang}
                   style={{ touchAction: "none" }}
                   className="relative w-[80px] h-[80px] rounded-full active:scale-95 transition-transform disabled:opacity-40"
-                  aria-label={camMode === "boomerang" ? "Boomerang" : "Photo (appui court) ou vidéo (appui long)"}>
+                  aria-label={camMode === "boomerang" ? i18n.t("story.boomerang") : i18n.t("story.photo_or_video")}>
                   <span className="absolute inset-0 rounded-full border-[5px]" style={{ borderColor: recording ? "#ef4444" : (camMode === "boomerang" || camMode === "hands") ? C.accent : "#fff" }} />
                   {recording
                     ? <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md bg-red-500" style={{ width: 30, height: 30 }} />
@@ -1144,13 +1145,13 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
                 </button>
 
                 <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
-                  className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label="Changer de caméra">
+                  className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }} aria-label={i18n.t("story.switch_camera")}>
                   <span className="material-symbols-outlined text-white">cameraswitch</span>
                 </button>
               </div>
-              <p className="text-center text-white/90 font-bold text-sm mt-4 tracking-wide">{camMode === "boomerang" ? "BOOMERANG" : camMode === "hands" ? "MAINS LIBRES" : "STORY"}</p>
+              <p className="text-center text-white/90 font-bold text-sm mt-4 tracking-wide">{camMode === "boomerang" ? i18n.t("story.lbl_boomerang") : camMode === "hands" ? i18n.t("story.lbl_hands") : i18n.t("story.lbl_story")}</p>
               {(camMode === "boomerang" || camMode === "hands") && (
-                <button onClick={() => { if (recordingRef.current) stopRec(); setCamMode("normal"); }} className="block mx-auto text-white/60 text-xs mt-1">Mode normal</button>
+                <button onClick={() => { if (recordingRef.current) stopRec(); setCamMode("normal"); }} className="block mx-auto text-white/60 text-xs mt-1">{i18n.t("story.normal_mode")}</button>
               )}
             </>
           )}
@@ -1216,15 +1217,15 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
         <div className="absolute top-0 left-0 right-0 flex flex-col gap-2 px-3 pt-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button onClick={() => setEraser(false)} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: !eraser ? C.accent : "rgba(0,0,0,0.4)" }} aria-label="Crayon">
+              <button onClick={() => setEraser(false)} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: !eraser ? C.accent : "rgba(0,0,0,0.4)" }} aria-label={i18n.t("story.pencil")}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20, color: !eraser ? C.onPrimary : "#fff" }}>edit</span>
               </button>
-              <button onClick={() => setEraser(true)} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: eraser ? C.accent : "rgba(0,0,0,0.4)" }} aria-label="Gomme">
+              <button onClick={() => setEraser(true)} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: eraser ? C.accent : "rgba(0,0,0,0.4)" }} aria-label={i18n.t("story.eraser")}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20, color: eraser ? C.onPrimary : "#fff" }}>ink_eraser</span>
               </button>
-              <button onClick={clearDraw} className="text-white text-sm font-bold px-3 py-1.5 rounded-full" style={{ background: "rgba(0,0,0,0.4)" }}>Tout effacer</button>
+              <button onClick={clearDraw} className="text-white text-sm font-bold px-3 py-1.5 rounded-full" style={{ background: "rgba(0,0,0,0.4)" }}>{i18n.t("story.clear_all")}</button>
             </div>
-            <button onClick={() => { setDrawMode(false); setEraser(false); }} className="text-sm font-black px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: C.accent, color: C.onPrimary }}>Terminé</button>
+            <button onClick={() => { setDrawMode(false); setEraser(false); }} className="text-sm font-black px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: C.accent, color: C.onPrimary }}>{i18n.t("story.done")}</button>
           </div>
           {!eraser && (
             <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
@@ -1245,11 +1246,11 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
           {/* Rail d'outils (haut droite) */}
           <div className="absolute top-0 right-0 px-4 pt-3 flex flex-col gap-3" style={{ paddingTop: "max(env(safe-area-inset-top), 14px)" }}>
             {[
-              { txt: "Aa", label: "Texte", on: () => (canEdit ? setTextEditor({ text: "", color: "#ffffff" }) : toast("Texte sur les photos ; pour la vidéo, utilise la légende en bas.")) },
-              { icon: "sentiment_satisfied", label: "Stickers", on: () => (canEdit ? setStickerMenu(true) : toast("Disponible sur les photos.")) },
-              { icon: "music_note", label: "Musique", on: () => setMusicOpen(true) },
-              { icon: "auto_awesome", label: "Effets", on: () => (cur?.type === "background" ? toast("Filtres : sur photo/vidéo.") : setShowFilters((s) => !s)) },
-              { icon: "draw", label: "Dessin", on: () => (canEdit ? setDrawMode(true) : toast("Disponible sur les photos.")) },
+              { txt: "Aa", label: i18n.t("story.tool_text"), on: () => (canEdit ? setTextEditor({ text: "", color: "#ffffff" }) : toast(i18n.t("story.text_photos_only"))) },
+              { icon: "sentiment_satisfied", label: i18n.t("story.tool_stickers"), on: () => (canEdit ? setStickerMenu(true) : toast(i18n.t("story.photos_only"))) },
+              { icon: "music_note", label: i18n.t("story.st_music"), on: () => setMusicOpen(true) },
+              { icon: "auto_awesome", label: i18n.t("story.effects"), on: () => (cur?.type === "background" ? toast(i18n.t("story.filters_photo_video")) : setShowFilters((s) => !s)) },
+              { icon: "draw", label: i18n.t("story.tool_draw"), on: () => (canEdit ? setDrawMode(true) : toast(i18n.t("story.photos_only"))) },
             ].map((t, i) => (
               <button key={i} onClick={t.on} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }} aria-label={t.label}>
                 {t.txt ? <span className="text-white font-black text-lg" style={{ fontFamily: "Georgia, serif" }}>{t.txt}</span>
@@ -1281,7 +1282,7 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
                 <div className="w-14 h-14 rounded-xl overflow-hidden" style={{ border: filter === f.key ? `2px solid ${C.accent}` : "2px solid transparent" }}>
                   <img src={cur.media} alt="" className="w-full h-full object-cover" style={{ filter: f.css }} />
                 </div>
-                <span className="text-[11px]" style={{ color: filter === f.key ? C.accent : "#fff" }}>{f.label}</span>
+                <span className="text-[11px]" style={{ color: filter === f.key ? C.accent : "#fff" }}>{i18n.t("story.f_"+f.key)}</span>
               </button>
             ))}
           </div>
@@ -1292,19 +1293,19 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
       {!drawMode && (
         <div className="absolute bottom-0 left-0 right-0 px-4 pb-5 pt-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 18px)", background: "linear-gradient(to top, rgba(0,0,0,0.55), transparent)" }}>
           <input id="story-caption" value={text} onChange={(e) => setText(e.target.value.slice(0, 500))}
-            placeholder={isClip ? "Ajoutez une légende à votre clip…" : "Ajoutez une légende…"}
+            placeholder={isClip ? i18n.t("story.caption_clip") : i18n.t("story.caption")}
             className="w-full text-sm px-1 py-2 bg-transparent border-none outline-none placeholder:text-white/70 text-white mb-2"
             style={{ WebkitUserSelect: "text", userSelect: "text" }} />
           {isClip ? (
             <div className="flex items-center gap-2">
-              <button onClick={addMore} disabled={publishing} className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: C.high }} aria-label="Ajouter un média">
+              <button onClick={addMore} disabled={publishing} className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: C.high }} aria-label={i18n.t("story.add_media")}>
                 <span className="material-symbols-outlined text-white">add</span>
               </button>
               <button onClick={publishClip} disabled={publishing}
                 className="flex-1 h-11 rounded-full font-black text-sm disabled:opacity-60 flex items-center justify-center gap-2"
                 style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>
                 <span className="material-symbols-outlined">movie</span>
-                {publishing ? "Publication…" : "Publier le clip"}
+                {publishing ? i18n.t("story.publishing") : i18n.t("story.publish_clip")}
               </button>
             </div>
           ) : (
@@ -1312,26 +1313,26 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
             <button onClick={() => publish("everyone")} disabled={publishing}
               className="flex items-center gap-2 pl-1 pr-4 h-11 rounded-full font-bold text-sm disabled:opacity-60" style={{ background: C.high, color: "#fff" }}>
               <Avatar username={user?.username} pic={user?.profile_pic} size={30} />
-              Votre story
+              {i18n.t("story.your_story")}
             </button>
             <button onClick={() => publish("close_friends")} disabled={publishing}
               className="flex items-center gap-2 pl-1 pr-4 h-11 rounded-full font-bold text-sm disabled:opacity-60" style={{ background: C.high, color: "#fff" }}>
               <span className="w-[30px] h-[30px] rounded-full flex items-center justify-center" style={{ background: "#22c55e" }}>
                 <span className="material-symbols-outlined text-white" style={{ fontSize: 18, fontVariationSettings: "'FILL' 1" }}>star</span>
               </span>
-              Ami·e·s proches
+              {i18n.t("story.close_friends")}
             </button>
-            <button onClick={addMore} disabled={publishing} className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: C.high }} aria-label="Ajouter un média">
+            <button onClick={addMore} disabled={publishing} className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: C.high }} aria-label={i18n.t("story.add_media")}>
               <span className="material-symbols-outlined text-white">add</span>
             </button>
             <button onClick={() => setSheet(true)} disabled={publishing} className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }} aria-label="Publier">
+              style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }} aria-label={i18n.t("story.publish")}>
               <span className="material-symbols-outlined">arrow_forward</span>
             </button>
           </div>
           )}
           {!isClip && segments.length > 0 && (
-            <p className="text-center text-[11px] mt-2 text-white/60">{segments.length} média{segments.length > 1 ? "s" : ""} ajouté{segments.length > 1 ? "s" : ""} — « Votre story » publie tout</p>
+            <p className="text-center text-[11px] mt-2 text-white/60">{i18n.t("story.media_added", { count: segments.length })}</p>
           )}
         </div>
       )}
@@ -1343,23 +1344,23 @@ export default function StoryComposer({ user, onClose, onPublished, target = "st
             <div className="w-10 h-1.5 rounded-full mx-auto mb-4" style={{ background: C.high }} />
             <div className="grid grid-cols-3 gap-2.5 max-h-[60vh] overflow-y-auto">
               {[
-                { k: "gif", icon: "gif_box", label: "GIF", on: () => { setStickerMenu(false); setGifOpen(true); } },
-                { k: "mention", icon: "alternate_email", label: "Mention", on: () => { setStickerMenu(false); setStickerForm("mention"); } },
-                { k: "hashtag", icon: "tag", label: "Hashtag", on: () => { setStickerMenu(false); setStickerForm("hashtag"); } },
-                { k: "link", icon: "link", label: "Lien", on: () => { setStickerMenu(false); setStickerForm("link"); } },
-                { k: "location", icon: "location_on", label: "Lieu", on: () => { setStickerMenu(false); setStickerForm("location"); } },
-                { k: "countdown", icon: "hourglass_top", label: "Compte à rebours", on: () => { setStickerMenu(false); setStickerForm("countdown"); } },
-                { k: "slider", icon: "sentiment_satisfied", label: "Curseur emoji", on: () => { setStickerMenu(false); setStickerForm("slider"); } },
-                { k: "poll", icon: "bar_chart", label: "Sondage", on: () => { setStickerMenu(false); setStickerForm("poll"); } },
-                { k: "question", icon: "help", label: "Questions", on: () => { setStickerMenu(false); setStickerForm("question"); } },
-                { k: "time", icon: "schedule", label: "Heure", on: () => addOverlay({ type: "time" }) },
-                { k: "weather", icon: "partly_cloudy_day", label: "Météo", on: addWeather },
-                { k: "emoji", icon: "mood", label: "Emoji", on: () => { setStickerMenu(false); setEmojiPicker(true); } },
-                { k: "music", icon: "music_note", label: "Musique", on: () => { setStickerMenu(false); setMusicOpen(true); } },
+                { k: "gif", icon: "gif_box", label: i18n.t("story.st_gif"), on: () => { setStickerMenu(false); setGifOpen(true); } },
+                { k: "mention", icon: "alternate_email", label: i18n.t("story.st_mention"), on: () => { setStickerMenu(false); setStickerForm("mention"); } },
+                { k: "hashtag", icon: "tag", label: i18n.t("story.st_hashtag"), on: () => { setStickerMenu(false); setStickerForm("hashtag"); } },
+                { k: "link", icon: "link", label: i18n.t("story.st_link"), on: () => { setStickerMenu(false); setStickerForm("link"); } },
+                { k: "location", icon: "location_on", label: i18n.t("story.st_location"), on: () => { setStickerMenu(false); setStickerForm("location"); } },
+                { k: "countdown", icon: "hourglass_top", label: i18n.t("story.st_countdown"), on: () => { setStickerMenu(false); setStickerForm("countdown"); } },
+                { k: "slider", icon: "sentiment_satisfied", label: i18n.t("story.st_slider"), on: () => { setStickerMenu(false); setStickerForm("slider"); } },
+                { k: "poll", icon: "bar_chart", label: i18n.t("story.st_poll"), on: () => { setStickerMenu(false); setStickerForm("poll"); } },
+                { k: "question", icon: "help", label: i18n.t("story.st_question"), on: () => { setStickerMenu(false); setStickerForm("question"); } },
+                { k: "time", icon: "schedule", label: i18n.t("story.st_time"), on: () => addOverlay({ type: "time" }) },
+                { k: "weather", icon: "partly_cloudy_day", label: i18n.t("story.st_weather"), on: addWeather },
+                { k: "emoji", icon: "mood", label: i18n.t("story.st_emoji"), on: () => { setStickerMenu(false); setEmojiPicker(true); } },
+                { k: "music", icon: "music_note", label: i18n.t("story.st_music"), on: () => { setStickerMenu(false); setMusicOpen(true); } },
               ].map((s) => (
                 <button key={s.k} onClick={s.on} className="flex flex-col items-center justify-center gap-1.5 px-2 py-3 rounded-2xl text-center" style={{ background: C.container }}>
                   <span className="material-symbols-outlined" style={{ color: C.accent }}>{s.icon}</span>
-                  <span className="font-bold text-[11px] leading-tight" style={{ color: C.onSurface }}>{s.label}</span>
+                  <span className="font-bold text-[11px] leading-tight" style={{ color: C.onSurface }}>{i18n.t("story.st_"+s.k)}</span>
                 </button>
               ))}
             </div>
@@ -1464,23 +1465,23 @@ function VisibilitySheet({ user, visibility, customList, onClose, onPick }) {
         <div className="w-10 h-1.5 rounded-full mx-auto mb-4" style={{ background: C.high }} />
         {!mode ? (
           <>
-            <h3 className="font-black text-lg mb-3 px-1" style={{ color: C.onSurface }}>Qui peut voir ?</h3>
+            <h3 className="font-black text-lg mb-3 px-1" style={{ color: C.onSurface }}>{i18n.t("story.who_can_see")}</h3>
             <button onClick={() => onPick("everyone")} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left"
               style={{ background: visibility === "everyone" ? `${C.accent}1a` : "transparent" }}>
               <span className="material-symbols-outlined" style={{ color: C.accent }}>public</span>
-              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>Tout le monde</p><p className="text-xs" style={{ color: C.outline }}>Vos abonnés</p></div>
+              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>{i18n.t("story.everyone")}</p><p className="text-xs" style={{ color: C.outline }}>{i18n.t("story.your_followers")}</p></div>
               {visibility === "everyone" && <span className="material-symbols-outlined" style={{ color: C.accent }}>check_circle</span>}
             </button>
             <button onClick={() => setMode("close")} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left"
               style={{ background: visibility === "close_friends" ? `${C.accent}1a` : "transparent" }}>
               <span className="material-symbols-outlined" style={{ color: "#22c55e" }}>star</span>
-              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>Ami·e·s proches</p><p className="text-xs" style={{ color: C.outline }}>Votre liste privée (modifiable)</p></div>
+              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>{i18n.t("story.close_friends")}</p><p className="text-xs" style={{ color: C.outline }}>{i18n.t("story.private_list")}</p></div>
               <span className="material-symbols-outlined" style={{ color: C.outline }}>chevron_right</span>
             </button>
             <button onClick={() => { setSelected(customList || []); setMode("custom"); }} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left"
               style={{ background: visibility === "custom" ? `${C.accent}1a` : "transparent" }}>
               <span className="material-symbols-outlined" style={{ color: C.accent }}>group</span>
-              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>Liste personnalisée</p><p className="text-xs" style={{ color: C.outline }}>Choisir des destinataires précis</p></div>
+              <div className="flex-1"><p className="font-bold" style={{ color: C.onSurface }}>{i18n.t("story.custom_list")}</p><p className="text-xs" style={{ color: C.outline }}>{i18n.t("story.pick_recipients")}</p></div>
               <span className="material-symbols-outlined" style={{ color: C.outline }}>chevron_right</span>
             </button>
           </>
@@ -1490,9 +1491,9 @@ function VisibilitySheet({ user, visibility, customList, onClose, onPick }) {
               <button onClick={() => setMode(null)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/5">
                 <span className="material-symbols-outlined" style={{ color: C.onSurface }}>arrow_back</span>
               </button>
-              <h3 className="font-black text-lg" style={{ color: C.onSurface }}>{mode === "close" ? "Ami·e·s proches" : "Liste personnalisée"}</h3>
+              <h3 className="font-black text-lg" style={{ color: C.onSurface }}>{mode === "close" ? i18n.t("story.close_friends") : i18n.t("story.custom_list_title")}</h3>
             </div>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un·e utilisateur·rice…"
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={i18n.t("story.ph_search_user")}
               className="w-full text-sm px-4 py-2.5 rounded-xl border-none outline-none mb-3 placeholder:text-slate-500"
               style={{ background: C.high, color: C.onSurface }} />
             {selected.length > 0 && (
@@ -1520,7 +1521,7 @@ function VisibilitySheet({ user, visibility, customList, onClose, onPick }) {
             <button onClick={confirm} disabled={saving || selected.length === 0}
               className="w-full py-3 rounded-2xl font-black disabled:opacity-40"
               style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>
-              {saving ? "Enregistrement…" : mode === "close" ? "Enregistrer & publier" : `Publier pour ${selected.length || 0} destinataire${selected.length > 1 ? "s" : ""}`}
+              {saving ? i18n.t("story.saving") : mode === "close" ? i18n.t("story.save_publish") : i18n.t("story.publish_for", { count: selected.length || 0 })}
             </button>
           </>
         )}
@@ -1609,7 +1610,7 @@ function OverlayView({ o, selected, onRemove, onEdit, onResizeStart, onResizeMov
   );
   if (o.type === "slider") return (
     <div className="relative px-4 py-4 rounded-3xl" style={{ background: "#fff", color: "#111", width: 250, boxShadow: ring }}>
-      <p className="font-bold text-sm mb-3 text-center leading-snug">{o.q || "Fais glisser"}</p>
+      <p className="font-bold text-sm mb-3 text-center leading-snug">{o.q || i18n.t("story.slider_default")}</p>
       <div className="relative h-2 rounded-full" style={{ background: "linear-gradient(90deg,#e5e7eb,#c7d2fe)" }}>
         <div className="absolute top-1/2 -translate-y-1/2" style={{ left: "62%", fontSize: 30, transform: "translate(-50%,-50%)" }}>{o.emoji || "😍"}</div>
       </div>
@@ -1618,7 +1619,7 @@ function OverlayView({ o, selected, onRemove, onEdit, onResizeStart, onResizeMov
   );
   if (o.type === "countdown") return (
     <div className="relative px-5 py-3 rounded-3xl text-center" style={{ background: "linear-gradient(135deg,#7c3aed,#ec4899)", color: "#fff", minWidth: 200, boxShadow: ring }}>
-      <CountdownView target={o.target} /><p className="text-xs font-bold mt-1 opacity-90 truncate">{o.title || "Compte à rebours"}</p><Controls />
+      <CountdownView target={o.target} /><p className="text-xs font-bold mt-1 opacity-90 truncate">{o.title || i18n.t("story.countdown_default")}</p><Controls />
     </div>
   );
 
@@ -1646,7 +1647,7 @@ function OverlayView({ o, selected, onRemove, onEdit, onResizeStart, onResizeMov
     return (
       <div className="relative px-4 py-3 rounded-2xl text-center" style={{ background: "#fff", color: "#111", width: 230, boxShadow: ring }}>
         <p className="font-bold text-sm mb-2 leading-snug">{o.q}</p>
-        <div className="text-xs rounded-lg py-1.5" style={{ background: "#eef1f6", color: "#8894a8" }}>Répondre…</div>
+        <div className="text-xs rounded-lg py-1.5" style={{ background: "#eef1f6", color: "#8894a8" }}>{i18n.t("story.reply")}</div>
         <Controls />
       </div>
     );
@@ -1678,7 +1679,7 @@ function TextEditor({ value, onCancel, onSave }) {
       </div>
       <div className="flex-1 flex items-center justify-center px-6" onClick={(e) => e.stopPropagation()}>
         <textarea autoFocus value={t} onChange={(e) => setT(e.target.value.slice(0, 200))}
-          placeholder="Ton texte…" rows={3}
+          placeholder={i18n.t("story.ph_your_text")} rows={3}
           className="w-full bg-transparent border-none outline-none text-center resize-none"
           style={{ color, fontWeight: 800, fontSize: 30, textShadow: "0 2px 6px rgba(0,0,0,0.5)", WebkitUserSelect: "text", userSelect: "text" }} />
       </div>
@@ -1700,21 +1701,21 @@ function StickerForm({ type, onCancel, onAdd }) {
   const [emoji, setEmoji] = useState("😍");
   const [when, setWhen] = useState("");
   const title = {
-    poll: "Sondage", question: "Questions", link: "Lien", location: "Lieu",
-    mention: "Mention", hashtag: "Hashtag", slider: "Curseur emoji", countdown: "Compte à rebours",
-  }[type] || "Sticker";
+    poll: i18n.t("story.st_poll"), question: i18n.t("story.st_question"), link: i18n.t("story.st_link"), location: i18n.t("story.st_location"),
+    mention: i18n.t("story.st_mention"), hashtag: i18n.t("story.st_hashtag"), slider: i18n.t("story.st_slider"), countdown: i18n.t("story.st_countdown"),
+  }[type] || i18n.t("story.form_sticker");
   const submit = () => {
-    if (type === "poll") onAdd({ type: "poll", q: q.trim() || "Sondage", a: a.trim() || "Oui", b: b.trim() || "Non" });
-    else if (type === "question") onAdd({ type: "question", q: q.trim() || "Posez-moi une question" });
+    if (type === "poll") onAdd({ type: "poll", q: q.trim() || i18n.t("story.def_poll_q"), a: a.trim() || i18n.t("story.def_yes"), b: b.trim() || i18n.t("story.def_no") });
+    else if (type === "question") onAdd({ type: "question", q: q.trim() || i18n.t("story.def_question") });
     else if (type === "link") { let u = q.trim(); if (u && !/^https?:\/\//i.test(u)) u = "https://" + u; onAdd({ type: "link", url: u || "https://", label: a.trim() || u.replace(/^https?:\/\//, "") }); }
-    else if (type === "location") onAdd({ type: "location", place: q.trim() || "Mon lieu" });
-    else if (type === "mention") onAdd({ type: "mention", username: q.trim().replace(/^@/, "") || "utilisateur" });
-    else if (type === "hashtag") onAdd({ type: "hashtag", tag: q.trim().replace(/^#/, "") || "hashtag" });
-    else if (type === "slider") onAdd({ type: "slider", q: q.trim() || "Fais glisser", emoji });
-    else if (type === "countdown") onAdd({ type: "countdown", title: q.trim() || "Événement", target: when || new Date(Date.now() + 86400000).toISOString() });
+    else if (type === "location") onAdd({ type: "location", place: q.trim() || i18n.t("story.def_location") });
+    else if (type === "mention") onAdd({ type: "mention", username: q.trim().replace(/^@/, "") || i18n.t("story.def_user") });
+    else if (type === "hashtag") onAdd({ type: "hashtag", tag: q.trim().replace(/^#/, "") || i18n.t("story.def_hashtag") });
+    else if (type === "slider") onAdd({ type: "slider", q: q.trim() || i18n.t("story.def_slide"), emoji });
+    else if (type === "countdown") onAdd({ type: "countdown", title: q.trim() || i18n.t("story.def_event"), target: when || new Date(Date.now() + 86400000).toISOString() });
   };
   const input = "w-full text-sm px-4 py-3 rounded-xl border-none outline-none mb-3 placeholder:text-slate-500";
-  const ph = { link: "URL (ex. nexus.social)", location: "Nom du lieu…", mention: "Nom d'utilisateur (sans @)", hashtag: "Mot-clé (sans #)", slider: "Ta question…", countdown: "Nom de l'événement…", poll: "Ta question…", question: "Pose une question…" }[type] || "…";
+  const ph = { link: i18n.t("story.ph_link"), location: i18n.t("story.ph_location"), mention: i18n.t("story.ph_mention"), hashtag: i18n.t("story.ph_hashtag"), slider: i18n.t("story.ph_your_question"), countdown: i18n.t("story.ph_event_name"), poll: i18n.t("story.ph_your_question"), question: i18n.t("story.ph_ask_question") }[type] || "…";
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.7)" }} onClick={onCancel}>
       <div className="w-full max-w-sm rounded-3xl p-5" style={{ background: C.surface }} onClick={(e) => e.stopPropagation()}>
@@ -1724,12 +1725,12 @@ function StickerForm({ type, onCancel, onAdd }) {
 
         {type === "poll" && (
           <div className="flex gap-2">
-            <input value={a} onChange={(e) => setA(e.target.value.slice(0, 24))} placeholder="Option 1" className={input} style={{ background: C.high, color: C.onSurface }} />
-            <input value={b} onChange={(e) => setB(e.target.value.slice(0, 24))} placeholder="Option 2" className={input} style={{ background: C.high, color: C.onSurface }} />
+            <input value={a} onChange={(e) => setA(e.target.value.slice(0, 24))} placeholder={i18n.t("story.ph_option1")} className={input} style={{ background: C.high, color: C.onSurface }} />
+            <input value={b} onChange={(e) => setB(e.target.value.slice(0, 24))} placeholder={i18n.t("story.ph_option2")} className={input} style={{ background: C.high, color: C.onSurface }} />
           </div>
         )}
         {type === "link" && (
-          <input value={a} onChange={(e) => setA(e.target.value.slice(0, 40))} placeholder="Texte affiché (optionnel)" className={input} style={{ background: C.high, color: C.onSurface }} />
+          <input value={a} onChange={(e) => setA(e.target.value.slice(0, 40))} placeholder={i18n.t("story.ph_displayed_text")} className={input} style={{ background: C.high, color: C.onSurface }} />
         )}
         {type === "slider" && (
           <div className="flex flex-wrap gap-2 mb-3">
@@ -1744,8 +1745,8 @@ function StickerForm({ type, onCancel, onAdd }) {
         )}
 
         <div className="flex gap-2 mt-1">
-          <button onClick={onCancel} className="flex-1 py-3 rounded-2xl font-bold" style={{ background: C.high, color: C.onSurface }}>Annuler</button>
-          <button onClick={submit} className="flex-1 py-3 rounded-2xl font-black" style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>Ajouter</button>
+          <button onClick={onCancel} className="flex-1 py-3 rounded-2xl font-bold" style={{ background: C.high, color: C.onSurface }}>{i18n.t("story.cancel")}</button>
+          <button onClick={submit} className="flex-1 py-3 rounded-2xl font-black" style={{ background: `linear-gradient(135deg,${C.accent},#3b82f6)`, color: C.onPrimary }}>{i18n.t("story.add")}</button>
         </div>
       </div>
     </div>
@@ -1778,7 +1779,7 @@ function GifPicker({ onClose, onPick }) {
     <div className="fixed inset-0 z-[96] flex flex-col" style={{ background: "rgba(0,0,0,0.92)" }}>
       <div className="flex items-center gap-2 px-3 pt-4 pb-2" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
         <button onClick={onClose} className="w-10 h-10 flex items-center justify-center"><span className="material-symbols-outlined text-white">arrow_back</span></button>
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un GIF…"
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={i18n.t("story.ph_search_gif")}
           className="flex-1 text-sm px-4 py-2.5 rounded-xl border-none outline-none" style={{ background: C.high, color: C.onSurface }} />
       </div>
       <div className="flex-1 overflow-y-auto px-2 pb-6">
@@ -1790,7 +1791,7 @@ function GifPicker({ onClose, onPick }) {
             </button>
           ))}
         </div>
-        {!loading && items.length === 0 && <p className="text-center text-sm mt-8" style={{ color: C.outline }}>Aucun GIF trouvé.</p>}
+        {!loading && items.length === 0 && <p className="text-center text-sm mt-8" style={{ color: C.outline }}>{i18n.t("story.no_gif")}</p>}
       </div>
     </div>
   );
@@ -1834,8 +1835,8 @@ function MusicSearch({ onClose, onAdd, current, onRemove }) {
       <div className="fixed inset-0 z-[95] flex flex-col" style={{ background: "rgba(0,0,0,0.92)" }}>
         {/* Aperçu audio géré par Web Audio (PreviewAudio) — pas d'élément <audio>. */}
         <div className="flex items-center justify-between px-4 pt-4" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
-          <button onClick={() => { setSel(null); try { audioRef.current?.pause(); } catch { /* noop */ } }} className="text-white text-sm font-bold">Retour</button>
-          <button onClick={() => { try { audioRef.current?.pause(); } catch { /* noop */ } onAdd(sel, start, style); }} className="font-black px-4 py-2 rounded-full" style={{ background: C.accent, color: C.onPrimary }}>Ajouter</button>
+          <button onClick={() => { setSel(null); try { audioRef.current?.pause(); } catch { /* noop */ } }} className="text-white text-sm font-bold">{i18n.t("story.back")}</button>
+          <button onClick={() => { try { audioRef.current?.pause(); } catch { /* noop */ } onAdd(sel, start, style); }} className="font-black px-4 py-2 rounded-full" style={{ background: C.accent, color: C.onPrimary }}>{i18n.t("story.add")}</button>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center px-8 gap-4">
           {sel.artwork && <img src={sel.artwork} alt="" className="w-40 h-40 rounded-2xl object-cover shadow-2xl" />}
@@ -1844,11 +1845,11 @@ function MusicSearch({ onClose, onAdd, current, onRemove }) {
             <p className="text-sm" style={{ color: C.outline }}>{sel.artist}</p>
           </div>
           <div className="w-full max-w-sm mt-2">
-            <p className="text-white/70 text-xs mb-1">Passage : à partir de {Math.round(start)} s</p>
+            <p className="text-white/70 text-xs mb-1">{i18n.t("story.passage", { sec: Math.round(start) })}</p>
             <input type="range" min={0} max={25} step={1} value={start} onChange={(e) => onSlide(Number(e.target.value))} className="w-full" style={{ accentColor: C.accent }} />
           </div>
           <div className="flex gap-2 mt-2">
-            {[["title", "Titre"], ["cover", "Pochette"], ["none", "Son seul"]].map(([k, lbl]) => (
+            {[["title", i18n.t("story.style_title")], ["cover", i18n.t("story.style_cover")], ["none", i18n.t("story.style_sound_only")]].map(([k, lbl]) => (
               <button key={k} onClick={() => setStyle(k)} className="px-4 py-2 rounded-full text-sm font-bold"
                 style={{ background: style === k ? C.accent : "rgba(255,255,255,0.12)", color: style === k ? C.onPrimary : "#fff" }}>{lbl}</button>
             ))}
@@ -1863,14 +1864,14 @@ function MusicSearch({ onClose, onAdd, current, onRemove }) {
     <div className="fixed inset-0 z-[95] flex flex-col" style={{ background: "rgba(0,0,0,0.9)" }}>
       <div className="flex items-center gap-2 px-3 pt-4 pb-2" style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}>
         <button onClick={onClose} className="w-10 h-10 flex items-center justify-center"><span className="material-symbols-outlined text-white">arrow_back</span></button>
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher une musique…"
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={i18n.t("story.ph_search_music")}
           className="flex-1 text-sm px-4 py-2.5 rounded-xl border-none outline-none" style={{ background: C.high, color: C.onSurface }} />
       </div>
       {current && (
         <div className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: C.container }}>
           <span className="material-symbols-outlined" style={{ color: C.accent }}>music_note</span>
           <span className="flex-1 text-sm text-white truncate">{current.title} · {current.artist}</span>
-          <button onClick={onRemove} className="text-xs text-red-400 font-bold">Retirer</button>
+          <button onClick={onRemove} className="text-xs text-red-400 font-bold">{i18n.t("story.remove")}</button>
         </div>
       )}
       <div className="flex-1 overflow-y-auto px-3" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -1884,8 +1885,8 @@ function MusicSearch({ onClose, onAdd, current, onRemove }) {
             <span className="material-symbols-outlined" style={{ color: C.accent }}>play_circle</span>
           </button>
         ))}
-        {!loading && q.trim() && results.length === 0 && <p className="text-center text-sm pt-8" style={{ color: C.outline }}>Aucun résultat.</p>}
-        {!q.trim() && <p className="text-center text-sm pt-8" style={{ color: C.outline }}>Tape le titre d'une chanson ou un artiste.</p>}
+        {!loading && q.trim() && results.length === 0 && <p className="text-center text-sm pt-8" style={{ color: C.outline }}>{i18n.t("story.no_results")}</p>}
+        {!q.trim() && <p className="text-center text-sm pt-8" style={{ color: C.outline }}>{i18n.t("story.music_hint")}</p>}
       </div>
     </div>
   );
