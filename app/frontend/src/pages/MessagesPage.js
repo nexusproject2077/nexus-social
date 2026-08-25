@@ -2080,7 +2080,7 @@ export default function MessagesPage({ user }) {
                 {isVideoDataUrl(pendingImage) ? (
                   <video src={pendingImage} className="h-20 rounded-xl object-cover" muted playsInline />
                 ) : (
-                  <img src={pendingImage} alt="aperçu" className="h-20 rounded-xl object-cover" />
+                  <img src={pendingImage} alt={t("dm.preview_alt")} className="h-20 rounded-xl object-cover" />
                 )}
                 <button
                   type="button"

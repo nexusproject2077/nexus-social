@@ -27,7 +27,7 @@ function ListsPanel({ user }) {
   useEffect(() => { fetchLists(); }, [fetchLists]);
 
   const createList = async () => {
-    const name = window.prompt("Nom de la nouvelle liste");
+    const name = window.prompt(t("searchpage.new_list_name"));
     if (!name || !name.trim()) return;
     try { await axios.post(`${API}/lists`, { name: name.trim() }); fetchLists(); toast.success(t("searchpage.list_created")); }
     catch { toast.error(t("searchpage.err_generic")); }

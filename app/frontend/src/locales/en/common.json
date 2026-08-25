@@ -483,7 +483,8 @@
     "confirm_delete_convo": "Delete this conversation?",
     "confirm_leave_group": "Leave this group?",
     "confirm_delete_discussion": "Delete this chat? It will disappear from your inbox.",
-    "send_long_press": "Send — long press to schedule"
+    "send_long_press": "Send — long press to schedule",
+    "preview_alt": "preview"
   },
   "widgets": {
     "football": "Football",
@@ -740,7 +741,8 @@
     "no_results": "No results for « {{query}} »",
     "confirm_delete_list": "Delete this list?",
     "private_search_hint": "Type a friend's, team's or hashtag's name. The Discover grid stays hidden.",
-    "show_trends": "Show trends"
+    "show_trends": "Show trends",
+    "new_list_name": "New list name"
   },
   "tipmodal": {
     "support": "Support",

@@ -483,7 +483,8 @@
     "confirm_delete_convo": "Supprimer cette conversation ?",
     "confirm_leave_group": "Quitter ce groupe ?",
     "confirm_delete_discussion": "Supprimer cette discussion ? Elle disparaîtra de votre boîte.",
-    "send_long_press": "Envoyer — appui long pour planifier"
+    "send_long_press": "Envoyer — appui long pour planifier",
+    "preview_alt": "aperçu"
   },
   "widgets": {
     "football": "Football",
@@ -740,7 +741,8 @@
     "no_results": "Aucun résultat pour « {{query}} »",
     "confirm_delete_list": "Supprimer cette liste ?",
     "private_search_hint": "Tapez le nom d'un ami, d'une équipe ou d'un hashtag. La grille Découverte reste masquée.",
-    "show_trends": "Afficher les tendances"
+    "show_trends": "Afficher les tendances",
+    "new_list_name": "Nom de la nouvelle liste"
   },
   "tipmodal": {
     "support": "Soutenir",
