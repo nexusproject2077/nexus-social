@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
+import i18n from "@/i18n";
 
 // STUN public gratuit (Google). Pas de TURN => peut échouer derrière NAT symétrique.
 const RTC_CONFIG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
@@ -11,21 +12,21 @@ const C = { cyan: (typeof window !== "undefined" && window.localStorage.getItem(
 
 // Filtres façon TikTok (appliqués via canvas → transmis aux spectateurs).
 const FILTERS = [
-  { name: "Normal", css: "none" },
-  { name: "N&B",    css: "grayscale(1) contrast(1.05)" },
-  { name: "Chaud",  css: "sepia(0.35) saturate(1.4)" },
-  { name: "Froid",  css: "saturate(1.3) hue-rotate(-12deg) brightness(1.05)" },
-  { name: "Vif",    css: "saturate(1.7) contrast(1.15)" },
-  { name: "Rétro",  css: "sepia(0.6) contrast(0.95) brightness(1.1)" },
+  { key: "none",  css: "none" },
+  { key: "nb",    css: "grayscale(1) contrast(1.05)" },
+  { key: "warm",  css: "sepia(0.35) saturate(1.4)" },
+  { key: "cool",  css: "saturate(1.3) hue-rotate(-12deg) brightness(1.05)" },
+  { key: "vivid", css: "saturate(1.7) contrast(1.15)" },
+  { key: "retro", css: "sepia(0.6) contrast(0.95) brightness(1.1)" },
 ];
 
 const GIFTS = [
-  { emoji: "🌹", name: "Rose", cents: 99 }, { emoji: "❤️", name: "Cœur", cents: 199 },
-  { emoji: "🎉", name: "Confetti", cents: 299 }, { emoji: "🔥", name: "Feu", cents: 399 },
-  { emoji: "💎", name: "Diamant", cents: 499 }, { emoji: "👑", name: "Couronne", cents: 999 },
-  { emoji: "🦄", name: "Licorne", cents: 1499 }, { emoji: "🚀", name: "Fusée", cents: 1999 },
+  { emoji: "🌹", key: "rose", cents: 99 }, { emoji: "❤️", key: "heart", cents: 199 },
+  { emoji: "🎉", key: "confetti", cents: 299 }, { emoji: "🔥", key: "fire", cents: 399 },
+  { emoji: "💎", key: "diamond", cents: 499 }, { emoji: "👑", key: "crown", cents: 999 },
+  { emoji: "🦄", key: "unicorn", cents: 1499 }, { emoji: "🚀", key: "rocket", cents: 1999 },
 ];
-const euro = (c) => (c / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+const euro = (c) => (c / 100).toLocaleString(i18n.language || "en", { style: "currency", currency: "EUR" });
 
 function drawCover(ctx, video, cw, ch) {
   const vw = video.videoWidth, vh = video.videoHeight;
@@ -57,7 +58,7 @@ export default function LiveStream({ user }) {
   // Statut paiements + retour de Stripe Checkout (cadeau) + statut Connect (hôte).
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
-    if (sp.get("gift_sent")) { toast.success("Cadeau envoyé 🎁 Merci !"); window.history.replaceState({}, "", window.location.pathname); }
+    if (sp.get("gift_sent")) { toast.success(i18n.t("livestream.gift_sent_toast")); window.history.replaceState({}, "", window.location.pathname); }
     else if (sp.get("gift_cancel")) { window.history.replaceState({}, "", window.location.pathname); }
     axios.get(`${API}/billing/status`).then((r) => setPaidGifts(!!r.data?.enabled)).catch(() => {});
     if (isHost) axios.get(`${API}/billing/connect/status`).then((r) => setConnect(r.data)).catch(() => {});
@@ -65,7 +66,7 @@ export default function LiveStream({ user }) {
 
   const onboardCreator = async () => {
     try { const r = await axios.post(`${API}/billing/connect/onboard`); if (r.data?.url) window.location.href = r.data.url; }
-    catch { toast.error("Configuration des paiements indisponible"); }
+    catch { toast.error(i18n.t("livestream.pay_config_unavailable")); }
   };
 
   const localRef  = useRef(null);
@@ -125,14 +126,15 @@ export default function LiveStream({ user }) {
     // Cadeau payant via Stripe Checkout (redirige puis revient à la room).
     if (paidGifts) {
       try {
-        const r = await axios.post(`${API}/live/gift-checkout`, { name: g.name, emoji: g.emoji, amount_cents: g.cents, room_id: roomId });
+        const r = await axios.post(`${API}/live/gift-checkout`, { name: i18n.t("livestream.gift_"+g.key), emoji: g.emoji, amount_cents: g.cents, room_id: roomId });
         if (r.data?.url) { window.location.href = r.data.url; return; }
       } catch { /* repli sur le cadeau gratuit */ }
     }
     // Cadeau gratuit (visuel) : diffusion directe via WebSocket.
-    spawnGift(g, "Vous");
-    send({ type: "gift", from: user.username, emoji: g.emoji, name: g.name });
-    toast.success(`${g.emoji} ${g.name} envoyé`);
+    const gname = i18n.t("livestream.gift_"+g.key);
+    spawnGift({ emoji: g.emoji, name: gname }, i18n.t("livestream.you"));
+    send({ type: "gift", from: user.username, emoji: g.emoji, name: gname, giftKey: g.key });
+    toast.success(i18n.t("livestream.gift_sent", { emoji: g.emoji, name: gname }));
   };
 
   // ── Enregistrement du replay (hôte) → publié en clip à l'arrêt ──
@@ -154,15 +156,15 @@ export default function LiveStream({ user }) {
     });
     recorderRef.current = null;
     if (!blob || blob.size < 50000) return;
-    if (!window.confirm("Enregistrer le replay de votre direct dans Nexus Clips ?")) return;
+    if (!window.confirm(i18n.t("livestream.save_replay_confirm"))) return;
     setSavingReplay(true);
     try {
       const form = new FormData();
       form.append("file", new File([blob], `replay_${Date.now()}.webm`, { type: "video/webm" }));
-      form.append("caption", "Replay du direct 🔴");
+      form.append("caption", i18n.t("livestream.replay_caption"));
       await axios.post(`${API}/clips`, form, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success("Replay publié dans Nexus Clips");
-    } catch { toast.error("Impossible d'enregistrer le replay"); }
+      toast.success(i18n.t("livestream.replay_published"));
+    } catch { toast.error(i18n.t("livestream.replay_failed")); }
     finally { setSavingReplay(false); }
   };
 
@@ -177,7 +179,7 @@ export default function LiveStream({ user }) {
     if (isHost) {
       let cam;
       try { cam = await navigator.mediaDevices.getUserMedia({ video: { width: 720, height: 1280, facingMode: "user" }, audio: true }); }
-      catch { toast.error("Caméra/micro indisponible"); setStatus("idle"); return; }
+      catch { toast.error(i18n.t("livestream.err_cam_mic")); setStatus("idle"); return; }
       streamRef.current = cam;
 
       // Pipeline canvas → applique le filtre en direct et le transmet aux spectateurs.
@@ -205,7 +207,7 @@ export default function LiveStream({ user }) {
       outStream.getTracks().forEach((t) => pc.addTrack(t, outStream));
       startRecording(outStream);
 
-      try { await axios.post(`${API}/live/start`, { room_id: roomId }); startedRef.current = true; toast.success("Vous êtes en direct — vos abonnés sont notifiés"); }
+      try { await axios.post(`${API}/live/start`, { room_id: roomId }); startedRef.current = true; toast.success(i18n.t("livestream.live_started")); }
       catch { /* best-effort */ }
     }
 
@@ -220,7 +222,7 @@ export default function LiveStream({ user }) {
       // ── Couche sociale (chat / likes / gifts / spectateurs) ──
       if (msg.type === "chat") { setMessages((p) => [...p.slice(-40), { id: msg.id || Math.random(), from: msg.from, pic: msg.pic, text: msg.text }]); return; }
       if (msg.type === "like") { setLikes((n) => n + 1); spawnHeart(); return; }
-      if (msg.type === "gift") { spawnGift({ emoji: msg.emoji, name: msg.name }, msg.from); return; }
+      if (msg.type === "gift") { spawnGift({ emoji: msg.emoji, name: msg.giftKey ? i18n.t("livestream.gift_"+msg.giftKey) : msg.name }, msg.from); return; }
       if (msg.type === "viewers") { setViewers(msg.count || 0); return; }
       // ── Signaling WebRTC ──
       try {
@@ -237,7 +239,7 @@ export default function LiveStream({ user }) {
         else if (msg.type === "ice") { try { await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch { /* tardif */ } }
       } catch (err) { console.error("Live signaling:", err); }
     };
-    ws.onerror = () => toast.error("Connexion live échouée");
+    ws.onerror = () => toast.error(i18n.t("livestream.err_connect"));
   };
 
   const stop = async () => {
@@ -248,7 +250,7 @@ export default function LiveStream({ user }) {
 
   const copyLink = () => {
     const link = `${window.location.origin}/live/${roomId}`;
-    navigator.clipboard?.writeText(link).then(() => toast.success("Lien copié"), () => toast.error("Copie impossible"));
+    navigator.clipboard?.writeText(link).then(() => toast.success(i18n.t("livestream.link_copied")), () => toast.error(i18n.t("livestream.copy_failed")));
   };
 
   const live = status === "live" || status === "connecting";
@@ -261,22 +263,22 @@ export default function LiveStream({ user }) {
           <span className="material-symbols-outlined text-3xl">close</span>
         </button>
         <span className="material-symbols-outlined text-6xl" style={{ color: "#f87171" }}>sensors</span>
-        <h1 className="text-2xl font-black" style={{ fontFamily: "Space Grotesk, sans-serif" }}>{isHost ? "Passer en direct" : "Rejoindre le direct"}</h1>
+        <h1 className="text-2xl font-black" style={{ fontFamily: "Space Grotesk, sans-serif" }}>{isHost ? i18n.t("livestream.go_live") : i18n.t("livestream.join_live")}</h1>
         <p className="text-sm text-center max-w-xs" style={{ color: C.outline }}>
-          {status === "ended" ? "Direct terminé." : (isHost ? "Vertical plein écran · chat · likes · cadeaux · replay automatique." : "Vous allez rejoindre ce direct.")}
+          {status === "ended" ? i18n.t("livestream.ended") : (isHost ? i18n.t("livestream.host_tagline") : i18n.t("livestream.viewer_tagline"))}
         </p>
-        {savingReplay && <p className="text-xs" style={{ color: C.cyan }}>Enregistrement du replay…</p>}
+        {savingReplay && <p className="text-xs" style={{ color: C.cyan }}>{i18n.t("livestream.saving_replay")}</p>}
 
         {/* Monétisation créateur (Stripe Connect) — hôte uniquement */}
         {isHost && connect?.enabled && (
           <div className="w-full max-w-xs rounded-2xl p-3 text-center" style={{ background: "#131b2e" }}>
             {connect.charges_enabled ? (
-              <p className="text-xs" style={{ color: C.cyan }}>💶 Paiements créateur activés — tu reçois {100 - (connect.fee_percent ?? 20)}% des cadeaux</p>
+              <p className="text-xs" style={{ color: C.cyan }}>{i18n.t("livestream.creator_pay_on", { pct: 100 - (connect.fee_percent ?? 20) })}</p>
             ) : (
               <>
-                <p className="text-xs mb-2" style={{ color: C.outline }}>Active les paiements pour recevoir les cadeaux de tes viewers (part créateur {100 - (connect.fee_percent ?? 20)}%).</p>
+                <p className="text-xs mb-2" style={{ color: C.outline }}>{i18n.t("livestream.creator_pay_prompt", { pct: 100 - (connect.fee_percent ?? 20) })}</p>
                 <button onClick={onboardCreator} className="text-sm font-bold px-4 py-2 rounded-full" style={{ background: C.cyan, color: C.onPrimary }}>
-                  Configurer mes paiements
+                  {i18n.t("livestream.configure_pay")}
                 </button>
               </>
             )}
@@ -288,11 +290,11 @@ export default function LiveStream({ user }) {
             className="px-6 py-3 rounded-full font-bold flex items-center justify-center gap-2 active:scale-95 transition-all"
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
             <span className="material-symbols-outlined">videocam</span>
-            {isHost ? (status === "ended" ? "Repartir en direct" : "Démarrer le direct") : "Rejoindre"}
+            {isHost ? (status === "ended" ? i18n.t("livestream.go_live_again") : i18n.t("livestream.start_live")) : i18n.t("livestream.join")}
           </button>
           {isHost && (
             <button onClick={copyLink} className="px-6 py-3 rounded-full font-bold flex items-center justify-center gap-2" style={{ background: "#171f33", color: C.cyan }}>
-              <span className="material-symbols-outlined">link</span>Copier le lien
+              <span className="material-symbols-outlined">link</span>{i18n.t("livestream.copy_link")}
             </button>
           )}
         </div>
@@ -334,10 +336,10 @@ export default function LiveStream({ user }) {
         <div className="absolute right-3 top-24 flex flex-col gap-2 items-end">
           <div className="flex flex-col gap-1.5 rounded-2xl p-2" style={{ background: "rgba(0,0,0,0.3)" }}>
             {FILTERS.map((f, i) => (
-              <button key={f.name} onClick={() => setFilterIdx(i)}
+              <button key={f.key} onClick={() => setFilterIdx(i)}
                 className="text-[10px] font-bold px-2 py-1 rounded-lg"
                 style={{ background: filterIdx === i ? C.cyan : "transparent", color: filterIdx === i ? C.onPrimary : "#fff" }}>
-                {f.name}
+                {i18n.t("livestream.filter_"+f.key)}
               </button>
             ))}
           </div>
@@ -369,7 +371,7 @@ export default function LiveStream({ user }) {
           <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
             <span className="material-symbols-outlined text-3xl" style={{ color: "#fbbf24" }}>redeem</span>
           </div>
-          <span className="text-white text-xs font-bold">Cadeau</span>
+          <span className="text-white text-xs font-bold">{i18n.t("livestream.gift")}</span>
         </button>
       </div>
 
@@ -388,7 +390,7 @@ export default function LiveStream({ user }) {
         <div className="flex items-center gap-2 rounded-full px-4 h-11" style={{ background: "rgba(0,0,0,0.4)" }}>
           <input value={chatInput} onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") sendChat(); }}
-            placeholder="Dis quelque chose…" className="flex-1 bg-transparent outline-none text-sm text-white select-text" />
+            placeholder={i18n.t("livestream.say_something")} className="flex-1 bg-transparent outline-none text-sm text-white select-text" />
           <button onClick={sendChat} style={{ color: C.cyan }}><span className="material-symbols-outlined">send</span></button>
         </div>
       </div>
@@ -397,20 +399,20 @@ export default function LiveStream({ user }) {
       {showGifts && (
         <div className="absolute left-0 right-0 bottom-0 rounded-t-3xl p-4" style={{ background: "rgba(11,19,38,0.97)", backdropFilter: "blur(20px)", paddingBottom: "calc(env(safe-area-inset-bottom) + 16px)" }} onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-white font-bold text-sm">Envoyer un cadeau</h3>
+            <h3 className="text-white font-bold text-sm">{i18n.t("livestream.send_gift")}</h3>
             <button onClick={() => setShowGifts(false)} style={{ color: C.outline }}><span className="material-symbols-outlined">close</span></button>
           </div>
           <div className="grid grid-cols-4 gap-3">
             {GIFTS.map((g) => (
-              <button key={g.name} onClick={() => sendGift(g)} className="flex flex-col items-center gap-0.5 py-3 rounded-2xl active:scale-95 transition-transform" style={{ background: "#171f33" }}>
+              <button key={g.key} onClick={() => sendGift(g)} className="flex flex-col items-center gap-0.5 py-3 rounded-2xl active:scale-95 transition-transform" style={{ background: "#171f33" }}>
                 <span style={{ fontSize: 30 }}>{g.emoji}</span>
-                <span className="text-white text-[11px] font-semibold">{g.name}</span>
+                <span className="text-white text-[11px] font-semibold">{i18n.t("livestream.gift_"+g.key)}</span>
                 {paidGifts && <span className="text-[10px] font-bold" style={{ color: C.cyan }}>{euro(g.cents)}</span>}
               </button>
             ))}
           </div>
           <p className="text-[10px] text-center mt-3" style={{ color: C.outline }}>
-            {paidGifts ? "Paiement sécurisé par Stripe · le créateur reçoit ton soutien" : "Cadeaux visuels · configure Stripe pour les cadeaux payants"}
+            {paidGifts ? i18n.t("livestream.gift_note_paid") : i18n.t("livestream.gift_note_free")}
           </p>
         </div>
       )}
