@@ -1346,5 +1346,26 @@
     "title": "Enregistrés",
     "empty_title": "Rien d'enregistré pour le moment",
     "empty_sub": "Appuyez sur l'icône signet d'une publication ou d'un clip pour le retrouver ici."
+  },
+  "youthguard": {
+    "curfew_title": "Il est temps de déconnecter 🌙",
+    "curfew_body": "Nexus se repose aussi, à demain ! Le fil et les clips seront de retour dès 6 h.",
+    "limit_title": "Tu as atteint ta limite du jour",
+    "limit_body": "Tu as passé {{min}} min sur Nexus aujourd'hui. Offre-toi une pause : le fil sera toujours là demain.",
+    "disable_limit": "Désactiver la limite"
+  },
+  "matchcenter": {
+    "goal": "But",
+    "pen": "Pen.",
+    "own_goal_tag": "csc",
+    "assist": "Passe : {{name}}",
+    "yellow": "Carton jaune",
+    "red": "Carton rouge",
+    "sub": "Remplacement",
+    "var_decision": "Décision VAR",
+    "injury": "Blessure",
+    "close": "Fermer",
+    "in_progress": "En direct",
+    "no_events": "Aucun événement pour le moment."
   }
 }

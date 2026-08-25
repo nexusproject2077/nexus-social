@@ -9,6 +9,7 @@ import { useLocation } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import { addSeconds, getTodayMinutes } from "@/lib/screenTime";
+import i18n from "@/i18n";
 
 const TICK_MS = 20000; // granularité du compteur (20 s)
 
@@ -54,9 +55,9 @@ export default function YouthGuard({ user, setUser }) {
     return (
       <Screen bg="#05070f">
         <MoonSvg />
-        <p className="text-white text-xl font-black mt-6 mb-2">Il est temps de déconnecter 🌙</p>
+        <p className="text-white text-xl font-black mt-6 mb-2">{i18n.t("youthguard.curfew_title")}</p>
         <p className="text-sm max-w-xs" style={{ color: "#8b96a8" }}>
-          Nexus se repose aussi, à demain&nbsp;! Le fil et les clips seront de retour dès 6 h.
+          {i18n.t("youthguard.curfew_body")}
         </p>
       </Screen>
     );
@@ -66,15 +67,14 @@ export default function YouthGuard({ user, setUser }) {
   return (
     <Screen bg="#080c18">
       <HourglassSvg />
-      <p className="text-white text-xl font-black mt-6 mb-2">Tu as atteint ta limite du jour</p>
+      <p className="text-white text-xl font-black mt-6 mb-2">{i18n.t("youthguard.limit_title")}</p>
       <p className="text-sm max-w-xs mb-7" style={{ color: "#8b96a8" }}>
-        Tu as passé {Math.floor(minutes)} min sur Nexus aujourd'hui. Offre-toi une pause&nbsp;:
-        le fil sera toujours là demain.
+        {i18n.t("youthguard.limit_body", { min: Math.floor(minutes) })}
       </p>
       <button onClick={disableLimit} disabled={busy}
         className="px-5 py-2.5 rounded-full text-sm font-bold transition-opacity"
         style={{ background: "#1a2234", color: "#c7d0e0", border: "1px solid rgba(255,255,255,0.1)", opacity: busy ? 0.6 : 1 }}>
-        Désactiver la limite
+        {i18n.t("youthguard.disable_limit")}
       </button>
     </Screen>
   );

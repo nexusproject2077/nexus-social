@@ -3,6 +3,7 @@
 // Événements domicile à GAUCHE de l'axe, extérieur à DROITE. Rafraîchi 60 s.
 import { useState, useEffect, useCallback } from "react";
 import { fetchMatchDetailsFromEspn } from "@/lib/espnClient";
+import i18n from "@/i18n";
 
 const NEON = "#4ade80";
 const INTER = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif";
@@ -61,21 +62,21 @@ function eventTexts(ev) {
     case "goal":
     case "penalty_goal":
     case "own_goal": {
-      const scorer = ev.scorer || p[0] || "But";
-      const tags = [ev.type === "penalty_goal" && "Pen.", ev.own_goal && "csc"].filter(Boolean).join(" · ");
-      const sub = [ev.assist ? `Passe : ${ev.assist}` : "", tags].filter(Boolean).join("  ");
-      return { title: scorer, sub: sub || "But" };
+      const scorer = ev.scorer || p[0] || i18n.t("matchcenter.goal");
+      const tags = [ev.type === "penalty_goal" && i18n.t("matchcenter.pen"), ev.own_goal && i18n.t("matchcenter.own_goal_tag")].filter(Boolean).join(" · ");
+      const sub = [ev.assist ? i18n.t("matchcenter.assist", { name: ev.assist }) : "", tags].filter(Boolean).join("  ");
+      return { title: scorer, sub: sub || i18n.t("matchcenter.goal") };
     }
-    case "yellow": return { title: ev.player || p[0] || "Carton jaune", sub: "Carton jaune" };
-    case "red": return { title: ev.player || p[0] || "Carton rouge", sub: "Carton rouge" };
+    case "yellow": return { title: ev.player || p[0] || i18n.t("matchcenter.yellow"), sub: i18n.t("matchcenter.yellow") };
+    case "red": return { title: ev.player || p[0] || i18n.t("matchcenter.red"), sub: i18n.t("matchcenter.red") };
     case "sub": {
       const inn = ev.playerIn, out = ev.playerOut;
       // Sortant ⇄ Entrant sur une seule ligne (ex : « O. Dembélé ⇄ B. Barcola »).
-      if (inn && out) return { title: `${out} ⇄ ${inn}`, sub: "Remplacement" };
-      return { title: inn || out || p[0] || "Remplacement", sub: "Remplacement" };
+      if (inn && out) return { title: `${out} ⇄ ${inn}`, sub: i18n.t("matchcenter.sub") };
+      return { title: inn || out || p[0] || i18n.t("matchcenter.sub"), sub: i18n.t("matchcenter.sub") };
     }
-    case "var": return { title: "VAR", sub: ev.text || "Décision VAR" };
-    case "injury": return { title: ev.player || p[0] || "Blessure", sub: "Blessure" };
+    case "var": return { title: "VAR", sub: ev.text || i18n.t("matchcenter.var_decision") };
+    case "injury": return { title: ev.player || p[0] || i18n.t("matchcenter.injury"), sub: i18n.t("matchcenter.injury") };
     default: return { title: p[0] || ev.text || "", sub: p[0] ? ev.text : "" };
   }
 }
@@ -126,7 +127,7 @@ export default function MatchCenter({ match, onClose }) {
         <div className="px-5 pt-5 pb-4 flex-shrink-0" style={{ background: "linear-gradient(180deg,#111a2e,#0b1220)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#6b7686" }}>{match?.league}</span>
-            <button onClick={onClose} className="w-8 h-8 -mr-1 flex items-center justify-center rounded-full active:scale-90 transition-transform" aria-label="Fermer">
+            <button onClick={onClose} className="w-8 h-8 -mr-1 flex items-center justify-center rounded-full active:scale-90 transition-transform" aria-label={i18n.t("matchcenter.close")}>
               <span className="material-symbols-outlined" style={{ color: "#9fb0c8", fontSize: 22 }}>close</span>
             </button>
           </div>
@@ -143,7 +144,7 @@ export default function MatchCenter({ match, onClose }) {
               </div>
               <span className="text-[11px] font-bold mt-1 flex items-center gap-1" style={{ color: live ? NEON : "#8b96a8" }}>
                 {live && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: NEON }} />}
-                {live ? (h.clock || "En direct") : (h.detail || "")}
+                {live ? (h.clock || i18n.t("matchcenter.in_progress")) : (h.detail || "")}
               </span>
             </div>
             <div className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
@@ -158,7 +159,7 @@ export default function MatchCenter({ match, onClose }) {
           {detail === null ? (
             <div className="flex justify-center py-10"><span className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: `${NEON}44`, borderTopColor: NEON }} /></div>
           ) : ordered.length === 0 ? (
-            <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>Aucun événement pour le moment.</p>
+            <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_events")}</p>
           ) : (
             <div className="relative">
               {/* Axe vertical central */}

@@ -1346,5 +1346,26 @@
     "title": "Saved",
     "empty_title": "Nothing saved yet",
     "empty_sub": "Tap the bookmark icon on a post or clip to find it here."
+  },
+  "youthguard": {
+    "curfew_title": "Time to disconnect 🌙",
+    "curfew_body": "Nexus is resting too — see you tomorrow ! The feed and clips will be back at 6 a.m.",
+    "limit_title": "You've reached your daily limit",
+    "limit_body": "You've spent {{min}} min on Nexus today. Treat yourself to a break : the feed will still be here tomorrow.",
+    "disable_limit": "Turn off the limit"
+  },
+  "matchcenter": {
+    "goal": "Goal",
+    "pen": "Pen.",
+    "own_goal_tag": "og",
+    "assist": "Assist: {{name}}",
+    "yellow": "Yellow card",
+    "red": "Red card",
+    "sub": "Substitution",
+    "var_decision": "VAR decision",
+    "injury": "Injury",
+    "close": "Close",
+    "in_progress": "Live",
+    "no_events": "No events yet."
   }
 }
