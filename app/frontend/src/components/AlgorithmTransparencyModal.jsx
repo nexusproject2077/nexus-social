@@ -4,16 +4,17 @@
 // comment l'utilisateur peut les influencer, sans jargon.
 
 import React from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import { X, Sparkles, Clock, TrendingUp, Megaphone, ShieldCheck } from 'lucide-react';
 
 const ACCENT = "var(--nexus-accent)";
 
 // Facteurs du fil « Pour toi », avec leur importance relative indicative.
 const FACTORS = [
-  { label: "Comptes que vous suivez", weight: 40, desc: "Les publications des personnes que vous suivez sont mises en avant." },
-  { label: "Fraîcheur", weight: 25, desc: "Les publications récentes passent avant les plus anciennes." },
-  { label: "Engagement", weight: 25, desc: "Les likes et commentaires reçus par une publication augmentent sa visibilité." },
-  { label: "Vos centres d'intérêt", weight: 10, desc: "Les hashtags et sujets avec lesquels vous interagissez orientent les suggestions." },
+  { k: "follow", weight: 40 },
+  { k: "fresh", weight: 25 },
+  { k: "engage", weight: 25 },
+  { k: "interests", weight: 10 },
 ];
 
 function Section({ icon: Icon, title, children }) {
@@ -32,6 +33,7 @@ function Section({ icon: Icon, title, children }) {
 }
 
 export default function AlgorithmTransparencyModal({ onClose }) {
+  const { t } = useTranslation();
   return (
     <div
       className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
@@ -47,10 +49,10 @@ export default function AlgorithmTransparencyModal({ onClose }) {
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" style={{ color: ACCENT }} />
             <h2 className="text-lg font-black text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-              Comment fonctionne l'algorithme
+              {t("algotransparency.title")}
             </h2>
           </div>
-          <button onClick={onClose} aria-label="Fermer" className="text-slate-400 hover:text-white transition-colors">
+          <button onClick={onClose} aria-label={t("algotransparency.close")} className="text-slate-400 hover:text-white transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -58,59 +60,48 @@ export default function AlgorithmTransparencyModal({ onClose }) {
         {/* Contenu */}
         <div className="p-5 space-y-5 overflow-y-auto">
           <p className="text-xs leading-relaxed" style={{ color: "#859397" }}>
-            Conformément au Digital Services Act (règlement européen sur les services
-            numériques), voici les principaux paramètres qui déterminent les contenus
-            que vous voyez sur Nexus, et comment les modifier.
+            {t("algotransparency.intro")}
           </p>
 
           {/* Fil Pour toi : facteurs pondérés */}
-          <Section icon={Sparkles} title="Fil « Pour toi »">
+          <Section icon={Sparkles} title={t("algotransparency.foryou_title")}>
             <p className="mb-3">
-              Ce fil classe les publications selon plusieurs facteurs. Voici leur poids
-              relatif approximatif :
+              {t("algotransparency.foryou_p")}
             </p>
             <div className="space-y-2.5">
               {FACTORS.map((f) => (
-                <div key={f.label}>
+                <div key={f.k}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-white">{f.label}</span>
+                    <span className="text-xs font-semibold text-white">{t("algotransparency.f_"+f.k+"_label")}</span>
                     <span className="text-[10px]" style={{ color: "#859397" }}>{f.weight}%</span>
                   </div>
                   <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
                     <div className="h-full rounded-full" style={{ width: `${f.weight}%`, background: ACCENT }} />
                   </div>
-                  <p className="text-[11px] mt-1" style={{ color: "#859397" }}>{f.desc}</p>
+                  <p className="text-[11px] mt-1" style={{ color: "#859397" }}>{t("algotransparency.f_"+f.k+"_desc")}</p>
                 </div>
               ))}
             </div>
           </Section>
 
           {/* Fil chronologique */}
-          <Section icon={Clock} title="Fil chronologique (sans algorithme)">
-            Vous avez le droit à un fil non personnalisé. L'onglet <b>« Suivis »</b> de
-            l'accueil affiche uniquement les publications des comptes que vous suivez,
-            dans l'ordre chronologique, sans classement algorithmique.
+          <Section icon={Clock} title={t("algotransparency.chrono_title")}>
+            <Trans i18nKey="algotransparency.chrono_body" components={{ b: <b /> }} />
           </Section>
 
           {/* Tendances */}
-          <Section icon={TrendingUp} title="Tendances">
-            Les tendances reflètent les hashtags les plus utilisés au cours des
-            <b> dernières 24 heures</b>, pondérés par le nombre de publications et de
-            likes. Elles se renouvellent automatiquement : aucun choix éditorial manuel.
+          <Section icon={TrendingUp} title={t("algotransparency.trends_title")}>
+            <Trans i18nKey="algotransparency.trends_body" components={{ b: <b /> }} />
           </Section>
 
           {/* Publicité */}
-          <Section icon={Megaphone} title="Publicités">
-            Les publicités affichées sont <b>non personnalisées</b> par défaut : elles ne
-            reposent pas sur un profilage de votre comportement. Elles ne s'affichent
-            qu'après votre consentement aux cookies.
+          <Section icon={Megaphone} title={t("algotransparency.ads_title")}>
+            <Trans i18nKey="algotransparency.ads_body" components={{ b: <b /> }} />
           </Section>
 
           {/* Ce que nous n'utilisons pas */}
-          <Section icon={ShieldCheck} title="Ce que nous n'utilisons pas">
-            Aucun profilage fondé sur des données sensibles (opinions politiques,
-            religion, orientation, santé). Vous pouvez désactiver les suggestions
-            algorithmiques dans <b>Paramètres → Confidentialité</b>.
+          <Section icon={ShieldCheck} title={t("algotransparency.notuse_title")}>
+            <Trans i18nKey="algotransparency.notuse_body" components={{ b: <b /> }} />
           </Section>
         </div>
 
@@ -121,7 +112,7 @@ export default function AlgorithmTransparencyModal({ onClose }) {
             className="w-full py-2.5 rounded-xl font-bold text-sm transition-all hover:opacity-90"
             style={{ background: ACCENT, color: "#00363e" }}
           >
-            J'ai compris
+            {t("algotransparency.understood")}
           </button>
         </div>
       </div>

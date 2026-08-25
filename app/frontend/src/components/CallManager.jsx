@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
+import i18n from "@/i18n";
 
 // Serveurs ICE : STUN public + TURN (identifiants injectés au build via des
 // variables d'environnement — jamais en dur dans le dépôt).
@@ -30,14 +31,14 @@ const mediaErrorMessage = (err) => {
   switch (err?.name) {
     case "NotAllowedError":
     case "SecurityError":
-      return "Accès micro/caméra refusé — autorisez-le (icône 🔒 dans la barre d'adresse) puis réessayez";
+      return i18n.t("call.err_denied");
     case "NotFoundError":
     case "OverconstrainedError":
-      return "Aucun micro/caméra détecté sur cet appareil";
+      return i18n.t("call.err_notfound");
     case "NotReadableError":
-      return "Micro/caméra déjà utilisé par une autre application";
+      return i18n.t("call.err_inuse");
     default:
-      return "Impossible d'accéder au micro/caméra";
+      return i18n.t("call.err_generic");
   }
 };
 
@@ -178,7 +179,7 @@ export default function CallManager({ user }) {
     };
     pc.onconnectionstatechange = () => {
       if (["failed", "closed"].includes(pc.connectionState)) {
-        toast.error("Connexion perdue");
+        toast.error(i18n.t("call.conn_lost"));
         cleanup();
       }
     };
@@ -189,7 +190,7 @@ export default function CallManager({ user }) {
   // ── Appel sortant ─────────────────────────────────────────────────────────
   const startCall = useCallback(async ({ userId, username, profilePic, video }) => {
     if (!userId) return;
-    if (phase !== "idle") { toast.error("Un appel est déjà en cours"); return; }
+    if (phase !== "idle") { toast.error(i18n.t("call.already_in_call")); return; }
     try {
       const { stream, video: gotVideo } = await getMedia(!!video);
       localStreamRef.current = stream;
@@ -287,7 +288,7 @@ export default function CallManager({ user }) {
         }
       } else if (signal.kind === "hangup" || signal.kind === "reject") {
         if (signal.call_id === callIdRef.current) {
-          toast(signal.kind === "reject" ? "Appel refusé" : "Appel terminé");
+          toast(signal.kind === "reject" ? i18n.t("call.call_rejected") : i18n.t("call.call_ended"));
           cleanup();
         }
       }
@@ -368,9 +369,9 @@ export default function CallManager({ user }) {
             </p>
             <p className="text-sm mt-1" style={{ color: C.cyan }}>
               {phase === "incoming"
-                ? (withVideo ? "Appel vidéo entrant…" : "Appel entrant…")
+                ? (withVideo ? i18n.t("call.incoming_video") : i18n.t("call.incoming"))
                 : phase === "outgoing"
-                  ? "Appel en cours…"
+                  ? i18n.t("call.calling")
                   : fmtDuration(callSeconds)}
             </p>
           </div>
@@ -391,12 +392,12 @@ export default function CallManager({ user }) {
       <div className="absolute bottom-10 flex items-center justify-center gap-5">
         {phase === "incoming" ? (
           <>
-            <button onClick={rejectCall} title="Refuser"
+            <button onClick={rejectCall} title={i18n.t("call.reject")}
               className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition"
               style={{ background: "#ef4444", color: "#fff" }}>
               <span className="material-symbols-outlined text-2xl">call_end</span>
             </button>
-            <button onClick={acceptCall} title="Répondre"
+            <button onClick={acceptCall} title={i18n.t("call.answer")}
               className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition"
               style={{ background: "#22c55e", color: "#fff" }}>
               <span className="material-symbols-outlined text-2xl">{withVideo ? "videocam" : "call"}</span>
@@ -404,19 +405,19 @@ export default function CallManager({ user }) {
           </>
         ) : (
           <>
-            <button onClick={toggleMute} title={muted ? "Activer le micro" : "Couper le micro"}
+            <button onClick={toggleMute} title={muted ? i18n.t("call.mic_on") : i18n.t("call.mic_off")}
               className="w-14 h-14 rounded-full flex items-center justify-center active:scale-90 transition"
               style={{ background: muted ? C.cyan : C.high, color: muted ? C.onPrimary : C.onSurface }}>
               <span className="material-symbols-outlined">{muted ? "mic_off" : "mic"}</span>
             </button>
             {withVideo && (
-              <button onClick={toggleCamera} title={cameraOff ? "Activer la caméra" : "Couper la caméra"}
+              <button onClick={toggleCamera} title={cameraOff ? i18n.t("call.cam_on") : i18n.t("call.cam_off")}
                 className="w-14 h-14 rounded-full flex items-center justify-center active:scale-90 transition"
                 style={{ background: cameraOff ? C.cyan : C.high, color: cameraOff ? C.onPrimary : C.onSurface }}>
                 <span className="material-symbols-outlined">{cameraOff ? "videocam_off" : "videocam"}</span>
               </button>
             )}
-            <button onClick={hangup} title="Raccrocher"
+            <button onClick={hangup} title={i18n.t("call.hangup")}
               className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition"
               style={{ background: "#ef4444", color: "#fff" }}>
               <span className="material-symbols-outlined text-2xl">call_end</span>
