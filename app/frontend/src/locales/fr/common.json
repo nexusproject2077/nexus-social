@@ -1288,5 +1288,43 @@
     "no_text": "(sans texte)",
     "pts": "{{count}} pts",
     "following_line": "Vous suivez <a>{{following}}</a> comptes · <b>{{followers}}</b> abonnés"
+  },
+  "cookieconsent": {
+    "notice": "Nous utilisons des cookies pour améliorer votre expérience.",
+    "learn_more": "En savoir plus",
+    "title": "🍪 Nous respectons votre vie privée",
+    "essential": "Nous utilisons uniquement des <b>cookies essentiels</b> pour le fonctionnement du site (connexion, préférences).",
+    "no_ads": " Pas de cookies publicitaires ni de tracking tiers.",
+    "cookie_policy": "Politique des cookies",
+    "privacy": "Confidentialité",
+    "reject": "Refuser",
+    "accept": "Accepter",
+    "close": "Fermer"
+  },
+  "compliance": {
+    "appi_title": "Protection de vos données",
+    "appi_sub": "Loi APPI (個人情報保護法) — transparence & contrôle",
+    "appi_1": "Nous ne collectons que les données nécessaires au fonctionnement du service.",
+    "appi_2": "Vous pouvez consulter, corriger et exporter vos données à tout moment.",
+    "appi_3": "Aucune revente de vos données personnelles à des tiers.",
+    "appi_4": "Suppression de votre compte et de vos données en un geste, sans friction.",
+    "appi_accept": "J'ai compris et j'accepte",
+    "my_data": "Mes données",
+    "delete_account": "Supprimer mon compte",
+    "readonly_fallback": "Mode consultation : la publication et la messagerie sont indisponibles dans votre pays."
+  },
+  "onboarding": {
+    "s1_title": "Bienvenue sur Nexus",
+    "s1_text": "Ton réseau social tout-en-un : publications, vidéos courtes, messages et soutien aux créateurs, au même endroit.",
+    "s2_title": "Ta vie privée d'abord",
+    "s2_text": "Active le Mode Confidentialité stricte en un clic : compte privé, aucun suivi. Tu gardes le contrôle de tes données.",
+    "s3_title": "Nexus Clips",
+    "s3_text": "Des vidéos courtes en plein écran, façon TikTok. Publie, scrolle et découvre depuis l'onglet Clips, en bas.",
+    "s4_title": "Messages & pourboires",
+    "s4_text": "Discute en temps réel (photos, vidéos, vocaux) et soutiens tes créateurs préférés avec un pourboire.",
+    "skip": "Passer",
+    "back": "Retour",
+    "start": "Commencer 🚀",
+    "next": "Suivant"
   }
 }

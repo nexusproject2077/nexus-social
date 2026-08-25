@@ -1288,5 +1288,43 @@
     "no_text": "(no text)",
     "pts": "{{count}} pts",
     "following_line": "You follow <a>{{following}}</a> accounts · <b>{{followers}}</b> followers"
+  },
+  "cookieconsent": {
+    "notice": "We use cookies to improve your experience.",
+    "learn_more": "Learn more",
+    "title": "🍪 We respect your privacy",
+    "essential": "We only use <b>essential cookies</b> for the site to work (login, preferences).",
+    "no_ads": " No advertising cookies or third-party tracking.",
+    "cookie_policy": "Cookie Policy",
+    "privacy": "Privacy",
+    "reject": "Decline",
+    "accept": "Accept",
+    "close": "Close"
+  },
+  "compliance": {
+    "appi_title": "Your data protection",
+    "appi_sub": "APPI Law (個人情報保護法) — transparency & control",
+    "appi_1": "We only collect the data needed to run the service.",
+    "appi_2": "You can view, correct and export your data at any time.",
+    "appi_3": "No resale of your personal data to third parties.",
+    "appi_4": "Delete your account and data in one tap, without friction.",
+    "appi_accept": "I understand and accept",
+    "my_data": "My data",
+    "delete_account": "Delete my account",
+    "readonly_fallback": "View-only mode: posting and messaging are unavailable in your country."
+  },
+  "onboarding": {
+    "s1_title": "Welcome to Nexus",
+    "s1_text": "Your all-in-one social network: posts, short videos, messages and creator support, all in one place.",
+    "s2_title": "Your privacy first",
+    "s2_text": "Turn on strict Privacy Mode in one click: private account, no tracking. You stay in control of your data.",
+    "s3_title": "Nexus Clips",
+    "s3_text": "Full-screen short videos, TikTok-style. Post, scroll and discover from the Clips tab at the bottom.",
+    "s4_title": "Messages & tips",
+    "s4_text": "Chat in real time (photos, videos, voice) and support your favorite creators with a tip.",
+    "skip": "Skip",
+    "back": "Back",
+    "start": "Start 🚀",
+    "next": "Next"
   }
 }

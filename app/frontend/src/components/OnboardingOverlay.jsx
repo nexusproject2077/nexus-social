@@ -4,30 +4,15 @@
 // localStorage), puis plus jamais. Bottom-sheet sur mobile, centré sur PC.
 
 import { useState, useEffect } from "react";
+import i18n from "@/i18n";
 
 const STORAGE_KEY = "nexus_onboarding_v1_done";
 
 const SLIDES = [
-  {
-    icon: "waving_hand",
-    title: "Bienvenue sur Nexus",
-    text: "Ton réseau social tout-en-un : publications, vidéos courtes, messages et soutien aux créateurs, au même endroit.",
-  },
-  {
-    icon: "shield",
-    title: "Ta vie privée d'abord",
-    text: "Active le Mode Confidentialité stricte en un clic : compte privé, aucun suivi. Tu gardes le contrôle de tes données.",
-  },
-  {
-    icon: "play_circle",
-    title: "Nexus Clips",
-    text: "Des vidéos courtes en plein écran, façon TikTok. Publie, scrolle et découvre depuis l'onglet Clips, en bas.",
-  },
-  {
-    icon: "volunteer_activism",
-    title: "Messages & pourboires",
-    text: "Discute en temps réel (photos, vidéos, vocaux) et soutiens tes créateurs préférés avec un pourboire.",
-  },
+  { icon: "waving_hand", k: "s1" },
+  { icon: "shield", k: "s2" },
+  { icon: "play_circle", k: "s3" },
+  { icon: "volunteer_activism", k: "s4" },
 ];
 
 export default function OnboardingOverlay() {
@@ -78,9 +63,9 @@ export default function OnboardingOverlay() {
             <span className="material-symbols-outlined text-white" style={{ fontSize: 32 }}>{s.icon}</span>
           </div>
           <h2 className="text-xl font-black text-white mb-2" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-            {s.title}
+            {i18n.t("onboarding."+s.k+"_title")}
           </h2>
-          <p className="text-sm text-slate-300 leading-relaxed max-w-xs mx-auto">{s.text}</p>
+          <p className="text-sm text-slate-300 leading-relaxed max-w-xs mx-auto">{i18n.t("onboarding."+s.k+"_text")}</p>
 
           {/* Indicateurs de progression */}
           <div className="flex justify-center gap-1.5 mt-6">
@@ -96,7 +81,7 @@ export default function OnboardingOverlay() {
 
         <div className="flex items-center justify-between gap-3 px-6 pb-6 pt-1">
           <button onClick={finish} className="text-xs font-bold text-slate-400 px-3 py-2 hover:text-slate-200 transition-colors">
-            Passer
+            {i18n.t("onboarding.skip")}
           </button>
           <div className="flex items-center gap-2">
             {i > 0 && (
@@ -104,7 +89,7 @@ export default function OnboardingOverlay() {
                 onClick={() => setI(i - 1)}
                 className="px-3 py-2.5 rounded-xl text-sm font-bold text-slate-300 transition-all hover:bg-white/5"
               >
-                Retour
+                {i18n.t("onboarding.back")}
               </button>
             )}
             <button
@@ -112,7 +97,7 @@ export default function OnboardingOverlay() {
               className="px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95"
               style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#04121f" }}
             >
-              {last ? "Commencer 🚀" : "Suivant"}
+              {last ? i18n.t("onboarding.start") : i18n.t("onboarding.next")}
             </button>
           </div>
         </div>

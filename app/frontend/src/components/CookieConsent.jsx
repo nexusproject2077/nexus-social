@@ -6,8 +6,10 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Shield } from "lucide-react";
 import { useGeo } from "@/context/GeoContext";
+import { useTranslation, Trans } from "react-i18next";
 
 export default function CookieConsent() {
+  const { t } = useTranslation();
   const [show, setShow] = useState(false);
   const { restricted, loaded } = useGeo();
 
@@ -35,9 +37,9 @@ export default function CookieConsent() {
         <div className="flex items-center gap-3 bg-slate-900/95 border border-slate-800 backdrop-blur-xl rounded-2xl px-4 py-3 shadow-xl">
           <span className="text-lg">🍪</span>
           <p className="flex-1 text-xs sm:text-sm text-slate-300 leading-snug">
-            Nous utilisons des cookies pour améliorer votre expérience.{" "}
+            {t("cookieconsent.notice")}{" "}
             <a href="/api/legal/cookie-policy" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline">
-              En savoir plus
+              {t("cookieconsent.learn_more")}
             </a>
           </p>
           <Button
@@ -68,19 +70,19 @@ export default function CookieConsent() {
 
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm sm:text-base font-semibold text-white mb-1">
-                  🍪 Nous respectons votre vie privée
+                  {t("cookieconsent.title")}
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  Nous utilisons uniquement des <strong>cookies essentiels</strong> pour le fonctionnement du site (connexion, préférences).
-                  <span className="hidden sm:inline"> Pas de cookies publicitaires ni de tracking tiers.</span>
+                  <Trans i18nKey="cookieconsent.essential" components={{ b: <strong /> }} />
+                  <span className="hidden sm:inline">{t("cookieconsent.no_ads")}</span>
                 </p>
                 <div className="flex flex-wrap gap-2 mt-2">
                   <a href="/api/legal/cookie-policy" target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:text-cyan-300 underline">
-                    Politique des cookies
+                    {t("cookieconsent.cookie_policy")}
                   </a>
                   <span className="text-slate-600">•</span>
                   <a href="/api/legal/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:text-cyan-300 underline">
-                    Confidentialité
+                    {t("cookieconsent.privacy")}
                   </a>
                 </div>
               </div>
@@ -92,14 +94,14 @@ export default function CookieConsent() {
                   size="sm"
                   className="flex-1 sm:flex-initial border-slate-700 text-slate-300 hover:bg-slate-800 h-9 sm:h-10 text-xs sm:text-sm"
                 >
-                  Refuser
+                  {t("cookieconsent.reject")}
                 </Button>
                 <Button
                   onClick={() => setConsent("accepted")}
                   size="sm"
                   className="flex-1 sm:flex-initial bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 h-9 sm:h-10 text-xs sm:text-sm font-semibold"
                 >
-                  Accepter
+                  {t("cookieconsent.accept")}
                 </Button>
               </div>
             </div>
@@ -107,7 +109,7 @@ export default function CookieConsent() {
             <button
               onClick={() => setConsent("rejected")}
               className="absolute top-2 right-2 sm:hidden p-2 text-slate-400 hover:text-white transition-colors"
-              aria-label="Fermer"
+              aria-label={t("cookieconsent.close")}
             >
               <X className="h-4 w-4" />
             </button>
