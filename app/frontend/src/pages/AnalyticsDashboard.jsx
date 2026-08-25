@@ -33,8 +33,10 @@ import {
   BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation, Trans } from "react-i18next";
 
 export default function AnalyticsDashboard({ user, setUser }) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -92,7 +94,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
         <div className="flex items-center justify-center h-screen">
           <div className="text-center">
             <Activity className="h-12 w-12 text-cyan-500 animate-pulse mx-auto mb-4" />
-            <p className="text-slate-400">Chargement de vos statistiques...</p>
+            <p className="text-slate-400">{t("analytics.loading")}</p>
           </div>
         </div>
       </Layout>
@@ -100,11 +102,11 @@ export default function AnalyticsDashboard({ user, setUser }) {
   }
 
   const kpis = [
-    { icon: FileText, color: "text-blue-500", label: "Publications", value: stats?.total_posts, badge: stats?.posts_today ? `+${stats.posts_today}` : null },
-    { icon: Heart, color: "text-red-500", label: "Likes reçus", value: stats?.total_likes, badge: null },
-    { icon: MessageSquare, color: "text-purple-500", label: "Commentaires", value: stats?.total_comments, badge: null },
-    { icon: Users, color: "text-cyan-500", label: "Abonnés", value: stats?.followers_count, badge: stats?.new_followers_today ? `+${stats.new_followers_today}` : null },
-    { icon: Eye, color: "text-green-500", label: "Vues", value: stats?.total_views, badge: null },
+    { icon: FileText, color: "text-blue-500", label: t("analytics.kpi_posts"), value: stats?.total_posts, badge: stats?.posts_today ? `+${stats.posts_today}` : null },
+    { icon: Heart, color: "text-red-500", label: t("analytics.kpi_likes"), value: stats?.total_likes, badge: null },
+    { icon: MessageSquare, color: "text-purple-500", label: t("analytics.kpi_comments"), value: stats?.total_comments, badge: null },
+    { icon: Users, color: "text-cyan-500", label: t("analytics.kpi_followers"), value: stats?.followers_count, badge: stats?.new_followers_today ? `+${stats.new_followers_today}` : null },
+    { icon: Eye, color: "text-green-500", label: t("analytics.kpi_views"), value: stats?.total_views, badge: null },
   ];
 
   // Formatage montants (centimes → « X,XX € ») et dates (relatif court).
@@ -114,9 +116,9 @@ export default function AnalyticsDashboard({ user, setUser }) {
     try {
       const d = new Date(iso);
       const days = Math.floor((Date.now() - d.getTime()) / 86400000);
-      if (days <= 0) return "Aujourd'hui";
-      if (days === 1) return "Hier";
-      if (days < 7) return `il y a ${days} j`;
+      if (days <= 0) return t("analytics.today");
+      if (days === 1) return t("analytics.yesterday");
+      if (days < 7) return t("analytics.days_ago", { days });
       return d.toLocaleDateString();
     } catch { return ""; }
   };
@@ -130,10 +132,10 @@ export default function AnalyticsDashboard({ user, setUser }) {
             className="text-xl sm:text-2xl font-bold text-white mb-0.5"
             style={{ fontFamily: "Space Grotesk, sans-serif" }}
           >
-            Mes statistiques
+            {t("analytics.title")}
           </h1>
           <p className="text-slate-400 text-xs sm:text-sm">
-            Les performances de votre compte @{user?.username}
+            {t("analytics.subtitle", { username: user?.username })}
           </p>
           {/* Accès admin : tableau de bord « santé de l'app » (DAU, rétention…). */}
           {user?.is_admin && (
@@ -143,7 +145,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
               style={{ background: "rgba(34,211,238,0.12)", color: "#22d3ee" }}
             >
               <span className="material-symbols-outlined text-sm">monitoring</span>
-              Santé de l'app (admin)
+              {t("analytics.admin_health")}
             </Link>
           )}
         </div>
@@ -152,15 +154,15 @@ export default function AnalyticsDashboard({ user, setUser }) {
           <TabsList className="grid w-full grid-cols-3 mb-4 sm:mb-6 h-auto">
             <TabsTrigger value="overview" className="text-[11px] sm:text-sm py-2">
               <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              Vue d'ensemble
+              {t("analytics.tab_overview")}
             </TabsTrigger>
             <TabsTrigger value="trends" className="text-[11px] sm:text-sm py-2">
               <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              Croissance
+              {t("analytics.tab_trends")}
             </TabsTrigger>
             <TabsTrigger value="top" className="text-[11px] sm:text-sm py-2">
               <Activity className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              Top posts
+              {t("analytics.tab_top")}
             </TabsTrigger>
           </TabsList>
 
@@ -174,12 +176,12 @@ export default function AnalyticsDashboard({ user, setUser }) {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1.5">
                       <span className="material-symbols-outlined text-cyan-400 text-lg">volunteer_activism</span>
-                      <p className="text-sm font-semibold text-slate-300">Pourboires reçus</p>
+                      <p className="text-sm font-semibold text-slate-300">{t("analytics.tips_received")}</p>
                     </div>
                     <p className="text-4xl sm:text-5xl font-black text-white leading-none tracking-tight">{eur(tips.total_amount)}</p>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5 text-[11px] sm:text-xs text-slate-400">
-                      <span><b className="text-slate-200">{tips.count}</b> pourboire{tips.count > 1 ? "s" : ""}</span>
-                      {tips.count > 0 && <span>Moyenne <b className="text-slate-200">{eur(tips.total_amount / tips.count)}</b></span>}
+                      <span><Trans i18nKey="analytics.tips_count" count={tips.count} values={{ count: tips.count }} components={{ b: <b className="text-slate-200" /> }} /></span>
+                      {tips.count > 0 && <span>{t("analytics.average")} <b className="text-slate-200">{eur(tips.total_amount / tips.count)}</b></span>}
                     </div>
                   </div>
                   <div className="w-11 h-11 rounded-2xl bg-cyan-500/15 flex items-center justify-center flex-shrink-0">
@@ -190,7 +192,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
                 {/* Liste des derniers pourboires (qui / date / montant) */}
                 {tips.tips?.length > 0 ? (
                   <div className="mt-4 pt-4 border-t border-slate-800">
-                    <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Derniers pourboires</p>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">{t("analytics.latest_tips")}</p>
                     <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                       {tips.tips.map((t) => (
                         <div key={t.id} className="flex items-center gap-3 py-2 px-2.5 rounded-xl bg-slate-800/50">
@@ -208,7 +210,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 mt-4 pt-4 border-t border-slate-800">Aucun pourboire reçu pour l'instant. Active un moyen de pourboire (carte, PayPal ou crypto) pour permettre à ta communauté de te soutenir.</p>
+                  <p className="text-xs text-slate-400 mt-4 pt-4 border-t border-slate-800">{t("analytics.no_tips")}</p>
                 )}
 
                 {/* Raccourci utile : gérer ses moyens de pourboire */}
@@ -217,7 +219,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
                   className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-cyan-400 hover:text-cyan-300 transition-colors"
                 >
                   <span className="material-symbols-outlined text-sm">settings</span>
-                  Gérer mes moyens de pourboire (carte · PayPal · crypto)
+                  {t("analytics.manage_tips")}
                 </Link>
               </CardContent>
             </Card>
@@ -246,9 +248,9 @@ export default function AnalyticsDashboard({ user, setUser }) {
               <CardContent className="p-4 flex items-center gap-3">
                 <Activity className="h-5 w-5 text-green-500" />
                 <div>
-                  <p className="text-xs sm:text-sm text-slate-400">Taux d'engagement moyen</p>
+                  <p className="text-xs sm:text-sm text-slate-400">{t("analytics.avg_engagement")}</p>
                   <p className="text-lg sm:text-xl font-bold text-white">
-                    {stats?.engagement_rate ?? 0} interactions / publication
+                    {t("analytics.interactions_per_post", { count: stats?.engagement_rate ?? 0 })}
                   </p>
                 </div>
               </CardContent>
@@ -257,9 +259,9 @@ export default function AnalyticsDashboard({ user, setUser }) {
             {/* Activité de l'audience par heure */}
             <Card className="bg-slate-900 border-slate-800">
               <CardHeader>
-                <CardTitle className="text-base sm:text-lg">Activité de votre audience par heure</CardTitle>
+                <CardTitle className="text-base sm:text-lg">{t("analytics.audience_activity")}</CardTitle>
                 <CardDescription className="text-xs sm:text-sm">
-                  Quand votre contenu reçoit des likes et commentaires (30 derniers jours)
+                  {t("analytics.audience_activity_sub")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -273,9 +275,9 @@ export default function AnalyticsDashboard({ user, setUser }) {
                       labelStyle={{ color: "#e2e8f0" }}
                     />
                     <Legend wrapperStyle={{ fontSize: "11px" }} />
-                    <Bar dataKey="likes" fill="#ec4899" name="Likes reçus" />
-                    <Bar dataKey="comments" fill="#8b5cf6" name="Commentaires" />
-                    <Bar dataKey="posts" fill="#06b6d4" name="Mes posts" />
+                    <Bar dataKey="likes" fill="#ec4899" name={t("analytics.chart_likes")} />
+                    <Bar dataKey="comments" fill="#8b5cf6" name={t("analytics.chart_comments")} />
+                    <Bar dataKey="posts" fill="#06b6d4" name={t("analytics.chart_my_posts")} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -286,9 +288,9 @@ export default function AnalyticsDashboard({ user, setUser }) {
           <TabsContent value="trends" className="space-y-3 sm:space-y-4">
             <Card className="bg-slate-900 border-slate-800">
               <CardHeader>
-                <CardTitle className="text-base sm:text-lg">Votre croissance (30 derniers jours)</CardTitle>
+                <CardTitle className="text-base sm:text-lg">{t("analytics.growth_title")}</CardTitle>
                 <CardDescription className="text-xs sm:text-sm">
-                  Publications, likes et commentaires reçus, nouveaux abonnés
+                  {t("analytics.growth_sub")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -302,10 +304,10 @@ export default function AnalyticsDashboard({ user, setUser }) {
                       labelStyle={{ color: "#e2e8f0" }}
                     />
                     <Legend wrapperStyle={{ fontSize: "11px" }} />
-                    <Line type="monotone" dataKey="followers" stroke="#06b6d4" name="Nouveaux abonnés" strokeWidth={2} />
-                    <Line type="monotone" dataKey="posts" stroke="#3b82f6" name="Publications" strokeWidth={2} />
-                    <Line type="monotone" dataKey="likes" stroke="#ec4899" name="Likes reçus" strokeWidth={2} />
-                    <Line type="monotone" dataKey="comments" stroke="#f59e0b" name="Commentaires" strokeWidth={2} />
+                    <Line type="monotone" dataKey="followers" stroke="#06b6d4" name={t("analytics.chart_new_followers")} strokeWidth={2} />
+                    <Line type="monotone" dataKey="posts" stroke="#3b82f6" name={t("analytics.chart_posts")} strokeWidth={2} />
+                    <Line type="monotone" dataKey="likes" stroke="#ec4899" name={t("analytics.chart_likes")} strokeWidth={2} />
+                    <Line type="monotone" dataKey="comments" stroke="#f59e0b" name={t("analytics.chart_comments")} strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -316,15 +318,15 @@ export default function AnalyticsDashboard({ user, setUser }) {
           <TabsContent value="top" className="space-y-3 sm:space-y-4">
             <Card className="bg-slate-900 border-slate-800">
               <CardHeader>
-                <CardTitle className="text-base sm:text-lg">Vos meilleures publications</CardTitle>
-                <CardDescription className="text-xs sm:text-sm">Classées par engagement</CardDescription>
+                <CardTitle className="text-base sm:text-lg">{t("analytics.top_title")}</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">{t("analytics.top_sub")}</CardDescription>
               </CardHeader>
               <CardContent>
                 {topPosts.length === 0 ? (
                   <div className="text-center py-6 sm:py-8">
                     <FileText className="h-10 w-10 sm:h-12 sm:w-12 text-slate-600 mx-auto mb-2 sm:mb-3" />
                     <p className="text-slate-400 text-xs sm:text-sm">
-                      Publiez du contenu pour voir vos meilleures performances ici
+                      {t("analytics.top_empty")}
                     </p>
                   </div>
                 ) : (
@@ -336,7 +338,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
                             {index + 1}
                           </div>
                           <p className="flex-1 min-w-0 text-xs sm:text-sm text-slate-200 line-clamp-2">
-                            {post.content || "(sans texte)"}
+                            {post.content || t("analytics.no_text")}
                           </p>
                         </div>
                         <div className="flex items-center gap-3 sm:gap-4 text-[10px] sm:text-xs text-slate-400 ml-8 sm:ml-11">
@@ -350,7 +352,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
                             <Eye className="h-3 w-3" /> {post.views}
                           </span>
                           <Badge variant="secondary" className="text-[9px] sm:text-xs ml-auto">
-                            {Math.round(post.engagement_score)} pts
+                            {t("analytics.pts", { count: Math.round(post.engagement_score) })}
                           </Badge>
                         </div>
                       </div>
@@ -365,8 +367,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
               <CardContent className="p-4 flex items-center gap-3">
                 <UserPlus className="h-5 w-5 text-cyan-500" />
                 <p className="text-xs sm:text-sm text-slate-400">
-                  Vous suivez <span className="text-white font-semibold">{stats?.following_count ?? 0}</span> comptes ·{" "}
-                  <span className="text-white font-semibold">{stats?.followers_count ?? 0}</span> abonnés
+                  <Trans i18nKey="analytics.following_line" values={{ following: stats?.following_count ?? 0, followers: stats?.followers_count ?? 0 }} components={{ a: <span className="text-white font-semibold" />, b: <span className="text-white font-semibold" /> }} />
                 </p>
               </CardContent>
             </Card>
