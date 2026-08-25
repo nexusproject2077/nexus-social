@@ -2,6 +2,7 @@
 // Le créateur peut proposer : carte (Stripe), PayPal (paiement automatique avec
 // commission), lien PayPal.me (sans commission) et/ou crypto. On n'affiche que
 // les moyens réellement activés par le créateur.
+import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import axios from "axios";
 import { API } from "@/App";
@@ -14,6 +15,7 @@ export default function TipModal({
   canReceiveTips = false, paypalReceivable = false, paypalLink = "", cryptoWallet = "",
   onClose,
 }) {
+  const { t } = useTranslation();
   const [amount, setAmount] = useState(2);   // montant sélectionné (€)
   const [custom, setCustom] = useState("");
   const [loading, setLoading] = useState(false);
@@ -23,27 +25,27 @@ export default function TipModal({
   const hasAmountMethod = canReceiveTips || paypalReceivable;
 
   const payStripe = async () => {
-    if (!amountOk) { toast.error("Montant entre 1 € et 1 000 €"); return; }
+    if (!amountOk) { toast.error(t("tip.err_amount")); return; }
     setLoading(true);
     try {
       const res = await axios.post(`${API}/users/${userId}/tip-checkout`, { amount_cents: Math.round(value * 100) });
       if (res.data?.url) window.location.href = res.data.url;
-      else { toast.error("Pourboire momentanément indisponible"); setLoading(false); }
-    } catch (e) { toast.error(e.response?.data?.detail || "Pourboire momentanément indisponible"); setLoading(false); }
+      else { toast.error(t("tip.err_tip_unavailable")); setLoading(false); }
+    } catch (e) { toast.error(e.response?.data?.detail || t("tip.err_tip_unavailable")); setLoading(false); }
   };
 
   const payPaypal = async () => {
-    if (!amountOk) { toast.error("Montant entre 1 € et 1 000 €"); return; }
+    if (!amountOk) { toast.error(t("tip.err_amount")); return; }
     setLoading(true);
     try {
       const res = await axios.post(`${API}/users/${userId}/paypal-tip`, { amount_cents: Math.round(value * 100) });
       if (res.data?.url) window.location.href = res.data.url;
-      else { toast.error("PayPal momentanément indisponible"); setLoading(false); }
-    } catch (e) { toast.error(e.response?.data?.detail || "PayPal momentanément indisponible"); setLoading(false); }
+      else { toast.error(t("tip.err_paypal_unavailable")); setLoading(false); }
+    } catch (e) { toast.error(e.response?.data?.detail || t("tip.err_paypal_unavailable")); setLoading(false); }
   };
 
   const copyCrypto = async () => {
-    try { await navigator.clipboard.writeText(cryptoWallet); toast.success("Adresse crypto copiée 🙌"); }
+    try { await navigator.clipboard.writeText(cryptoWallet); toast.success(t("tip.crypto_copied")); }
     catch { toast.info(cryptoWallet); }
   };
 
@@ -67,10 +69,10 @@ export default function TipModal({
         style={{ background: "#171f33", border: "1px solid rgba(255,255,255,0.08)" }}>
         <div className="flex items-center gap-2 mb-1">
           <span className="material-symbols-outlined" style={{ color: "var(--nexus-accent)" }}>volunteer_activism</span>
-          <h3 className="font-bold text-white">Soutenir{username ? ` @${username}` : ""}</h3>
+          <h3 className="font-bold text-white">{username ? t("tip.support_user", { user: username }) : t("tip.support")}</h3>
         </div>
         <p className="text-[12px] mb-4" style={{ color: "#859397" }}>
-          Un petit geste pour l'encourager. Choisis un montant et un moyen de paiement.
+          {t("tip.subtitle")}
         </p>
 
         {/* Montant partagé (carte + PayPal) */}
@@ -81,7 +83,7 @@ export default function TipModal({
               style={{ background: "#222a3d", border: `1px solid ${custom ? "var(--nexus-accent)" : "rgba(255,255,255,0.08)"}` }}>
               <input type="number" min="1" max="1000" step="1" inputMode="decimal"
                 value={custom} onChange={(e) => setCustom(e.target.value)}
-                placeholder="Autre montant"
+                placeholder={t("tip.custom_amount")}
                 className="flex-1 bg-transparent outline-none py-3 text-sm text-white" />
               <span className="text-sm font-bold" style={{ color: "#859397" }}>€</span>
             </div>
@@ -92,7 +94,7 @@ export default function TipModal({
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm active:scale-95 transition-all disabled:opacity-50"
                   style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}>
                   <span className="material-symbols-outlined text-lg">credit_card</span>
-                  Payer {amountOk ? `${value} € ` : ""}par carte
+                  {t("tip.pay_card", { amount: amountOk ? `${value} € ` : "" })}
                 </button>
               )}
               {paypalReceivable && (
@@ -100,11 +102,11 @@ export default function TipModal({
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm active:scale-95 transition-all disabled:opacity-50"
                   style={{ background: "#ffc439", color: "#0a1628" }}>
                   <span className="material-symbols-outlined text-lg">account_balance_wallet</span>
-                  Payer {amountOk ? `${value} € ` : ""}avec PayPal
+                  {t("tip.pay_paypal", { amount: amountOk ? `${value} € ` : "" })}
                 </button>
               )}
             </div>
-            <p className="text-[11px] mt-2 mb-1" style={{ color: "#859397" }}>Paiement sécurisé. Le créateur reçoit le montant après commission.</p>
+            <p className="text-[11px] mt-2 mb-1" style={{ color: "#859397" }}>{t("tip.secure_note")}</p>
           </>
         )}
 
@@ -113,7 +115,7 @@ export default function TipModal({
           <>
             {hasAmountMethod && <div className="h-px my-3" style={{ background: "rgba(255,255,255,0.08)" }} />}
             <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: "#859397" }}>
-              {hasAmountMethod ? "Autres moyens" : "Moyens disponibles"}
+              {hasAmountMethod ? t("tip.other_methods") : t("tip.available_methods")}
             </p>
             <div className="space-y-2">
               {paypalLink && !paypalReceivable && (
@@ -121,7 +123,7 @@ export default function TipModal({
                   className="flex items-center gap-3 px-4 py-3 rounded-xl active:scale-95 transition-all"
                   style={{ background: "#222a3d", border: "1px solid rgba(255,255,255,0.08)" }}>
                   <span className="material-symbols-outlined" style={{ color: "#22d3ee" }}>account_balance_wallet</span>
-                  <span className="text-sm font-bold text-white flex-1">Payer avec PayPal</span>
+                  <span className="text-sm font-bold text-white flex-1">{t("tip.pay_with_paypal")}</span>
                   <span className="material-symbols-outlined text-base" style={{ color: "#859397" }}>open_in_new</span>
                 </a>
               )}
@@ -130,7 +132,7 @@ export default function TipModal({
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl active:scale-95 transition-all text-left"
                   style={{ background: "#222a3d", border: "1px solid rgba(255,255,255,0.08)" }}>
                   <span className="material-symbols-outlined" style={{ color: "#22d3ee" }}>currency_bitcoin</span>
-                  <span className="text-sm font-bold text-white flex-1">Copier l'adresse crypto</span>
+                  <span className="text-sm font-bold text-white flex-1">{t("tip.copy_crypto")}</span>
                   <span className="material-symbols-outlined text-base" style={{ color: "#859397" }}>content_copy</span>
                 </button>
               )}
@@ -141,7 +143,7 @@ export default function TipModal({
         <button onClick={onClose} disabled={loading}
           className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
           style={{ background: "#222a3d", color: "#a7b3cc" }}>
-          Fermer
+          {t("tip.close")}
         </button>
       </div>
     </div>
