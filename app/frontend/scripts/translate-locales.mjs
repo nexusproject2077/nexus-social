@@ -133,7 +133,9 @@ const BATCH_SIZE = PROVIDER === "deepl" ? 40 : (PROVIDER === "openai" ? 20 : 1);
 async function deeplBatch(texts, target) {
   const key = process.env.DEEPL_API_KEY;
   const host = key?.endsWith(":fx") ? "https://api-free.deepl.com" : "https://api.deepl.com";
-  const params = new URLSearchParams({ source_lang: SOURCE_LANG.toUpperCase(), target_lang: target.toUpperCase() });
+  // tag_handling=html : DeepL préserve les balises HTML (<p>, <h2>, <a>, <b>…)
+  // des corps d'articles ET des chaînes riches (Trans) au lieu de les traduire.
+  const params = new URLSearchParams({ source_lang: SOURCE_LANG.toUpperCase(), target_lang: target.toUpperCase(), tag_handling: "html" });
   for (const t of texts) params.append("text", t);
   const r = await fetch(`${host}/v2/translate`, {
     method: "POST",
