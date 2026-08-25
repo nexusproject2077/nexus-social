@@ -8,6 +8,7 @@ import { API } from "../App";
 import { SURFACE, TEXT, OUTLINE } from "@/lib/theme";
 import { useNavigate } from 'react-router-dom';
 import { PreviewAudio } from "@/lib/silentAudio";
+import { useTranslation } from "react-i18next";
 
 interface Story {
   id: string;
@@ -40,6 +41,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   onDeleteStory 
 }) => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [currentGroupIndex, setCurrentGroupIndex] = useState(initialGroupIndex);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
   const [showOptions, setShowOptions] = useState(false);
@@ -80,8 +82,8 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
       await fetch(`${API}/stories/${currentStory.id}/react`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify({ emoji }),
       });
-      toast("Réaction envoyée");
-    } catch { toast.error("Impossible de réagir."); }
+      toast(t("storyviewer.reaction_sent"));
+    } catch { toast.error(t("storyviewer.err_react")); }
   };
 
   const sendReply = async () => {
@@ -93,8 +95,8 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
       });
       if (!res.ok) throw new Error();
       setReplyText("");
-      toast.success("Réponse envoyée en message privé");
-    } catch { toast.error("Réponse impossible."); }
+      toast.success(t("storyviewer.reply_sent"));
+    } catch { toast.error(t("storyviewer.err_reply")); }
     finally { setSendingReply(false); }
   };
 
@@ -296,7 +298,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   };
 
   const handleDelete = async () => {
-    if (!currentStory) { toast.error("Aucune story sélectionnée"); return; }
+    if (!currentStory) { toast.error(t("storyviewer.no_story_selected")); return; }
     const sid = currentStory.id;
     const removeLocally = () => {
       onDeleteStory(sid);   // retrait immédiat de la barre + refetch serveur
@@ -304,12 +306,12 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
     };
     try {
       await axios.delete(`${API}/stories/${sid}`);
-      toast.success("Story supprimée");
+      toast.success(t("storyviewer.story_deleted"));
       removeLocally();
     } catch (err: any) {
       // 404 = déjà supprimée → on la retire quand même.
       if (err?.response?.status === 404) { removeLocally(); return; }
-      toast.error(err?.response?.data?.detail || "Impossible de supprimer la story");
+      toast.error(err?.response?.data?.detail || t("storyviewer.err_delete_story"));
     }
   };
 
@@ -347,14 +349,14 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
               onClick={async (e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                if (!currentStory) { toast.error("Aucune story sélectionnée"); return; }
+                if (!currentStory) { toast.error(t("storyviewer.no_story_selected")); return; }
                 setIsPaused(true); // fige la progression pendant la confirmation
-                const ok = window.confirm("Supprimer définitivement cette story ?");
+                const ok = window.confirm(t("storyviewer.delete_confirm"));
                 if (!ok) { setIsPaused(false); return; }
                 await handleDelete();
               }}
-              title="Supprimer la story"
-              aria-label="Supprimer la story"
+              title={t("storyviewer.delete_action")}
+              aria-label={t("storyviewer.delete_action")}
               className="text-white bg-red-600/85 backdrop-blur-sm rounded-full p-2 hover:bg-red-600 transition-all"
             >
               <Trash2 size={20} />
@@ -504,7 +506,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
             className="flex items-center gap-2 text-white/90 text-sm font-semibold mx-auto"
           >
             <span className="material-symbols-outlined text-[20px]">visibility</span>
-            Vu par {(currentStory as any).views_count ?? 0}
+            {t("storyviewer.seen_by", { count: (currentStory as any).views_count ?? 0 })}
           </button>
         ) : (
           <>
@@ -522,7 +524,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
                 onFocus={() => setIsPaused(true)}
                 onBlur={() => setIsPaused(false)}
                 onKeyDown={(e) => { if (e.key === "Enter") sendReply(); }}
-                placeholder={`Répondre à ${currentGroup.username}…`}
+                placeholder={t("storyviewer.reply_to", { user: currentGroup.username })}
                 className="flex-1 text-sm px-4 py-3 rounded-full border-none outline-none placeholder:text-white/50 text-white"
                 style={{ background: "rgba(255,255,255,0.15)" }}
               />
@@ -545,10 +547,10 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
             <div className="w-10 h-1.5 rounded-full mx-auto mb-4 bg-slate-700" />
             <h3 className="font-black text-lg mb-3 px-1 text-white flex items-center gap-2">
               <span className="material-symbols-outlined text-[20px]">visibility</span>
-              {viewers.length} vue{viewers.length > 1 ? "s" : ""}
+              {t("storyviewer.views", { count: viewers.length })}
             </h3>
             {viewers.length === 0 ? (
-              <p className="text-slate-400 text-sm text-center py-8">Personne n'a encore vu cette story.</p>
+              <p className="text-slate-400 text-sm text-center py-8">{t("storyviewer.no_views")}</p>
             ) : (
               <div className="space-y-1">
                 {viewers.map((v) => (
@@ -576,10 +578,10 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-xl font-bold text-white mb-2">
-              Supprimer cette story ?
+              {t("storyviewer.confirm_q")}
             </h3>
             <p className="mb-6 text-sm" style={{ color: TEXT.muted }}>
-              Cette action est irréversible
+              {t("storyviewer.irreversible")}
             </p>
             <div className="flex gap-3">
               <button
@@ -587,13 +589,13 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
                 className="flex-1 px-5 py-2.5 rounded-xl text-white transition-colors font-medium hover:opacity-90"
                 style={{ background: SURFACE.high }}
               >
-                Annuler
+                {t("storyviewer.cancel")}
               </button>
               <button
                 onClick={() => { handleDelete(); }}
                 className="flex-1 px-5 py-2.5 rounded-xl bg-red-600 text-white hover:bg-red-500 transition-colors font-medium"
               >
-                Supprimer
+                {t("storyviewer.delete")}
               </button>
             </div>
           </div>

@@ -1394,5 +1394,38 @@
     "subscribe_failed": "Échec de l'abonnement push",
     "backend_failed": "Échec de l'enregistrement, réessayez",
     "unavailable": "Notifications push indisponibles pour le moment"
+  },
+  "addstory": {
+    "err_type": "Seules les images et vidéos sont autorisées",
+    "err_size": "Fichier trop lourd (max 10 Mo)",
+    "published": "Story publiée avec succès !",
+    "session_expired": "Session expirée, veuillez vous reconnecter",
+    "err_publish": "Erreur lors de la publication de la story",
+    "title": "Publier une story",
+    "cta_add": "Cliquez pour ajouter une photo ou vidéo",
+    "image": "Image",
+    "video": "Vidéo",
+    "publishing": "Publication...",
+    "publish": "Publier la story"
+  },
+  "storyviewer": {
+    "reaction_sent": "Réaction envoyée",
+    "err_react": "Impossible de réagir.",
+    "reply_sent": "Réponse envoyée en message privé",
+    "err_reply": "Réponse impossible.",
+    "no_story_selected": "Aucune story sélectionnée",
+    "story_deleted": "Story supprimée",
+    "err_delete_story": "Impossible de supprimer la story",
+    "delete_confirm": "Supprimer définitivement cette story ?",
+    "delete_action": "Supprimer la story",
+    "seen_by": "Vu par {{count}}",
+    "reply_to": "Répondre à {{user}}…",
+    "views_one": "{{count}} vue",
+    "views_other": "{{count}} vues",
+    "no_views": "Personne n'a encore vu cette story.",
+    "confirm_q": "Supprimer cette story ?",
+    "irreversible": "Cette action est irréversible",
+    "cancel": "Annuler",
+    "delete": "Supprimer"
   }
 }

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import axios from "axios";
 import { API } from "../App";
 import { SURFACE, TEXT, OUTLINE, ACCENT_GRADIENT } from "@/lib/theme";
+import { useTranslation } from "react-i18next";
 
 interface AddStoryModalProps {
   onClose: () => void;
@@ -14,6 +15,7 @@ interface AddStoryModalProps {
 }
 
 export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps) {
+  const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -24,13 +26,13 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
 
     // Vérification type
     if (!selected.type.startsWith("image/") && !selected.type.startsWith("video/")) {
-      toast.error("Seules les images et vidéos sont autorisées");
+      toast.error(t("addstory.err_type"));
       return;
     }
 
     // Vérification taille (10 Mo max)
     if (selected.size > 10 * 1024 * 1024) {
-      toast.error("Fichier trop lourd (max 10 Mo)");
+      toast.error(t("addstory.err_size"));
       return;
     }
 
@@ -58,16 +60,16 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
         },
       });
 
-      toast.success("Story publiée avec succès !");
+      toast.success(t("addstory.published"));
       // Rafraîchit immédiatement le bandeau des stories (sans recharger la page).
       window.dispatchEvent(new CustomEvent("nexus:realtime", { detail: { type: "story" } }));
       onSuccess();
     } catch (err: any) {
       console.error("Erreur upload story :", err);
       if (err.response?.status === 401) {
-        toast.error("Session expirée, veuillez vous reconnecter");
+        toast.error(t("addstory.session_expired"));
       } else {
-        toast.error("Erreur lors de la publication de la story");
+        toast.error(t("addstory.err_publish"));
       }
     } finally {
       setUploading(false);
@@ -89,7 +91,7 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
         <DialogHeader>
           {/* Pas de bouton de fermeture custom ici : DialogContent fournit déjà
               sa propre croix (X) en haut à droite → évite la « double croix ». */}
-          <DialogTitle className="text-xl font-bold">Publier une story</DialogTitle>
+          <DialogTitle className="text-xl font-bold">{t("addstory.title")}</DialogTitle>
         </DialogHeader>
 
         <div className="mt-4">
@@ -100,15 +102,15 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
             >
               <div className="flex flex-col items-center gap-4">
                 <Camera className="w-12 h-12" style={{ color: TEXT.muted }} />
-                <p style={{ color: TEXT.muted }}>Cliquez pour ajouter une photo ou vidéo</p>
+                <p style={{ color: TEXT.muted }}>{t("addstory.cta_add")}</p>
                 <div className="flex gap-4">
                   <div className="flex items-center gap-2" style={{ color: TEXT.muted }}>
                     <ImageIcon className="w-5 h-5" />
-                    <span className="text-sm">Image</span>
+                    <span className="text-sm">{t("addstory.image")}</span>
                   </div>
                   <div className="flex items-center gap-2" style={{ color: TEXT.muted }}>
                     <Video className="w-5 h-5" />
-                    <span className="text-sm">Vidéo</span>
+                    <span className="text-sm">{t("addstory.video")}</span>
                   </div>
                 </div>
               </div>
@@ -147,10 +149,10 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
                 {uploading ? (
                   <div className="flex items-center gap-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                    <span>Publication...</span>
+                    <span>{t("addstory.publishing")}</span>
                   </div>
                 ) : (
-                  "Publier la story"
+                  t("addstory.publish")
                 )}
               </Button>
             </div>

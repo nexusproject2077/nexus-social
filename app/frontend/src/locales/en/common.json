@@ -1394,5 +1394,38 @@
     "subscribe_failed": "Push subscription failed",
     "backend_failed": "Registration failed, try again",
     "unavailable": "Push notifications unavailable right now"
+  },
+  "addstory": {
+    "err_type": "Only images and videos are allowed",
+    "err_size": "File too large (max 10 MB)",
+    "published": "Story published successfully!",
+    "session_expired": "Session expired, please log in again",
+    "err_publish": "Error publishing the story",
+    "title": "Publish a story",
+    "cta_add": "Click to add a photo or video",
+    "image": "Image",
+    "video": "Video",
+    "publishing": "Publishing...",
+    "publish": "Publish story"
+  },
+  "storyviewer": {
+    "reaction_sent": "Reaction sent",
+    "err_react": "Could not react.",
+    "reply_sent": "Reply sent as a private message",
+    "err_reply": "Could not reply.",
+    "no_story_selected": "No story selected",
+    "story_deleted": "Story deleted",
+    "err_delete_story": "Could not delete the story",
+    "delete_confirm": "Permanently delete this story?",
+    "delete_action": "Delete the story",
+    "seen_by": "Seen by {{count}}",
+    "reply_to": "Reply to {{user}}…",
+    "views_one": "{{count}} view",
+    "views_other": "{{count}} views",
+    "no_views": "No one has viewed this story yet.",
+    "confirm_q": "Delete this story?",
+    "irreversible": "This action is irreversible",
+    "cancel": "Cancel",
+    "delete": "Delete"
   }
 }
