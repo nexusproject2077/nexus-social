@@ -590,7 +590,7 @@ export default function ProfilePage({ user, setUser }) {
           <div className="text-center py-16 px-6 rounded-2xl" style={{ background: `${C.surfaceContainer}80`, border: `1px solid ${C.outlineVariant}18` }}>
             <svg
               width="96" height="96" viewBox="0 0 96 96" fill="none"
-              className="mx-auto mb-6" role="img" aria-label="Profil privé"
+              className="mx-auto mb-6" role="img" aria-label={t("profilepage.private_aria")}
             >
               <defs>
                 <linearGradient id="nexusLockGrad" x1="0" y1="0" x2="1" y2="1">

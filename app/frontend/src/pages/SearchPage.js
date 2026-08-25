@@ -39,7 +39,7 @@ function ListsPanel({ user }) {
   };
 
   const deleteList = async (id) => {
-    if (!window.confirm("Supprimer cette liste ?")) return;
+    if (!window.confirm(t("searchpage.confirm_delete_list"))) return;
     try { await axios.delete(`${API}/lists/${id}`); setDetail(null); fetchLists(); toast.success(t("searchpage.list_deleted")); }
     catch { toast.error(t("searchpage.err_generic")); }
   };

@@ -428,7 +428,11 @@
     "sched_in_1h": "In 1 hour",
     "sched_tonight": "Tonight {{time}}",
     "sched_tomorrow": "Tomorrow {{time}}",
-    "custom": "Custom"
+    "custom": "Custom",
+    "confirm_delete_convo": "Delete this conversation?",
+    "confirm_leave_group": "Leave this group?",
+    "confirm_delete_discussion": "Delete this chat? It will disappear from your inbox.",
+    "send_long_press": "Send — long press to schedule"
   },
   "widgets": {
     "football": "Football",
@@ -627,7 +631,8 @@
     "err_like": "Error while liking",
     "err_add_reply": "Error adding the reply",
     "view_replies_one": "▼ {{count}} reply",
-    "view_replies_other": "▼ {{count}} replies"
+    "view_replies_other": "▼ {{count}} replies",
+    "confirm_delete": "Delete this comment?"
   },
   "profilepage": {
     "posts": "Posts",
@@ -656,7 +661,8 @@
     "follow_request_sent": "Follow request sent",
     "followed": "Followed successfully",
     "unfollowed": "Unfollowed successfully",
-    "link_copied": "Profile link copied"
+    "link_copied": "Profile link copied",
+    "private_aria": "Private profile"
   },
   "searchpage": {
     "list_created": "List created",
@@ -678,7 +684,8 @@
     "delete_list": "Delete the list",
     "no_lists": "No lists. Create one to group accounts.",
     "no_trends": "No trends yet. Post with #hashtags!",
-    "no_results": "No results for « {{query}} »"
+    "no_results": "No results for « {{query}} »",
+    "confirm_delete_list": "Delete this list?"
   },
   "tipmodal": {
     "support": "Support",

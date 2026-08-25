@@ -428,7 +428,11 @@
     "sched_in_1h": "Dans 1 heure",
     "sched_tonight": "Ce soir {{time}}",
     "sched_tomorrow": "Demain {{time}}",
-    "custom": "Personnalisé"
+    "custom": "Personnalisé",
+    "confirm_delete_convo": "Supprimer cette conversation ?",
+    "confirm_leave_group": "Quitter ce groupe ?",
+    "confirm_delete_discussion": "Supprimer cette discussion ? Elle disparaîtra de votre boîte.",
+    "send_long_press": "Envoyer — appui long pour planifier"
   },
   "widgets": {
     "football": "Football",
@@ -627,7 +631,8 @@
     "err_like": "Erreur lors du like",
     "err_add_reply": "Erreur lors de l'ajout de la réponse",
     "view_replies_one": "▼ {{count}} réponse",
-    "view_replies_other": "▼ {{count}} réponses"
+    "view_replies_other": "▼ {{count}} réponses",
+    "confirm_delete": "Supprimer ce commentaire ?"
   },
   "profilepage": {
     "posts": "Publications",
@@ -656,7 +661,8 @@
     "follow_request_sent": "Demande d'abonnement envoyée",
     "followed": "Abonné avec succès",
     "unfollowed": "Désabonné avec succès",
-    "link_copied": "Lien du profil copié"
+    "link_copied": "Lien du profil copié",
+    "private_aria": "Profil privé"
   },
   "searchpage": {
     "list_created": "Liste créée",
@@ -678,7 +684,8 @@
     "delete_list": "Supprimer la liste",
     "no_lists": "Aucune liste. Créez-en une pour regrouper des comptes.",
     "no_trends": "Aucune tendance pour l'instant. Publiez avec des #hashtags !",
-    "no_results": "Aucun résultat pour « {{query}} »"
+    "no_results": "Aucun résultat pour « {{query}} »",
+    "confirm_delete_list": "Supprimer cette liste ?"
   },
   "tipmodal": {
     "support": "Soutenir",

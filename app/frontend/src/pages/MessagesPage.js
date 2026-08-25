@@ -1000,7 +1000,7 @@ export default function MessagesPage({ user }) {
         toast.success(t("dm.group_left"));
       } catch { toast.error(t("dm.err_leave_group")); }
     } else {
-      if (!window.confirm("Supprimer cette conversation ?")) return;
+      if (!window.confirm(t("dm.confirm_delete_convo"))) return;
       try {
         await axios.delete(`${API}/messages/conversations/${m.id}`);
         if (selectedUserId === m.id) navigate("/messages");
@@ -1362,7 +1362,7 @@ export default function MessagesPage({ user }) {
 
   const handleLeaveGroup = async () => {
     if (!selectedGroupId) return;
-    if (!window.confirm("Quitter ce groupe ?")) return;
+    if (!window.confirm(t("dm.confirm_leave_group"))) return;
     const gid = selectedGroupId;
     try {
       await axios.delete(`${API}/messages/groups/${gid}/members/${user.id}`);
@@ -1413,7 +1413,7 @@ export default function MessagesPage({ user }) {
   // ── Actions « Détails » ──────────────────────────────────────────────────────
   const handleClearConversation = async () => {
     if (!selectedUserId) return;
-    if (!window.confirm("Supprimer cette discussion ? Elle disparaîtra de votre boîte.")) return;
+    if (!window.confirm(t("dm.confirm_delete_discussion"))) return;
     try {
       await axios.delete(`${API}/messages/conversations/${selectedUserId}`);
       setConversations((prev) => prev.filter((c) => c.user_id !== selectedUserId));
@@ -2205,7 +2205,7 @@ export default function MessagesPage({ user }) {
                   }}
                   onPointerUp={() => clearTimeout(sendLpTimer.current)}
                   onPointerLeave={() => clearTimeout(sendLpTimer.current)}
-                  title="Envoyer — appui long pour planifier"
+                  title={t("dm.send_long_press")}
                   className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-40"
                   style={{ background: (messageContent.trim() || pendingImage || pendingAudio) ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: (messageContent.trim() || pendingImage || pendingAudio) ? C.onPrimary : C.outline }}>
                   <span className="material-symbols-outlined text-sm">send</span>

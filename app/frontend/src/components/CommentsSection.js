@@ -89,7 +89,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
   };
 
   const handleDeleteComment = async (commentId) => {
-    if (!window.confirm("Supprimer ce commentaire ?")) return;
+    if (!window.confirm(t("comments.confirm_delete"))) return;
     try {
       await axios.delete(`${API}/posts/${postId}/comments/${commentId}`);
       setComments(prev => prev.filter(c => c.id !== commentId));
