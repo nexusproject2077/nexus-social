@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { SURFACE, TEXT, ACCENT, OUTLINE } from "@/lib/theme";
+import i18n from "@/i18n";
 
 const C = {
   bg: SURFACE.deep, surface: SURFACE.base, high: SURFACE.high,
@@ -15,7 +16,7 @@ const C = {
 
 const WELCOME = {
   role: "assistant",
-  text: "👋 Salut, moi c'est Nexus AI. Pose-moi une question, demande-moi d'écrire une publication ou de te trouver des idées de clips !",
+  text: i18n.t("aichat.welcome"),
 };
 
 export default function NexusAIChat({ onClose }) {
@@ -43,7 +44,7 @@ export default function NexusAIChat({ onClose }) {
       const r = await axios.post(`${API}/ai/chat`, { message: text, history });
       setMessages((p) => [...p, { role: "assistant", text: r.data?.reply || "…" }]);
     } catch (e) {
-      const detail = e.response?.data?.detail || "Oups, je n'ai pas pu répondre. Réessaie dans un instant.";
+      const detail = e.response?.data?.detail || i18n.t("aichat.err_reply");
       setMessages((p) => [...p, { role: "assistant", text: detail }]);
     } finally {
       setSending(false);
@@ -70,7 +71,7 @@ export default function NexusAIChat({ onClose }) {
             Nexus AI
             <span className="material-symbols-outlined text-base" style={{ color: C.accent, fontVariationSettings: "'FILL' 1" }}>verified</span>
           </p>
-          <p className="text-[11px]" style={{ color: C.muted }}>Assistant · toujours dispo</p>
+          <p className="text-[11px]" style={{ color: C.muted }}>{i18n.t("aichat.subtitle")}</p>
         </div>
       </div>
 
@@ -107,7 +108,7 @@ export default function NexusAIChat({ onClose }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKey}
           rows={1}
-          placeholder="Écris à Nexus AI…"
+          placeholder={i18n.t("aichat.placeholder")}
           className="flex-1 resize-none text-sm px-4 py-2.5 rounded-2xl outline-none max-h-32"
           style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outline}` }}
         />

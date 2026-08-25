@@ -1367,5 +1367,32 @@
     "close": "Fermer",
     "in_progress": "En direct",
     "no_events": "Aucun événement pour le moment."
+  },
+  "aichat": {
+    "welcome": "👋 Salut, moi c'est Nexus AI. Pose-moi une question, demande-moi d'écrire une publication ou de te trouver des idées de clips !",
+    "err_reply": "Oups, je n'ai pas pu répondre. Réessaie dans un instant.",
+    "subtitle": "Assistant · toujours dispo",
+    "placeholder": "Écris à Nexus AI…"
+  },
+  "trash": {
+    "post_trashed": "Publication déplacée dans la corbeille",
+    "err_delete": "Erreur lors de la suppression",
+    "comment_trashed": "Commentaire déplacé dans la corbeille",
+    "restored": "Élément restauré avec succès",
+    "err_restore": "Erreur lors de la restauration",
+    "perm_deleted": "Élément supprimé définitivement",
+    "empty_confirm": "Supprimer définitivement tous les éléments de la corbeille ?",
+    "trash_emptied": "Corbeille vidée"
+  },
+  "push": {
+    "ok": "Notifications push activées",
+    "unsupported": "Ce navigateur ne prend pas en charge les notifications push",
+    "ios_install": "Sur iPhone/iPad : ajoutez d'abord Nexus à l'écran d'accueil",
+    "denied": "Notifications bloquées dans les réglages du navigateur",
+    "no_sw": "Service worker indisponible",
+    "no_key": "Serveur de notifications indisponible (réessayez plus tard)",
+    "subscribe_failed": "Échec de l'abonnement push",
+    "backend_failed": "Échec de l'enregistrement, réessayez",
+    "unavailable": "Notifications push indisponibles pour le moment"
   }
 }

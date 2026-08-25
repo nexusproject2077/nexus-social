@@ -1367,5 +1367,32 @@
     "close": "Close",
     "in_progress": "Live",
     "no_events": "No events yet."
+  },
+  "aichat": {
+    "welcome": "👋 Hi, I'm Nexus AI. Ask me a question, ask me to write a post or find you clip ideas!",
+    "err_reply": "Oops, I couldn't reply. Try again in a moment.",
+    "subtitle": "Assistant · always available",
+    "placeholder": "Write to Nexus AI…"
+  },
+  "trash": {
+    "post_trashed": "Post moved to trash",
+    "err_delete": "Error while deleting",
+    "comment_trashed": "Comment moved to trash",
+    "restored": "Item restored successfully",
+    "err_restore": "Error while restoring",
+    "perm_deleted": "Item permanently deleted",
+    "empty_confirm": "Permanently delete all items in the trash?",
+    "trash_emptied": "Trash emptied"
+  },
+  "push": {
+    "ok": "Push notifications enabled",
+    "unsupported": "This browser doesn't support push notifications",
+    "ios_install": "On iPhone/iPad: first add Nexus to the Home Screen",
+    "denied": "Notifications blocked in browser settings",
+    "no_sw": "Service worker unavailable",
+    "no_key": "Notification server unavailable (try again later)",
+    "subscribe_failed": "Push subscription failed",
+    "backend_failed": "Registration failed, try again",
+    "unavailable": "Push notifications unavailable right now"
   }
 }

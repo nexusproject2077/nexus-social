@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 // Web Push — enregistrement du Service Worker + abonnement PushManager.
 // Fonctionne « app fermée » (Android/Chrome/Firefox/Edge, et iOS 16.4+ SI le
 // site est installé sur l'écran d'accueil). Best-effort partout : aucune de
@@ -161,14 +162,9 @@ export async function disablePush() {
 // Libellés FR de chaque cause de succès/échec (toasts clairs). Couvre les codes
 // des deux écrans (unifiés).
 export function pushReasonLabel(reason) {
-  return {
-    ok: "Notifications push activées",
-    unsupported: "Ce navigateur ne prend pas en charge les notifications push",
-    "ios-install": "Sur iPhone/iPad : ajoutez d'abord Nexus à l'écran d'accueil",
-    denied: "Notifications bloquées dans les réglages du navigateur",
-    "no-sw": "Service worker indisponible",
-    "no-key": "Serveur de notifications indisponible (réessayez plus tard)",
-    "subscribe-failed": "Échec de l'abonnement push",
-    "backend-failed": "Échec de l'enregistrement, réessayez",
-  }[reason] || "Notifications push indisponibles pour le moment";
+  const key = {
+    ok: "ok", unsupported: "unsupported", "ios-install": "ios_install", denied: "denied",
+    "no-sw": "no_sw", "no-key": "no_key", "subscribe-failed": "subscribe_failed", "backend-failed": "backend_failed",
+  }[reason] || "unavailable";
+  return i18n.t("push." + key);
 }
