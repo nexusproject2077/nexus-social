@@ -31,6 +31,7 @@ interface StoryGroup {
 
 export default function StoriesFeed() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [stories, setStories] = useState<StoryGroup[]>([]);
   const [lives, setLives] = useState<LiveSession[]>([]);
   const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null);
@@ -60,7 +61,7 @@ export default function StoriesFeed() {
     } catch (err: any) {
       console.error("Erreur fetch stories :", err);
       if (err.response?.status === 401) {
-        toast.error("Session expirée");
+        toast.error(t("storiesfeed.session_expired"));
         localStorage.removeItem("token");
         window.location.href = "/auth";
       }
@@ -155,7 +156,7 @@ export default function StoriesFeed() {
             className="text-[9px] lg:text-[10px] font-medium"
             style={{ color: "#859397" }}
           >
-            Votre story
+            {t("storiesfeed.your_story")}
           </span>
         </button>
 

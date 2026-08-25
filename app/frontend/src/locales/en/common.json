@@ -1427,5 +1427,42 @@
     "irreversible": "This action is irreversible",
     "cancel": "Cancel",
     "delete": "Delete"
+  },
+  "notifdropdown": {
+    "just_now": "Just now",
+    "minutes_ago": "{{count}}m ago",
+    "hours_ago": "{{count}}h ago",
+    "days_ago": "{{count}}d ago",
+    "title": "Notifications",
+    "mark_all_read": "Mark all read",
+    "empty": "No notifications"
+  },
+  "storiesfeed": {
+    "session_expired": "Session expired",
+    "your_story": "Your story"
+  },
+  "adminmetrics": {
+    "na": "n/a",
+    "access_denied": "Restricted access",
+    "admin_only_msg": "This dashboard is for administrators only.",
+    "kpi_total": "Users (total)",
+    "kpi_new7": "New (7 days)",
+    "kpi_new_today": "New (today)",
+    "kpi_dau": "Active today (DAU)",
+    "ret_j1": "D+1 retention",
+    "ret_j7": "D+7 retention",
+    "ret_j30": "D+30 retention",
+    "title": "App health",
+    "subtitle": "Key metrics, administrators only",
+    "auto_update": "auto update",
+    "retention": "Retention",
+    "retention_desc": "Share of sign-ups still active N days after signing up",
+    "signups_count": "{{retained}}/{{cohort}} sign-ups",
+    "not_enough": "not enough history",
+    "new_signups": "New sign-ups",
+    "last_14d": "Last 14 days",
+    "chart_signups": "Sign-ups",
+    "dau_title": "Daily active users (DAU)",
+    "footer": "DAU and retention exclude accounts in strict Privacy Mode (not tracked)."
   }
 }

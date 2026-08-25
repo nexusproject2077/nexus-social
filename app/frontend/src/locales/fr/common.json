@@ -1427,5 +1427,42 @@
     "irreversible": "Cette action est irréversible",
     "cancel": "Annuler",
     "delete": "Supprimer"
+  },
+  "notifdropdown": {
+    "just_now": "À l'instant",
+    "minutes_ago": "Il y a {{count}} m",
+    "hours_ago": "Il y a {{count}} h",
+    "days_ago": "Il y a {{count}} j",
+    "title": "Notifications",
+    "mark_all_read": "Tout lire",
+    "empty": "Aucune notification"
+  },
+  "storiesfeed": {
+    "session_expired": "Session expirée",
+    "your_story": "Votre story"
+  },
+  "adminmetrics": {
+    "na": "n/d",
+    "access_denied": "Accès réservé",
+    "admin_only_msg": "Ce tableau de bord est réservé aux administrateurs.",
+    "kpi_total": "Utilisateurs (total)",
+    "kpi_new7": "Nouveaux (7 jours)",
+    "kpi_new_today": "Nouveaux (aujourd'hui)",
+    "kpi_dau": "Actifs aujourd'hui (DAU)",
+    "ret_j1": "Rétention J+1",
+    "ret_j7": "Rétention J+7",
+    "ret_j30": "Rétention J+30",
+    "title": "Santé de l'app",
+    "subtitle": "Métriques clés, réservé aux administrateurs",
+    "auto_update": "maj auto",
+    "retention": "Rétention",
+    "retention_desc": "Part des inscrits encore actifs N jours après leur inscription",
+    "signups_count": "{{retained}}/{{cohort}} inscrits",
+    "not_enough": "pas assez de recul",
+    "new_signups": "Nouveaux inscrits",
+    "last_14d": "14 derniers jours",
+    "chart_signups": "Inscrits",
+    "dau_title": "Utilisateurs actifs / jour (DAU)",
+    "footer": "DAU et rétention excluent les comptes en Mode Confidentialité stricte (non suivis)."
   }
 }

@@ -4,6 +4,8 @@ import { Bell, Heart, MessageCircle, UserPlus, Image, Check, X } from 'lucide-re
 import { API } from '../App';
 import { enablePush } from '@/lib/push';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
 
 interface Notification {
   id: string;
@@ -23,6 +25,7 @@ export default function NotificationDropdown() {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   useEffect(() => {
     fetchNotifications();
@@ -187,16 +190,16 @@ export default function NotificationDropdown() {
     const diffInMs = now.getTime() - date.getTime();
     const diffInMinutes = Math.floor(diffInMs / 60000);
     
-    if (diffInMinutes < 1) return 'À l\'instant';
-    if (diffInMinutes < 60) return `Il y a ${diffInMinutes}m`;
+    if (diffInMinutes < 1) return t('notifdropdown.just_now');
+    if (diffInMinutes < 60) return t('notifdropdown.minutes_ago', { count: diffInMinutes });
     
     const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `Il y a ${diffInHours}h`;
+    if (diffInHours < 24) return t('notifdropdown.hours_ago', { count: diffInHours });
     
     const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `Il y a ${diffInDays}j`;
+    if (diffInDays < 7) return t('notifdropdown.days_ago', { count: diffInDays });
     
-    return date.toLocaleDateString('fr-FR');
+    return date.toLocaleDateString(i18n.language || 'en');
   };
 
   // Demander la permission ET abonner au push (notifications app fermée).
@@ -227,14 +230,14 @@ export default function NotificationDropdown() {
         <div className="absolute right-0 mt-2 w-96 max-h-[600px] bg-slate-900/95 backdrop-blur-xl border border-slate-800/50 rounded-2xl shadow-2xl overflow-hidden z-50">
           {/* Header */}
           <div className="p-4 border-b border-slate-800/50 flex items-center justify-between bg-gradient-to-r from-slate-900 to-slate-800">
-            <h3 className="text-lg font-bold text-white">Notifications</h3>
+            <h3 className="text-lg font-bold text-white">{t('notifdropdown.title')}</h3>
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
                 className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
               >
                 <Check className="w-3 h-3" />
-                Tout lire
+                {t('notifdropdown.mark_all_read')}
               </button>
             )}
           </div>
@@ -244,7 +247,7 @@ export default function NotificationDropdown() {
             {notifications.length === 0 ? (
               <div className="p-8 text-center text-slate-500">
                 <Bell className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                <p>Aucune notification</p>
+                <p>{t('notifdropdown.empty')}</p>
               </div>
             ) : (
               notifications.map((notif) => (
