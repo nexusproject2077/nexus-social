@@ -9,6 +9,7 @@ import { API } from "@/App";
 import { toast } from "sonner";
 import MatchCenter from "@/components/MatchCenter";
 import { fetchLiveScoresFromEspn } from "@/lib/espnClient";
+import i18n from "@/i18n";
 
 const NEON = "#4ade80";      // vert néon (match en cours)
 const BRIGHT = "#f4f8ff";    // blanc brillant
@@ -71,27 +72,27 @@ export function displayMatches(list, favL, favT) {
 // « Auj. 21:00 », « Dem. 18:30 »).
 export function formatKickoff(dateStr) {
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "À venir";
+  if (isNaN(d.getTime())) return i18n.t("livescores.upcoming");
   const now = new Date();
   const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
-  const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const time = d.toLocaleTimeString(i18n.language || "en", { hour: "2-digit", minute: "2-digit" });
   // Aujourd'hui → heure seule (ex : « 20:45 ») ; sinon on préfixe le jour.
   if (d.toDateString() === now.toDateString()) return time;
-  if (d.toDateString() === tomorrow.toDateString()) return `Dem. ${time}`;
-  const day = d.toLocaleDateString("fr-FR", { weekday: "short" });
+  if (d.toDateString() === tomorrow.toDateString()) return `${i18n.t("livescores.tomorrow_prefix")} ${time}`;
+  const day = d.toLocaleDateString(i18n.language || "en", { weekday: "short" });
   return `${day.charAt(0).toUpperCase() + day.slice(1)} ${time}`;
 }
 
 // Badge « À VENIR » discret (gris anthracite) — remplace le badge LIVE.
 const UpcomingBadge = () => (
   <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-black tracking-wide"
-    style={{ background: "#232c3a", color: "#9fb0c8" }}>À VENIR</span>
+    style={{ background: "#232c3a", color: "#9fb0c8" }}>{i18n.t("livescores.upcoming_badge")}</span>
 );
 
 // Badge DÉMO (données de simulation, jamais présentées comme réelles).
 const DemoBadge = () => (
   <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-black tracking-wide"
-    style={{ background: "#f59e0b22", color: "#fbbf24" }}>DÉMO</span>
+    style={{ background: "#f59e0b22", color: "#fbbf24" }}>{i18n.t("livescores.demo_badge")}</span>
 );
 
 // Badge LIVE néon (match en cours).
@@ -107,7 +108,7 @@ const StarBtn = ({ active, onClick, size = 15 }) => (
   <button
     onClick={(e) => { e.stopPropagation(); onClick(); }}
     className="flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform"
-    aria-label={active ? "Retirer des favoris" : "Ajouter aux favoris"}
+    aria-label={active ? i18n.t("livescores.fav_remove") : i18n.t("livescores.fav_add")}
     style={{ width: size + 4, height: size + 4 }}
   >
     <span className="material-symbols-outlined" style={{
@@ -145,8 +146,8 @@ export function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onTog
   const upcoming = !live && !done;
   const demo = !!m.demo;
   // Match à venir : on affiche l'heure + la date à la place du score.
-  const status = live ? (m.clock || m.detail || "En direct")
-    : done ? (m.detail || "Terminé")
+  const status = live ? (m.clock || m.detail || i18n.t("livescores.in_progress"))
+    : done ? (m.detail || i18n.t("livescores.finished"))
     : formatKickoff(m.date);
   return (
     <div
@@ -205,7 +206,7 @@ export function MmaCard({ m, compact, flash }) {
   const upcoming = !live && !done;
   const demo = !!m.demo;
   const status = live ? `R${m.round || "?"}${m.clock ? " · " + m.clock : ""}`
-    : done ? (m.method || "Terminé")
+    : done ? (m.method || i18n.t("livescores.finished"))
     : formatKickoff(m.date);
   const w1 = done && m.winner && m.f1?.name === m.winner;
   const w2 = done && m.winner && m.f2?.name === m.winner;
@@ -247,9 +248,9 @@ function FilterModal({ favL, onSave, onClose }) {
         style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)" }}>
         <div className="flex items-center gap-2 mb-1">
           <span className="material-symbols-outlined" style={{ color: NEON }}>tune</span>
-          <h3 className="font-bold text-white">Mes compétitions favorites</h3>
+          <h3 className="font-bold text-white">{i18n.t("livescores.fav_title")}</h3>
         </div>
-        <p className="text-[12px] mb-4" style={{ color: "#859397" }}>Coche tes ligues : elles apparaîtront en premier.</p>
+        <p className="text-[12px] mb-4" style={{ color: "#859397" }}>{i18n.t("livescores.fav_sub")}</p>
         <div className="space-y-1 max-h-[52vh] overflow-y-auto no-scrollbar">
           {MAJOR_LEAGUES.map((l) => {
             const on = sel.has(l.id);
@@ -268,11 +269,11 @@ function FilterModal({ favL, onSave, onClose }) {
         <button onClick={save} disabled={saving}
           className="w-full mt-4 py-3 rounded-2xl font-black text-sm disabled:opacity-50"
           style={{ background: `linear-gradient(135deg,${NEON},#22d3ee)`, color: "#04250f" }}>
-          {saving ? "Enregistrement…" : "Enregistrer"}
+          {saving ? i18n.t("livescores.saving") : i18n.t("livescores.save")}
         </button>
         <button onClick={onClose} disabled={saving}
           className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
-          style={{ background: "#222a3d", color: "#a7b3cc" }}>Fermer</button>
+          style={{ background: "#222a3d", color: "#a7b3cc" }}>{i18n.t("livescores.close")}</button>
       </div>
     </div>
   );
@@ -355,8 +356,8 @@ export default function LiveScores({ variant = "mobile", setUser }) {
     try {
       await axios.put(`${API}/users/me/sports-favorites`, { leagues, teams: Array.from(favT) });
       setFavL(new Set(leagues));
-      toast.success("Favoris enregistrés");
-    } catch { toast.error("Erreur d'enregistrement"); }
+      toast.success(i18n.t("livescores.favs_saved"));
+    } catch { toast.error(i18n.t("livescores.err_save")); }
   };
 
   // Masquer TOUT le widget (foot + MMA) : persistance MongoDB + fondu + maj user.
@@ -404,14 +405,14 @@ export default function LiveScores({ variant = "mobile", setUser }) {
       <div className="flex items-center gap-1.5">
         <span className="material-symbols-outlined" style={{ color: NEON, fontSize: big ? 20 : 16 }}>sports_soccer</span>
         {big ? (
-          <span className="font-headline font-bold text-base tracking-tight" style={{ color: "#dae2fd" }}>Scores en direct</span>
+          <span className="font-headline font-bold text-base tracking-tight" style={{ color: "#dae2fd" }}>{i18n.t("livescores.title")}</span>
         ) : (
-          <span className="font-black uppercase tracking-wider text-xs" style={{ color: "#8b96a8" }}>Scores en direct</span>
+          <span className="font-black uppercase tracking-wider text-xs" style={{ color: "#8b96a8" }}>{i18n.t("livescores.title")}</span>
         )}
       </div>
       <div className="flex items-center gap-1.5">
-        {iconBtn("tune", () => setShowFilter(true), "Filtrer les compétitions")}
-        {iconBtn("close", () => setConfirmHide(true), "Masquer les scores")}
+        {iconBtn("tune", () => setShowFilter(true), i18n.t("livescores.filter_aria"))}
+        {iconBtn("close", () => setConfirmHide(true), i18n.t("livescores.hide_aria"))}
       </div>
     </div>
   );
@@ -424,16 +425,16 @@ export default function LiveScores({ variant = "mobile", setUser }) {
       <div className="w-full max-w-xs rounded-3xl p-5 text-center"
         style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)" }}>
         <span className="material-symbols-outlined mb-2" style={{ color: "#9fb0c8", fontSize: 30 }}>visibility_off</span>
-        <h3 className="text-white font-bold text-base mb-1">Masquer les scores sportifs ?</h3>
-        <p className="text-xs mb-4" style={{ color: "#859397" }}>Le widget disparaîtra. Tu pourras le réactiver à tout moment dans les Paramètres.</p>
+        <h3 className="text-white font-bold text-base mb-1">{i18n.t("livescores.hide_confirm")}</h3>
+        <p className="text-xs mb-4" style={{ color: "#859397" }}>{i18n.t("livescores.hide_body")}</p>
         <button onClick={doHide}
           className="w-full py-2.5 rounded-xl font-bold text-sm active:scale-95 transition-transform mb-2"
           style={{ background: "#f87171", color: "#2a0808" }}>
-          Masquer
+          {i18n.t("livescores.hide")}
         </button>
         <button onClick={() => setConfirmHide(false)}
           className="w-full py-2.5 rounded-xl font-bold text-sm" style={{ background: "#222a3d", color: "#a7b3cc" }}>
-          Annuler
+          {i18n.t("livescores.cancel")}
         </button>
       </div>
     </div>

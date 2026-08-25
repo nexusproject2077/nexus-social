@@ -1027,5 +1027,29 @@
     "denied_hint": "Les notifications sont bloquées pour ce site. Autorise-les dans les réglages de ton navigateur pour les réactiver.",
     "saving": "Enregistrement…",
     "auto_saved": "Les changements sont enregistrés automatiquement."
+  },
+  "livescores": {
+    "upcoming_badge": "À VENIR",
+    "demo_badge": "DÉMO",
+    "fav_remove": "Retirer des favoris",
+    "fav_add": "Ajouter aux favoris",
+    "in_progress": "En direct",
+    "finished": "Terminé",
+    "upcoming": "À venir",
+    "tomorrow_prefix": "Dem.",
+    "fav_title": "Mes compétitions favorites",
+    "fav_sub": "Coche tes ligues : elles apparaîtront en premier.",
+    "saving": "Enregistrement…",
+    "save": "Enregistrer",
+    "close": "Fermer",
+    "favs_saved": "Favoris enregistrés",
+    "err_save": "Erreur d'enregistrement",
+    "title": "Scores en direct",
+    "filter_aria": "Filtrer les compétitions",
+    "hide_aria": "Masquer les scores",
+    "hide_confirm": "Masquer les scores sportifs ?",
+    "hide_body": "Le widget disparaîtra. Tu pourras le réactiver à tout moment dans les Paramètres.",
+    "hide": "Masquer",
+    "cancel": "Annuler"
   }
 }

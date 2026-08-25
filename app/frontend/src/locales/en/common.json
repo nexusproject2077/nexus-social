@@ -1027,5 +1027,29 @@
     "denied_hint": "Notifications are blocked for this site. Allow them in your browser settings to re-enable them.",
     "saving": "Saving…",
     "auto_saved": "Changes are saved automatically."
+  },
+  "livescores": {
+    "upcoming_badge": "UPCOMING",
+    "demo_badge": "DEMO",
+    "fav_remove": "Remove from favorites",
+    "fav_add": "Add to favorites",
+    "in_progress": "Live",
+    "finished": "Finished",
+    "upcoming": "Upcoming",
+    "tomorrow_prefix": "Tom.",
+    "fav_title": "My favorite competitions",
+    "fav_sub": "Check your leagues: they'll show first.",
+    "saving": "Saving…",
+    "save": "Save",
+    "close": "Close",
+    "favs_saved": "Favorites saved",
+    "err_save": "Save error",
+    "title": "Live scores",
+    "filter_aria": "Filter competitions",
+    "hide_aria": "Hide scores",
+    "hide_confirm": "Hide sports scores?",
+    "hide_body": "The widget will disappear. You can re-enable it anytime in Settings.",
+    "hide": "Hide",
+    "cancel": "Cancel"
   }
 }
