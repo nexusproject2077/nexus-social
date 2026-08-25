@@ -1326,5 +1326,25 @@
     "back": "Back",
     "start": "Start 🚀",
     "next": "Next"
+  },
+  "followlist": {
+    "err_load": "Could not load the list",
+    "request_sent": "Request sent",
+    "error": "Error",
+    "removed": "@{{user}} removed from your followers",
+    "empty_followers": "No followers yet",
+    "empty_following": "No follows yet",
+    "following": "Following",
+    "follow": "Follow",
+    "remove": "Remove"
+  },
+  "saved": {
+    "err_load": "Error loading your saved items",
+    "tab_all": "All",
+    "tab_posts": "Posts",
+    "tab_videos": "Videos",
+    "title": "Saved",
+    "empty_title": "Nothing saved yet",
+    "empty_sub": "Tap the bookmark icon on a post or clip to find it here."
   }
 }

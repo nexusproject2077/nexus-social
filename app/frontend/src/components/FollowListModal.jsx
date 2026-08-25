@@ -4,6 +4,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { X, BadgeCheck } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 const C = {
   surface:        "#0b1326",
@@ -26,6 +27,7 @@ export default function FollowListModal({
   onCountChange,
 }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState({});
@@ -36,7 +38,7 @@ export default function FollowListModal({
       const r = await axios.get(`${API}/users/${userId}/${kind}`);
       setItems(r.data || []);
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Impossible de charger la liste");
+      toast.error(err.response?.data?.detail || t("followlist.err_load"));
       setItems([]);
     } finally {
       setLoading(false);
@@ -58,10 +60,10 @@ export default function FollowListModal({
         // Compte privé → demande en attente : on ne marque pas "abonné".
         const nowFollowing = res.data?.status === "following";
         setItems((prev) => prev.map((u) => (u.id === target.id ? { ...u, is_following: nowFollowing } : u)));
-        if (res.data?.status === "pending") toast.success("Demande envoyée");
+        if (res.data?.status === "pending") toast.success(t("followlist.request_sent"));
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erreur");
+      toast.error(err.response?.data?.detail || t("followlist.error"));
     } finally {
       setBusy((b) => ({ ...b, [target.id]: false }));
     }
@@ -73,9 +75,9 @@ export default function FollowListModal({
       await axios.delete(`${API}/users/me/followers/${target.id}`);
       setItems((prev) => prev.filter((u) => u.id !== target.id));
       onCountChange?.(-1);
-      toast.success(`@${target.username} retiré de vos abonnés`);
+      toast.success(t("followlist.removed", { user: target.username }));
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erreur");
+      toast.error(err.response?.data?.detail || t("followlist.error"));
     } finally {
       setBusy((b) => ({ ...b, [target.id]: false }));
     }
@@ -106,7 +108,7 @@ export default function FollowListModal({
             </div>
           ) : items.length === 0 ? (
             <p className="text-center py-12 text-sm" style={{ color: C.outline }}>
-              {kind === "followers" ? "Aucun abonné pour l'instant" : "Aucun abonnement pour l'instant"}
+              {kind === "followers" ? t("followlist.empty_followers") : t("followlist.empty_following")}
             </p>
           ) : (
             items.map((u) => (
@@ -138,7 +140,7 @@ export default function FollowListModal({
                         ? { background: C.surfaceHigh, color: C.onSurface }
                         : { background: C.accent, color: "#00363e" }}
                     >
-                      {u.is_following ? "Abonné" : "Suivre"}
+                      {u.is_following ? t("followlist.following") : t("followlist.follow")}
                     </button>
                     {manageFollowers && (
                       <button
@@ -147,7 +149,7 @@ export default function FollowListModal({
                         className="px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-50"
                         style={{ background: "transparent", color: "#f87171", border: "1px solid #f8717155" }}
                       >
-                        Retirer
+                        {t("followlist.remove")}
                       </button>
                     )}
                   </div>

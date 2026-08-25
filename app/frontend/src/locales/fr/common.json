@@ -1326,5 +1326,25 @@
     "back": "Retour",
     "start": "Commencer 🚀",
     "next": "Suivant"
+  },
+  "followlist": {
+    "err_load": "Impossible de charger la liste",
+    "request_sent": "Demande envoyée",
+    "error": "Erreur",
+    "removed": "@{{user}} retiré de vos abonnés",
+    "empty_followers": "Aucun abonné pour l'instant",
+    "empty_following": "Aucun abonnement pour l'instant",
+    "following": "Abonné",
+    "follow": "Suivre",
+    "remove": "Retirer"
+  },
+  "saved": {
+    "err_load": "Erreur lors du chargement des enregistrements",
+    "tab_all": "Tout",
+    "tab_posts": "Publications",
+    "tab_videos": "Vidéos",
+    "title": "Enregistrés",
+    "empty_title": "Rien d'enregistré pour le moment",
+    "empty_sub": "Appuyez sur l'icône signet d'une publication ou d'un clip pour le retrouver ici."
   }
 }

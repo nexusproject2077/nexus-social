@@ -6,6 +6,7 @@ import PostCard from "../components/PostCard";
 import { Skeleton } from "../components/ui/skeleton";
 import PullToRefresh from "../components/PullToRefresh";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 /**
  * Page « Enregistrés » : les publications ET clips que l'utilisateur a
@@ -13,6 +14,7 @@ import { toast } from "sonner";
  * Tout / Publications / Vidéos.
  */
 export default function SavedPage({ user, setUser }) {
+  const { t } = useTranslation();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all"); // all | posts | videos
@@ -23,7 +25,7 @@ export default function SavedPage({ user, setUser }) {
       const res = await axios.get(`${API}/posts/saved`);
       setItems(res.data || []);
     } catch {
-      toast.error("Erreur lors du chargement des enregistrements");
+      toast.error(t("saved.err_load"));
     } finally {
       setLoading(false);
     }
@@ -46,9 +48,7 @@ export default function SavedPage({ user, setUser }) {
   });
 
   const TABS = [
-    { key: "all", label: "Tout" },
-    { key: "posts", label: "Publications" },
-    { key: "videos", label: "Vidéos" },
+    { key: "all" }, { key: "posts" }, { key: "videos" },
   ];
 
   return (
@@ -62,13 +62,13 @@ export default function SavedPage({ user, setUser }) {
         >
           <span className="material-symbols-outlined" style={{ color: "var(--nexus-accent)" }}>bookmark</span>
           <h1 className="font-headline font-bold text-xl tracking-tight" style={{ color: "#dae2fd" }}>
-            Enregistrés
+            {t("saved.title")}
           </h1>
         </header>
 
         {/* Filtres */}
         <div className="flex items-center gap-2 px-4 mt-3">
-          {TABS.map(({ key, label }) => {
+          {TABS.map(({ key }) => {
             const active = filter === key;
             return (
               <button
@@ -81,7 +81,7 @@ export default function SavedPage({ user, setUser }) {
                   border: "1px solid rgba(255,255,255,0.05)",
                 }}
               >
-                {label}
+                {t("saved.tab_"+key)}
               </button>
             );
           })}
@@ -108,9 +108,9 @@ export default function SavedPage({ user, setUser }) {
           ) : filtered.length === 0 ? (
             <div className="text-center py-16" style={{ color: "#859397" }}>
               <span className="material-symbols-outlined text-5xl mb-3 block" style={{ color: "#334155" }}>bookmark_border</span>
-              <p className="text-lg">Rien d'enregistré pour le moment</p>
+              <p className="text-lg">{t("saved.empty_title")}</p>
               <p className="text-sm mt-2">
-                Appuyez sur l'icône signet d'une publication ou d'un clip pour le retrouver ici.
+                {t("saved.empty_sub")}
               </p>
             </div>
           ) : (
