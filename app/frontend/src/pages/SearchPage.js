@@ -29,19 +29,19 @@ function ListsPanel({ user }) {
   const createList = async () => {
     const name = window.prompt("Nom de la nouvelle liste");
     if (!name || !name.trim()) return;
-    try { await axios.post(`${API}/lists`, { name: name.trim() }); fetchLists(); toast.success(t("search.list_created")); }
-    catch { toast.error(t("search.err_generic")); }
+    try { await axios.post(`${API}/lists`, { name: name.trim() }); fetchLists(); toast.success(t("searchpage.list_created")); }
+    catch { toast.error(t("searchpage.err_generic")); }
   };
 
   const openDetail = async (id) => {
     try { const r = await axios.get(`${API}/lists/${id}`); setDetail(r.data); setAdding(false); setAddQuery(""); }
-    catch { toast.error(t("search.err_generic")); }
+    catch { toast.error(t("searchpage.err_generic")); }
   };
 
   const deleteList = async (id) => {
     if (!window.confirm("Supprimer cette liste ?")) return;
-    try { await axios.delete(`${API}/lists/${id}`); setDetail(null); fetchLists(); toast.success(t("search.list_deleted")); }
-    catch { toast.error(t("search.err_generic")); }
+    try { await axios.delete(`${API}/lists/${id}`); setDetail(null); fetchLists(); toast.success(t("searchpage.list_deleted")); }
+    catch { toast.error(t("searchpage.err_generic")); }
   };
 
   const removeMember = async (uid) => {
@@ -49,7 +49,7 @@ function ListsPanel({ user }) {
       await axios.delete(`${API}/lists/${detail.id}/members/${uid}`);
       setDetail((d) => ({ ...d, members: d.members.filter((m) => m.id !== uid) }));
       fetchLists();
-    } catch { toast.error(t("search.err_generic")); }
+    } catch { toast.error(t("searchpage.err_generic")); }
   };
 
   const addMember = async (u) => {
@@ -57,7 +57,7 @@ function ListsPanel({ user }) {
       await axios.post(`${API}/lists/${detail.id}/members`, { user_id: u.id });
       setDetail((d) => (d.members.some((m) => m.id === u.id) ? d : { ...d, members: [...d.members, u] }));
       fetchLists();
-    } catch { toast.error(t("search.err_generic")); }
+    } catch { toast.error(t("searchpage.err_generic")); }
   };
 
   useEffect(() => {
@@ -86,7 +86,7 @@ function ListsPanel({ user }) {
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-bold transition-all active:scale-95"
           style={{ background: "var(--nexus-accent)", color: "#00363e" }}>
           <span className="material-symbols-outlined text-lg">add</span>
-          {t("search.create_list")}
+          {t("searchpage.create_list")}
         </button>
       </div>
 
@@ -95,7 +95,7 @@ function ListsPanel({ user }) {
       ) : lists.length === 0 ? (
         <div className="text-center py-14 px-4" style={{ color: "#859397" }}>
           <span className="material-symbols-outlined text-4xl block mb-2" style={{ opacity: 0.4 }}>list</span>
-          <p className="text-sm">{t("search.no_lists")}</p>
+          <p className="text-sm">{t("searchpage.no_lists")}</p>
         </div>
       ) : (
         lists.map((l) => (
@@ -126,7 +126,7 @@ function ListsPanel({ user }) {
             <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <span className="material-symbols-outlined" style={{ color: "var(--nexus-accent)" }}>group</span>
               <p className="flex-1 font-black truncate" style={{ color: "#dae2fd" }}>{detail.name}</p>
-              <button onClick={() => deleteList(detail.id)} title={t("search.delete_list")} style={{ color: "#f87171" }}>
+              <button onClick={() => deleteList(detail.id)} title={t("searchpage.delete_list")} style={{ color: "#f87171" }}>
                 <span className="material-symbols-outlined">delete</span>
               </button>
               <button onClick={() => setDetail(null)} style={{ color: "#859397" }}>
@@ -142,7 +142,7 @@ function ListsPanel({ user }) {
                 <div className="flex items-center gap-2 rounded-full px-3 h-10" style={{ background: "#131b2e" }}>
                   <span className="material-symbols-outlined" style={{ color: "#859397", fontSize: 18 }}>search</span>
                   <input autoFocus value={addQuery} onChange={(e) => setAddQuery(e.target.value)}
-                    placeholder={t("search.search_user")} className="flex-1 bg-transparent outline-none text-sm select-text"
+                    placeholder={t("searchpage.search_user")} className="flex-1 bg-transparent outline-none text-sm select-text"
                     style={{ color: "#dae2fd" }} />
                   <button onClick={() => { setAdding(false); setAddQuery(""); }} style={{ color: "#859397" }}>
                     <span className="material-symbols-outlined text-base">close</span>
@@ -162,7 +162,7 @@ function ListsPanel({ user }) {
                     <button onClick={() => addMember(u)} disabled={already}
                       className="text-xs font-bold px-3 py-1.5 rounded-full"
                       style={{ background: already ? "#171f33" : "var(--nexus-accent)", color: already ? "#859397" : "#00363e" }}>
-                      {already ? t("search.added") : t("search.add")}
+                      {already ? t("searchpage.added") : t("searchpage.add")}
                     </button>
                   </div>
                 );
@@ -170,7 +170,7 @@ function ListsPanel({ user }) {
 
               {/* Membres actuels */}
               {!adding && (detail.members.length === 0 ? (
-                <p className="text-center text-sm py-8" style={{ color: "#859397" }}>{t("search.empty_list")}</p>
+                <p className="text-center text-sm py-8" style={{ color: "#859397" }}>{t("searchpage.empty_list")}</p>
               ) : detail.members.map((m) => (
                 <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
                   <button onClick={() => navigate(`/profile/${m.id}`)}><Ava pic={m.profile_pic} name={m.username} size="w-9 h-9" /></button>
@@ -326,7 +326,7 @@ export default function SearchPage({ user }) {
                 data-testid="search-input"
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); if (discreet && e.target.value) setDiscreet(false); }}
-                placeholder={t("search.search_nexus")}
+                placeholder={t("searchpage.search_nexus")}
                 autoFocus
                 className="flex-1 bg-transparent border-none outline-none text-sm select-text"
                 style={{ color: "#dae2fd" }}
@@ -351,7 +351,7 @@ export default function SearchPage({ user }) {
                   className="relative flex-shrink-0 px-4 py-3 text-sm transition-colors"
                   style={{ color: active ? "#dae2fd" : "#859397", fontWeight: active ? 800 : 500 }}
                 >
-                  {i18n.t("search.tab_" + t.key)}
+                  {i18n.t("searchpage.tab_" + t.key)}
                   {active && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] w-8 rounded-full" style={{ background: CY }} />}
                 </button>
               );
@@ -370,7 +370,7 @@ export default function SearchPage({ user }) {
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "rgba(34,211,238,0.1)" }}>
                 <span className="material-symbols-outlined" style={{ color: CY, fontSize: 32 }}>visibility_off</span>
               </div>
-              <h2 className="text-lg font-black mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: "#dae2fd" }}>{t("search.private_search")}</h2>
+              <h2 className="text-lg font-black mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: "#dae2fd" }}>{t("searchpage.private_search")}</h2>
               <p className="text-sm" style={{ color: "#859397" }}>Tapez le nom d'un ami, d'une équipe ou d'un hashtag. La grille Découverte reste masquée.</p>
               <button onClick={() => setDiscreet(false)} className="mt-5 text-xs font-bold px-4 py-2 rounded-full" style={{ background: "#131b2e", color: "#859397" }}>
                 Afficher les tendances
@@ -383,7 +383,7 @@ export default function SearchPage({ user }) {
                 Tendances pour vous
               </h2>
               {trending.length === 0 ? (
-                <p className="px-4 text-sm" style={{ color: "#859397" }}>{t("search.no_trends")}</p>
+                <p className="px-4 text-sm" style={{ color: "#859397" }}>{t("searchpage.no_trends")}</p>
               ) : trending.map((t, i) => (
                 <button
                   key={t.normalized || t.tag}
@@ -450,7 +450,7 @@ export default function SearchPage({ user }) {
               {users.length === 0 && posts.length === 0 && hashtags.length === 0 && (
                 <div className="text-center py-16 px-4" style={{ color: "#859397" }}>
                   <span className="material-symbols-outlined text-4xl block mb-2" style={{ opacity: 0.4 }}>search_off</span>
-                  <p className="text-sm">{t("search.no_results", { query })}</p>
+                  <p className="text-sm">{t("searchpage.no_results", { query })}</p>
                 </div>
               )}
 

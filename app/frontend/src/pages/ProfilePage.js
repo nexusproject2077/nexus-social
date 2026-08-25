@@ -105,7 +105,7 @@ export default function ProfilePage({ user, setUser }) {
   // Retour de Stripe après un pourboire (?tip=success|cancel).
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("tip");
-    if (p === "success") toast.success(t("profile.tip_thanks"));
+    if (p === "success") toast.success(t("profilepage.tip_thanks"));
     else if (p === "cancel") toast("Pourboire annulé");
     if (p) window.history.replaceState({}, "", window.location.pathname);
   }, []);
@@ -121,7 +121,7 @@ export default function ProfilePage({ user, setUser }) {
     if (flow === "cancel") { toast("Pourboire PayPal annulé"); return; }
     if (flow === "capture" && orderId) {
       axios.post(`${API}/billing/paypal/capture`, { order_id: orderId })
-        .then(() => toast.success(t("profile.tip_thanks_paypal")))
+        .then(() => toast.success(t("profilepage.tip_thanks_paypal")))
         .catch((e) => toast.error(e.response?.data?.detail || "Le paiement PayPal n'a pas pu être finalisé"));
     }
   }, []);
@@ -160,7 +160,7 @@ export default function ProfilePage({ user, setUser }) {
       }
     } catch (err) {
       console.error("Erreur profil:", err);
-      toast.error(t("profile.err_load_profile"));
+      toast.error(t("profilepage.err_load_profile"));
     }
   };
 
@@ -181,7 +181,7 @@ export default function ProfilePage({ user, setUser }) {
     } catch (err) {
       console.error("Erreur posts:", err);
       if (err.response?.status !== 403)
-        toast.error(t("profile.err_load_posts"));
+        toast.error(t("profilepage.err_load_posts"));
     } finally {
       setLoading(false);
     }
@@ -200,25 +200,25 @@ export default function ProfilePage({ user, setUser }) {
 
   // ── Follow / Unfollow ──────────────────────────────────────────────────────
   const handleFollow = async () => {
-    if (!user) { toast.error(t("profile.err_login_required")); return; }
+    if (!user) { toast.error(t("profilepage.err_login_required")); return; }
     try {
       setFollowLoading(true);
       const res = await axios.post(`${API}/users/${userId}/follow`);
       setFollowStatus(res.data.status);
-      if (res.data.status === "pending") toast.success(t("profile.follow_request_sent"));
-      else { toast.success(t("profile.followed")); setStats((p) => ({ ...p, followers: p.followers + 1 })); }
+      if (res.data.status === "pending") toast.success(t("profilepage.follow_request_sent"));
+      else { toast.success(t("profilepage.followed")); setStats((p) => ({ ...p, followers: p.followers + 1 })); }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors de l'action");
     } finally { setFollowLoading(false); }
   };
 
   const handleUnfollow = async () => {
-    if (!user) { toast.error(t("profile.err_login_required")); return; }
+    if (!user) { toast.error(t("profilepage.err_login_required")); return; }
     try {
       setFollowLoading(true);
       await axios.delete(`${API}/users/${userId}/follow`);
       setFollowStatus("not_following");
-      toast.success(t("profile.unfollowed"));
+      toast.success(t("profilepage.unfollowed"));
       setStats((p) => ({ ...p, followers: Math.max(0, p.followers - 1) }));
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors de l'action");
@@ -259,7 +259,7 @@ export default function ProfilePage({ user, setUser }) {
         <button
           data-testid="saved-shortcut"
           onClick={() => navigate("/enregistres")}
-          title={t("profile.saved")}
+          title={t("profilepage.saved")}
           style={{ background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}
           className="flex items-center justify-center w-10 h-10 rounded-xl transition-all active:scale-95 hover:opacity-90"
         >
@@ -301,7 +301,7 @@ export default function ProfilePage({ user, setUser }) {
         style={{ background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)", color: C.onPrimary, boxShadow: "0 4px 14px rgba(34,211,238,0.25)" }}
       >
         {followLoading ? spinner(C.onPrimary) : <UserPlus size={14} />}
-        {profile?.is_private ? t("profile.request_follow") : t("profile.follow")}
+        {profile?.is_private ? t("profilepage.request_follow") : t("profilepage.follow")}
       </button>
     );
   };
@@ -312,7 +312,7 @@ export default function ProfilePage({ user, setUser }) {
       <div className="flex justify-center items-center" style={{ minHeight: "60vh" }}>
         <div className="flex items-center gap-3 px-8 py-3 rounded-full" style={{ ...glass, border: `1px solid ${C.outlineVariant}22` }}>
           <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: `${C.primaryContainer}33`, borderTopColor: C.primaryContainer }} />
-          <span className="text-sm font-bold tracking-widest uppercase" style={{ color: C.outline }}>{t("profile.loading")}</span>
+          <span className="text-sm font-bold tracking-widest uppercase" style={{ color: C.outline }}>{t("profilepage.loading")}</span>
         </div>
       </div>
     </Layout>
@@ -320,10 +320,10 @@ export default function ProfilePage({ user, setUser }) {
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
   const tabs = [
-    { id: "posts",    label: t("profile.posts"), icon: "article"         },
-    { id: "media",    label: t("profile.media"),       icon: "grid_on"         },
-    { id: "reposts",  label: t("profile.reposts"),      icon: "repeat"          },
-    { id: "mentions", label: t("profile.mentions"),     icon: "alternate_email" },
+    { id: "posts",    label: t("profilepage.posts"), icon: "article"         },
+    { id: "media",    label: t("profilepage.media"),       icon: "grid_on"         },
+    { id: "reposts",  label: t("profilepage.reposts"),      icon: "repeat"          },
+    { id: "mentions", label: t("profilepage.mentions"),     icon: "alternate_email" },
   ];
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -348,7 +348,7 @@ export default function ProfilePage({ user, setUser }) {
               data-testid="profile-settings-button"
               className="pointer-events-auto w-10 h-10 flex items-center justify-center rounded-full transition-transform active:scale-90"
               style={{ color: "#dae2fd", background: "transparent", textShadow: "0 1px 6px rgba(0,0,0,0.7)" }}
-              title={t("profile.settings_title")}
+              title={t("profilepage.settings_title")}
             >
               <span className="material-symbols-outlined" style={{ fontSize: 26 }}>settings</span>
             </button>
@@ -417,7 +417,7 @@ export default function ProfilePage({ user, setUser }) {
                   <span
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-black"
                     style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}
-                    title={t("profile.premium_member")}
+                    title={t("profilepage.premium_member")}
                   >
                     <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
                     Premium
@@ -434,7 +434,7 @@ export default function ProfilePage({ user, setUser }) {
                 {!isOwnProfile && (profile.can_receive_tips || profile.paypal_receivable || profile.paypal_link || profile.crypto_wallet) && (
                   <button
                     data-testid="tip-button"
-                    title={t("profile.send_tip")}
+                    title={t("profilepage.send_tip")}
                     onClick={() => setShowTip(true)}
                     style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-black text-sm transition-all active:scale-95 hover:opacity-90"
@@ -446,12 +446,12 @@ export default function ProfilePage({ user, setUser }) {
                 {/* Partager le profil : copie l'URL /profil/:userId (ou partage natif). */}
                 <button
                   data-testid="share-profile"
-                  title={t("profile.share_profile")}
+                  title={t("profilepage.share_profile")}
                   onClick={async () => {
                     const url = `${window.location.origin}/profil/${userId}`;
                     try {
                       if (navigator.share) await navigator.share({ title: `@${profile.username} sur Nexus`, url });
-                      else { await navigator.clipboard.writeText(url); toast.success(t("profile.link_copied")); }
+                      else { await navigator.clipboard.writeText(url); toast.success(t("profilepage.link_copied")); }
                     } catch { /* annulé */ }
                   }}
                   style={{ background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}
@@ -472,9 +472,9 @@ export default function ProfilePage({ user, setUser }) {
                   (bloc mobile centré dédié plus bas). */}
               <div className="hidden sm:flex items-baseline gap-6 mt-4">
                 {[
-                  { label: t("profile.posts"), value: fmt(stats.posts), kind: null },
-                  { label: t("profile.followers"),      value: fmt(stats.followers), kind: "followers" },
-                  { label: t("profile.following"),  value: fmt(stats.following), kind: "following" },
+                  { label: t("profilepage.posts"), value: fmt(stats.posts), kind: null },
+                  { label: t("profilepage.followers"),      value: fmt(stats.followers), kind: "followers" },
+                  { label: t("profilepage.following"),  value: fmt(stats.following), kind: "following" },
                 ].map((s) => {
                   const clickable = s.kind && canViewContent;
                   return (
@@ -504,9 +504,9 @@ export default function ProfilePage({ user, setUser }) {
       {/* Stats — mobile : chiffres épurés centrés (cohérent avec le hero centré). */}
       <div className="sm:hidden flex items-center justify-center gap-7 px-5 pt-3">
         {[
-          { label: t("profile.posts"), value: fmt(stats.posts), kind: null },
-          { label: t("profile.followers"),      value: fmt(stats.followers), kind: "followers" },
-          { label: t("profile.following"),  value: fmt(stats.following), kind: "following" },
+          { label: t("profilepage.posts"), value: fmt(stats.posts), kind: null },
+          { label: t("profilepage.followers"),      value: fmt(stats.followers), kind: "followers" },
+          { label: t("profilepage.following"),  value: fmt(stats.following), kind: "following" },
         ].map((s) => {
           const clickable = s.kind && canViewContent;
           return (
@@ -624,7 +624,7 @@ export default function ProfilePage({ user, setUser }) {
           <div className="flex justify-center py-16">
             <div className="flex items-center gap-3 px-8 py-3 rounded-full" style={{ ...glass, border: `1px solid ${C.outlineVariant}22` }}>
               <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: `${C.primaryContainer}33`, borderTopColor: C.primaryContainer }} />
-              <span className="text-xs font-bold tracking-widest uppercase" style={{ color: C.outline }}>{t("profile.loading")}</span>
+              <span className="text-xs font-bold tracking-widest uppercase" style={{ color: C.outline }}>{t("profilepage.loading")}</span>
             </div>
           </div>
 
@@ -635,7 +635,7 @@ export default function ProfilePage({ user, setUser }) {
               mediaPosts.length === 0 ? (
                 <div className="text-center py-16" style={{ color: C.outline }}>
                   <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">photo_library</span>
-                  <p className="text-sm">{t("profile.no_media")}</p>
+                  <p className="text-sm">{t("profilepage.no_media")}</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
@@ -684,7 +684,7 @@ export default function ProfilePage({ user, setUser }) {
               posts.length === 0 ? (
                 <div className="text-center py-16" style={{ color: C.outline }}>
                   <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">article</span>
-                  <p className="text-sm">{t("profile.no_posts")}</p>
+                  <p className="text-sm">{t("profilepage.no_posts")}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -700,7 +700,7 @@ export default function ProfilePage({ user, setUser }) {
               reposts.length === 0 ? (
                 <div className="text-center py-16" style={{ color: C.outline }}>
                   <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">repeat</span>
-                  <p className="text-sm">{t("profile.no_reposts")}</p>
+                  <p className="text-sm">{t("profilepage.no_reposts")}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -717,7 +717,7 @@ export default function ProfilePage({ user, setUser }) {
               mentions.length === 0 ? (
                 <div className="text-center py-16" style={{ color: C.outline }}>
                   <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">alternate_email</span>
-                  <p className="text-sm">{t("profile.no_mentions")}</p>
+                  <p className="text-sm">{t("profilepage.no_mentions")}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -750,7 +750,7 @@ export default function ProfilePage({ user, setUser }) {
         <FollowListModal
           userId={userId}
           kind={followModal.kind}
-          title={followModal.kind === "followers" ? t("profile.followers") : t("profile.following")}
+          title={followModal.kind === "followers" ? t("profilepage.followers") : t("profilepage.following")}
           currentUserId={user?.id}
           manageFollowers={isOwnProfile && followModal.kind === "followers"}
           onClose={() => setFollowModal(null)}
