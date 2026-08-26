@@ -1,3 +1,4 @@
+import MatchSocialPanel from "@/components/MatchSocialPanel";
 // Match Center — chronologie détaillée d'un match (données ESPN gratuites).
 // Design sombre premium, typo fine (Inter), icônes 100 % SVG (aucun emoji).
 // Événements domicile à GAUCHE de l'axe, extérieur à DROITE. Rafraîchi 60 s.
@@ -180,6 +181,7 @@ export default function MatchCenter({ match, onClose }) {
               </div>
             </div>
           )}
+          <MatchSocialPanel match={h} />
         </div>
       </div>
     </div>
