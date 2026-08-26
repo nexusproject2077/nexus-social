@@ -1,10 +1,10 @@
-import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 const C = {
   surface:    "#0b1326",
@@ -69,7 +69,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
         replies: [],
       })));
     } catch (err) {
-      console.error("Erreur commentaires:", err);
+      console.error(t("error_comments_log"), err);
     } finally {
       setLoading(false);
     }
@@ -84,18 +84,18 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
       setComments(prev => [{ ...res.data, isLiked: false, likesCount: 0, repliesCount: 0, showReplies: false, replies: [] }, ...prev]);
       setNewComment("");
       onCommentAdded?.();
-    } catch { toast.error(t("comments.err_add_comment")); }
+    } catch { toast.error("Erreur lors de l'ajout du commentaire"); }
     finally { setSubmitting(false); }
   };
 
   const handleDeleteComment = async (commentId) => {
-    if (!window.confirm(t("comments.confirm_delete"))) return;
+    if (!window.confirm(t("delete_comment_confirm"))) return;
     try {
       await axios.delete(`${API}/posts/${postId}/comments/${commentId}`);
       setComments(prev => prev.filter(c => c.id !== commentId));
       onCommentDeleted?.();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erreur lors de la suppression");
+      toast.error(err.response?.data?.detail || t("error_deleting"));
     }
   };
 
@@ -105,7 +105,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
       setComments(prev => prev.map(c =>
         c.id === commentId ? { ...c, isLiked: res.data.liked, likesCount: c.likesCount + (res.data.liked ? 1 : -1) } : c
       ));
-    } catch { toast.error(t("comments.err_like")); }
+    } catch { toast.error(t("error_like")); }
   };
 
   const handleReply = async (commentId) => {
@@ -117,7 +117,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
       ));
       setReplyText("");
       setReplyingTo(null);
-    } catch { toast.error(t("comments.err_add_reply")); }
+    } catch { toast.error("Erreur lors de l'ajout de la réponse"); }
   };
 
   const toggleReplies = async (commentId) => {
@@ -126,7 +126,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
       try {
         const res = await axios.get(`${API}/comments/${commentId}/replies`);
         setComments(prev => prev.map(c => c.id === commentId ? { ...c, replies: res.data, showReplies: true } : c));
-      } catch { console.error("Erreur replies"); }
+      } catch { console.error(t("error_replies")); }
     } else {
       setComments(prev => prev.map(c => c.id === commentId ? { ...c, showReplies: !c.showReplies } : c));
     }
@@ -134,7 +134,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
 
   const formatDate = (d) => {
     try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); }
-    catch { return "À l'instant"; }
+    catch { return t("just_now"); }
   };
 
   return (
@@ -150,7 +150,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
           <input
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
-            placeholder={t("comments.add_comment")}
+            placeholder=t("add_comment")
             className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500"
             style={{ color: C.onSurface }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitComment(e); } }}
@@ -172,7 +172,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
           <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
         </div>
       ) : comments.length === 0 ? (
-        <p className="text-xs text-center py-3" style={{ color: C.outline }}>{t("comments.empty")}</p>
+        <p className="text-xs text-center py-3" style={{ color: C.outline }}>Aucun commentaire — soyez le premier !</p>
       ) : (
         <div className="space-y-3 max-h-96 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin", scrollbarColor: `${C.high} transparent` }}>
           {comments.map((comment) => (
@@ -211,12 +211,12 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
                       onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
                       className="text-[10px] font-bold transition-colors hover:text-cyan-400"
                       style={{ color: replyingTo === comment.id ? C.cyan : C.outline }}
-                    >
-                      {t("comments.reply")}
-                    </button>
+                    >{
+                      t("answer")
+                    }</button>
                     {comment.repliesCount > 0 && (
                       <button onClick={() => toggleReplies(comment.id)} className="text-[10px] font-bold transition-colors hover:text-cyan-400" style={{ color: C.outline }}>
-                        {comment.showReplies ? t("comments.hide_replies") : t("comments.view_replies", { count: comment.repliesCount })}
+                        {comment.showReplies ? "▲ Masquer" : `▼ ${comment.repliesCount} réponse${comment.repliesCount > 1 ? "s" : ""}`}
                       </button>
                     )}
                   </div>
@@ -234,7 +234,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
                     <input
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
-                      placeholder={t("comments.reply_to_placeholder", { user: comment.author_username })}
+                      placeholder={`Répondre à ${comment.author_username}…`}
                       className="flex-1 bg-transparent border-none outline-none text-xs placeholder:text-slate-500"
                       style={{ color: C.onSurface }}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(comment.id); } }}

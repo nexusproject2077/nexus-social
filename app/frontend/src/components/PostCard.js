@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
 import CommentsSection from "./CommentsSection";
-import TipModal from "./TipModal";
+import { useTranslation } from "react-i18next";
 
 const C = {
   surface:    "#0b1326",
@@ -16,7 +15,6 @@ const C = {
   cyan:       (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
   onPrimary:  "#00363e",
   outline:    "#859397",
-  idleIcon:   "#6b7480",  // gris moyen pour les icônes d'action au repos (plus discret)
   onSurface:  "#dae2fd",
   onVariant:  "#bbc9cd",
 };
@@ -27,7 +25,6 @@ const C = {
  * son permet de réactiver l'audio ; les contrôles natifs restent disponibles.
  */
 function FeedVideo({ src }) {
-  const { t } = useTranslation();
   const ref = useRef(null);
   const [muted, setMuted] = useState(true);
 
@@ -49,14 +46,11 @@ function FeedVideo({ src }) {
   }, []);
 
   return (
-    <div className="relative rounded-2xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+    <div className="relative rounded-xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
       <video
         ref={ref}
         src={src}
-        // rounded-2xl DIRECTEMENT sur la vidéo : sur iOS, le <video> ne se
-        // découpe pas selon le border-radius du parent (coins du haut « pointus »).
-        // L'arrondir lui-même corrige les 4 coins.
-        className="w-full max-h-[560px] bg-black rounded-2xl"
+        className="w-full max-h-[560px] bg-black"
         muted={muted}
         loop
         playsInline
@@ -69,7 +63,7 @@ function FeedVideo({ src }) {
         onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }}
         className="absolute bottom-3 right-3 w-9 h-9 rounded-full flex items-center justify-center"
         style={{ background: "rgba(0,0,0,0.55)" }}
-        title={muted ? t("postcard.unmute") : t("postcard.mute")}
+        title={muted ? "Activer le son" : "Couper le son"}
       >
         <span className="material-symbols-outlined text-white text-lg">{muted ? "volume_off" : "volume_up"}</span>
       </button>
@@ -86,7 +80,6 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const [commentsCount, setCommentsCount] = useState(post.comments_count || 0);
   const [isSaved, setIsSaved]         = useState(post.is_saved || false);
   const [showComments, setShowComments]   = useState(false);
-  const [showTip, setShowTip]             = useState(false);
   const [reposted, setReposted]       = useState(
     post.is_reposted || (!!post.repost_of && post.author_id === currentUser?.id)
   );
@@ -110,7 +103,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
       setIsLiked(res.data.liked);
       setLikesCount((p) => (res.data.liked ? p + 1 : p - 1));
     } catch {
-      toast.error(t("postcard.err_like"));
+      toast.error(t("error_like"));
     }
   };
 
@@ -121,21 +114,18 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     try {
       const res = await axios.post(`${API}/posts/${post.id}/save`);
       setIsSaved(res.data.saved);
-      toast.success(res.data.saved ? t("postcard.saved") : t("postcard.unsaved"));
+      toast.success(res.data.saved ? "Enregistré" : t("removed_from_saved"));
     } catch {
       setIsSaved(!next);
-      toast.error(t("postcard.err_save"));
+      toast.error("Erreur lors de l'enregistrement");
     }
   };
 
   const handleShare = async () => {
-    // Un repost partage la publication d'ORIGINE (URL canonique).
-    // Lien MIROIR servi par le backend → aperçu Open Graph riche
-    // (WhatsApp/Discord/iMessage) + CTA « Ouvrir dans Nexus ».
-    const url = `${API.replace(/\/api\/?$/, "")}/post/${originalId}`;
+    const url = `${window.location.origin}/post/${post.id}`;
     const shareData = {
-      title: t("postcard.share_title", { name: displayAuthorName }),
-      text: post.content ? post.content.slice(0, 120) : t("postcard.share_text"),
+      title: `${displayAuthorName} sur Nexus`,
+      text: post.content ? post.content.slice(0, 120) : "Découvre cette publication sur Nexus",
       url,
     };
     try {
@@ -143,13 +133,13 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         await navigator.share(shareData);
       } else {
         await navigator.clipboard.writeText(url);
-        toast.success(t("postcard.link_copied_clipboard"));
+        toast.success("Lien copié dans le presse-papiers");
       }
     } catch (err) {
       // L'utilisateur a annulé le partage natif → on ne fait rien.
       if (err && err.name !== "AbortError") {
-        try { await navigator.clipboard.writeText(url); toast.success(t("postcard.link_copied")); }
-        catch { toast.error(t("postcard.err_share")); }
+        try { await navigator.clipboard.writeText(url); toast.success(t("link_copied")); }
+        catch { toast.error("Impossible de partager"); }
       }
     }
   };
@@ -159,17 +149,16 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     try {
       const res = await axios.post(`${API}/posts/${post.id}/pin`);
       setPinned(res.data.pinned);
-      toast.success(res.data.pinned ? t("postcard.pinned") : t("postcard.unpinned"));
+      toast.success(res.data.pinned ? "Publication épinglée en haut du profil" : "Publication désépinglée");
       onUpdate?.({ ...post, is_pinned: res.data.pinned });
     } catch (e) {
-      toast.error(e.response?.data?.detail || t("postcard.err_action"));
+      toast.error(e.response?.data?.detail || "Action impossible");
     }
   };
 
   // Clic sur la carte (hors éléments interactifs) → page détail = fil de
   // commentaires complet (lecture / réponse / identification), façon X.
-  // Un repost ouvre le fil de la publication d'ORIGINE (les commentaires y vivent).
-  const openThread = () => navigate(`/post/${originalId}`);
+  const openThread = () => navigate(`/post/${post.id}`);
 
   // Double-tap « like » sur la photo (façon Instagram) : cœur animé + like.
   const lastTapRef = useRef(0);
@@ -186,9 +175,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   };
 
   const handleRepost = async () => {
-    if (!currentUser) { toast.error(t("postcard.err_login_required")); return; }
+    if (!currentUser) { toast.error(t("must_be_logged_in")); return; }
     if (repostLoading) return;
-    if (displayAuthorId === currentUser.id) { toast.error(t("postcard.err_repost_own")); return; }
+    if (displayAuthorId === currentUser.id) { toast.error("Vous ne pouvez pas reposter votre propre publication"); return; }
 
     try {
       setRepostLoading(true);
@@ -197,17 +186,17 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         const res = await axios.delete(`${API}/posts/${originalId}/repost`);
         setReposted(false);
         setSharesCount((p) => (typeof res.data?.shares_count === "number" ? res.data.shares_count : Math.max(0, p - 1)));
-        toast.success(t("postcard.repost_undone"));
+        toast.success(t("repost_cancelled"));
         // Si on regardait notre propre repost, il disparaît de la liste.
         if (isRepost && post.author_id === currentUser.id) onDelete?.(post.id);
       } else {
         await axios.post(`${API}/posts/${originalId}/repost`);
         setReposted(true);
         setSharesCount((p) => p + 1);
-        toast.success(t("postcard.reposted"));
+        toast.success(t("post_reposted"));
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || t("postcard.err_repost"));
+      toast.error(err.response?.data?.detail || t("error_repost"));
     } finally {
       setRepostLoading(false);
     }
@@ -216,19 +205,19 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const handleDelete = async () => {
     // Pour un repost, « supprimer » = annuler la republication (met à jour le
     // compteur de partages de l'original et retire le repost du profil).
-    const label = isRepost ? t("postcard.confirm_unrepost") : t("postcard.confirm_delete");
+    const label = isRepost ? "Annuler cette republication ?" : t("confirm_delete_post");
     if (!window.confirm(label)) return;
     try {
       if (isRepost) {
         await axios.delete(`${API}/posts/${originalId}/repost`);
-        toast.success(t("postcard.repost_undone"));
+        toast.success(t("repost_cancelled"));
       } else {
         await axios.delete(`${API}/posts/${post.id}`);
-        toast.success(t("postcard.deleted"));
+        toast.success(t("post_deleted"));
       }
       onDelete?.(post.id);
     } catch {
-      toast.error(t("postcard.err_delete"));
+      toast.error(t("error_deleting"));
     }
   };
 
@@ -240,7 +229,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
       setPoll(res.data.poll);
       setPollVote(res.data.poll_user_vote);
     } catch (err) {
-      toast.error(err.response?.data?.detail || t("postcard.err_vote"));
+      toast.error(err.response?.data?.detail || "Erreur lors du vote");
     } finally {
       setPollLoading(false);
     }
@@ -302,22 +291,25 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
 
   const formatDate = (d) => {
     try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); }
-    catch { return "À l'instant"; }
+    catch { return t("just_now"); }
   };
 
   const isOwnPost = currentUser?.id === post.author_id;
 
   return (
-    <article style={{ borderBottom: "1px solid #1F2937" }}>
-      {/* Repost banner — texte discret (plus de bandeau gris). */}
+    <article
+      className="rounded-2xl border overflow-hidden"
+      style={{ backgroundColor: C.container, borderColor: "rgba(255,255,255,0.05)" }}
+    >
+      {/* Repost banner */}
       {post.repost_of && (
-        <div className="flex items-center gap-2 pt-3 text-xs font-bold" style={{ color: C.outline }}>
+        <div className="flex items-center gap-2 px-4 py-2 border-b text-xs font-bold" style={{ backgroundColor: C.high, borderColor: "rgba(255,255,255,0.05)", color: C.outline }}>
           <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>repeat</span>
-          <span><Link to={`/profile/${post.author_id}`} style={{ color: C.cyan }} className="hover:text-cyan-400">@{post.author_username}</Link> {t("postcard.reposted_suffix")}</span>
+          <span>Reposté par <span style={{ color: C.cyan }}>@{post.author_username}</span> depuis <Link to={`/profile/${post.original_author_id}`} style={{ color: C.onVariant }} className="hover:text-cyan-400">@{post.original_author_username}</Link></span>
         </div>
       )}
 
-      <div className="pt-4 pb-6 lg:pt-5 lg:pb-7 space-y-4">
+      <div className="p-4 lg:p-5 space-y-4">
         {/* Header */}
         <div className="flex justify-between items-start">
           <Link to={`/profile/${displayAuthorId}`} className="flex gap-3 items-center">
@@ -333,11 +325,20 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               {/* Nom + @username côte à côte (façon X) */}
               <p className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1 flex-wrap" style={{ color: C.onSurface }}>
                 <span className="truncate">{displayAuthorName}</span>
+                {displayAuthorVerified && (
+                  <span
+                    className="material-symbols-outlined text-sm"
+                    style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1" }}
+                    title=t("verified_account")
+                  >
+                    verified
+                  </span>
+                )}
                 {post.author_is_premium && (
                   <span
                     className="material-symbols-outlined text-sm"
                     style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}
-                    title={t("postcard.premium_member")}
+                    title="Membre Nexus Premium"
                   >
                     workspace_premium
                   </span>
@@ -346,7 +347,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               </p>
               <p className="text-xs flex items-center gap-1" style={{ color: C.outline }}>
                 {post.is_pinned && (
-                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title={t("postcard.pinned_badge")}>
+                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title="Publication épinglée">
                     <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>push_pin</span>
                     Épinglé ·
                   </span>
@@ -363,12 +364,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                   onClick={handlePin}
                   className="transition-colors hover:text-cyan-400"
                   style={{ color: pinned ? C.cyan : C.outline }}
-                  title={pinned ? t("postcard.unpin") : t("postcard.pin")}
+                  title={pinned ? "Désépingler" : "Épingler en haut du profil (Premium)"}
                 >
                   <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: pinned ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
                 </button>
               )}
-              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title={t("postcard.delete")}>
+              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title=t("delete")>
                 <span className="material-symbols-outlined text-xl">delete</span>
               </button>
             </div>
@@ -457,7 +458,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
           >
-            <span className="material-symbols-outlined text-[15px]">shopping_bag</span>
+            <span className="material-symbols-outlined text-lg">shopping_bag</span>
             Shop
           </a>
         )}
@@ -465,12 +466,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         {/* Media */}
         {post.media_url && post.media_type === "image" && (
           <div
-            className="relative rounded-2xl overflow-hidden border select-none"
+            className="relative rounded-xl overflow-hidden border select-none"
             style={{ borderColor: "rgba(255,255,255,0.06)" }}
             onClick={onMediaTap}
             onDoubleClick={doubleTapLike}
           >
-            <img src={post.media_url} alt="Post media" className="w-full h-auto object-contain max-h-[560px] rounded-2xl" loading="lazy" draggable={false} />
+            <img src={post.media_url} alt="Post media" className="w-full h-auto object-contain max-h-[560px]" loading="lazy" draggable={false} />
             {/* Cœur animé au double-tap */}
             {heartBurst && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -494,17 +495,16 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           <FeedVideo src={post.media_url} />
         )}
 
-        {/* Action bar — façon X : icônes espacées (justify-between), sans ligne
-            au-dessus. L'espace vient du space-y du conteneur (pas collé au texte). */}
-        <div className="flex items-center justify-between pt-1">
+        {/* Action bar — réparti (pas serré) : J'aime · Commentaire · Repost · Partage · Enregistrer */}
+        <div className="flex items-center justify-between pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
           {/* Like */}
           <button
             onClick={handleLike}
-            title={t("postcard.like")}
+            title=t("like")
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-            style={{ color: isLiked ? "#f87171" : C.idleIcon }}
+            style={{ color: isLiked ? "#f87171" : C.outline }}
           >
-            <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}>
+            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}>
               favorite
             </span>
             {likesCount > 0 && <span>{likesCount}</span>}
@@ -513,11 +513,11 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           {/* Comment — ouvre le composeur / fil de commentaires */}
           <button
             onClick={() => setShowComments(!showComments)}
-            title={t("postcard.comment")}
+            title=t("comment")
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-            style={{ color: showComments ? C.cyan : C.idleIcon }}
+            style={{ color: showComments ? C.cyan : C.outline }}
           >
-            <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: showComments ? "'FILL' 1" : "'FILL' 0" }}>
+            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: showComments ? "'FILL' 1" : "'FILL' 0" }}>
               chat_bubble
             </span>
             {commentsCount > 0 && <span>{commentsCount}</span>}
@@ -528,21 +528,21 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             <button
               onClick={handleRepost}
               disabled={repostLoading}
-              title={reposted ? t("postcard.cancel_repost") : t("postcard.repost")}
+              title={reposted ? "Annuler la republication" : "Reposter"}
               className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-              style={{ color: reposted ? C.cyan : C.idleIcon, opacity: repostLoading ? 0.6 : 1 }}
+              style={{ color: reposted ? C.cyan : C.outline, opacity: repostLoading ? 0.6 : 1 }}
             >
               {repostLoading ? (
-                <span className="material-symbols-outlined text-[15px] animate-spin" style={{ animationDuration: "0.7s" }}>refresh</span>
+                <span className="material-symbols-outlined text-lg animate-spin" style={{ animationDuration: "0.7s" }}>refresh</span>
               ) : (
-                <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: reposted ? "'FILL' 1" : "'FILL' 0" }}>repeat</span>
+                <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: reposted ? "'FILL' 1" : "'FILL' 0" }}>repeat</span>
               )}
               {sharesCount > 0 && <span>{sharesCount}</span>}
             </button>
           ) : (
             sharesCount > 0 && (
-              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.idleIcon }} title={t("postcard.reposts")}>
-                <span className="material-symbols-outlined text-[15px]">repeat</span>
+              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.outline }} title="Republications">
+                <span className="material-symbols-outlined text-lg">repeat</span>
                 {sharesCount}
               </span>
             )
@@ -551,36 +551,24 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           {/* Share */}
           <button
             onClick={handleShare}
-            title={t("postcard.share")}
+            title=t("share")
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-            style={{ color: C.idleIcon }}
+            style={{ color: C.outline }}
           >
-            <span className="material-symbols-outlined text-[15px]">ios_share</span>
+            <span className="material-symbols-outlined text-lg">ios_share</span>
           </button>
 
           {/* Save / Enregistrer */}
           <button
             onClick={handleSave}
-            title={isSaved ? t("postcard.unsave") : t("postcard.save")}
+            title={isSaved ? "Retirer des enregistrements" : t("save")}
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-            style={{ color: isSaved ? C.cyan : C.idleIcon }}
+            style={{ color: isSaved ? C.cyan : C.outline }}
           >
-            <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: isSaved ? "'FILL' 1" : "'FILL' 0" }}>
+            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: isSaved ? "'FILL' 1" : "'FILL' 0" }}>
               bookmark
             </span>
           </button>
-
-          {/* Pourboire (Tip) — contenu ORIGINAL d'un créateur ayant activé Stripe. */}
-          {!isOwnPost && !post.repost_of && post.author_can_receive_tips && (
-            <button
-              onClick={() => setShowTip(true)}
-              title={`Envoyer un pourboire à @${displayAuthorName}`}
-              className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-              style={{ color: C.cyan }}
-            >
-              <span className="material-symbols-outlined text-[15px]">volunteer_activism</span>
-            </button>
-          )}
         </div>
 
         {/* Comments */}
@@ -593,10 +581,6 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           />
         )}
       </div>
-
-      {showTip && (
-        <TipModal userId={displayAuthorId} username={displayAuthorName} onClose={() => setShowTip(false)} />
-      )}
     </article>
   );
 }

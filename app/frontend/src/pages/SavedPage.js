@@ -25,7 +25,7 @@ export default function SavedPage({ user, setUser }) {
       const res = await axios.get(`${API}/posts/saved`);
       setItems(res.data || []);
     } catch {
-      toast.error(t("saved.err_load"));
+      toast.error(t("error_loading_saved"));
     } finally {
       setLoading(false);
     }
@@ -48,7 +48,9 @@ export default function SavedPage({ user, setUser }) {
   });
 
   const TABS = [
-    { key: "all" }, { key: "posts" }, { key: "videos" },
+    { key: "all", label: "Tout" },
+    { key: "posts", label: t("posts_label") },
+    { key: "videos", label: t("videos") },
   ];
 
   return (
@@ -57,18 +59,18 @@ export default function SavedPage({ user, setUser }) {
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <header
-          className="sticky top-0 z-30 min-h-[4rem] hdr-safe flex items-center gap-2 px-4 lg:px-8"
+          className="sticky top-0 z-30 h-16 flex items-center gap-2 px-4 lg:px-8"
           style={{ backgroundColor: "rgba(11,19,38,0.7)", backdropFilter: "blur(20px)" }}
         >
           <span className="material-symbols-outlined" style={{ color: "var(--nexus-accent)" }}>bookmark</span>
-          <h1 className="font-headline font-bold text-xl tracking-tight" style={{ color: "#dae2fd" }}>
-            {t("saved.title")}
-          </h1>
+          <h1 className="font-headline font-bold text-xl tracking-tight" style={{ color: "#dae2fd" }}>{
+            t("saved")
+          }</h1>
         </header>
 
         {/* Filtres */}
         <div className="flex items-center gap-2 px-4 mt-3">
-          {TABS.map(({ key }) => {
+          {TABS.map(({ key, label }) => {
             const active = filter === key;
             return (
               <button
@@ -81,7 +83,7 @@ export default function SavedPage({ user, setUser }) {
                   border: "1px solid rgba(255,255,255,0.05)",
                 }}
               >
-                {t("saved.tab_"+key)}
+                {label}
               </button>
             );
           })}
@@ -108,9 +110,9 @@ export default function SavedPage({ user, setUser }) {
           ) : filtered.length === 0 ? (
             <div className="text-center py-16" style={{ color: "#859397" }}>
               <span className="material-symbols-outlined text-5xl mb-3 block" style={{ color: "#334155" }}>bookmark_border</span>
-              <p className="text-lg">{t("saved.empty_title")}</p>
+              <p className="text-lg">Rien d'enregistré pour le moment</p>
               <p className="text-sm mt-2">
-                {t("saved.empty_sub")}
+                Appuyez sur l'icône signet d'une publication ou d'un clip pour le retrouver ici.
               </p>
             </div>
           ) : (

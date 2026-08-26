@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
-import i18n from "@/i18n";
+import { useTranslation } from "react-i18next";
 
 // Serveurs ICE : STUN public + TURN (identifiants injectés au build via des
 // variables d'environnement — jamais en dur dans le dépôt).
@@ -31,14 +31,14 @@ const mediaErrorMessage = (err) => {
   switch (err?.name) {
     case "NotAllowedError":
     case "SecurityError":
-      return i18n.t("call.err_denied");
+      return "Accès micro/caméra refusé — autorisez-le (icône 🔒 dans la barre d'adresse) puis réessayez";
     case "NotFoundError":
     case "OverconstrainedError":
-      return i18n.t("call.err_notfound");
+      return t("no_mic_camera");
     case "NotReadableError":
-      return i18n.t("call.err_inuse");
+      return t("mic_camera_in_use");
     default:
-      return i18n.t("call.err_generic");
+      return "Impossible d'accéder au micro/caméra";
   }
 };
 
@@ -57,54 +57,6 @@ const getMedia = async (video) => {
 };
 
 const fmtDuration = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-
-// Renvoie un flux dont la VIDÉO est inversée horizontalement (miroir), pour que
-// le correspondant voie l'image comme l'utilisateur se voit dans sa vignette.
-// Utilise un <canvas> (le CSS ne peut pas modifier le flux ENVOYÉ en WebRTC).
-// Repli sûr : en cas de souci (API non dispo), renvoie le flux d'origine —
-// donc jamais pire que le comportement standard actuel.
-function makeMirroredStream(camStream) {
-  try {
-    const vTrack = camStream.getVideoTracks()[0];
-    if (!vTrack) return { stream: camStream, cleanup: () => {} };
-    const s = vTrack.getSettings ? vTrack.getSettings() : {};
-    const w = s.width || 640, h = s.height || 480;
-    const srcVideo = document.createElement("video");
-    srcVideo.srcObject = new MediaStream([vTrack]);
-    srcVideo.muted = true;
-    srcVideo.playsInline = true;
-    const canvas = document.createElement("canvas");
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx || !canvas.captureStream) return { stream: camStream, cleanup: () => {} };
-    let raf = 0;
-    const draw = () => {
-      try {
-        if (srcVideo.readyState >= 2) {
-          ctx.save();
-          ctx.scale(-1, 1);
-          ctx.drawImage(srcVideo, -w, 0, w, h);
-          ctx.restore();
-        }
-      } catch { /* frame ignorée */ }
-      raf = requestAnimationFrame(draw);
-    };
-    srcVideo.play().catch(() => {});
-    draw();
-    const out = canvas.captureStream(30);
-    const mTrack = out.getVideoTracks()[0];
-    if (!mTrack) { cancelAnimationFrame(raf); return { stream: camStream, cleanup: () => {} }; }
-    const stream = new MediaStream([mTrack, ...camStream.getAudioTracks()]);
-    const cleanup = () => {
-      try { cancelAnimationFrame(raf); } catch { /* ignore */ }
-      try { mTrack.stop(); } catch { /* ignore */ }
-      try { srcVideo.srcObject = null; } catch { /* ignore */ }
-    };
-    return { stream, cleanup };
-  } catch {
-    return { stream: camStream, cleanup: () => {} };
-  }
-}
 
 const C = {
   bg: "#020617", surface: "#0b1326", high: "#222a3d",
@@ -128,6 +80,7 @@ function Avatar({ username, pic, size = 96 }) {
 //   detail { userId, username, profilePic, video }.
 // - Appel entrant : reçu via l'événement "nexus:realtime" (type "call_signal").
 export default function CallManager({ user }) {
+  const { t } = useTranslation();
   const [phase, setPhase] = useState("idle"); // idle | outgoing | incoming | connected
   const [peer, setPeer] = useState(null);      // { id, username, profile_pic }
   const [withVideo, setWithVideo] = useState(true);
@@ -145,7 +98,6 @@ export default function CallManager({ user }) {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null); // sortie audio quand il n'y a pas de vidéo
-  const mirrorCleanupRef = useRef(null); // arrêt du canvas miroir (flux envoyé)
 
   const sendSignal = useCallback((toId, signal) => {
     if (!toId) return;
@@ -155,8 +107,6 @@ export default function CallManager({ user }) {
   const cleanup = useCallback(() => {
     try { pcRef.current?.close(); } catch { /* déjà fermé */ }
     pcRef.current = null;
-    try { mirrorCleanupRef.current?.(); } catch { /* ignore */ }
-    mirrorCleanupRef.current = null;
     if (localStreamRef.current) { localStreamRef.current.getTracks().forEach((t) => t.stop()); }
     localStreamRef.current = null;
     remoteStreamRef.current = null;
@@ -179,7 +129,7 @@ export default function CallManager({ user }) {
     };
     pc.onconnectionstatechange = () => {
       if (["failed", "closed"].includes(pc.connectionState)) {
-        toast.error(i18n.t("call.conn_lost"));
+        toast.error(t("connection_lost"));
         cleanup();
       }
     };
@@ -190,7 +140,7 @@ export default function CallManager({ user }) {
   // ── Appel sortant ─────────────────────────────────────────────────────────
   const startCall = useCallback(async ({ userId, username, profilePic, video }) => {
     if (!userId) return;
-    if (phase !== "idle") { toast.error(i18n.t("call.already_in_call")); return; }
+    if (phase !== "idle") { toast.error(t("call_already_in_progress")); return; }
     try {
       const { stream, video: gotVideo } = await getMedia(!!video);
       localStreamRef.current = stream;
@@ -199,16 +149,7 @@ export default function CallManager({ user }) {
       setWithVideo(gotVideo);
       setPhase("outgoing");
       const pc = createPC(userId);
-      // On ENVOIE une version miroir de la vidéo (le correspondant nous voit
-      // comme dans notre vignette). L'aperçu local garde le flux caméra brut +
-      // miroir CSS. Audio inchangé.
-      let sendStream = stream;
-      if (gotVideo) {
-        const m = makeMirroredStream(stream);
-        sendStream = m.stream;
-        mirrorCleanupRef.current = m.cleanup;
-      }
-      sendStream.getTracks().forEach((t) => pc.addTrack(t, sendStream));
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       sendSignal(userId, { kind: "offer", call_id: callIdRef.current, sdp: pc.localDescription, video: gotVideo });
@@ -223,17 +164,10 @@ export default function CallManager({ user }) {
     const offer = pendingOfferRef.current;
     if (!offer || !peer) return;
     try {
-      const { stream, video: gotVideo } = await getMedia(withVideo);
+      const { stream } = await getMedia(withVideo);
       localStreamRef.current = stream;
       const pc = createPC(peer.id);
-      // Idem appel sortant : on envoie la vidéo en miroir.
-      let sendStream = stream;
-      if (gotVideo) {
-        const m = makeMirroredStream(stream);
-        sendStream = m.stream;
-        mirrorCleanupRef.current = m.cleanup;
-      }
-      sendStream.getTracks().forEach((t) => pc.addTrack(t, sendStream));
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       for (const c of pendingCandidatesRef.current) { try { await pc.addIceCandidate(c); } catch { /* ignore */ } }
       pendingCandidatesRef.current = [];
@@ -288,7 +222,7 @@ export default function CallManager({ user }) {
         }
       } else if (signal.kind === "hangup" || signal.kind === "reject") {
         if (signal.call_id === callIdRef.current) {
-          toast(signal.kind === "reject" ? i18n.t("call.call_rejected") : i18n.t("call.call_ended"));
+          toast(signal.kind === "reject" ? t("call_declined") : t("call_ended"));
           cleanup();
         }
       }
@@ -369,9 +303,9 @@ export default function CallManager({ user }) {
             </p>
             <p className="text-sm mt-1" style={{ color: C.cyan }}>
               {phase === "incoming"
-                ? (withVideo ? i18n.t("call.incoming_video") : i18n.t("call.incoming"))
+                ? (withVideo ? t("incoming_video_call") : "Appel entrant…")
                 : phase === "outgoing"
-                  ? i18n.t("call.calling")
+                  ? "Appel en cours…"
                   : fmtDuration(callSeconds)}
             </p>
           </div>
@@ -392,12 +326,12 @@ export default function CallManager({ user }) {
       <div className="absolute bottom-10 flex items-center justify-center gap-5">
         {phase === "incoming" ? (
           <>
-            <button onClick={rejectCall} title={i18n.t("call.reject")}
+            <button onClick={rejectCall} title="Refuser"
               className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition"
               style={{ background: "#ef4444", color: "#fff" }}>
               <span className="material-symbols-outlined text-2xl">call_end</span>
             </button>
-            <button onClick={acceptCall} title={i18n.t("call.answer")}
+            <button onClick={acceptCall} title=t("answer")
               className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition"
               style={{ background: "#22c55e", color: "#fff" }}>
               <span className="material-symbols-outlined text-2xl">{withVideo ? "videocam" : "call"}</span>
@@ -405,19 +339,19 @@ export default function CallManager({ user }) {
           </>
         ) : (
           <>
-            <button onClick={toggleMute} title={muted ? i18n.t("call.mic_on") : i18n.t("call.mic_off")}
+            <button onClick={toggleMute} title={muted ? "Activer le micro" : "Couper le micro"}
               className="w-14 h-14 rounded-full flex items-center justify-center active:scale-90 transition"
               style={{ background: muted ? C.cyan : C.high, color: muted ? C.onPrimary : C.onSurface }}>
               <span className="material-symbols-outlined">{muted ? "mic_off" : "mic"}</span>
             </button>
             {withVideo && (
-              <button onClick={toggleCamera} title={cameraOff ? i18n.t("call.cam_on") : i18n.t("call.cam_off")}
+              <button onClick={toggleCamera} title={cameraOff ? t("enable_camera") : t("disable_camera")}
                 className="w-14 h-14 rounded-full flex items-center justify-center active:scale-90 transition"
                 style={{ background: cameraOff ? C.cyan : C.high, color: cameraOff ? C.onPrimary : C.onSurface }}>
                 <span className="material-symbols-outlined">{cameraOff ? "videocam_off" : "videocam"}</span>
               </button>
             )}
-            <button onClick={hangup} title={i18n.t("call.hangup")}
+            <button onClick={hangup} title="Raccrocher"
               className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition"
               style={{ background: "#ef4444", color: "#fff" }}>
               <span className="material-symbols-outlined text-2xl">call_end</span>

@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { X, Eye, EyeOff, Lock, Check, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { API } from '../App';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from "react-i18next";
 
 export default function ChangePasswordModal({ onClose }) {
   const { t } = useTranslation();
@@ -16,10 +16,10 @@ export default function ChangePasswordModal({ onClose }) {
 
   // Validation du mot de passe
   const passwordRequirements = [
-    { k: 'len', valid: newPassword.length >= 8 },
-    { k: 'upper', valid: /[A-Z]/.test(newPassword) },
-    { k: 'lower', valid: /[a-z]/.test(newPassword) },
-    { k: 'digit', valid: /[0-9]/.test(newPassword) },
+    { label: t('pwd_min_8'), valid: newPassword.length >= 8 },
+    { label: t('pwd_uppercase'), valid: /[A-Z]/.test(newPassword) },
+    { label: t('pwd_lowercase'), valid: /[a-z]/.test(newPassword) },
+    { label: t('pwd_digit'), valid: /[0-9]/.test(newPassword) },
   ];
 
   const isPasswordValid = passwordRequirements.every(req => req.valid);
@@ -29,12 +29,12 @@ export default function ChangePasswordModal({ onClose }) {
     e.preventDefault();
 
     if (!isPasswordValid) {
-      toast.error(t("changepw.err_criteria"));
+      toast.error(t("pwd_criteria_fail"));
       return;
     }
 
     if (!passwordsMatch) {
-      toast.error(t("changepw.err_mismatch"));
+      toast.error(t("passwords_mismatch"));
       return;
     }
 
@@ -55,14 +55,14 @@ export default function ChangePasswordModal({ onClose }) {
       });
 
       if (response.ok) {
-        toast.success(t("changepw.success"));
+        toast.success(t("password_changed"));
         onClose();
       } else {
         const error = await response.json();
-        toast.error(error.detail || t("changepw.err_change"));
+        toast.error(error.detail || t("error_changing"));
       }
     } catch (err) {
-      toast.error(t("changepw.err_network"));
+      toast.error(t("network_error"));
     } finally {
       setLoading(false);
     }
@@ -73,7 +73,7 @@ export default function ChangePasswordModal({ onClose }) {
       <div className="bg-slate-900 rounded-2xl max-w-md w-full p-6 relative">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">{t("changepw.title")}</h2>
+          <h2 className="text-xl font-bold text-white">{t("change_password")}</h2>
           <button
             onClick={onClose}
             className="p-2 hover:bg-slate-800 rounded-full transition-colors"
@@ -87,7 +87,7 @@ export default function ChangePasswordModal({ onClose }) {
           {/* Mot de passe actuel */}
           <div>
             <label className="text-sm text-slate-400 mb-2 block">
-              {t("changepw.current")}
+              Mot de passe actuel
             </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
@@ -111,7 +111,7 @@ export default function ChangePasswordModal({ onClose }) {
           {/* Nouveau mot de passe */}
           <div>
             <label className="text-sm text-slate-400 mb-2 block">
-              {t("changepw.new")}
+              Nouveau mot de passe
             </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
@@ -142,7 +142,7 @@ export default function ChangePasswordModal({ onClose }) {
                       <AlertCircle className="w-4 h-4 text-slate-500" />
                     )}
                     <span className={req.valid ? 'text-green-400' : 'text-slate-500'}>
-                      {t("changepw.req_"+req.k)}
+                      {req.label}
                     </span>
                   </div>
                 ))}
@@ -153,7 +153,7 @@ export default function ChangePasswordModal({ onClose }) {
           {/* Confirmer le mot de passe */}
           <div>
             <label className="text-sm text-slate-400 mb-2 block">
-              {t("changepw.confirm_label")}
+              Confirmer le mot de passe
             </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
@@ -172,9 +172,9 @@ export default function ChangePasswordModal({ onClose }) {
               />
             </div>
             {confirmPassword && !passwordsMatch && (
-              <p className="text-xs text-red-400 mt-1">
-                {t("changepw.err_mismatch")}
-              </p>
+              <p className="text-xs text-red-400 mt-1">{
+                t("passwords_mismatch")
+              }</p>
             )}
           </div>
 
@@ -184,15 +184,15 @@ export default function ChangePasswordModal({ onClose }) {
               type="button"
               onClick={onClose}
               className="flex-1 px-4 py-3 rounded-lg bg-slate-800 text-white hover:bg-slate-700 transition-colors font-medium"
-            >
-              {t("changepw.cancel")}
-            </button>
+            >{
+              t("cancel")
+            }</button>
             <button
               type="submit"
               disabled={loading || !isPasswordValid || !passwordsMatch || !currentPassword}
               className="flex-1 px-4 py-3 rounded-lg bg-cyan-500 text-white hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
             >
-              {loading ? t("changepw.changing") : t("changepw.change")}
+              {loading ? 'Changement...' : 'Changer'}
             </button>
           </div>
         </form>

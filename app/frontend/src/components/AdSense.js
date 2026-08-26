@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useGeo } from "@/context/GeoContext";
-import { isPrivacyStrict, onPrivacyStrictChange } from "@/lib/privacyStrict";
+import { useTranslation } from "react-i18next";
 
 // Identifiant éditeur AdSense (ex. "ca-pub-XXXXXXXXXXXX").
 // La valeur peut être surchargée via l'env ; à défaut on utilise l'ID du site
@@ -29,18 +29,13 @@ const isPremiumUser = () => {
 };
 
 export default function AdSense({ slot, format = "auto" }) {
+  const { t } = useTranslation();
   const initialized = useRef(false);
   const { restricted } = useGeo();
-  const [strict, setStrict] = useState(isPrivacyStrict());
-
-  // Réagit en direct au Mode Confidentialité stricte (les pubs disparaissent /
-  // réapparaissent sans rechargement de page).
-  useEffect(() => onPrivacyStrictChange(setStrict), []);
 
   useEffect(() => {
-    // Aucune pub pour les visiteurs restreints (UE), les membres Premium, ni en
-    // Mode Confidentialité stricte (pas de pub ciblée sans consentement clair).
-    if (strict || restricted || isPremiumUser() || !ADSENSE_CLIENT || !slot || !adsAllowed() || initialized.current) return;
+    // Aucune pub pour les visiteurs restreints (UE) ni pour les membres Premium.
+    if (restricted || isPremiumUser() || !ADSENSE_CLIENT || !slot || !adsAllowed() || initialized.current) return;
     initialized.current = true;
 
     // Charge le script AdSense une seule fois, uniquement après consentement.
@@ -63,10 +58,10 @@ export default function AdSense({ slot, format = "auto" }) {
     } catch {
       /* le script n'est pas encore prêt : AdSense réessaiera au chargement */
     }
-  }, [slot, restricted, strict]);
+  }, [slot, restricted]);
 
-  // Rien n'est rendu si mode strict, restreint (UE), Premium, non configuré, ou non consenti.
-  if (strict || restricted || isPremiumUser() || !ADSENSE_CLIENT || !slot || !adsAllowed()) return null;
+  // Rien n'est rendu si restreint (UE), Premium, non configuré, ou non consenti.
+  if (restricted || isPremiumUser() || !ADSENSE_CLIENT || !slot || !adsAllowed()) return null;
 
   return (
     <ins

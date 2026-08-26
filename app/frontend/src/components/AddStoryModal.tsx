@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import axios from "axios";
 import { API } from "../App";
-import { SURFACE, TEXT, OUTLINE, ACCENT_GRADIENT } from "@/lib/theme";
 import { useTranslation } from "react-i18next";
 
 interface AddStoryModalProps {
@@ -26,13 +25,13 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
 
     // Vérification type
     if (!selected.type.startsWith("image/") && !selected.type.startsWith("video/")) {
-      toast.error(t("addstory.err_type"));
+      toast.error(t("only_images_videos"));
       return;
     }
 
     // Vérification taille (10 Mo max)
     if (selected.size > 10 * 1024 * 1024) {
-      toast.error(t("addstory.err_size"));
+      toast.error("Fichier trop lourd (max 10 Mo)");
       return;
     }
 
@@ -60,16 +59,16 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
         },
       });
 
-      toast.success(t("addstory.published"));
+      toast.success(t("story_published_success"));
       // Rafraîchit immédiatement le bandeau des stories (sans recharger la page).
       window.dispatchEvent(new CustomEvent("nexus:realtime", { detail: { type: "story" } }));
       onSuccess();
     } catch (err: any) {
-      console.error("Erreur upload story :", err);
+      console.error(t("error_upload_story"), err);
       if (err.response?.status === 401) {
-        toast.error(t("addstory.session_expired"));
+        toast.error(t("session_expired"));
       } else {
-        toast.error(t("addstory.err_publish"));
+        toast.error(t("error_publishing_story"));
       }
     } finally {
       setUploading(false);
@@ -84,33 +83,27 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
 
   return (
     <Dialog open onOpenChange={handleClose}>
-      <DialogContent
-        className="text-white max-w-md select-none"
-        style={{ background: SURFACE.container, border: `1px solid ${OUTLINE}` }}
-      >
+      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md select-none">
         <DialogHeader>
           {/* Pas de bouton de fermeture custom ici : DialogContent fournit déjà
               sa propre croix (X) en haut à droite → évite la « double croix ». */}
-          <DialogTitle className="text-xl font-bold">{t("addstory.title")}</DialogTitle>
+          <DialogTitle className="text-xl font-bold">Publier une story</DialogTitle>
         </DialogHeader>
 
         <div className="mt-4">
           {!preview ? (
-            <label
-              className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-2xl cursor-pointer transition"
-              style={{ borderColor: OUTLINE, background: SURFACE.low }}
-            >
+            <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-slate-700 rounded-xl cursor-pointer hover:border-cyan-500 transition">
               <div className="flex flex-col items-center gap-4">
-                <Camera className="w-12 h-12" style={{ color: TEXT.muted }} />
-                <p style={{ color: TEXT.muted }}>{t("addstory.cta_add")}</p>
+                <Camera className="w-12 h-12 text-slate-400" />
+                <p className="text-slate-400">Cliquez pour ajouter une photo ou vidéo</p>
                 <div className="flex gap-4">
-                  <div className="flex items-center gap-2" style={{ color: TEXT.muted }}>
+                  <div className="flex items-center gap-2 text-slate-500">
                     <ImageIcon className="w-5 h-5" />
-                    <span className="text-sm">{t("addstory.image")}</span>
+                    <span className="text-sm">Image</span>
                   </div>
-                  <div className="flex items-center gap-2" style={{ color: TEXT.muted }}>
+                  <div className="flex items-center gap-2 text-slate-500">
                     <Video className="w-5 h-5" />
-                    <span className="text-sm">{t("addstory.video")}</span>
+                    <span className="text-sm">Vidéo</span>
                   </div>
                 </div>
               </div>
@@ -125,9 +118,9 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
             <div className="space-y-4">
               <div className="relative">
                 {file?.type.startsWith("image/") ? (
-                  <img src={preview} alt="Preview" className="w-full rounded-2xl" />
+                  <img src={preview} alt="Preview" className="w-full rounded-xl" />
                 ) : (
-                  <video src={preview} controls className="w-full rounded-2xl" />
+                  <video src={preview} controls className="w-full rounded-xl" />
                 )}
                 <button
                   onClick={() => {
@@ -143,16 +136,15 @@ export default function AddStoryModal({ onClose, onSuccess }: AddStoryModalProps
               <Button
                 onClick={handleUpload}
                 disabled={uploading}
-                className="w-full font-semibold rounded-xl transition-all active:scale-95 hover:opacity-90"
-                style={{ background: ACCENT_GRADIENT, color: TEXT.onAccent }}
+                className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 font-semibold"
               >
                 {uploading ? (
                   <div className="flex items-center gap-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                    <span>{t("addstory.publishing")}</span>
+                    <span>Publication...</span>
                   </div>
                 ) : (
-                  t("addstory.publish")
+                  "Publier la story"
                 )}
               </Button>
             </div>

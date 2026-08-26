@@ -5,6 +5,9 @@ import { API } from "@/App";
 import Layout from "@/components/Layout";
 import PostCard from "@/components/PostCard";
 import CommentCard from "@/components/CommentCard";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Send } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
@@ -26,7 +29,7 @@ export default function PostDetailPage({ user }) {
       const response = await axios.get(`${API}/posts/${postId}`);
       setPost(response.data);
     } catch (error) {
-      toast.error(t("postdetail.err_load_post"));
+      toast.error(t("error_loading_post"));
     } finally {
       setLoading(false);
     }
@@ -37,7 +40,7 @@ export default function PostDetailPage({ user }) {
       const response = await axios.get(`${API}/posts/${postId}/comments`);
       setComments(response.data);
     } catch (error) {
-      toast.error(t("postdetail.err_load_comments"));
+      toast.error(t("error_loading_comments"));
     }
   };
 
@@ -53,9 +56,9 @@ export default function PostDetailPage({ user }) {
       setCommentContent("");
       // Update post comments count
       setPost({ ...post, comments_count: post.comments_count + 1 });
-      toast.success(t("postdetail.comment_posted"));
+      toast.success(t("comment_published"));
     } catch (error) {
-      toast.error(t("postdetail.err_post_comment"));
+      toast.error(t("error_publishing_comment"));
     }
   };
 
@@ -77,7 +80,7 @@ export default function PostDetailPage({ user }) {
     return (
       <Layout user={user}>
         <div className="text-center py-12 text-slate-400">
-          <p>{t("postdetail.not_found")}</p>
+          <p>Publication introuvable</p>
         </div>
       </Layout>
     );
@@ -87,7 +90,7 @@ export default function PostDetailPage({ user }) {
     <Layout user={user}>
       <div className="max-w-2xl mx-auto">
         <div className="sticky top-0 z-10 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800 p-4">
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{t("postdetail.title")}</h1>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{t("publication")}</h1>
         </div>
 
         <div className="p-4">
@@ -98,54 +101,35 @@ export default function PostDetailPage({ user }) {
             showFullContent
           />
 
-          {/* Composer de réponse EN LIGNE (style X) : avatar · champ transparent
-              · capsule « Répondre » qui s'illumine dès qu'on écrit. */}
-          <form onSubmit={handlePostComment} className="flex items-start gap-3 py-3 mt-2 border-b border-slate-800">
-            {user?.profile_pic ? (
-              <img src={user.profile_pic} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
-            ) : (
-              <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold text-white"
-                style={{ background: "linear-gradient(135deg,#3b82f6,#22d3ee)" }}>
-                {(user?.username || "?").slice(0, 2).toUpperCase()}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <textarea
+          <div className="mt-6 mb-4">
+            <h2 className="text-xl font-bold mb-4">Commentaires</h2>
+            <form onSubmit={handlePostComment} className="mb-6">
+              <Textarea
                 data-testid="comment-input"
                 value={commentContent}
-                onChange={(e) => {
-                  setCommentContent(e.target.value);
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${e.target.scrollHeight}px`;
-                }}
-                placeholder={t("postdetail.reply_placeholder")}
-                rows={1}
-                className="w-full bg-transparent border-none outline-none resize-none text-white placeholder:text-slate-500 text-[15px] leading-6 py-1.5"
-                style={{ minHeight: 36 }}
+                onChange={(e) => setCommentContent(e.target.value)}
+                placeholder=t("write_comment")
+                className="bg-slate-900 border-slate-700 text-white mb-3"
+                rows={3}
               />
-              <div className="flex justify-end mt-1">
-                <button
-                  data-testid="post-comment-button"
-                  type="submit"
-                  disabled={!commentContent.trim()}
-                  className="px-4 py-1.5 rounded-full text-sm font-bold transition-all active:scale-95 disabled:cursor-not-allowed"
-                  style={{
-                    background: commentContent.trim() ? "var(--nexus-accent, #22d3ee)" : "#1e293b",
-                    color: commentContent.trim() ? "#04121a" : "#64748b",
-                  }}
-                >
-                  {t("postdetail.reply")}
-                </button>
-              </div>
-            </div>
-          </form>
+              <Button
+                data-testid="post-comment-button"
+                type="submit"
+                disabled={!commentContent.trim()}
+                className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Publier le commentaire
+              </Button>
+            </form>
+          </div>
 
           {comments.length === 0 ? (
-            <div className="text-center py-10">
-              <p className="text-sm text-slate-500">{t("postdetail.be_first")}</p>
+            <div className="text-center py-12 text-slate-400">
+              <p>Aucun commentaire</p>
             </div>
           ) : (
-            <div className="pb-6">
+            <div className="space-y-4 pb-6">
               {comments.map((comment) => (
                 <CommentCard key={comment.id} comment={comment} />
               ))}

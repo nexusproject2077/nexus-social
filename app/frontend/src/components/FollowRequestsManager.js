@@ -9,8 +9,10 @@ import CustomSearchIcon from "@/components/CustomSearchIcon";
 import CustomNotificationIcon from "@/components/CustomNotificationIcon";
 import CustomSettingsIcon from "@/components/CustomSettingsIcon";
 import CustomAccountIcon from "@/components/CustomAccountIcon";
+import { useTranslation } from "react-i18next";
 
 export default function Layout({ children, user, setUser }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -23,22 +25,22 @@ export default function Layout({ children, user, setUser }) {
 
   // Navigation principale (visible en bas sur mobile, sidebar sur desktop)
   const mainNavItems = [
-    { icon: CustomLogo, label: "Accueil", path: "/", testId: "nav-home" },
-    { icon: CustomSearchIcon, label: "Rechercher", path: "/search", testId: "nav-search" },
-    { icon: CustomNotificationIcon, label: "Notifications", path: "/notifications", testId: "nav-notifications" },
-    { icon: CustomMessagingIcon, label: "Messages", path: "/messages", testId: "nav-messages" },
-    { icon: CustomAccountIcon, label: "Profil", path: `/profile/${user.id}`, testId: "nav-profile" },
+    { icon: CustomLogo, label: t("home"), path: "/", testId: "nav-home" },
+    { icon: CustomSearchIcon, label: t("search"), path: "/search", testId: "nav-search" },
+    { icon: CustomNotificationIcon, label: t("notifications"), path: "/notifications", testId: "nav-notifications" },
+    { icon: CustomMessagingIcon, label: t("messages"), path: "/messages", testId: "nav-messages" },
+    { icon: CustomAccountIcon, label: t("profile"), path: `/profile/${user.id}`, testId: "nav-profile" },
   ];
 
   // Navigation secondaire (UNIQUEMENT dans le menu burger - juste Paramètres)
   const secondaryNavItems = [
-    { icon: CustomSettingsIcon, label: "Paramètres", path: "/settings", testId: "nav-settings" },
+    { icon: CustomSettingsIcon, label: t("settings.title"), path: "/settings", testId: "nav-settings" },
   ];
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-slate-800 px-4 py-3 pt-safe-3 flex items-center justify-between">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-slate-800 px-4 py-3 flex items-center justify-between">
         <h1 className="text-xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
           <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
         </h1>

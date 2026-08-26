@@ -1,16 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useTranslation } from "react-i18next";
-import i18n from "@/i18n";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNavigate } from "react-router-dom";
-import { Heart, MessageCircle, UserPlus, Repeat, AtSign, TrendingUp, Trash2, Radio, Reply, Check, Settings, X, BellRing } from "lucide-react";
+import { Heart, MessageCircle, UserPlus, Repeat, AtSign, TrendingUp, Trash2, Radio, Reply, Check } from "lucide-react";
 import { toast } from "sonner";
-import NotificationSettings from "@/components/NotificationSettings";
-import { enablePush, pushReasonLabel } from "@/lib/push";
-import { buildMutedMatcher } from "@/lib/mutedWords";
+import { useTranslation } from "react-i18next";
 
 // Onglets façon X/Instagram.
 const TABS = [
@@ -36,14 +32,13 @@ const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const dayLabel = (iso) => {
   const d = new Date(iso);
   const diff = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86400000);
-  const lng = i18n.language || undefined;
-  if (diff <= 0) return i18n.t("notif.today");
-  if (diff === 1) return i18n.t("notif.yesterday");
-  if (diff < 7)  return d.toLocaleDateString(lng, { weekday: "long" });
-  return d.toLocaleDateString(lng, { day: "numeric", month: "long" });
+  if (diff <= 0) return "Aujourd'hui";
+  if (diff === 1) return "Hier";
+  if (diff < 7)  return d.toLocaleDateString("fr-FR", { weekday: "long" });
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
 };
 const timeLabel = (iso) =>
-  new Date(iso).toLocaleTimeString(i18n.language || undefined, { hour: "2-digit", minute: "2-digit" });
+  new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
 const PAGE = 30;
 
@@ -55,32 +50,10 @@ export default function NotificationsPage({ user }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
-  const [showSettings, setShowSettings] = useState(false);
   const [followedBack, setFollowedBack] = useState(() => new Set());
-  const [showPushBanner, setShowPushBanner] = useState(false);
 
   const skipRef = useRef(0);
   const sentinelRef = useRef(null);
-
-  // Propose d'activer les notifications push si le navigateur le supporte et que
-  // la permission n'a pas encore été demandée (ni refusée). Opt-in sur geste.
-  useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window &&
-        "PushManager" in window && Notification.permission === "default") {
-      setShowPushBanner(true);
-    }
-  }, []);
-
-  const handleEnablePush = async () => {
-    const res = await enablePush({ interactive: true });
-    if (res.ok) {
-      toast.success(pushReasonLabel("ok"));
-      setShowPushBanner(false);
-    } else {
-      (res.reason === "denied" ? toast.error : toast)(pushReasonLabel(res.reason));
-      if (res.reason === "denied") setShowPushBanner(false);
-    }
-  };
 
   const fetchNotifications = async (reset = false) => {
     const skip = reset ? 0 : skipRef.current;
@@ -94,7 +67,7 @@ export default function NotificationsPage({ user }) {
       skipRef.current = (reset ? 0 : skipRef.current) + data.length;
       setHasMore(data.length >= PAGE);
     } catch {
-      if (reset) toast.error(t("notif.err_load"));
+      if (reset) toast.error(t("error_loading_notifications"));
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -119,7 +92,7 @@ export default function NotificationsPage({ user }) {
       await axios.put(`${API}/notifications/read-all`);
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       window.dispatchEvent(new Event("nexus:badges"));
-    } catch { toast.error(t("notif.err_action")); }
+    } catch { toast.error(t("error_action")); }
   };
 
   const handleNotificationClick = async (notification) => {
@@ -145,18 +118,18 @@ export default function NotificationsPage({ user }) {
       await axios.delete(`${API}/notifications/${id}`);
       setNotifications((prev) => prev.filter((n) => n.id !== id));
       window.dispatchEvent(new Event("nexus:badges"));
-    } catch { toast.error(t("notif.err_delete")); }
+    } catch { toast.error(t("error_deleting")); }
   };
 
   const handleClearAll = async () => {
-    if (!window.confirm(t("notif.confirm_clear_all"))) return;
+    if (!window.confirm("Supprimer toutes les notifications ?")) return;
     try {
       await axios.delete(`${API}/notifications`);
       setNotifications([]);
       skipRef.current = 0;
       setHasMore(false);
       window.dispatchEvent(new Event("nexus:badges"));
-    } catch { toast.error(t("notif.err_delete")); }
+    } catch { toast.error(t("error_deleting")); }
   };
 
   const handleAcceptRequest = async (e, notif) => {
@@ -164,8 +137,8 @@ export default function NotificationsPage({ user }) {
     try {
       await axios.post(`${API}/follow-requests/${notif.from_user_id}/accept`);
       setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
-      toast.success(t("notif.accepted_request", { user: notif.from_username }));
-    } catch { toast.error(t("notif.err_generic")); }
+      toast.success(`Vous avez accepté @${notif.from_username}`);
+    } catch { toast.error(t("error")); }
   };
 
   const handleRejectRequest = async (e, notif) => {
@@ -173,7 +146,7 @@ export default function NotificationsPage({ user }) {
     try {
       await axios.post(`${API}/follow-requests/${notif.from_user_id}/reject`);
       setNotifications((prev) => prev.filter((n) => n.id !== notif.id));
-    } catch { toast.error(t("notif.err_generic")); }
+    } catch { toast.error(t("error")); }
   };
 
   // Action rapide : s'abonner en retour (« follow back »).
@@ -182,8 +155,8 @@ export default function NotificationsPage({ user }) {
     try {
       await axios.post(`${API}/users/${notif.from_user_id}/follow`);
       setFollowedBack((prev) => new Set(prev).add(notif.from_user_id));
-      toast.success(t("notif.now_following", { user: notif.from_username }));
-    } catch { toast.error(t("notif.err_generic")); }
+      toast.success(`Vous suivez @${notif.from_username}`);
+    } catch { toast.error(t("error")); }
   };
 
   // Action rapide : répondre (ouvre la publication concernée).
@@ -216,32 +189,28 @@ export default function NotificationsPage({ user }) {
 
   const getText = (n) => {
     switch (n.type) {
-      case "like":            return t("notif.like");
-      case "comment":         return n.comment_content ? t("notif.comment_with", { content: n.comment_content }) : t("notif.comment");
-      case "comment_like":    return t("notif.comment_like");
-      case "comment_reply":   return n.comment_content ? t("notif.reply_with", { content: n.comment_content }) : t("notif.reply");
-      case "follow":          return t("notif.follow");
-      case "repost":          return t("notif.repost");
-      case "mention":         return t("notif.mention");
-      case "trending":        return t("notif.trending");
-      case "reaction":        return t("notif.reaction", { emoji: n.comment_content || "" });
-      case "follow_request":  return t("notif.follow_request");
-      case "follow_accepted": return t("notif.follow_accepted");
-      case "live":            return t("notif.live");
-      case "moderation":      return n.comment_content || t("notif.moderation");
-      case "tip":             return n.comment_content || t("notif.tip");
+      case "like":            return "a aimé votre publication";
+      case "comment":         return n.comment_content ? `a commenté : « ${n.comment_content} »` : "a commenté votre publication";
+      case "comment_like":    return "a aimé votre commentaire";
+      case "comment_reply":   return n.comment_content ? `a répondu : « ${n.comment_content} »` : "a répondu à votre commentaire";
+      case "follow":          return "s'est abonné(e) à vous";
+      case "repost":          return "a reposté votre publication";
+      case "mention":         return "vous a mentionné dans une publication";
+      case "trending":        return "Votre publication est dans les tendances 🔥";
+      case "reaction":        return `a réagi ${n.comment_content || ""} à votre message`;
+      case "follow_request":  return "souhaite s'abonner à vous";
+      case "follow_accepted": return "a accepté votre demande d'abonnement";
+      case "live":            return "est en direct 🔴 — rejoignez maintenant";
+      case "moderation":      return n.comment_content || "Un de vos contenus a été retiré par la modération.";
+      case "tip":             return n.comment_content || "vous a envoyé un pourboire 💸";
       default:                return "";
     }
   };
 
-  // Mots masqués : on retire aussi les notifications dont le texte (ex. contenu
-  // d'un commentaire) correspond à un mot masqué.
-  const filtered = useMemo(() => {
-    const muteMatch = buildMutedMatcher(user?.muted_words || []);
-    return notifications.filter(
-      (n) => matchesTab(n, activeTab) && !muteMatch(n.comment_content)
-    );
-  }, [notifications, activeTab, user?.muted_words]);
+  const filtered = useMemo(
+    () => notifications.filter((n) => matchesTab(n, activeTab)),
+    [notifications, activeTab]
+  );
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const accent = "var(--nexus-accent, #22d3ee)";
@@ -251,7 +220,7 @@ export default function NotificationsPage({ user }) {
       <div className="max-w-2xl mx-auto min-h-screen" style={{ background: "#0b1326" }}>
         {/* Barre d'onglets (pas de gros header) — sticky, façon X. */}
         <div className="sticky top-0 z-20 backdrop-blur-xl border-b" style={{ background: "rgba(11,19,38,0.85)", borderColor: "rgba(255,255,255,0.06)" }}>
-          <div className="flex items-center justify-between px-2 pt-safe-2">
+          <div className="flex items-center justify-between px-2 pt-2">
             <div className="flex-1 flex gap-1 overflow-x-auto no-scrollbar">
               {TABS.map((tab) => {
                 const active = activeTab === tab.key;
@@ -262,7 +231,7 @@ export default function NotificationsPage({ user }) {
                     className="relative px-3 py-2 text-sm font-bold whitespace-nowrap transition-colors"
                     style={{ color: active ? "#dae2fd" : "#859397" }}
                   >
-                    {t("notif.tab_"+tab.key)}
+                    {tab.label}
                     {active && <span className="absolute left-2 right-2 -bottom-[1px] h-[3px] rounded-full" style={{ background: accent }} />}
                   </button>
                 );
@@ -270,46 +239,20 @@ export default function NotificationsPage({ user }) {
             </div>
             <div className="flex items-center gap-1 pl-1">
               {unreadCount > 0 && (
-                <button onClick={handleMarkAllRead} title={t("notif.mark_all_read")}
+                <button onClick={handleMarkAllRead} title="Tout marquer comme lu"
                   className="p-2 rounded-full hover:bg-white/5 transition-colors" style={{ color: accent }}>
                   <Check className="w-5 h-5" />
                 </button>
               )}
               {notifications.length > 0 && (
-                <button onClick={handleClearAll} title={t("notif.clear_all")}
+                <button onClick={handleClearAll} title="Tout effacer"
                   className="p-2 rounded-full hover:bg-white/5 transition-colors text-slate-500 hover:text-red-400">
                   <Trash2 className="w-5 h-5" />
                 </button>
               )}
-              <button onClick={() => setShowSettings(true)} title={t("notif.notif_settings")}
-                className="p-2 rounded-full hover:bg-white/5 transition-colors text-slate-400 hover:text-slate-200">
-                <Settings className="w-5 h-5" />
-              </button>
             </div>
           </div>
         </div>
-
-        {showSettings && <NotificationSettings onClose={() => setShowSettings(false)} />}
-
-        {/* Bandeau opt-in push (notifications même app fermée). */}
-        {showPushBanner && (
-          <div className="mx-3 mt-3 flex items-center gap-3 px-4 py-3 rounded-2xl"
-            style={{ background: "#171f33", border: "1px solid #3c494c" }}>
-            <BellRing className="w-5 h-5 flex-shrink-0" style={{ color: accent }} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold" style={{ color: "#dae2fd" }}>{t("notif.push_enable")}</p>
-              <p className="text-xs" style={{ color: "#859397" }}>{t("notif.push_enable_sub")}</p>
-            </div>
-            <button onClick={handleEnablePush}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 flex-shrink-0"
-              style={{ background: accent, color: "#00363e" }}>
-              Activer
-            </button>
-            <button onClick={() => setShowPushBanner(false)} className="p-1 flex-shrink-0" style={{ color: "#859397" }} title={t("notif.later")}>
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
 
         {loading ? (
           <div className="flex justify-center py-16">
@@ -317,7 +260,7 @@ export default function NotificationsPage({ user }) {
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20 text-slate-500">
-            <p className="text-lg font-semibold mb-1" style={{ color: "#dae2fd" }}>{t("notif.empty")}</p>
+            <p className="text-lg font-semibold mb-1" style={{ color: "#dae2fd" }}>Rien pour l'instant</p>
             <p className="text-sm">Aucune notification dans « {TABS.find((t) => t.key === activeTab)?.label} ».</p>
           </div>
         ) : (
@@ -387,7 +330,7 @@ export default function NotificationsPage({ user }) {
                       {isFollow && (
                         <div className="flex gap-2 mt-2">
                           {followedBack.has(notif.from_user_id) ? (
-                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-400">{t("notif.followed")}</span>
+                            <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-400">Suivi ✓</span>
                           ) : (
                             <button onClick={(e) => handleFollowBack(e, notif)}
                               className="px-3 py-1 rounded-full text-xs font-bold hover:opacity-90 flex items-center gap-1" style={{ background: accent, color: "#00363e" }}>
@@ -400,8 +343,8 @@ export default function NotificationsPage({ user }) {
                         <div className="flex gap-2 mt-2">
                           <button onClick={(e) => handleReply(e, notif)}
                             className="px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-200 hover:bg-slate-700 flex items-center gap-1">
-                            <Reply className="w-3.5 h-3.5" /> Répondre
-                          </button>
+                            <Reply className="w-3.5 h-3.5" />{ t("answer")
+                          }</button>
                         </div>
                       )}
                     </div>
@@ -410,7 +353,7 @@ export default function NotificationsPage({ user }) {
                     <button
                       onClick={(e) => handleDelete(e, notif.id)}
                       className="flex-shrink-0 text-slate-600 hover:text-red-400 transition-all p-1 lg:opacity-0 lg:group-hover:opacity-100"
-                      title={t("notif.delete")}
+                      title=t("delete")
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

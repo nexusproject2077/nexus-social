@@ -1,6 +1,5 @@
-import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, Fragment } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
@@ -9,38 +8,24 @@ import { Check, CheckCheck } from "lucide-react";
 import { compressImage, dataUrlBytes } from "@/lib/compressImage";
 import { linkify, extractFirstUrl } from "@/lib/linkify";
 import LinkPreview from "@/components/LinkPreview";
-import InstantsEntry from "@/components/instants/InstantsEntry";
-import NexusAIChat from "@/components/NexusAIChat";
-import { SURFACE, TEXT, OUTLINE, ACCENT, glass as sharedGlass } from "@/lib/theme";
-import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
-import DrawCanvasModal from "@/components/DrawCanvasModal";
-import ScheduleMessageModal from "@/components/ScheduleMessageModal";
+import { useTranslation } from "react-i18next";
 
-// Un message vocal ne doit pas non plus réclamer la session « Now Playing »
-// iOS : on route son son par Web Audio quand l'URL est CORS-safe (Cloudinary /
-// data / blob), sinon crossOrigin casserait le chargement → on reste en natif.
-const VOICE_CORS_SAFE = (url = "") =>
-  url.startsWith("data:") || url.startsWith("blob:") ||
-  /(^|\/\/)([^/]*\.)?cloudinary\.com\//.test(url) || url.includes("/upload/");
-
-// Tokens de la page dérivés de la source unique (@/lib/theme) : mêmes valeurs
-// que Clips / Stories / Profil pour une identité visuelle cohérente.
 const C = {
-  bg:         SURFACE.deep,
-  surface:    SURFACE.base,
-  low:        SURFACE.low,
-  container:  SURFACE.container,
-  high:       SURFACE.high,
-  bright:     SURFACE.bright,
-  cyan:       ACCENT,
-  onPrimary:  TEXT.onAccent,
-  outline:    TEXT.muted,
-  outlineVar: OUTLINE,
-  onSurface:  TEXT.primary,
-  onVariant:  TEXT.variant,
+  bg:         "#020617",
+  surface:    "#0b1326",
+  low:        "#131b2e",
+  container:  "#171f33",
+  high:       "#222a3d",
+  bright:     "#31394d",
+  cyan:       (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
+  onPrimary:  "#00363e",
+  outline:    "#859397",
+  outlineVar: "#3c494c",
+  onSurface:  "#dae2fd",
+  onVariant:  "#bbc9cd",
 };
 
-const glass = sharedGlass;
+const glass = { background: "rgba(19,27,46,0.55)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", border: "1px solid rgba(34,211,238,0.08)" };
 
 function UserAvatar({ username, pic, size = 10 }) {
   const s = `${size * 4}px`;
@@ -142,58 +127,11 @@ function MsgImage({ src, onOpen, onLoaded }) {
   );
 }
 
-// Vidéo de message : lecteur natif compact, repli propre si source illisible.
-function MsgVideo({ src, onLoaded }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return (
-      <div className="rounded-xl mb-1 flex items-center gap-2 px-3 py-2 text-xs"
-        style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>
-        <span className="material-symbols-outlined text-sm">videocam_off</span>
-        Vidéo indisponible
-      </div>
-    );
-  }
-  return (
-    <video
-      src={src}
-      className="rounded-xl max-w-full mb-1 block"
-      style={{ maxHeight: 320 }}
-      controls
-      playsInline
-      preload="metadata"
-      onLoadedData={() => onLoaded?.()}
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
 // True si le message est un vocal (media_type audio, ou data URL audio).
-// Scanne aussi `media_urls` (groupes), où le vocal arrive dans le tableau.
 const audioSrcFrom = (msg) => {
   if (!msg) return null;
   if (msg.media_type === "audio" && msg.media_url) return msg.media_url;
   if (typeof msg.media_url === "string" && msg.media_url.startsWith("data:audio")) return msg.media_url;
-  if (Array.isArray(msg.media_urls)) {
-    const a = msg.media_urls.find((u) => typeof u === "string" && u.startsWith("data:audio"));
-    if (a) return a;
-  }
-  return null;
-};
-
-// True si la source est une vidéo en data URL.
-const isVideoDataUrl = (s) => typeof s === "string" && s.startsWith("data:video");
-
-// Renvoie la source vidéo d'un message (DM via media_url/media_type, ou groupe
-// via media_urls), sinon null.
-const videoSrcFrom = (msg) => {
-  if (!msg) return null;
-  if (msg.media_type === "video" && msg.media_url) return msg.media_url;
-  if (isVideoDataUrl(msg.media_url)) return msg.media_url;
-  if (Array.isArray(msg.media_urls)) {
-    const v = msg.media_urls.find(isVideoDataUrl);
-    if (v) return v;
-  }
   return null;
 };
 
@@ -203,14 +141,7 @@ const videoSrcFrom = (msg) => {
 // des enregistrements MediaRecorder), pas de <audio controls> natif moche.
 function VoiceMessage({ src, own }) {
   const audioRef = useRef(null);
-  const corsSafe = VOICE_CORS_SAFE(src);
   const [playing, setPlaying] = useState(false);
-
-  // Route le son par Web Audio (si CORS-safe) → pas d'indicateur son iOS.
-  useEffect(() => {
-    if (!corsSafe) return;
-    return attachSilent(audioRef.current);
-  }, [src, corsSafe]);
   const [dur, setDur] = useState(0);
   const [cur, setCur] = useState(0);
   const accent = own ? "#93c5fd" : "#22d3ee";
@@ -246,12 +177,10 @@ function VoiceMessage({ src, own }) {
   return (
     <div className="flex items-center gap-2.5 mb-1 py-1" style={{ minWidth: 210 }}>
       <audio ref={audioRef} src={src} preload="metadata"
-        crossOrigin={corsSafe ? "anonymous" : undefined}
-        disableRemotePlayback
         onLoadedMetadata={onMeta}
         onTimeUpdate={(e) => setCur(e.target.currentTime || 0)}
-        onPlay={() => setPlaying(true)} onPause={() => { setPlaying(false); clearNowPlaying(); }}
-        onEnded={() => { setPlaying(false); setCur(0); clearNowPlaying(); }} />
+        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setCur(0); }} />
       <button type="button" onClick={toggle}
         className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-90"
         style={{ background: accent, color: "#00363e" }}>
@@ -315,7 +244,6 @@ export default function MessagesPage({ user }) {
     try { return JSON.parse(localStorage.getItem("nexus_groups_cache") || "[]"); } catch { return []; }
   });
   const [messages,        setMessages]         = useState([]);
-  const [showAI,          setShowAI]           = useState(false);  // overlay Nexus AI
   const [messageContent,  setMessageContent]   = useState("");
   const [selectedUser,    setSelectedUser]     = useState(null);
   const [selectedGroup,   setSelectedGroup]    = useState(null);
@@ -483,14 +411,6 @@ export default function MessagesPage({ user }) {
 
   // Image en attente d'envoi (data URL compressée) + sélecteur de fichier.
   const [pendingImage, setPendingImage] = useState(null);
-  const [showDraw, setShowDraw] = useState(false);      // canevas de dessin (DM)
-  const [showPlusMenu, setShowPlusMenu] = useState(false);
-  const [scheduledMsgs, setScheduledMsgs] = useState([]);   // messages planifiés pour ce DM
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [manageSched, setManageSched] = useState(false);    // feuille de gestion des planifiés
-  const [rescheduleId, setRescheduleId] = useState(null);   // id en cours de replanification
-  const sendLpTimer = useRef(null);
-  const sendLpFired = useRef(false);
   const [compressing, setCompressing] = useState(false);
   const imageInputRef = useRef(null);
 
@@ -502,37 +422,19 @@ export default function MessagesPage({ user }) {
   const audioChunksRef   = useRef([]);
   const MAX_RECORD_SECS = 120;
 
-  // Cap vidéo : les médias sont stockés en data URL (base64, +33 %) dans un
-  // document Mongo (limite 16 Mo). 8 Mo bruts → ~10,7 Mo encodés, marge sûre.
-  const MAX_VIDEO_BYTES = 8_000_000;
-
-  const handlePickMedia = async (e) => {
+  const handlePickImage = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // permet de re-sélectionner le même fichier
     if (!file) return;
-    const isImage = file.type.startsWith("image/");
-    const isVideo = file.type.startsWith("video/");
-    if (!isImage && !isVideo) { toast.error(t("dm.err_select_media")); return; }
+    if (!file.type.startsWith("image/")) { toast.error("Sélectionnez une image"); return; }
     try {
       setCompressing(true);
-      let dataUrl;
-      if (isVideo) {
-        if (file.size > MAX_VIDEO_BYTES) { toast.error(t("dm.err_video_heavy")); return; }
-        dataUrl = await new Promise((resolve, reject) => {
-          const r = new FileReader();
-          r.onloadend = () => resolve(r.result);
-          r.onerror = reject;
-          r.readAsDataURL(file);
-        });
-      } else {
-        dataUrl = await compressImage(file);
-      }
-      setPendingAudio(null);
+      const dataUrl = await compressImage(file);
       setPendingImage(dataUrl);
       const kb = Math.max(1, Math.round(dataUrlBytes(dataUrl) / 1024));
-      toast.success(`${isVideo ? "Vidéo" : "Image"} prête (~${kb} Ko)`);
+      toast.success(`Image prête (~${kb} Ko)`);
     } catch {
-      toast.error(t("dm.err_media_process"));
+      toast.error("Impossible de traiter cette image");
     } finally {
       setCompressing(false);
     }
@@ -549,7 +451,7 @@ export default function MessagesPage({ user }) {
       mr.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(audioChunksRef.current, { type: mr.mimeType || "audio/webm" });
-        if (blob.size > 4_000_000) { toast.error(t("dm.err_voice_long")); return; }
+        if (blob.size > 4_000_000) { toast.error("Message vocal trop long"); return; }
         if (blob.size < 400) return; // trop court / vide
         const reader = new FileReader();
         reader.onloadend = () => setPendingAudio(reader.result);
@@ -560,7 +462,7 @@ export default function MessagesPage({ user }) {
       setPendingImage(null);
       setRecordSecs(0);
       setRecording(true);
-    } catch { toast.error(t("dm.err_mic")); }
+    } catch { toast.error("Micro indisponible — autorisez l'accès au micro"); }
   };
 
   const stopRecording = () => {
@@ -619,27 +521,16 @@ export default function MessagesPage({ user }) {
     }
   }, [selectedUserId, selectedGroupId]);
 
-  // Changement de conversation → on ARME un scroll FORCÉ pour le prochain rendu
-  // des messages (les messages arrivent APRÈS via fetchMessages, donc on ne peut
-  // pas forcer ici : il n'y a encore rien à afficher).
-  const forceScrollRef = useRef(true);
-  useEffect(() => { forceScrollRef.current = true; }, [selectedUserId, selectedGroupId]);
-
-  // Rendu des messages : à l'ouverture d'une conversation on FORCE le bas
-  // (plusieurs passes pour rattraper la hauteur des images) ; sur un simple
-  // nouveau message on ne recolle QUE si on est déjà proche du bas — on
-  // n'arrache jamais l'utilisateur en train de lire d'anciens messages.
+  // Toujours afficher les DERNIERS messages (bas de la conversation). useLayoutEffect
+  // positionne AVANT le paint (pas de flash sur les premiers messages) ; les passages
+  // différés rattrapent la hauteur une fois les images rendues.
   useLayoutEffect(() => {
-    const force = forceScrollRef.current;
-    forceScrollRef.current = false;
-    scrollToBottom(force);
-    requestAnimationFrame(() => scrollToBottom(force));
-    if (force) {
-      const t1 = setTimeout(() => scrollToBottom(true), 150);
-      const t2 = setTimeout(() => scrollToBottom(true), 500);
-      return () => { clearTimeout(t1); clearTimeout(t2); };
-    }
-  }, [messages]);
+    scrollToBottom(true);
+    requestAnimationFrame(() => scrollToBottom(true));
+    const t1 = setTimeout(() => scrollToBottom(true), 150);
+    const t2 = setTimeout(() => scrollToBottom(true), 500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [messages, selectedUserId, selectedGroupId]);
 
   // ── Hauteur réelle du viewport VISIBLE (fix iOS Safari) ──────────────────────
   // position: fixed s'aligne sur le *layout viewport* : il s'étend derrière la
@@ -761,12 +652,8 @@ export default function MessagesPage({ user }) {
     };
     const onResync = () => { fetchConversations(); fetchGroups(); fetchNotes(); syncOpenThread(); };
     window.addEventListener("nexus:resync", onResync);
-    // Les nouveaux messages arrivent en TEMPS RÉEL (WebSocket). Le poll ne fait
-    // donc que rafraîchir la liste LÉGÈRE des conversations — il NE re-télécharge
-    // PLUS tout le fil ouvert (payload lourd base64) à chaque tick. La resynchro
-    // complète du fil reste faite sur reconnexion (événement nexus:resync).
     const poll = setInterval(() => {
-      if (document.visibilityState === "visible") fetchConversations();
+      if (document.visibilityState === "visible") { fetchConversations(); syncOpenThread(); }
     }, 15000);
     return () => { window.removeEventListener("nexus:resync", onResync); clearInterval(poll); };
   }, [selectedUserId, selectedGroupId]);
@@ -863,9 +750,9 @@ export default function MessagesPage({ user }) {
       setShowNoteComposer(false);
       setNoteText("");
       fetchNotes();
-      toast.success(t("dm.note_published"));
+      toast.success("Note publiée");
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erreur");
+      toast.error(err.response?.data?.detail || t("error"));
     }
   };
 
@@ -875,19 +762,13 @@ export default function MessagesPage({ user }) {
       setShowNoteComposer(false);
       setNoteText("");
       fetchNotes();
-      toast.success(t("dm.note_deleted"));
-    } catch { toast.error(t("dm.err_generic")); }
+      toast.success("Note supprimée");
+    } catch { toast.error(t("error")); }
   };
 
   const fetchMessages = async (uid) => {
     try {
       setLoading(true);
-      // En-tête INSTANTANÉ : si l'interlocuteur est déjà dans la liste des
-      // conversations (username + avatar connus), on l'affiche tout de suite,
-      // sans attendre la réponse de /users/{uid} → le fil s'ouvre sans écran
-      // d'attente (la réponse complète remplace ensuite ces infos).
-      const known = conversations.find((c) => c.user_id === uid);
-      if (known) setSelectedUser({ id: uid, username: known.username, profile_pic: known.profile_pic });
       const [msgsRes, userRes] = await Promise.all([
         axios.get(`${API}/messages/${uid}`),
         axios.get(`${API}/users/${uid}`)
@@ -900,7 +781,7 @@ export default function MessagesPage({ user }) {
         const eph = await axios.get(`${API}/messages/conversations/${uid}/ephemeral`);
         setEphemeralTtl(eph.data?.ttl_seconds || 0);
       } catch { setEphemeralTtl(0); }
-    } catch { toast.error(t("dm.err_load_messages")); }
+    } catch { toast.error("Erreur lors du chargement des messages"); }
     finally { setLoading(false); }
   };
 
@@ -911,7 +792,7 @@ export default function MessagesPage({ user }) {
       setEphemeralTtl(ttl);
       setShowEphemeralChooser(false);
       toast.success(ttl ? `Messages éphémères : ${ephemeralLabel(ttl)}` : "Messages éphémères désactivés");
-    } catch { toast.error(t("dm.err_generic")); }
+    } catch { toast.error(t("error")); }
   };
 
   // Purge locale des messages éphémères expirés (toutes les 10 s).
@@ -962,13 +843,13 @@ export default function MessagesPage({ user }) {
       fetchConversations();
       fetchGroups();
       window.dispatchEvent(new Event("nexus:badges"));
-    } catch { toast.error(t("dm.err_action")); }
+    } catch { toast.error("Action impossible"); }
   };
 
   const handleMarkUnread = async () => {
     if (!convMenu) return;
     await setConvPref(convMenu.id, { marked_unread: true });
-    toast.success(t("dm.marked_unread"));
+    toast.success("Marqué comme non lu");
     setConvMenu(null);
   };
 
@@ -997,16 +878,16 @@ export default function MessagesPage({ user }) {
         setGroups((prev) => prev.filter((g) => g.id !== m.id));
         if (selectedGroupId === m.id) navigate("/messages");
         fetchGroups();
-        toast.success(t("dm.group_left"));
-      } catch { toast.error(t("dm.err_leave_group")); }
+        toast.success("Groupe quitté");
+      } catch { toast.error("Impossible de quitter le groupe"); }
     } else {
-      if (!window.confirm(t("dm.confirm_delete_convo"))) return;
+      if (!window.confirm("Supprimer cette conversation ?")) return;
       try {
         await axios.delete(`${API}/messages/conversations/${m.id}`);
         if (selectedUserId === m.id) navigate("/messages");
         fetchConversations();
-        toast.success(t("dm.conv_deleted"));
-      } catch { toast.error(t("dm.err_delete")); }
+        toast.success("Conversation supprimée");
+      } catch { toast.error("Suppression impossible"); }
     }
   };
 
@@ -1112,19 +993,13 @@ export default function MessagesPage({ user }) {
 
   const handleSendMessage = async (e) => {
     e?.preventDefault();
-    // Appui long sur « Envoyer » → planification (on ne part pas tout de suite).
-    if (sendLpFired.current) { sendLpFired.current = false; return; }
     const text = messageContent.trim();
     if (!text && !pendingImage && !pendingAudio) return;
     try {
       if (isGroup && selectedGroupId) {
-        // Groupes : images, vidéos et vocaux transitent via `media_urls`
-        // (le backend les stocke tel quel et les renvoie dans le message).
-        const media = pendingAudio || pendingImage;
+        if (pendingImage || pendingAudio) { toast.error("Médias non disponibles dans les groupes"); return; }
         const res = await axios.post(`${API}/messages/groups/${selectedGroupId}/messages`, {
-          content: text,
-          media_urls: media ? [media] : [],
-          reply_to_id: replyingTo?.id,
+          content: text, reply_to_id: replyingTo?.id
         });
         if (res.data?.message) setMessages(p => [...p, res.data.message]);
       } else if (selectedUserId) {
@@ -1132,9 +1007,7 @@ export default function MessagesPage({ user }) {
           recipient_id: selectedUserId,
           content: text,
           media_url: pendingAudio || pendingImage || null,
-          media_type: pendingAudio
-            ? "audio"
-            : (pendingImage ? (isVideoDataUrl(pendingImage) ? "video" : "image") : null),
+          media_type: pendingAudio ? "audio" : (pendingImage ? "image" : null),
           reply_to_id: replyingTo?.id,
         });
         if (res.data) setMessages(p => [...p, res.data]);
@@ -1145,73 +1018,6 @@ export default function MessagesPage({ user }) {
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur lors de l'envoi");
     }
-  };
-
-  // Envoie un dessin (canevas → PNG) comme image, en réutilisant le pipeline média.
-  const postDrawing = async (dataUrl) => {
-    if (!dataUrl) return;
-    try {
-      if (isGroup && selectedGroupId) {
-        const res = await axios.post(`${API}/messages/groups/${selectedGroupId}/messages`, {
-          content: "", media_urls: [dataUrl], reply_to_id: replyingTo?.id,
-        });
-        if (res.data?.message) setMessages((p) => [...p, res.data.message]);
-      } else if (selectedUserId) {
-        const res = await axios.post(`${API}/messages`, {
-          recipient_id: selectedUserId, content: "", media_url: dataUrl, media_type: "image", reply_to_id: replyingTo?.id,
-        });
-        if (res.data) setMessages((p) => [...p, res.data]);
-      }
-      setReplyingTo(null);
-      fetchConversations();
-      if (isGroup) fetchGroups();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Erreur lors de l'envoi");
-    }
-  };
-
-  // ── Messages planifiés (Scheduled DMs) ───────────────────────────────────────
-  const fetchScheduled = useCallback(async (peer) => {
-    if (!peer) { setScheduledMsgs([]); return; }
-    try {
-      const r = await axios.get(`${API}/messages/scheduled`, { params: { peer_id: peer } });
-      setScheduledMsgs(Array.isArray(r.data) ? r.data : []);
-    } catch { setScheduledMsgs([]); }
-  }, []);
-
-  useEffect(() => {
-    if (!isGroup && selectedUserId) fetchScheduled(selectedUserId);
-    else setScheduledMsgs([]);
-  }, [selectedUserId, isGroup, fetchScheduled]);
-
-  const scheduleCurrentMessage = async (iso) => {
-    const text = messageContent.trim();
-    if ((!text && !pendingImage) || !selectedUserId) return;
-    try {
-      await axios.post(`${API}/messages/scheduled`, {
-        recipient_id: selectedUserId, content: text,
-        media_url: pendingImage || null, media_type: pendingImage ? "image" : null,
-        scheduled_at: iso,
-      });
-      setMessageContent(""); setPendingImage(null);
-      fetchScheduled(selectedUserId);
-      toast.success(t("dm.msg_scheduled"));
-    } catch (err) { toast.error(err.response?.data?.detail || "Planification impossible"); }
-  };
-
-  const sendScheduledNow = async (id) => {
-    try { await axios.post(`${API}/messages/scheduled/${id}/send-now`); fetchScheduled(selectedUserId); if (selectedUserId) fetchMessages(selectedUserId); toast.success(t("dm.msg_sent")); }
-    catch { toast.error(t("dm.err_send")); }
-  };
-  const deleteScheduled = async (id) => {
-    try { await axios.delete(`${API}/messages/scheduled/${id}`); fetchScheduled(selectedUserId); }
-    catch { toast.error(t("dm.err_delete")); }
-  };
-  const rescheduleTo = async (iso) => {
-    if (!rescheduleId) return;
-    try { await axios.put(`${API}/messages/scheduled/${rescheduleId}`, { scheduled_at: iso }); fetchScheduled(selectedUserId); toast.success(t("dm.time_changed")); }
-    catch { toast.error(t("dm.err_modify")); }
-    setRescheduleId(null);
   };
 
   // Le backend renvoie reactions sous forme de LISTE [{user_id, emoji}] ;
@@ -1234,7 +1040,7 @@ export default function MessagesPage({ user }) {
       const res = await axios.post(`${API}/messages/${messageId}/react`, { emoji });
       setMessages(p => p.map(m => m.id === messageId ? { ...m, reactions: res.data.reactions } : m));
       setShowEmojiPicker(null);
-    } catch { toast.error(t("dm.err_reaction")); }
+    } catch { toast.error("Erreur réaction"); }
   };
 
   // messageId : id ; everyone : true = pour tous (hard delete), false = pour moi.
@@ -1244,7 +1050,7 @@ export default function MessagesPage({ user }) {
       setMessages(p => p.filter(m => m.id !== messageId));
       fetchConversations();
       toast.success(everyone ? "Message supprimé pour tout le monde" : "Message supprimé pour vous");
-    } catch { toast.error(t("dm.err_delete_msg")); }
+    } catch { toast.error("Erreur suppression"); }
   };
 
   // ── Traduction d'un message (langue = paramètres de l'app) ───────────────────
@@ -1258,8 +1064,8 @@ export default function MessagesPage({ user }) {
     try {
       const res = await axios.post(`${API}/messages/translate`, { text: msg.content, target });
       if (res.data?.translated) setTranslations((t) => ({ ...t, [msg.id]: res.data.translated }));
-      else toast.error(t("dm.err_translate"));
-    } catch { toast.error(t("dm.err_translate")); }
+      else toast.error("Traduction indisponible");
+    } catch { toast.error("Traduction indisponible"); }
   };
 
   // ── Transfert d'un message vers une autre conversation ───────────────────────
@@ -1280,19 +1086,19 @@ export default function MessagesPage({ user }) {
           media_type: m.media_type || null,
         });
       }
-      toast.success(t("dm.msg_forwarded"));
+      toast.success("Message transféré");
       fetchConversations();
-    } catch { toast.error(t("dm.err_forward")); }
+    } catch { toast.error("Transfert impossible"); }
   };
 
   const handleCopy = (content) => {
     navigator.clipboard.writeText(content);
-    toast.success(t("dm.copied"));
+    toast.success("Copié !");
   };
 
   const handleCreateGroup = async () => {
     if (!groupName.trim() || selectedMembers.length === 0) {
-      toast.error(t("dm.err_name_members")); return;
+      toast.error("Nom et membres requis"); return;
     }
     try {
       setLoading(true);
@@ -1303,7 +1109,7 @@ export default function MessagesPage({ user }) {
         setShowNewGroup(false); setGroupName(""); setSelectedMembers([]); setGroupSearch("");
         await fetchGroups();
         navigate(`/messages/group/${res.data.group.id}`);
-        toast.success(t("dm.group_created"));
+        toast.success("Groupe créé !");
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur création groupe");
@@ -1328,8 +1134,8 @@ export default function MessagesPage({ user }) {
       if (res.data?.group) setSelectedGroup(res.data.group);
       setEditingName(false);
       fetchGroups();
-      toast.success(t("dm.group_renamed"));
-    } catch (err) { toast.error(err.response?.data?.detail || "Erreur"); }
+      toast.success("Groupe renommé");
+    } catch (err) { toast.error(err.response?.data?.detail || t("error")); }
   };
 
   const addGroupMember = async (u) => {
@@ -1339,7 +1145,7 @@ export default function MessagesPage({ user }) {
       fetchGroupMembers(selectedGroupId);
       fetchGroupMessages(selectedGroupId);
       toast.success(`@${u.username} ajouté`);
-    } catch (err) { toast.error(err.response?.data?.detail || "Erreur"); }
+    } catch (err) { toast.error(err.response?.data?.detail || t("error")); }
   };
 
   const removeGroupMember = async (m) => {
@@ -1348,7 +1154,7 @@ export default function MessagesPage({ user }) {
       await axios.delete(`${API}/messages/groups/${selectedGroupId}/members/${m.id}`);
       fetchGroupMembers(selectedGroupId);
       toast.success(`@${m.username} retiré`);
-    } catch (err) { toast.error(err.response?.data?.detail || "Erreur"); }
+    } catch (err) { toast.error(err.response?.data?.detail || t("error")); }
   };
 
   const toggleGroupAdmin = async (m) => {
@@ -1357,22 +1163,22 @@ export default function MessagesPage({ user }) {
       else await axios.post(`${API}/messages/groups/${selectedGroupId}/admins`, { user_id: m.id });
       fetchGroupMembers(selectedGroupId);
       toast.success(m.is_admin ? "Admin retiré" : "Promu admin");
-    } catch (err) { toast.error(err.response?.data?.detail || "Erreur"); }
+    } catch (err) { toast.error(err.response?.data?.detail || t("error")); }
   };
 
   const handleLeaveGroup = async () => {
     if (!selectedGroupId) return;
-    if (!window.confirm(t("dm.confirm_leave_group"))) return;
+    if (!window.confirm("Quitter ce groupe ?")) return;
     const gid = selectedGroupId;
     try {
       await axios.delete(`${API}/messages/groups/${gid}/members/${user.id}`);
       // Retire immédiatement le groupe de la liste (plus d'attente / de cache).
       setGroups((prev) => prev.filter((g) => g.id !== gid));
-      toast.success(t("dm.you_left_group"));
+      toast.success("Vous avez quitté le groupe");
       navigate("/messages");
       fetchGroups();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erreur");
+      toast.error(err.response?.data?.detail || t("error"));
     }
   };
 
@@ -1386,7 +1192,7 @@ export default function MessagesPage({ user }) {
       : [...prev, u]);
   };
   const startConversation = async () => {
-    if (nmSelected.length === 0) { toast.error(t("dm.err_select_person")); return; }
+    if (nmSelected.length === 0) { toast.error("Sélectionnez au moins une personne"); return; }
     // 1 personne → conversation privée. 2+ → groupe.
     if (nmSelected.length === 1) {
       setShowNewMessageModal(false);
@@ -1403,7 +1209,7 @@ export default function MessagesPage({ user }) {
         setShowNewMessageModal(false);
         await fetchGroups();
         navigate(`/messages/group/${res.data.group.id}`);
-        toast.success(t("dm.group_created"));
+        toast.success("Groupe créé !");
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur création groupe");
@@ -1413,14 +1219,14 @@ export default function MessagesPage({ user }) {
   // ── Actions « Détails » ──────────────────────────────────────────────────────
   const handleClearConversation = async () => {
     if (!selectedUserId) return;
-    if (!window.confirm(t("dm.confirm_delete_discussion"))) return;
+    if (!window.confirm("Supprimer cette discussion ? Elle disparaîtra de votre boîte.")) return;
     try {
       await axios.delete(`${API}/messages/conversations/${selectedUserId}`);
       setConversations((prev) => prev.filter((c) => c.user_id !== selectedUserId));
       setShowDetails(false);
       navigate("/messages");
-      toast.success(t("dm.chat_deleted"));
-    } catch { toast.error(t("dm.err_generic")); }
+      toast.success("Discussion supprimée");
+    } catch { toast.error(t("error")); }
   };
   const handleBlockUser = async () => {
     if (!selectedUserId) return;
@@ -1430,7 +1236,7 @@ export default function MessagesPage({ user }) {
       setShowDetails(false);
       navigate("/messages");
       toast.success(`@${selectedUser?.username} bloqué`);
-    } catch { toast.error(t("dm.err_generic")); }
+    } catch { toast.error(t("error")); }
   };
   const handleReport = async () => {
     const target = selectedUserId || selectedGroupId;
@@ -1442,8 +1248,8 @@ export default function MessagesPage({ user }) {
         reason: "Signalé depuis la messagerie",
       });
       setShowDetails(false);
-      toast.success(t("dm.report_sent"));
-    } catch { toast.error(t("dm.err_generic")); }
+      toast.success("Signalement envoyé");
+    } catch { toast.error(t("error")); }
   };
 
   const getStatus = (msg) => {
@@ -1503,7 +1309,7 @@ export default function MessagesPage({ user }) {
         onTouchStart={() => startConvLongPress(lp)}
         onTouchEnd={cancelConvLongPress}
         onTouchMove={cancelConvLongPress}
-        className="w-full flex items-center gap-3.5 px-4 py-4 text-left transition-all"
+        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all"
         style={{
           // Nouvelle conversation non lue → surlignage bleu ; sinon état actif/normal.
           background: active
@@ -1515,11 +1321,9 @@ export default function MessagesPage({ user }) {
       >
         <div className="relative">
           <UserAvatar username={conv.username} pic={conv.profile_pic} size={10} />
-          {/* Présence : point vert « en ligne » (masqué si l'interlocuteur a caché son statut). */}
-          {conv.is_online && <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full" style={{ background: "#22c55e", border: `2px solid ${C.surface}`, boxShadow: "0 0 6px rgba(34,197,94,0.6)" }} />}
           {unread && <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full" style={{ background: "#3b82f6", border: `2px solid ${C.surface}` }} />}
         </div>
-        <div className="flex-1 min-w-0 flex flex-col justify-center">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm truncate flex items-center gap-1" style={{ color: active ? C.cyan : C.onSurface, fontWeight: unread ? 800 : 700 }}>
               <span className="truncate">{conv.username}</span>
@@ -1535,7 +1339,7 @@ export default function MessagesPage({ user }) {
       </button>
       {/* PC : 3 points au survol → menu (non lu / épingler / sourdine / supprimer). */}
       <button
-        title={t("dm.options")}
+        title="Options"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvMenu(lp); }}
         className="hidden lg:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
@@ -1558,7 +1362,7 @@ export default function MessagesPage({ user }) {
         onTouchStart={() => startConvLongPress(lp)}
         onTouchEnd={cancelConvLongPress}
         onTouchMove={cancelConvLongPress}
-        className="w-full flex items-center gap-3.5 px-4 py-4 text-left transition-all"
+        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all"
         style={{
           background: active ? `linear-gradient(to right, rgba(139,92,246,0.1), transparent)` : unread ? "rgba(59,130,246,0.10)" : "transparent",
           borderLeft: active ? "2px solid #8b5cf6" : unread ? "2px solid #3b82f6" : "2px solid transparent",
@@ -1566,14 +1370,14 @@ export default function MessagesPage({ user }) {
         }}
       >
         {group.avatar_url ? (
-          <img src={group.avatar_url} alt={group.name} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
+          <img src={group.avatar_url} alt={group.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
         ) : (
-          <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-            style={{ background: "#28303e", color: "#fff" }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0"
+            style={{ background: "linear-gradient(135deg,#8b5cf6,#ec4899)", color: "#fff" }}>
             {group.name?.[0]?.toUpperCase()}
           </div>
         )}
-        <div className="flex-1 min-w-0 flex flex-col justify-center">
+        <div className="flex-1 min-w-0">
           <p className="text-sm font-bold truncate flex items-center gap-1" style={{ color: active ? "#a78bfa" : C.onSurface }}>
             <span className="truncate">{group.name}</span>
             {group.pinned && <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 13, color: C.outline }}>keep</span>}
@@ -1586,7 +1390,7 @@ export default function MessagesPage({ user }) {
       </button>
       {/* PC : 3 points au survol → menu (non lu / épingler / sourdine / supprimer). */}
       <button
-        title={t("dm.options")}
+        title="Options"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvMenu(lp); }}
         className="hidden lg:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
@@ -1605,19 +1409,15 @@ export default function MessagesPage({ user }) {
     >
       {/* Header — pas de trait de séparation, même fond que la liste.
           Plus de bouton retour : le footer mobile gère la navigation. */}
-      <div className="px-5 pt-[calc(1.25rem_+_env(safe-area-inset-top))] pb-3 flex items-center gap-2">
-        {/* Espaceur gauche = largeur exacte du bouton droit → le pseudo est
-            centré MATHÉMATIQUEMENT au milieu du header (façon Instagram).
-            Masqué sur PC, où le pseudo s'aligne à gauche. */}
-        <div className="w-9 flex-shrink-0 sm:hidden" aria-hidden />
+      <div className="px-5 pt-5 pb-3 flex items-center gap-2">
         {/* Nom d'utilisateur : centré sur mobile, aligné à gauche sur PC */}
-        <h2 className="font-black text-xl tracking-tight flex-1 min-w-0 text-center sm:text-left truncate"
+        <h2 className="font-black text-xl tracking-tight flex-1 text-center sm:text-left truncate"
           style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>
-          {user?.username || "Messages"}
+          {user?.username || t("messages")}
         </h2>
         {/* Un seul bouton « Nouveau message » (façon Insta : DM ou groupe). */}
-        <button onClick={openNewMessageModal} title={t("dm.new_message")}
-          className="w-9 h-9 flex-shrink-0 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
+        <button onClick={openNewMessageModal} title="Nouveau message"
+          className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
           style={{ background: `${C.cyan}18`, color: C.cyan }}>
           <span className="material-symbols-outlined text-lg">edit_square</span>
         </button>
@@ -1631,8 +1431,8 @@ export default function MessagesPage({ user }) {
             ref={newMsgSearchRef}
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); if (!e.target.value.trim()) setShowNewMsg(false); else setShowNewMsg(true); }}
-            placeholder={t("dm.search_conv")}
-            className="w-full text-sm pl-9 pr-3 py-2.5 rounded-xl border-none outline-none placeholder:text-slate-600 select-text truncate"
+            placeholder=t("search_or_start_conversation")
+            className="w-full text-sm pl-9 pr-4 py-2 rounded-xl border-none outline-none placeholder:text-slate-600 select-text"
             style={{ background: C.high, color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
           />
         </div>
@@ -1641,7 +1441,7 @@ export default function MessagesPage({ user }) {
       {/* Search results */}
       {showNewMsg && searchResults.length > 0 && (
         <div className="px-4 pb-3 space-y-1">
-          <p className="text-[9px] font-bold uppercase tracking-widest mb-2" style={{ color: C.outline }}>{t("dm.users")}</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest mb-2" style={{ color: C.outline }}>Utilisateurs</p>
           {searchResults.map(u => (
             <button key={u.id} onClick={() => { navigate(`/messages/${u.id}`); setSearchQuery(""); setShowNewMsg(false); }}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all hover:bg-white/5 text-left">
@@ -1659,7 +1459,7 @@ export default function MessagesPage({ user }) {
         <div className="px-4 pb-4 pt-1 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
           <div className="flex gap-5 items-end">
             {/* Ta note */}
-            <button onClick={openNoteComposer} className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ width: 88 }} title={t("dm.your_note")}>
+            <button onClick={openNoteComposer} className="flex flex-col items-center gap-1.5 flex-shrink-0" style={{ width: 88 }} title="Votre note">
               <div className="px-3 py-1.5 rounded-2xl text-[11px] font-medium leading-snug text-center shadow-lg"
                 style={{ maxWidth: 86, background: C.container, color: myNote ? C.onSurface : C.outline, border: `1px solid ${C.cyan}22`,
                   display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
@@ -1672,7 +1472,7 @@ export default function MessagesPage({ user }) {
                     style={{ background: C.cyan, color: C.onPrimary, border: `2px solid ${C.surface}` }}>+</div>
                 )}
               </div>
-              <span className="text-[11px] font-semibold text-center truncate" style={{ width: 82, color: C.onSurface }}>{t("dm.your_note")}</span>
+              <span className="text-[11px] font-semibold text-center truncate" style={{ width: 82, color: C.onSurface }}>Votre note</span>
             </button>
 
             {/* Notes des abonnements mutuels */}
@@ -1708,28 +1508,10 @@ export default function MessagesPage({ user }) {
                 transform: convRefreshing ? "none" : `rotate(${convPull * 4}deg)`, opacity: Math.min(1, convPull / PULL_THRESHOLD) }} />
           </div>
         )}
-        {/* Nexus AI — épinglé tout en haut, toujours accessible. */}
-        {!showNewMsg && (
-          <button onClick={() => setShowAI(true)}
-            className="w-full flex items-center gap-3.5 px-4 py-4 transition-all hover:bg-white/5 text-left">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: `linear-gradient(135deg, ${C.cyan}, #3b82f6)` }}>
-              <span className="material-symbols-outlined text-xl" style={{ color: C.onPrimary }}>auto_awesome</span>
-            </div>
-            <div className="flex-1 min-w-0 flex flex-col justify-center">
-              <p className="font-bold flex items-center gap-1" style={{ color: C.onSurface }}>
-                Nexus AI
-                <span className="material-symbols-outlined text-base" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}>verified</span>
-              </p>
-              <p className="text-xs truncate" style={{ color: C.outline }}>Ton assistant — pose ta question</p>
-            </div>
-          </button>
-        )}
-
         {chatItems.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
-            <p className="text-xs" style={{ color: C.outline }}>{t("dm.no_conversations")}</p>
+            <p className="text-xs" style={{ color: C.outline }}>Aucune conversation</p>
             <button onClick={openNewMessage} className="mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ background: `${C.cyan}18`, color: C.cyan }}>
               Commencer
             </button>
@@ -1751,7 +1533,7 @@ export default function MessagesPage({ user }) {
       {hasSelection && currentName ? (
         <>
           {/* Chat header */}
-          <div className="min-h-[3.5rem] hdr-safe px-5 flex items-center justify-between flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(11,19,38,0.6)" }}>
+          <div className="h-14 px-5 flex items-center justify-between flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(11,19,38,0.6)" }}>
             <div className="flex items-center gap-3">
               <button onClick={() => navigate("/messages")} className="sm:hidden mr-1" style={{ color: C.outline }}>
                 <span className="material-symbols-outlined">arrow_back</span>
@@ -1771,12 +1553,12 @@ export default function MessagesPage({ user }) {
               {/* Appels audio / vidéo (conversations privées uniquement) */}
               {!isGroup && (
                 <>
-                  <button title={t("dm.call_audio")}
+                  <button title="Appel audio"
                     onClick={() => window.dispatchEvent(new CustomEvent("nexus:startcall", { detail: { userId: selectedUserId, username: currentName, profilePic: currentPic, video: false } }))}
                     className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5" style={{ color: C.outline }}>
                     <span className="material-symbols-outlined text-xl">call</span>
                   </button>
-                  <button title={t("dm.call_video")}
+                  <button title="Appel vidéo"
                     onClick={() => window.dispatchEvent(new CustomEvent("nexus:startcall", { detail: { userId: selectedUserId, username: currentName, profilePic: currentPic, video: true } }))}
                     className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5" style={{ color: C.outline }}>
                     <span className="material-symbols-outlined text-xl">videocam</span>
@@ -1784,7 +1566,7 @@ export default function MessagesPage({ user }) {
                 </>
               )}
               {/* Rechercher dans la conversation */}
-              <button onClick={() => { setShowConvSearch((v) => { if (v) setConvSearch(""); return !v; }); }} title={t("dm.search_title")}
+              <button onClick={() => { setShowConvSearch((v) => { if (v) setConvSearch(""); return !v; }); }} title=t("search")
                 className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5"
                 style={{ color: showConvSearch ? C.cyan : C.outline }}>
                 <Ico name="search" size={20} />
@@ -1792,7 +1574,7 @@ export default function MessagesPage({ user }) {
               {/* Bouton Détails (i) — PC uniquement. Sur mobile, on ouvre les
                   détails en tapant l'avatar/nom (l'appui long sur la liste gère
                   le reste : épingler, sourdine, non lu, supprimer). */}
-              <button onClick={() => setShowDetails((v) => !v)} title={t("dm.details")}
+              <button onClick={() => setShowDetails((v) => !v)} title="Détails"
                 className="hidden sm:flex w-9 h-9 rounded-full items-center justify-center transition-all hover:bg-white/5"
                 style={{ color: showDetails ? C.cyan : C.outline }}>
                 <Ico name="info" size={22} />
@@ -1808,7 +1590,7 @@ export default function MessagesPage({ user }) {
                 autoFocus
                 value={convSearch}
                 onChange={(e) => setConvSearch(e.target.value)}
-                placeholder={t("dm.search_in_conv")}
+                placeholder="Rechercher dans la conversation..."
                 className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600 select-text"
                 style={{ color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
               />
@@ -1852,12 +1634,12 @@ export default function MessagesPage({ user }) {
             ) : messages.length === 0 ? (
               <div className="flex flex-col justify-center items-center h-full gap-3">
                 <span className="material-symbols-outlined text-4xl" style={{ color: C.outline, opacity: 0.3 }}>forum</span>
-                <p className="text-sm" style={{ color: C.outline }}>{t("dm.send_first")}</p>
+                <p className="text-sm" style={{ color: C.outline }}>Envoyez le premier message !</p>
               </div>
             ) : (convSearchQ && displayedMessages.length === 0) ? (
               <div className="flex flex-col justify-center items-center h-full gap-3">
                 <span className="material-symbols-outlined text-4xl" style={{ color: C.outline, opacity: 0.3 }}>search_off</span>
-                <p className="text-sm" style={{ color: C.outline }}>{t("dm.no_messages_found")}</p>
+                <p className="text-sm" style={{ color: C.outline }}>Aucun message trouvé</p>
               </div>
             ) : (
               // mt-auto colle les messages EN BAS (peu de messages → collés au bas,
@@ -1944,17 +1726,11 @@ export default function MessagesPage({ user }) {
                           )}
                           {/* Message vocal */}
                           {audioSrcFrom(msg) && <VoiceMessage src={audioSrcFrom(msg)} own={isOwn} />}
-                          {/* Vidéo (DM ou groupe) */}
-                          {videoSrcFrom(msg) && (
-                            <MsgVideo src={cleanImageSrc(videoSrcFrom(msg))} onLoaded={() => scrollToBottom()} />
-                          )}
                           {/* Images : média du message, médias de groupe, ou image collée en texte
-                              (on exclut le media_url si c'est en fait un audio/vidéo). */}
+                              (on exclut le media_url si c'est en fait un audio). */}
                           {[
-                            (audioSrcFrom(msg) || videoSrcFrom(msg)) ? null : msg.media_url,
-                            ...(Array.isArray(msg.media_urls)
-                              ? msg.media_urls.filter((u) => !(typeof u === "string" && (u.startsWith("data:audio") || u.startsWith("data:video"))))
-                              : []),
+                            audioSrcFrom(msg) ? null : msg.media_url,
+                            ...(Array.isArray(msg.media_urls) ? msg.media_urls : []),
                             imageSrcFromContent(msg.content),
                           ].filter(Boolean).map((src, i) => (
                             <MsgImage key={i} src={cleanImageSrc(src)} onOpen={setLightbox} onLoaded={() => scrollToBottom()} />
@@ -1967,7 +1743,7 @@ export default function MessagesPage({ user }) {
                           {/* Traduction (façon Instagram : affichée sous le texte) */}
                           {translations[msg.id] && (
                             <div className="mt-1.5 pt-1.5 text-sm" style={{ borderTop: `1px solid ${C.outlineVar}`, color: C.onSurface }}>
-                              <span className="text-[9px] font-bold uppercase tracking-widest block mb-0.5" style={{ color: C.cyan }}>{t("dm.translated")}</span>
+                              <span className="text-[9px] font-bold uppercase tracking-widest block mb-0.5" style={{ color: C.cyan }}>Traduit</span>
                               {translations[msg.id]}
                             </div>
                           )}
@@ -2033,7 +1809,7 @@ export default function MessagesPage({ user }) {
                     {/* Status + time */}
                     <div className={`flex items-center gap-1 mt-0.5 ${isOwn ? "justify-end" : "justify-start ml-9"}`}>
                       {msg.expires_at && (
-                        <span title={t("dm.ephemeral")} style={{ color: C.cyan }}><Ico name="timer" size={11} /></span>
+                        <span title="Message éphémère" style={{ color: C.cyan }}><Ico name="timer" size={11} /></span>
                       )}
                       <span className="text-[9px]" style={{ color: C.outline }}>
                         {msg.created_at ? new Date(msg.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : ""}
@@ -2063,7 +1839,7 @@ export default function MessagesPage({ user }) {
             <div className="px-4 py-2 flex items-center justify-between" style={{ background: "rgba(2,6,23,0.5)" }}>
               <div className="flex items-center gap-2 text-xs" style={{ color: C.outline }}>
                 <span className="material-symbols-outlined text-sm" style={{ color: C.cyan }}>reply</span>
-                <span>{t("dm.reply_to")} <strong style={{ color: C.onSurface }}>{replyingTo.content?.substring(0, 40)}…</strong></span>
+                <span>Réponse à <strong style={{ color: C.onSurface }}>{replyingTo.content?.substring(0, 40)}…</strong></span>
               </div>
               <button onClick={() => setReplyingTo(null)} style={{ color: C.outline }} className="hover:text-white transition-colors">
                 <span className="material-symbols-outlined text-sm">close</span>
@@ -2077,17 +1853,13 @@ export default function MessagesPage({ user }) {
             {/* Aperçu de l'image en attente */}
             {pendingImage && (
               <div className="mb-2 relative inline-block">
-                {isVideoDataUrl(pendingImage) ? (
-                  <video src={pendingImage} className="h-20 rounded-xl object-cover" muted playsInline />
-                ) : (
-                  <img src={pendingImage} alt={t("dm.preview_alt")} className="h-20 rounded-xl object-cover" />
-                )}
+                <img src={pendingImage} alt="aperçu" className="h-20 rounded-xl object-cover" />
                 <button
                   type="button"
                   onClick={() => setPendingImage(null)}
                   className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs"
                   style={{ background: "#ef4444", color: "#fff" }}
-                  title={t("dm.remove")}
+                  title="Retirer"
                 >
                   <span className="material-symbols-outlined text-sm">close</span>
                 </button>
@@ -2098,7 +1870,7 @@ export default function MessagesPage({ user }) {
               <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: C.container }}>
                 <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>graphic_eq</span>
                 <audio src={pendingAudio} controls style={{ height: 32, flex: 1 }} />
-                <button type="button" onClick={() => setPendingAudio(null)} title={t("dm.remove")} style={{ color: "#f87171" }}>
+                <button type="button" onClick={() => setPendingAudio(null)} title="Retirer" style={{ color: "#f87171" }}>
                   <span className="material-symbols-outlined text-sm">delete</span>
                 </button>
               </div>
@@ -2108,7 +1880,7 @@ export default function MessagesPage({ user }) {
               /* Barre d'enregistrement vocal (façon Insta : corbeille · mic rouge ·
                  chrono · onde animée · valider) */
               <div className="flex items-center gap-2.5 px-3 py-2 rounded-2xl" style={glass}>
-                <button type="button" onClick={cancelRecording} title={t("dm.delete")}
+                <button type="button" onClick={cancelRecording} title=t("delete")
                   className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
                   style={{ color: "#f87171" }}>
                   <span className="material-symbols-outlined text-lg">delete</span>
@@ -2122,47 +1894,40 @@ export default function MessagesPage({ user }) {
                         height: `${25 + Math.abs(Math.sin(i * 1.7)) * 70}%`, animationDelay: `${(i % 6) * 110}ms` }} />
                   ))}
                 </div>
-                <button type="button" onClick={stopRecording} title={t("dm.finish")}
+                <button type="button" onClick={stopRecording} title="Terminer"
                   className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
                   style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
                   <span className="material-symbols-outlined text-lg">check</span>
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col">
-              {!isGroup && scheduledMsgs.length > 0 && (
-                <button onClick={() => setManageSched(true)}
-                  className="flex items-center gap-1.5 mb-2 px-3 py-1.5 rounded-full text-xs font-bold self-start active:scale-95 transition-transform"
-                  style={{ background: "rgba(34,211,238,0.12)", color: C.cyan }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 15 }}>schedule</span>
-                  {scheduledMsgs.length} message{scheduledMsgs.length > 1 ? "s" : ""} planifié{scheduledMsgs.length > 1 ? "s" : ""}
-                </button>
-              )}
               <form onSubmit={handleSendMessage} className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={glass}>
                 <input
                   ref={imageInputRef}
                   type="file"
-                  accept="image/*,video/*"
+                  accept="image/*"
                   className="hidden"
-                  onChange={handlePickMedia}
+                  onChange={handlePickImage}
                 />
-                <button
-                  type="button"
-                  onClick={() => imageInputRef.current?.click()}
-                  disabled={compressing}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-50"
-                  style={{ background: C.high, color: C.cyan }}
-                  title={t("dm.send_img_video")}
-                >
-                  <span className="material-symbols-outlined text-sm">{compressing ? "hourglass_top" : "image"}</span>
-                </button>
-                {!pendingAudio && (
+                {!isGroup && (
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={compressing}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-50"
+                    style={{ background: C.high, color: C.cyan }}
+                    title="Envoyer une image"
+                  >
+                    <span className="material-symbols-outlined text-sm">{compressing ? "hourglass_top" : "image"}</span>
+                  </button>
+                )}
+                {!isGroup && !pendingAudio && (
                   <button
                     type="button"
                     onClick={startRecording}
                     className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90"
                     style={{ background: C.high, color: C.cyan }}
-                    title={t("dm.voice_message")}
+                    title="Message vocal"
                   >
                     <span className="material-symbols-outlined text-sm">mic</span>
                   </button>
@@ -2170,111 +1935,34 @@ export default function MessagesPage({ user }) {
                 <input
                   value={messageContent}
                   onChange={(e) => setMessageContent(e.target.value)}
-                  placeholder={t("dm.send_message")}
+                  placeholder="Envoyer un message..."
                   className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600 select-text"
                   style={{ color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) handleSendMessage(e); }}
                 />
-                {/* « + » → menu d'outils (Dessiner). */}
-                <div className="relative">
-                  <button type="button" onClick={() => setShowPlusMenu((v) => !v)}
-                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90"
-                    style={{ background: C.high, color: C.cyan }} title={t("dm.more_tools")}>
-                    <span className="material-symbols-outlined text-sm" style={{ transform: showPlusMenu ? "rotate(45deg)" : "none", transition: "transform 0.2s" }}>add</span>
-                  </button>
-                  {showPlusMenu && (
-                    <>
-                      <div className="fixed inset-0 z-[60]" onClick={() => setShowPlusMenu(false)} />
-                      <div className="absolute bottom-11 right-0 z-[61] rounded-2xl overflow-hidden" style={{ background: C.surface, border: `1px solid ${C.high}`, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
-                        <button type="button" onClick={() => { setShowPlusMenu(false); setShowDraw(true); }}
-                          className="flex items-center gap-2 px-4 py-3 w-40 text-left active:scale-[0.98]" style={{ color: C.onSurface }}>
-                          <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>brush</span>
-                          <span className="text-sm font-semibold">{t("dm.draw")}</span>
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
                 <button type="submit" disabled={!messageContent.trim() && !pendingImage && !pendingAudio}
-                  onPointerDown={() => {
-                    // Appui long (1 s) → planifier (1:1 uniquement, si contenu).
-                    if (isGroup || (!messageContent.trim() && !pendingImage)) return;
-                    sendLpFired.current = false;
-                    clearTimeout(sendLpTimer.current);
-                    sendLpTimer.current = setTimeout(() => { sendLpFired.current = true; setShowScheduleModal(true); }, 1000);
-                  }}
-                  onPointerUp={() => clearTimeout(sendLpTimer.current)}
-                  onPointerLeave={() => clearTimeout(sendLpTimer.current)}
-                  title={t("dm.send_long_press")}
                   className="w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 disabled:opacity-40"
                   style={{ background: (messageContent.trim() || pendingImage || pendingAudio) ? "linear-gradient(135deg,#22d3ee,#3b82f6)" : C.high, color: (messageContent.trim() || pendingImage || pendingAudio) ? C.onPrimary : C.outline }}>
                   <span className="material-symbols-outlined text-sm">send</span>
                 </button>
               </form>
-              </div>
             )}
           </div>
         </>
-      ) : hasSelection ? (
-        /* Une conversation EST sélectionnée mais ses infos chargent encore
-           (appel /users/{id}). On affiche un spinner discret — JAMAIS le
-           placeholder « Sélectionnez une conversation », qui serait faux et
-           donnait l'impression d'une app vide/lente à chaque ouverture. */
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-7 h-7 rounded-full border-2 animate-spin"
-            style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
-        </div>
       ) : (
-        /* Empty state — vraiment AUCUNE conversation sélectionnée (colonne
-           droite sur PC ; sur mobile la liste occupe l'écran). */
+        /* Empty state */
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
           <div className="w-20 h-20 rounded-2xl flex items-center justify-center" style={{ background: `${C.cyan}12` }}>
             <span className="material-symbols-outlined text-4xl" style={{ color: C.cyan, opacity: 0.6 }}>forum</span>
           </div>
           <div className="text-center">
-            <h3 className="font-black text-lg mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("dm.comm_center")}</h3>
-            <p className="text-sm" style={{ color: C.outline }}>{t("dm.select_conv")}</p>
+            <h3 className="font-black text-lg mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Centre de communication</h3>
+            <p className="text-sm" style={{ color: C.outline }}>Sélectionnez une conversation pour commencer</p>
           </div>
           <button onClick={openNewMessage} className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
             Nouvelle conversation
           </button>
-        </div>
-      )}
-      <DrawCanvasModal open={showDraw} onClose={() => setShowDraw(false)} onSubmit={postDrawing} />
-      <ScheduleMessageModal open={showScheduleModal} onClose={() => setShowScheduleModal(false)} onConfirm={scheduleCurrentMessage} />
-      <ScheduleMessageModal open={!!rescheduleId} onClose={() => setRescheduleId(null)} onConfirm={rescheduleTo} title={t("dm.new_time")} />
-      {manageSched && (
-        <div className="fixed inset-0 z-[96] flex items-end sm:items-center justify-center sm:p-4"
-          style={{ background: "rgba(2,6,20,0.86)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) setManageSched(false); }}>
-          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5" style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.1)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
-            <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.22)" }} />
-            <div className="flex items-center gap-2 mb-4">
-              <span className="material-symbols-outlined" style={{ color: C.cyan }}>schedule</span>
-              <h3 className="text-white font-black text-lg">{t("dm.scheduled_messages")}</h3>
-            </div>
-            {scheduledMsgs.length === 0 ? (
-              <p className="text-sm py-6 text-center" style={{ color: "#6b7686" }}>{t("dm.no_scheduled")}</p>
-            ) : (
-              <div className="space-y-2 max-h-[52vh] overflow-y-auto no-scrollbar">
-                {scheduledMsgs.map((s) => (
-                  <div key={s.id} className="rounded-2xl p-3" style={{ background: "#1a2234" }}>
-                    <p className="text-sm text-white truncate flex items-center gap-1">
-                      {!s.content && s.media_type && <span className="material-symbols-outlined" style={{ fontSize: 15, color: "#8b96a8" }}>image</span>}
-                      <span className="truncate">{s.content || (s.media_type ? "Média joint" : "")}</span>
-                    </p>
-                    <p className="text-[11px] mb-2" style={{ color: C.cyan }}>{new Date(s.scheduled_at).toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                    <div className="flex gap-2">
-                      <button onClick={() => sendScheduledNow(s.id)} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#04121a" }}>{t("dm.send")}</button>
-                      <button onClick={() => { setManageSched(false); setRescheduleId(s.id); }} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "#232c40", color: "#c7d0e0" }}>{t("dm.reschedule")}</button>
-                      <button onClick={() => deleteScheduled(s.id)} className="flex-1 py-1.5 rounded-xl text-xs font-bold" style={{ background: "#3a1414", color: "#f87171" }}>{t("dm.delete")}</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button onClick={() => setManageSched(false)} className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold" style={{ background: "#1a2234", color: "#a7b3cc" }}>{t("dm.close")}</button>
-          </div>
         </div>
       )}
     </div>
@@ -2329,10 +2017,10 @@ export default function MessagesPage({ user }) {
           {/* Actions rapides */}
           <div className="flex items-start gap-1 px-4 pb-5">
             {!isGroup && (
-              <QuickAction icon="profile" label="Profil"
+              <QuickAction icon="profile" label=t("profile")
                 onClick={() => { setShowDetails(false); navigate(`/profile/${selectedUserId}`); }} />
             )}
-            <QuickAction icon="search" label="Rechercher" onClick={() => toast("Bientôt disponible")} />
+            <QuickAction icon="search" label=t("search") onClick={() => toast("Bientôt disponible")} />
             <QuickAction icon={isMuted(muteId) ? "unmute" : "mute"} label={isMuted(muteId) ? "Réactiver" : "Mettre en sourdine"}
               onClick={() => toggleMute(muteId)} />
             <QuickAction icon="options" label="Options" onClick={() => setDetailsMore((v) => !v)} />
@@ -2375,7 +2063,7 @@ export default function MessagesPage({ user }) {
                 {showAddMember && groupIsAdmin && (
                   <div className="px-4 pb-2">
                     <input value={addMemberSearch} autoFocus onChange={(e) => setAddMemberSearch(e.target.value)}
-                      placeholder={t("dm.search_person")}
+                      placeholder="Rechercher une personne..."
                       className="w-full px-3 py-2 rounded-xl text-sm border-none outline-none placeholder:text-slate-600"
                       style={{ background: C.high, color: C.onSurface }} />
                     {addMemberResults.map((u) => (
@@ -2407,7 +2095,7 @@ export default function MessagesPage({ user }) {
                           style={{ color: m.is_admin ? C.cyan : C.outline }}>
                           <span className="material-symbols-outlined text-sm">shield_person</span>
                         </button>
-                        <button onClick={() => removeGroupMember(m)} title={t("dm.remove_from_group")}
+                        <button onClick={() => removeGroupMember(m)} title="Retirer du groupe"
                           className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-red-500/10"
                           style={{ color: "#f87171" }}>
                           <span className="material-symbols-outlined text-sm">person_remove</span>
@@ -2492,14 +2180,6 @@ export default function MessagesPage({ user }) {
         )}
       </div>
 
-      {/* Instantanés (photos éphémères façon Instagram) : FAB + reçus + caméra.
-          Monté au niveau stable de la page (jamais remonté avec les panneaux).
-          Masqué quand une conversation est ouverte sur mobile. */}
-      <InstantsEntry user={user} hidden={hasSelection} />
-
-      {/* Nexus AI — overlay de discussion (indépendant du flux WebSocket). */}
-      {showAI && <NexusAIChat onClose={() => setShowAI(false)} />}
-
       {/* ── Menu appui long conversation (mobile) : façon Instagram ── */}
       {convMenu && (
         <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center select-none"
@@ -2518,7 +2198,7 @@ export default function MessagesPage({ user }) {
               <button onClick={handleMarkUnread}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                 <span className="material-symbols-outlined" style={{ color: C.cyan }}>mark_chat_unread</span>
-                <span className="text-[15px]">{t("dm.mark_unread")}</span>
+                <span className="text-[15px]">Marquer comme non lu</span>
               </button>
               <button onClick={handleTogglePin}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
@@ -2533,13 +2213,13 @@ export default function MessagesPage({ user }) {
               <button onClick={handleDeleteFromMenu}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-red-500/10 text-left" style={{ color: "#f87171" }}>
                 <span className="material-symbols-outlined">{convMenu.kind === "group" ? "logout" : "delete"}</span>
-                <span className="text-[15px]">{convMenu.kind === "group" ? "Quitter le groupe" : "Supprimer"}</span>
+                <span className="text-[15px]">{convMenu.kind === "group" ? "Quitter le groupe" : t("delete")}</span>
               </button>
             </div>
             <button onClick={() => setConvMenu(null)}
-              className="w-full py-4 text-[15px] font-bold border-t" style={{ borderColor: C.outlineVar, color: C.outline }}>
-              Annuler
-            </button>
+              className="w-full py-4 text-[15px] font-bold border-t" style={{ borderColor: C.outlineVar, color: C.outline }}>{
+              t("cancel")
+            }</button>
           </div>
         </div>
       )}
@@ -2574,12 +2254,12 @@ export default function MessagesPage({ user }) {
               <button onClick={() => { setReplyingTo(msgMenu); setMsgMenu(null); }}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                 <span className="material-symbols-outlined" style={{ color: C.cyan }}>reply</span>
-                <span className="text-[15px]">{t("dm.reply")}</span>
+                <span className="text-[15px]">{t("answer")}</span>
               </button>
               <button onClick={() => { const m = msgMenu; setMsgMenu(null); setForwardMsg(m); }}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                 <span className="material-symbols-outlined" style={{ color: C.cyan }}>forward</span>
-                <span className="text-[15px]">{t("dm.forward")}</span>
+                <span className="text-[15px]">Transférer</span>
               </button>
               {!isDataImage(msgMenu.content) && (msgMenu.content || "").trim() && (
                 <>
@@ -2591,7 +2271,7 @@ export default function MessagesPage({ user }) {
                   <button onClick={() => { handleCopy(msgMenu.content); setMsgMenu(null); }}
                     className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                     <span className="material-symbols-outlined" style={{ color: C.cyan }}>content_copy</span>
-                    <span className="text-[15px]">{t("dm.copy")}</span>
+                    <span className="text-[15px]">Copier</span>
                   </button>
                 </>
               )}
@@ -2600,21 +2280,21 @@ export default function MessagesPage({ user }) {
               <button onClick={() => { handleDeleteMessage(msgMenu.id, false); setMsgMenu(null); }}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                 <span className="material-symbols-outlined" style={{ color: C.outline }}>visibility_off</span>
-                <span className="text-[15px]">{t("dm.delete_for_you")}</span>
+                <span className="text-[15px]">Supprimer pour vous</span>
               </button>
               {/* Supprimer pour tout le monde : seulement mes propres messages. */}
               {msgMenu.sender_id === user.id && (
                 <button onClick={() => { handleDeleteMessage(msgMenu.id, true); setMsgMenu(null); }}
                   className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-red-500/10 text-left" style={{ color: "#f87171" }}>
                   <span className="material-symbols-outlined">delete</span>
-                  <span className="text-[15px]">{t("dm.delete_for_all")}</span>
+                  <span className="text-[15px]">Supprimer pour tout le monde</span>
                 </button>
               )}
             </div>
             <button onClick={() => setMsgMenu(null)}
-              className="w-full py-4 text-[15px] font-bold border-t" style={{ borderColor: C.outlineVar, color: C.outline }}>
-              Annuler
-            </button>
+              className="w-full py-4 text-[15px] font-bold border-t" style={{ borderColor: C.outlineVar, color: C.outline }}>{
+              t("cancel")
+            }</button>
           </div>
         </div>
       )}
@@ -2630,11 +2310,11 @@ export default function MessagesPage({ user }) {
             onClick={(e) => e.stopPropagation()}>
             <div className="pt-3 pb-2 flex flex-col items-center gap-2 flex-shrink-0">
               <div className="w-10 h-1 rounded-full" style={{ background: C.outlineVar }} />
-              <p className="text-sm font-bold" style={{ color: C.onSurface }}>{t("dm.forward_to")}</p>
+              <p className="text-sm font-bold" style={{ color: C.onSurface }}>Transférer à…</p>
             </div>
             <div className="overflow-y-auto flex-1" style={{ scrollbarWidth: "none" }}>
               {chatItems.length === 0 ? (
-                <p className="text-center text-xs py-6" style={{ color: C.outline }}>{t("dm.no_conversations")}</p>
+                <p className="text-center text-xs py-6" style={{ color: C.outline }}>Aucune conversation</p>
               ) : chatItems.map((item) => {
                 const g = item.kind === "group";
                 const name = g ? item.data.name : item.data.username;
@@ -2653,9 +2333,9 @@ export default function MessagesPage({ user }) {
               })}
             </div>
             <button onClick={() => setForwardMsg(null)}
-              className="w-full py-4 text-[15px] font-bold border-t flex-shrink-0" style={{ borderColor: C.outlineVar, color: C.outline }}>
-              Annuler
-            </button>
+              className="w-full py-4 text-[15px] font-bold border-t flex-shrink-0" style={{ borderColor: C.outlineVar, color: C.outline }}>{
+              t("cancel")
+            }</button>
           </div>
         </div>
       )}
@@ -2671,7 +2351,7 @@ export default function MessagesPage({ user }) {
             onClick={() => setLightbox(null)}
             className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center"
             style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}
-            aria-label={t("dm.close")}
+            aria-label="Fermer"
           >
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -2693,7 +2373,7 @@ export default function MessagesPage({ user }) {
             style={{ background: C.low, border: `1px solid ${C.outlineVar}` }}
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("dm.your_note")}</h3>
+              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Votre note</h3>
               <button onClick={() => setShowNoteComposer(false)} style={{ color: C.outline }} className="hover:text-white transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
@@ -2717,7 +2397,7 @@ export default function MessagesPage({ user }) {
                 maxLength={NOTE_MAX}
                 onChange={(e) => setNoteText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") saveNote(); }}
-                placeholder={t("dm.share_note")}
+                placeholder="Partagez une note…"
                 className="w-full px-4 py-3 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
                 style={{ background: C.high, color: C.onSurface }}
               />
@@ -2725,21 +2405,21 @@ export default function MessagesPage({ user }) {
                 {noteText.length}/{NOTE_MAX}
               </span>
             </div>
-            <p className="text-[10px] mt-2" style={{ color: C.outline }}>{t("dm.note_expires")}</p>
+            <p className="text-[10px] mt-2" style={{ color: C.outline }}>Votre note disparaît après 24 h.</p>
 
             <div className="flex gap-2 mt-5">
               {myNote && (
                 <button onClick={deleteMyNote}
                   className="px-4 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95"
-                  style={{ background: "transparent", color: "#f87171", border: "1px solid #f8717155" }}>
-                  Supprimer
-                </button>
+                  style={{ background: "transparent", color: "#f87171", border: "1px solid #f8717155" }}>{
+                  t("delete")
+                }</button>
               )}
               <button onClick={saveNote} disabled={!noteText.trim()}
                 className="flex-1 py-2.5 rounded-xl font-black text-sm transition-all active:scale-95 disabled:opacity-40 hover:opacity-90"
-                style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
-                Partager
-              </button>
+                style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>{
+                t("share")
+              }</button>
             </div>
           </div>
         </div>
@@ -2766,7 +2446,7 @@ export default function MessagesPage({ user }) {
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-1 px-1">
               <span style={{ color: C.cyan }}><Ico name="timer" size={22} /></span>
-              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("dm.ephemeral_messages")}</h3>
+              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Messages éphémères</h3>
             </div>
             <p className="text-xs px-1 mb-4" style={{ color: C.outline }}>
               Les nouveaux messages disparaissent automatiquement après la durée choisie, des deux côtés.
@@ -2799,7 +2479,7 @@ export default function MessagesPage({ user }) {
               <button onClick={() => setShowNewMessageModal(false)} style={{ color: C.outline }} className="hover:text-white transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
-              <h3 className="font-black text-base" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("dm.new_message")}</h3>
+              <h3 className="font-black text-base" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Nouveau message</h3>
               <span className="w-6" />
             </div>
 
@@ -2808,7 +2488,7 @@ export default function MessagesPage({ user }) {
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: C.outline }}>search</span>
                 <input autoFocus value={nmSearch} onChange={(e) => setNmSearch(e.target.value)}
-                  placeholder={t("dm.search")}
+                  placeholder="Rechercher..."
                   className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border-none outline-none placeholder:text-slate-600"
                   style={{ background: C.high, color: C.onSurface }} />
               </div>
@@ -2873,15 +2553,15 @@ export default function MessagesPage({ user }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
           <div className="w-full max-w-md rounded-3xl p-6" style={{ background: C.low, border: `1px solid ${C.outlineVar}` }}>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("dm.new_group")}</h3>
+              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Nouveau groupe</h3>
               <button onClick={() => setShowNewGroup(false)} style={{ color: C.outline }} className="hover:text-white transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder={t("dm.group_name")}
+            <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Nom du groupe..."
               className="w-full mb-4 px-4 py-2.5 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
               style={{ background: C.high, color: C.onSurface }} />
-            <input value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder={t("dm.search_members")}
+            <input value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="Rechercher des membres..."
               className="w-full mb-3 px-4 py-2.5 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
               style={{ background: C.high, color: C.onSurface }} />
             {groupSearchRes.length > 0 && (

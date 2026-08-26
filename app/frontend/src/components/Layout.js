@@ -1,18 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 import CallManager from "@/components/CallManager";
-import LiveScores from "@/components/LiveScores";
 
 export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome, hideMobileHeader, bottomNav }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
-  const searchLpTimer = useRef(null);   // appui long sur la Loupe (nav mobile)
-  const searchLpFired = useRef(false);
   const [suggestedUsers, setSuggestedUsers] = useState([]);
   const [trending, setTrending] = useState([]);
   // Sidebar PC : repliée par défaut (pictogrammes seuls), se déploie au survol.
@@ -246,14 +244,14 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
 
   const navItems = [
     { icon: "home",           label: t("home"),          path: "/feed",                 testId: "nav-home" },
-    { icon: "play_circle",    label: "Nexus Clips",      path: "/nexus-clips",          testId: "nav-clips" },
+    { icon: "play_circle",    label: t("nexus_clips"),      path: "/nexus-clips",          testId: "nav-clips" },
     { icon: "sensors",        label: t("nav_live"),      path: "/live",                 testId: "nav-live" },
-    { icon: "search",         label: t("search"),        path: "/search",               testId: "nav-search" },
+    { icon: "explore",        label: t("explore"),       path: "/search",               testId: "nav-search" },
     { icon: "notifications",  label: t("notifications"), path: "/notifications",        testId: "nav-notifications" },
     { icon: "mail",           label: t("messages"),      path: "/messages",             testId: "nav-messages" },
     { icon: "account_circle", label: t("profile"),       path: `/profil/${user.id}`,    testId: "nav-profile" },
-    { icon: "bookmark",       label: t("nav.saved"),      path: "/enregistres",          testId: "nav-saved" },
-    { icon: "workspace_premium", label: "Premium",       path: "/premium",              testId: "nav-premium" },
+    { icon: "bookmark",       label: t("saved"),      path: "/enregistres",          testId: "nav-saved" },
+    { icon: "workspace_premium", label: t("premium"),       path: "/premium",              testId: "nav-premium" },
     { icon: "settings",       label: t("settings.title"),      path: "/settings",             testId: "nav-settings" },
   ];
 
@@ -265,18 +263,39 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       <aside
         onMouseEnter={() => setSbExpanded(true)}
         onMouseLeave={() => setSbExpanded(false)}
-        className={`no-scrollbar fixed left-0 top-0 h-screen z-[60] hidden lg:flex flex-col py-4 gap-2 select-none overflow-y-auto overscroll-contain transition-[width] duration-200 ease-out ${sbExpanded ? "w-64 px-4 shadow-2xl" : "w-20 px-2"}`}
+        className={`fixed left-0 top-0 h-screen z-40 hidden lg:flex flex-col py-8 gap-4 select-none overflow-hidden transition-[width] duration-200 ease-out ${sbExpanded ? "w-64 px-4 shadow-2xl" : "w-20 px-2"}`}
         style={{ backgroundColor: "#0b1326", borderRight: "1px solid rgba(255,255,255,0.04)" }}
       >
         {/* Logo : « NEXUS » déployé, « N » replié */}
         <div
-          className={`font-headline font-black tracking-tighter mb-2 bg-clip-text whitespace-nowrap flex-shrink-0 ${sbExpanded ? "text-2xl px-4" : "text-2xl text-center"}`}
+          className={`font-headline font-black tracking-tighter mb-4 bg-clip-text whitespace-nowrap ${sbExpanded ? "text-2xl px-4" : "text-2xl text-center"}`}
           style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
         >
           {sbExpanded ? "NEXUS" : "N"}
         </div>
 
-        {/* Navigation (la recherche est désormais un onglet « Recherche » ci-dessous) */}
+        {/* Recherche : champ déployé, bouton picto replié */}
+        {sbExpanded ? (
+          <div className="px-2 mb-2">
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#859397", fontSize: "18px" }}>search</span>
+              <input
+                className="w-full border-none rounded-xl py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-1 focus:ring-cyan-400/40 placeholder:text-slate-500"
+                style={{ backgroundColor: "#131b2e", color: "#dae2fd" }}
+                placeholder={`${t("search")}...`}
+                type="text"
+                onKeyDown={(e) => { if (e.key === "Enter" && e.target.value) navigate(`/search?q=${e.target.value}`); }}
+              />
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => navigate("/search")} title={t("search")}
+            className="mb-2 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#131b2e", color: "#859397" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>search</span>
+          </button>
+        )}
+
+        {/* Navigation */}
         <nav className="flex flex-col gap-0.5">
           {navItems.map((item) => {
             const active = isActive(item.path);
@@ -286,7 +305,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
                 data-testid={item.testId}
                 onClick={() => navigate(item.path)}
                 title={item.label}
-                className={`relative flex items-center py-2.5 rounded-xl transition-all duration-200 text-left ${sbExpanded ? "gap-4 px-4" : "justify-center px-0"}`}
+                className={`relative flex items-center py-3 rounded-xl transition-all duration-200 text-left ${sbExpanded ? "gap-4 px-4" : "justify-center px-0"}`}
                 style={{
                   color: active ? "var(--nexus-accent)" : "#859397",
                   fontWeight: active ? "700" : "400",
@@ -306,26 +325,25 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
               </button>
             );
           })}
+        </nav>
 
-          {/* Créer une publication — intégré au BAS de la nav (façon X) : juste
-              sous « Paramètres », centré dans le même axe vertical que les autres
-              icônes (plus de « + » flottant isolé au milieu de la sidebar). */}
-          {(location.pathname === "/feed" || location.pathname === "/") && (
+        {/* Créer une publication — page d'accueil uniquement. */}
+        {(location.pathname === "/feed" || location.pathname === "/") && (
+          <div className={`mt-2 ${sbExpanded ? "px-2" : ""}`}>
             <button
               data-testid="create-post-button"
               onClick={handleCreatePost}
               title={t("create_post")}
-              className={`mt-2 font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm flex items-center ${sbExpanded ? "w-full py-3.5 px-4 gap-3 justify-start" : "w-11 h-11 mx-auto justify-center"}`}
+              className={`font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm flex items-center justify-center ${sbExpanded ? "w-full py-3.5" : "w-11 h-11 mx-auto"}`}
               style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 8px 20px rgba(34,211,238,0.2)" }}
             >
-              <span className="material-symbols-outlined flex-shrink-0">add</span>
-              {sbExpanded && <span className="whitespace-nowrap">{t("create_post")}</span>}
+              {sbExpanded ? t("create_post") : <span className="material-symbols-outlined">add</span>}
             </button>
-          )}
-        </nav>
+          </div>
+        )}
 
-        {/* Profil / déconnexion — épinglé en bas (mt-auto) mais jamais compressé */}
-        <div className={`mt-auto pt-2 flex-shrink-0 ${sbExpanded ? "px-2" : ""}`}>
+        {/* Profil / déconnexion */}
+        <div className={`mt-auto ${sbExpanded ? "px-2" : ""}`}>
           <div className={`flex items-center ${sbExpanded ? "gap-3" : "justify-center"}`}>
             {user.profile_pic ? (
               <img src={user.profile_pic} alt="Profile" className="w-10 h-10 rounded-full object-cover cursor-pointer flex-shrink-0" onClick={() => navigate(`/profil/${user.id}`)} />
@@ -356,18 +374,14 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           className="fixed right-0 top-0 h-screen w-80 z-40 hidden lg:flex flex-col py-8 px-6 gap-8 overflow-y-auto"
           style={{ backgroundColor: "#0b1326", borderLeft: "1px solid rgba(255,255,255,0.04)" }}
         >
-          {/* Scores de foot en direct — tout en haut de la colonne. Optionnel :
-              masqué si l'utilisateur a désactivé les scores. */}
-          {(user?.show_sports !== false || user?.show_mma !== false) && <LiveScores variant="sidebar" setUser={setUser} />}
-
-          {/* Trending — carte au fond gris très sombre (façon X) */}
-          <section className="rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
-            <h2 className="font-headline font-bold text-lg mb-5 tracking-tight" style={{ color: "#dae2fd" }}>{t("trending")}</h2>
-            <div className="space-y-5">
+          {/* Trending */}
+          <section>
+            <h2 className="font-headline font-bold text-lg mb-6 tracking-tight" style={{ color: "#dae2fd" }}>{t("trending")}</h2>
+            <div className="space-y-6">
               {trending.length === 0 ? (
-                <p className="text-xs" style={{ color: "#859397" }}>
-                  Aucune tendance pour l'instant. Publiez avec des #hashtags pour lancer les tendances !
-                </p>
+                <p className="text-xs" style={{ color: "#859397" }}>{
+                  t("no_trends_yet")
+                }</p>
               ) : (
                 trending.map((t, i) => (
                   <button
@@ -386,10 +400,10 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             </div>
           </section>
 
-          {/* Suggested Users — même carte (cohérence avec Tendances) */}
+          {/* Suggested Users */}
           {suggestedUsers.length > 0 && (
-            <section className="rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
-              <h2 className="font-headline font-bold text-lg mb-5 tracking-tight" style={{ color: "#dae2fd" }}>{t("suggestions")}</h2>
+            <section>
+              <h2 className="font-headline font-bold text-lg mb-6 tracking-tight" style={{ color: "#dae2fd" }}>{t("suggestions")}</h2>
               <div className="space-y-4">
                 {suggestedUsers.map((u) => (
                   <div key={u.id} className="flex items-center justify-between">
@@ -406,9 +420,9 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
                         <span className="text-[10px]" style={{ color: "#859397" }}>@{u.username}</span>
                       </div>
                     </button>
-                    <button onClick={() => navigate(`/profil/${u.id}`)} className="px-3 py-1 rounded-full text-[10px] font-bold transition-colors hover:bg-cyan-400/20 hover:text-cyan-400" style={{ backgroundColor: "#222a3d", color: "#dae2fd" }}>
-                      Voir
-                    </button>
+                    <button onClick={() => navigate(`/profil/${u.id}`)} className="px-3 py-1 rounded-full text-[10px] font-bold transition-colors hover:bg-cyan-400/20 hover:text-cyan-400" style={{ backgroundColor: "#222a3d", color: "#dae2fd" }}>{
+                      t("view")
+                    }</button>
                   </div>
                 ))}
               </div>
@@ -417,14 +431,10 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
 
           <footer className="mt-auto pt-8">
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-medium" style={{ color: "#3c494c" }}>
-              <Link to="/a-propos" className="hover:text-slate-400">{t("nav.about")}</Link>
-              <Link to="/comment-ca-marche" className="hover:text-slate-400">{t("nav.how")}</Link>
-              <Link to="/guides" className="hover:text-slate-400">{t("nav.guides")}</Link>
-              <Link to="/faq" className="hover:text-slate-400">{t("nav.faq")}</Link>
-              <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">{t("nav.terms")}</a>
-              <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">{t("nav.privacy")}</a>
-              <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">{t("nav.cookies")}</a>
-              <span>{t("nav.copyright")}</span>
+              <a href={`${API}/legal/terms-of-service`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">{t("terms")}</a>
+              <a href={`${API}/legal/privacy-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">{t("privacy")}</a>
+              <a href={`${API}/legal/cookie-policy`} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">{t("cookies")}</a>
+              <span>© 2025 Nexus Social</span>
             </div>
           </footer>
         </aside>
@@ -433,7 +443,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* ===== Mobile Header ===== */}
       {!hideMobileChrome && !hideMobileHeader && (
       <header
-        className="lg:hidden fixed top-0 left-0 right-0 z-50 flex flex-col select-none transition-transform duration-300 pt-safe"
+        className="lg:hidden fixed top-0 left-0 right-0 z-50 flex flex-col select-none transition-transform duration-300"
         style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", transform: headerHidden ? "translateY(-100%)" : "translateY(0)" }}
       >
         {/* Ligne 1 : « Nexus Social » centré, cloche de notifications à droite
@@ -459,8 +469,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         {(location.pathname === "/feed" || location.pathname === "/") && (
           <div className="flex items-center justify-center gap-8 pb-2">
             {[
-              { key: "foryou", label: t("feed.tab_foryou") },
-              { key: "following", label: t("feed.tab_following") },
+              { key: "foryou", label: t("for_you") },
+              { key: "following", label: t("following") },
             ].map(({ key, label }) => {
               const active = feedTab === key;
               return (
@@ -486,7 +496,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* ===== Main Content ===== */}
       {/* lg:ml-20 = largeur de la sidebar repliée (pas de chevauchement ; la
           sidebar déployée passe au-dessus au survol). */}
-      <main className={`ml-0 lg:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : ((location.pathname === "/feed" || location.pathname === "/") ? "pt-[calc(5.5rem_+_env(safe-area-inset-top))] pb-20" : "pt-[calc(3.5rem_+_env(safe-area-inset-top))] pb-20"))} lg:pt-0 lg:pb-0`}>
+      <main className={`ml-0 lg:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : ((location.pathname === "/feed" || location.pathname === "/") ? "pt-[5.5rem] pb-20" : "pt-14 pb-20"))} lg:pt-0 lg:pb-0`}>
         {children}
       </main>
 
@@ -496,43 +506,21 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {(!hideMobileChrome || bottomNav) && (
       <>
       <nav
-        className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 select-none"
-        style={{
-          // Hauteur = 4rem de contenu + zone sûre iOS (indicateur d'accueil) :
-          // les icônes ne tombent plus dans la zone de geste du bas. Sur les
-          // appareils sans encoche (safe-area = 0), reste exactement 4rem.
-          height: "calc(4rem + env(safe-area-inset-bottom))",
-          paddingBottom: "env(safe-area-inset-bottom)",
-          backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)",
-        }}
+        className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-4 select-none"
+        style={{ backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
       >
         {/* Le bouton « + » n'est plus au centre : il flotte en bas à droite (FAB,
-            page d'accueil uniquement). Recherche = pictogramme entre Messages et Profil.
-            Appui LONG (1 s) sur la Loupe → ouvre la recherche + focus immédiat du champ. */}
+            page d'accueil uniquement). Recherche = pictogramme entre Messages et Profil. */}
         {[
           { icon: "home",           path: "/feed",               label: t("home"),      testId: "nav-home" },
-          { icon: "play_circle",    path: "/nexus-clips",        label: "Nexus Clips",  testId: "nav-clips" },
+          { icon: "play_circle",    path: "/nexus-clips",        label: t("nexus_clips"),  testId: "nav-clips" },
           { icon: "mail",           path: "/messages",           label: t("messages"),  testId: "nav-messages" },
           { icon: "search",         path: "/search",             label: t("search"),    testId: "nav-search-mobile" },
           { icon: "account_circle", path: `/profil/${user.id}`,  label: t("profile"),   testId: "nav-profile" },
         ].map((item) => {
           const active = isActive(item.path);
-          const isSearch = item.icon === "search";
-          const lpProps = isSearch ? {
-            onPointerDown: () => {
-              searchLpFired.current = false;
-              clearTimeout(searchLpTimer.current);
-              searchLpTimer.current = setTimeout(() => { searchLpFired.current = true; navigate("/search?focus=1"); }, 1000);
-            },
-            onPointerUp: () => clearTimeout(searchLpTimer.current),
-            onPointerLeave: () => clearTimeout(searchLpTimer.current),
-            onContextMenu: (e) => e.preventDefault(),
-          } : {};
           return (
-            <button key={item.path} data-testid={item.testId}
-              onClick={() => { if (isSearch && searchLpFired.current) { searchLpFired.current = false; return; } navigate(item.path); }}
-              {...lpProps}
-              className="flex flex-col items-center gap-0.5 select-none" style={{ color: active ? "var(--nexus-accent)" : "#859397", touchAction: "manipulation" }}>
+            <button key={item.path} data-testid={item.testId} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-0.5" style={{ color: active ? "var(--nexus-accent)" : "#859397" }}>
               <span className="relative material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>
                 {item.icon}
                 {badgeFor(item.path) > 0 && (
@@ -553,10 +541,10 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           data-testid="fab-create-post"
           onClick={handleCreatePost}
           className="lg:hidden fixed right-4 z-[55] w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95"
-          style={{ bottom: "calc(5rem + env(safe-area-inset-bottom))", background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 6px 18px rgba(34,211,238,0.4)" }}
+          style={{ bottom: "calc(4.5rem + env(safe-area-inset-bottom))", background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 6px 20px rgba(34,211,238,0.45)" }}
           aria-label={t("create_post")}
         >
-          <span className="material-symbols-outlined text-2xl">add</span>
+          <span className="material-symbols-outlined text-3xl">add</span>
         </button>
       )}
       </>

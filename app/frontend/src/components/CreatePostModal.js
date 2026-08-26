@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import { Button } from "@/components/ui/button";
@@ -9,10 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Image, Video, X } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export default function CreatePostModal({ open, onClose, onPostCreated }) {
-  const navigate = useNavigate();
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [content, setContent] = useState("");
   const [media, setMedia] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
@@ -45,7 +45,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     if (!file) return;
 
     if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      toast.error(t("compose.err_file_too_big", { max: MAX_FILE_MB }));
+      toast.error(`Fichier trop volumineux (max ${MAX_FILE_MB} Mo)`);
       e.target.value = "";
       return;
     }
@@ -60,7 +60,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
       probe.onloadedmetadata = () => {
         URL.revokeObjectURL(url);
         if (probe.duration > MAX_VIDEO_SECONDS + 0.5) {
-          toast.error(t("compose.err_video_too_long", { s: MAX_VIDEO_SECONDS }));
+          toast.error(`Vidéo trop longue (max ${MAX_VIDEO_SECONDS}s pour un clip)`);
           e.target.value = "";
           return;
         }
@@ -68,7 +68,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
       };
       probe.onerror = () => {
         URL.revokeObjectURL(url);
-        toast.error(t("compose.err_video_unreadable"));
+        toast.error(t("cannot_play_video"));
         e.target.value = "";
       };
       probe.src = url;
@@ -97,7 +97,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     // --- Story : média obligatoire, publié vers /stories (expire en 24h) ---
     if (mode === "story") {
       if (!mediaPreview) {
-        toast.error(t("compose.err_story_media_required"));
+        toast.error(t("add_story_media"));
         return;
       }
       setLoading(true);
@@ -106,12 +106,12 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
         form.append("media_type", mediaType);
         form.append("media_url", mediaPreview); // base64 (CAS URL du backend)
         await axios.post(`${API}/stories`, form);
-        toast.success(t("compose.story_published"));
+        toast.success(t("story_published"));
         resetForm();
         onClose?.();
       } catch (error) {
-        console.error("Erreur création story:", error);
-        toast.error(error.response?.data?.detail || t("compose.err_story_publish"));
+        console.error(t("error_create_story_log"), error);
+        toast.error(error.response?.data?.detail || t("error_publishing_story"));
       } finally {
         setLoading(false);
       }
@@ -120,7 +120,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
     // --- Post / Sondage ---
     if (!content.trim()) {
-      toast.error(mode === "poll" ? t("compose.err_poll_question") : t("compose.err_content_empty"));
+      toast.error(mode === "poll" ? t("poll_question_hint") : t("content_cannot_be_empty"));
       return;
     }
 
@@ -128,7 +128,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     if (mode === "poll") {
       poll_options = pollOptions.map((o) => o.trim()).filter(Boolean);
       if (poll_options.length < 2) {
-        toast.error(t("compose.err_poll_options"));
+        toast.error(t("poll_min_options"));
         return;
       }
     }
@@ -152,10 +152,10 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
       onPostCreated(response.data);
       resetForm();
-      toast.success(mode === "poll" ? t("compose.poll_published") : t("compose.post_published"));
+      toast.success(mode === "poll" ? t("poll_published") : t("post_created"));
     } catch (error) {
-      console.error("Erreur création post:", error);
-      toast.error(error.response?.data?.detail || t("compose.err_post_create"));
+      console.error(t("error_create_post_log"), error);
+      toast.error(error.response?.data?.detail || t("error_creating_post"));
     } finally {
       setLoading(false);
     }
@@ -173,7 +173,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
   if (!open) return null;
 
-  const title = mode === "story" ? t("compose.title_story") : mode === "poll" ? t("compose.title_poll") : t("compose.title_default");
+  const title = mode === "story" ? t("create_story") : mode === "poll" ? t("create_poll") : t("whats_new");
   const canSubmit = mode === "story" ? !!mediaPreview : !!content.trim();
 
   return (
@@ -202,7 +202,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
             className="rounded-full px-5 h-9 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-900 font-bold disabled:opacity-50"
             data-testid="submit-post-button"
           >
-            {loading ? "…" : t("compose.publish")}
+            {loading ? "…" : mode === "story" ? "Publier" : mode === "poll" ? "Publier" : "Publier"}
           </Button>
         </div>
 
@@ -210,9 +210,9 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
           {/* Mode selector : Post / Story / Sondage */}
           <div className="flex gap-2">
             {[
-              { key: "post", label: t("compose.mode_post"), icon: "article" },
-              { key: "story", label: t("compose.mode_story"), icon: "auto_stories" },
-              { key: "poll", label: t("compose.mode_poll"), icon: "bar_chart" },
+              { key: "post", label: t("publication"), icon: "article" },
+              { key: "story", label: "Story", icon: "auto_stories" },
+              { key: "poll", label: "Sondage", icon: "bar_chart" },
             ].map(({ key, label, icon }) => (
               <button
                 key={key}
@@ -233,13 +233,13 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
           {mode !== "story" && (
             <div>
-              <Label htmlFor="content">{mode === "poll" ? t("compose.label_question") : t("compose.label_content")}</Label>
+              <Label htmlFor="content">{mode === "poll" ? "Question" : "Contenu"}</Label>
               <Textarea
                 id="content"
                 data-testid="create-post-content"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder={mode === "poll" ? t("compose.placeholder_question") : t("compose.placeholder_content")}
+                placeholder={mode === "poll" ? t("ask_your_question") : t("what_to_share")}
                 className="bg-slate-800 border-slate-700 text-white min-h-32"
                 rows={mode === "poll" ? 2 : 5}
               />
@@ -249,14 +249,14 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
           {/* Options de sondage */}
           {mode === "poll" && (
             <div className="space-y-2">
-              <Label>{t("compose.options")}</Label>
+              <Label>Options</Label>
               {pollOptions.map((opt, i) => (
                 <div key={i} className="flex gap-2 items-center">
                   <Input
                     value={opt}
                     data-testid={`poll-option-input-${i}`}
                     onChange={(e) => updateOption(i, e.target.value)}
-                    placeholder={t("compose.option_n", { n: i + 1 })}
+                    placeholder={`Option ${i + 1}`}
                     maxLength={80}
                     className="bg-slate-800 border-slate-700 text-white"
                   />
@@ -281,7 +281,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                   data-testid="add-poll-option"
                   className="text-sm font-medium text-cyan-400 hover:text-cyan-300"
                 >
-                  {t("compose.add_option")}
+                  + Ajouter une option
                 </button>
               )}
             </div>
@@ -289,14 +289,14 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
           {mode === "story" && (
             <p className="text-sm text-slate-400">
-              {t("compose.story_hint")}
+              Votre story sera visible 24h puis disparaîtra. Ajoutez une photo ou une vidéo ci-dessous.
             </p>
           )}
 
           {/* Lien affilié (optionnel) */}
           {mode !== "story" && (
             <div>
-              <Label htmlFor="affiliate">{t("compose.affiliate_label")}</Label>
+              <Label htmlFor="affiliate">Lien affilié (optionnel)</Label>
               <Input
                 id="affiliate"
                 data-testid="affiliate-input"
@@ -307,7 +307,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                 className="bg-slate-800 border-slate-700 text-white"
               />
               <p className="text-xs text-slate-500 mt-1">
-                {t("compose.affiliate_hint")}
+                Affiche un bouton « Shop » sur votre publication (liens http/https uniquement).
               </p>
             </div>
           )}
@@ -334,7 +334,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                 onClick={handleRemoveMedia}
                 className="absolute top-2 left-2 bg-slate-900/80 hover:bg-slate-800"
                 data-testid="remove-media-button"
-                title={t("compose.remove_media")}
+                title=t("remove_media")
               >
                 <X className="w-4 h-4" />
               </Button>
@@ -354,30 +354,30 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
         >
           <Label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
             <Image className="w-5 h-5" />
-            <span className="text-[11px] font-medium">{t("compose.tool_photo")}</span>
+            <span className="text-[11px] font-medium">Photo</span>
           </Label>
           <Label htmlFor="video-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
             <Video className="w-5 h-5" />
-            <span className="text-[11px] font-medium">{t("compose.tool_video")}</span>
+            <span className="text-[11px] font-medium">Vidéo</span>
           </Label>
           <Label htmlFor="gif-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
             <span className="material-symbols-outlined text-[22px] leading-none">gif_box</span>
-            <span className="text-[11px] font-medium">{t("compose.tool_gif")}</span>
+            <span className="text-[11px] font-medium">GIF</span>
           </Label>
           <button type="button" onClick={() => setMode("poll")}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "poll" ? "text-cyan-300" : "text-cyan-400"}`}>
             <span className="material-symbols-outlined text-[22px] leading-none">bar_chart</span>
-            <span className="text-[11px] font-medium">{t("compose.tool_poll")}</span>
+            <span className="text-[11px] font-medium">Sondage</span>
           </button>
           <button type="button" onClick={() => { onClose?.(); navigate("/live"); }}
                   className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-rose-400">
             <span className="material-symbols-outlined text-[22px] leading-none">sensors</span>
-            <span className="text-[11px] font-medium">{t("compose.tool_live")}</span>
+            <span className="text-[11px] font-medium">Live</span>
           </button>
           <button type="button" onClick={() => setMode("story")}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "story" ? "text-cyan-300" : "text-cyan-400"}`}>
             <span className="material-symbols-outlined text-[22px] leading-none">auto_stories</span>
-            <span className="text-[11px] font-medium">{t("compose.tool_story")}</span>
+            <span className="text-[11px] font-medium">Story</span>
           </button>
         </div>
       </div>

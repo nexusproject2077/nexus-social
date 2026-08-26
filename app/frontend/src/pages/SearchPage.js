@@ -1,5 +1,3 @@
-import { useTranslation } from "react-i18next";
-import i18n from "@/i18n";
 import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { API } from "@/App";
@@ -8,6 +6,7 @@ import PostCard from "@/components/PostCard";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 // ── Panneau « Listes » : créer / consulter / gérer des listes d'utilisateurs ──
 function ListsPanel({ user }) {
@@ -27,21 +26,21 @@ function ListsPanel({ user }) {
   useEffect(() => { fetchLists(); }, [fetchLists]);
 
   const createList = async () => {
-    const name = window.prompt(t("searchpage.new_list_name"));
+    const name = window.prompt("Nom de la nouvelle liste");
     if (!name || !name.trim()) return;
-    try { await axios.post(`${API}/lists`, { name: name.trim() }); fetchLists(); toast.success(t("searchpage.list_created")); }
-    catch { toast.error(t("searchpage.err_generic")); }
+    try { await axios.post(`${API}/lists`, { name: name.trim() }); fetchLists(); toast.success(t("list_created")); }
+    catch { toast.error(t("error")); }
   };
 
   const openDetail = async (id) => {
     try { const r = await axios.get(`${API}/lists/${id}`); setDetail(r.data); setAdding(false); setAddQuery(""); }
-    catch { toast.error(t("searchpage.err_generic")); }
+    catch { toast.error(t("error")); }
   };
 
   const deleteList = async (id) => {
-    if (!window.confirm(t("searchpage.confirm_delete_list"))) return;
-    try { await axios.delete(`${API}/lists/${id}`); setDetail(null); fetchLists(); toast.success(t("searchpage.list_deleted")); }
-    catch { toast.error(t("searchpage.err_generic")); }
+    if (!window.confirm(t("delete_list_confirm"))) return;
+    try { await axios.delete(`${API}/lists/${id}`); setDetail(null); fetchLists(); toast.success(t("list_deleted")); }
+    catch { toast.error(t("error")); }
   };
 
   const removeMember = async (uid) => {
@@ -49,7 +48,7 @@ function ListsPanel({ user }) {
       await axios.delete(`${API}/lists/${detail.id}/members/${uid}`);
       setDetail((d) => ({ ...d, members: d.members.filter((m) => m.id !== uid) }));
       fetchLists();
-    } catch { toast.error(t("searchpage.err_generic")); }
+    } catch { toast.error(t("error")); }
   };
 
   const addMember = async (u) => {
@@ -57,7 +56,7 @@ function ListsPanel({ user }) {
       await axios.post(`${API}/lists/${detail.id}/members`, { user_id: u.id });
       setDetail((d) => (d.members.some((m) => m.id === u.id) ? d : { ...d, members: [...d.members, u] }));
       fetchLists();
-    } catch { toast.error(t("searchpage.err_generic")); }
+    } catch { toast.error(t("error")); }
   };
 
   useEffect(() => {
@@ -86,7 +85,7 @@ function ListsPanel({ user }) {
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-bold transition-all active:scale-95"
           style={{ background: "var(--nexus-accent)", color: "#00363e" }}>
           <span className="material-symbols-outlined text-lg">add</span>
-          {t("searchpage.create_list")}
+          Créer une liste
         </button>
       </div>
 
@@ -95,7 +94,7 @@ function ListsPanel({ user }) {
       ) : lists.length === 0 ? (
         <div className="text-center py-14 px-4" style={{ color: "#859397" }}>
           <span className="material-symbols-outlined text-4xl block mb-2" style={{ opacity: 0.4 }}>list</span>
-          <p className="text-sm">{t("searchpage.no_lists")}</p>
+          <p className="text-sm">Aucune liste. Créez-en une pour regrouper des comptes.</p>
         </div>
       ) : (
         lists.map((l) => (
@@ -126,7 +125,7 @@ function ListsPanel({ user }) {
             <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <span className="material-symbols-outlined" style={{ color: "var(--nexus-accent)" }}>group</span>
               <p className="flex-1 font-black truncate" style={{ color: "#dae2fd" }}>{detail.name}</p>
-              <button onClick={() => deleteList(detail.id)} title={t("searchpage.delete_list")} style={{ color: "#f87171" }}>
+              <button onClick={() => deleteList(detail.id)} title=t("delete_list") style={{ color: "#f87171" }}>
                 <span className="material-symbols-outlined">delete</span>
               </button>
               <button onClick={() => setDetail(null)} style={{ color: "#859397" }}>
@@ -142,7 +141,7 @@ function ListsPanel({ user }) {
                 <div className="flex items-center gap-2 rounded-full px-3 h-10" style={{ background: "#131b2e" }}>
                   <span className="material-symbols-outlined" style={{ color: "#859397", fontSize: 18 }}>search</span>
                   <input autoFocus value={addQuery} onChange={(e) => setAddQuery(e.target.value)}
-                    placeholder={t("searchpage.search_user")} className="flex-1 bg-transparent outline-none text-sm select-text"
+                    placeholder=t("search_user") className="flex-1 bg-transparent outline-none text-sm select-text"
                     style={{ color: "#dae2fd" }} />
                   <button onClick={() => { setAdding(false); setAddQuery(""); }} style={{ color: "#859397" }}>
                     <span className="material-symbols-outlined text-base">close</span>
@@ -162,7 +161,7 @@ function ListsPanel({ user }) {
                     <button onClick={() => addMember(u)} disabled={already}
                       className="text-xs font-bold px-3 py-1.5 rounded-full"
                       style={{ background: already ? "#171f33" : "var(--nexus-accent)", color: already ? "#859397" : "#00363e" }}>
-                      {already ? t("searchpage.added") : t("searchpage.add")}
+                      {already ? t("added") : "Ajouter"}
                     </button>
                   </div>
                 );
@@ -170,7 +169,7 @@ function ListsPanel({ user }) {
 
               {/* Membres actuels */}
               {!adding && (detail.members.length === 0 ? (
-                <p className="text-center text-sm py-8" style={{ color: "#859397" }}>{t("searchpage.empty_list")}</p>
+                <p className="text-center text-sm py-8" style={{ color: "#859397" }}>Liste vide. Ajoutez des membres.</p>
               ) : detail.members.map((m) => (
                 <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
                   <button onClick={() => navigate(`/profile/${m.id}`)}><Ava pic={m.profile_pic} name={m.username} size="w-9 h-9" /></button>
@@ -196,11 +195,11 @@ const PAGE = 20;
 
 // Onglets façon X, adaptés à Nexus. `type` = paramètre backend.
 const TABS = [
-  { key: "all",      label: "Pour toi",  type: "all" },
+  { key: "all",      label: t("for_you"),  type: "all" },
   { key: "top",      label: "Top",       type: "top" },
   { key: "latest",   label: "Derniers",  type: "latest" },
   { key: "people",   label: "Personnes", type: "people" },
-  { key: "media",    label: "Médias",    type: "media" },
+  { key: "media",    label: t("media"),    type: "media" },
   { key: "lists",    label: "Listes",    type: "lists" },
 ];
 
@@ -222,20 +221,6 @@ export default function SearchPage({ user }) {
   const skipRef = useRef(0);
   const sentinelRef = useRef(null);
   const inputRef = useRef(null);
-
-  // Recherche discrète (incognito) : ouverte par appui long sur la Loupe
-  // (?focus=1) → la grille de Découverte/Tendances est MASQUÉE tant que rien
-  // n'est tapé, pour ne pas exposer de contenu non sollicité à l'entourage.
-  const [discreet, setDiscreet] = useState(searchParams.get("focus") === "1");
-
-  // Accès rapide : ?focus=1 → focus immédiat du champ, même si la page est déjà
-  // montée (autoFocus ne couvre que le montage).
-  useEffect(() => {
-    if (searchParams.get("focus") === "1") {
-      setDiscreet(true);
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
-  }, [searchParams]);
 
   const activeType = TABS.find((t) => t.key === tab)?.type || "all";
 
@@ -318,15 +303,15 @@ export default function SearchPage({ user }) {
       <div className="max-w-2xl mx-auto">
         {/* ── Header collant : barre de recherche + onglets (façon X) ── */}
         <header className="sticky top-0 z-30" style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)" }}>
-          <div className="px-4 pt-safe-3 pb-2">
+          <div className="px-4 pt-3 pb-2">
             <div className="flex items-center gap-2 rounded-full px-4 h-11" style={{ background: "#131b2e" }}>
               <span className="material-symbols-outlined" style={{ color: "#859397", fontSize: 20 }}>search</span>
               <input
                 ref={inputRef}
                 data-testid="search-input"
                 value={query}
-                onChange={(e) => { setQuery(e.target.value); if (discreet && e.target.value) setDiscreet(false); }}
-                placeholder={t("searchpage.search_nexus")}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder=t("search_on_nexus")
                 autoFocus
                 className="flex-1 bg-transparent border-none outline-none text-sm select-text"
                 style={{ color: "#dae2fd" }}
@@ -351,7 +336,7 @@ export default function SearchPage({ user }) {
                   className="relative flex-shrink-0 px-4 py-3 text-sm transition-colors"
                   style={{ color: active ? "#dae2fd" : "#859397", fontWeight: active ? 800 : 500 }}
                 >
-                  {i18n.t("searchpage.tab_" + t.key)}
+                  {t.label}
                   {active && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] w-8 rounded-full" style={{ background: CY }} />}
                 </button>
               );
@@ -363,19 +348,6 @@ export default function SearchPage({ user }) {
         <div className="pb-24 lg:pb-8">
           {tab === "lists" ? (
             <ListsPanel user={user} />
-          ) : emptyQuery && discreet ? (
-            /* Recherche discrète : Découverte masquée tant que rien n'est tapé. */
-            <div className="flex flex-col items-center justify-center text-center px-8"
-              style={{ minHeight: "50vh", animation: "fadeIn 0.3s ease" }}>
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "rgba(34,211,238,0.1)" }}>
-                <span className="material-symbols-outlined" style={{ color: CY, fontSize: 32 }}>visibility_off</span>
-              </div>
-              <h2 className="text-lg font-black mb-1" style={{ fontFamily: "Space Grotesk, sans-serif", color: "#dae2fd" }}>{t("searchpage.private_search")}</h2>
-              <p className="text-sm" style={{ color: "#859397" }}>{t("searchpage.private_search_hint")}</p>
-              <button onClick={() => setDiscreet(false)} className="mt-5 text-xs font-bold px-4 py-2 rounded-full" style={{ background: "#131b2e", color: "#859397" }}>
-                {t("searchpage.show_trends")}
-              </button>
-            </div>
           ) : emptyQuery ? (
             /* État vide : tendances */
             <div className="pt-2">
@@ -383,7 +355,7 @@ export default function SearchPage({ user }) {
                 Tendances pour vous
               </h2>
               {trending.length === 0 ? (
-                <p className="px-4 text-sm" style={{ color: "#859397" }}>{t("searchpage.no_trends")}</p>
+                <p className="px-4 text-sm" style={{ color: "#859397" }}>Aucune tendance pour l'instant. Publiez avec des #hashtags !</p>
               ) : trending.map((t, i) => (
                 <button
                   key={t.normalized || t.tag}
@@ -450,7 +422,7 @@ export default function SearchPage({ user }) {
               {users.length === 0 && posts.length === 0 && hashtags.length === 0 && (
                 <div className="text-center py-16 px-4" style={{ color: "#859397" }}>
                   <span className="material-symbols-outlined text-4xl block mb-2" style={{ opacity: 0.4 }}>search_off</span>
-                  <p className="text-sm">{t("searchpage.no_results", { query })}</p>
+                  <p className="text-sm">Aucun résultat pour « {query} »</p>
                 </div>
               )}
 

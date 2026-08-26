@@ -26,8 +26,8 @@ export default function FollowListModal({
   onClose,
   onCountChange,
 }) {
-  const navigate = useNavigate();
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState({});
@@ -38,7 +38,7 @@ export default function FollowListModal({
       const r = await axios.get(`${API}/users/${userId}/${kind}`);
       setItems(r.data || []);
     } catch (err) {
-      toast.error(err.response?.data?.detail || t("followlist.err_load"));
+      toast.error(err.response?.data?.detail || t("cannot_load_list"));
       setItems([]);
     } finally {
       setLoading(false);
@@ -60,10 +60,10 @@ export default function FollowListModal({
         // Compte privé → demande en attente : on ne marque pas "abonné".
         const nowFollowing = res.data?.status === "following";
         setItems((prev) => prev.map((u) => (u.id === target.id ? { ...u, is_following: nowFollowing } : u)));
-        if (res.data?.status === "pending") toast.success(t("followlist.request_sent"));
+        if (res.data?.status === "pending") toast.success(t("request_sent"));
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || t("followlist.error"));
+      toast.error(err.response?.data?.detail || t("error"));
     } finally {
       setBusy((b) => ({ ...b, [target.id]: false }));
     }
@@ -75,9 +75,9 @@ export default function FollowListModal({
       await axios.delete(`${API}/users/me/followers/${target.id}`);
       setItems((prev) => prev.filter((u) => u.id !== target.id));
       onCountChange?.(-1);
-      toast.success(t("followlist.removed", { user: target.username }));
+      toast.success(`@${target.username} retiré de vos abonnés`);
     } catch (err) {
-      toast.error(err.response?.data?.detail || t("followlist.error"));
+      toast.error(err.response?.data?.detail || t("error"));
     } finally {
       setBusy((b) => ({ ...b, [target.id]: false }));
     }
@@ -108,7 +108,7 @@ export default function FollowListModal({
             </div>
           ) : items.length === 0 ? (
             <p className="text-center py-12 text-sm" style={{ color: C.outline }}>
-              {kind === "followers" ? t("followlist.empty_followers") : t("followlist.empty_following")}
+              {kind === "followers" ? t("no_followers_yet") : t("no_following_yet")}
             </p>
           ) : (
             items.map((u) => (
@@ -124,6 +124,7 @@ export default function FollowListModal({
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-white flex items-center gap-1 truncate">
                       @{u.username}
+                      {u.is_verified && <BadgeCheck size={14} color={C.accent} />}
                     </p>
                     {u.bio && <p className="text-xs truncate" style={{ color: C.outline }}>{u.bio}</p>}
                   </div>
@@ -140,7 +141,7 @@ export default function FollowListModal({
                         ? { background: C.surfaceHigh, color: C.onSurface }
                         : { background: C.accent, color: "#00363e" }}
                     >
-                      {u.is_following ? t("followlist.following") : t("followlist.follow")}
+                      {u.is_following ? t("follower_singular") : t("follow")}
                     </button>
                     {manageFollowers && (
                       <button
@@ -149,7 +150,7 @@ export default function FollowListModal({
                         className="px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-50"
                         style={{ background: "transparent", color: "#f87171", border: "1px solid #f8717155" }}
                       >
-                        {t("followlist.remove")}
+                        Retirer
                       </button>
                     )}
                   </div>

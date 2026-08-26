@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
@@ -9,28 +8,15 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
-import { buildMutedMatcher } from "@/lib/mutedWords";
-import { SURFACE, TEXT, ACCENT } from "@/lib/theme";
-import StoryComposer from "@/components/StoryComposer";
-import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
+import { useTranslation } from "react-i18next";
 
-// Le son d'un clip peut être routé par la Web Audio API pour ne PAS réclamer la
-// session « Now Playing » iOS (indicateur son dans la barre d'état). On ne le
-// fait que si l'URL autorise le CORS (Cloudinary / data / blob), sinon le
-// crossOrigin casserait le chargement de la vidéo → on reste alors en natif.
-const CLIP_CORS_SAFE = (url = "") =>
-  url.startsWith("data:") || url.startsWith("blob:") ||
-  /(^|\/\/)([^/]*\.)?cloudinary\.com\//.test(url) || url.includes("/video/upload/");
-
-// Tokens dérivés de la source unique (@/lib/theme) : cohérence avec Messages /
-// Stories / Profil.
 const C = {
-  surface:   SURFACE.base,
-  high:      SURFACE.high,
-  cyan:      ACCENT,
-  onPrimary: TEXT.onAccent,
-  outline:   TEXT.muted,
-  onSurface: TEXT.primary,
+  surface:   "#0b1326",
+  high:      "#222a3d",
+  cyan:      (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
+  onPrimary: "#00363e",
+  outline:   "#859397",
+  onSurface: "#dae2fd",
 };
 
 const fmtNum = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
@@ -38,7 +24,6 @@ const fmtRel = (d) => { try { return formatDistanceToNow(new Date(d), { addSuffi
 
 // Un commentaire de clip : like, réponses, et suppression par son auteur.
 function CommentItem({ comment, currentUser, onDeleted }) {
-  const { t } = useTranslation();
   const [liked, setLiked]   = useState(comment.is_liked || false);
   const [likes, setLikes]   = useState(comment.likes_count || 0);
   const [repCount, setRepCount] = useState(comment.replies_count || 0);
@@ -79,7 +64,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
       setRepCount((n) => n + 1);
       setReplyText("");
       setShowReplies(true);
-    } catch { toast.error(t("clips.err_generic")); }
+    } catch { toast.error(t("error")); }
   };
 
   const deleteReply = async (rid) => {
@@ -87,7 +72,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
       await axios.delete(`${API}/comments/${comment.id}/replies/${rid}`);
       setReplies((prev) => prev.filter((x) => x.id !== rid));
       setRepCount((n) => Math.max(0, n - 1));
-    } catch { toast.error(t("clips.err_generic")); }
+    } catch { toast.error(t("error")); }
   };
 
   const Avatar = ({ pic, name, size = "w-7 h-7" }) => (
@@ -110,18 +95,18 @@ function CommentItem({ comment, currentUser, onDeleted }) {
         </p>
         <div className="flex items-center gap-4 mt-1">
           <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(comment.created_at)}</span>
-          <button onClick={() => setReplyOpen((v) => !v)} className="text-[10px] font-semibold" style={{ color: C.outline }}>
-            Répondre
-          </button>
+          <button onClick={() => setReplyOpen((v) => !v)} className="text-[10px] font-semibold" style={{ color: C.outline }}>{
+            t("answer")
+          }</button>
           {repCount > 0 && (
             <button onClick={loadReplies} className="text-[10px] font-semibold" style={{ color: C.cyan }}>
               {showReplies ? "Masquer" : `${repCount} réponse${repCount > 1 ? "s" : ""}`}
             </button>
           )}
           {currentUser?.id === comment.author_id && (
-            <button onClick={() => onDeleted?.(comment.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>
-              {t("clips.delete")}
-            </button>
+            <button onClick={() => onDeleted?.(comment.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>{
+              t("delete")
+            }</button>
           )}
         </div>
 
@@ -152,9 +137,9 @@ function CommentItem({ comment, currentUser, onDeleted }) {
               <div className="flex items-center gap-3 mt-0.5">
                 <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(rp.created_at)}</span>
                 {currentUser?.id === rp.author_id && (
-                  <button onClick={() => deleteReply(rp.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>
-                    {t("clips.delete")}
-                  </button>
+                  <button onClick={() => deleteReply(rp.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>{
+                    t("delete")
+                  }</button>
                 )}
               </div>
             </div>
@@ -174,7 +159,6 @@ function CommentItem({ comment, currentUser, onDeleted }) {
 }
 
 function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete }) {
-  const { t } = useTranslation();
   const navigate  = useNavigate();
   const videoRef  = useRef(null);
   const sceneRef  = useRef(null);
@@ -189,15 +173,6 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   });
   const [paused, setPaused]         = useState(false);
   const [saved, setSaved]           = useState(post.is_saved || false);
-  const [reposted, setReposted]     = useState(post.is_reposted || false);
-  const [repostBusy, setRepostBusy] = useState(false);
-  // Suivi de l'auteur (bouton « + » façon TikTok) : masqué si c'est mon clip ou
-  // si je suis déjà abonné. `followDone` déclenche l'animation de disparition.
-  const isOwnClip = currentUser?.id === post.author_id;
-  const [following, setFollowing]   = useState(post.author_is_following || false);
-  const [followDone, setFollowDone] = useState(false);
-  const [followBusy, setFollowBusy] = useState(false);
-  const [showOptions, setShowOptions] = useState(false); // menu « … » du clip
   const [progress, setProgress]     = useState(0);
   const [duration, setDuration]     = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -217,70 +192,11 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const longPressTimer = useRef(null);
   const longPressFired = useRef(false);
 
-  // --- Signal de temps de visionnage (algorithme « Pour toi ») -------------
-  // On mesure le temps réellement regardé (onglet visible + lecture) et si le
-  // clip a été (quasi) terminé, puis on l'envoie au backend en quittant le clip.
-  const watchMsRef   = useRef(0);
-  const completedRef = useRef(false);
-  const reportedRef  = useRef(false);
-
-  const reportWatch = () => {
-    if (reportedRef.current) return;
-    reportedRef.current = true;
-    const v = videoRef.current;
-    const durMs = v && v.duration && isFinite(v.duration) ? Math.round(v.duration * 1000) : 0;
-    const watch = Math.round(watchMsRef.current);
-    if (watch < 300) return; // trop court → bruit, on n'envoie pas
-    const completed = completedRef.current || (durMs > 0 && watch >= durMs * 0.9);
-    axios.post(`${API}/clips/${post.id}/watch`, { watched_ms: watch, duration_ms: durMs, completed }).catch(() => {});
-  };
-
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    // Réinitialise les compteurs à chaque (dés)activation du clip.
-    watchMsRef.current = 0;
-    completedRef.current = false;
-    reportedRef.current = false;
-    if (!isActive) return;
-    let raf = 0, last = 0;
-    const tick = (t) => {
-      if (last && !v.paused && !v.ended && document.visibilityState === "visible") {
-        watchMsRef.current += (t - last);
-      }
-      last = t;
-      if (v.duration && isFinite(v.duration) && v.currentTime / v.duration >= 0.9) {
-        completedRef.current = true;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    const onEnded = () => { completedRef.current = true; };
-    raf = requestAnimationFrame(tick);
-    v.addEventListener("ended", onEnded);
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-      v.removeEventListener("ended", onEnded);
-      reportWatch(); // on quitte ce clip → on remonte le signal
-    };
-  }, [isActive]);
-
   // Enregistre l'élément vidéo auprès du parent (contrôle clavier : espace).
   useEffect(() => {
     registerVideo?.(index, videoRef.current);
     return () => registerVideo?.(index, null);
   }, [index, registerVideo]);
-
-  // Route le son du clip par la Web Audio API (si CORS-safe) → pas d'indicateur
-  // son dans la Dynamic Island / barre d'état. Le mute continue de fonctionner
-  // (une vidéo `muted` reste silencieuse même routée). Repli natif sinon.
-  useEffect(() => {
-    if (!CLIP_CORS_SAFE(post.media_url)) return;
-    return attachSilent(videoRef.current);
-  }, [post.media_url]);
-
-  // À la disparition définitive du clip (on quitte l'onglet Clips), on efface la
-  // session résiduelle pour que l'indicateur son parte des autres pages.
-  useEffect(() => () => clearNowPlaying(), []);
 
   const openComments = async () => {
     const next = !showComment;
@@ -390,20 +306,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         likeHeart(); triggerHeart();
       }
     } else {
-      tapTimer.current = setTimeout(() => {
-        tapTimer.current = null;
-        const v = videoRef.current;
-        // Plus de bouton volume (design épuré) : un simple tap sur un clip muet
-        // (mis en sourdine par la politique d'autoplay) RÉACTIVE le son. Sinon,
-        // tap = lecture/pause. La préférence est mémorisée pour les clips suivants.
-        if (v && v.muted) {
-          v.muted = false;
-          setMuted(false);
-          try { localStorage.setItem("nexus_clips_muted", "0"); } catch { /* ignore */ }
-        } else {
-          togglePlay();
-        }
-      }, 260);
+      tapTimer.current = setTimeout(() => { tapTimer.current = null; togglePlay(); }, 260);
     }
   };
 
@@ -426,22 +329,12 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const toggleFullscreen = async (e) => {
     e?.stopPropagation();
     const el = sceneRef.current;
-    const video = videoRef.current;
     if (!el) return;
-    // iOS (Safari/Chrome) n'expose PAS le plein écran d'élément : seul
-    // <video>.webkitEnterFullscreen() fonctionne. Sans ce repli, le bouton
-    // « plein écran » ne faisait strictement rien sur iPhone.
-    const canElementFs = !!(el.requestFullscreen || el.webkitRequestFullscreen);
     try {
-      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-        if (canElementFs) {
-          await (el.requestFullscreen?.() || el.webkitRequestFullscreen?.());
-          // Best-effort : verrouille l'orientation paysage (mobiles compatibles).
-          try { await window.screen?.orientation?.lock?.("landscape"); } catch { /* refusé sur PC */ }
-        } else if (video?.webkitEnterFullscreen) {
-          // iPhone : plein écran natif de la vidéo (contrôles système inclus).
-          video.webkitEnterFullscreen();
-        }
+      if (!document.fullscreenElement) {
+        await (el.requestFullscreen?.() || el.webkitRequestFullscreen?.());
+        // Best-effort : verrouille l'orientation paysage (mobiles compatibles).
+        try { await window.screen?.orientation?.lock?.("landscape"); } catch { /* refusé sur PC */ }
       } else {
         try { window.screen?.orientation?.unlock?.(); } catch { /* ignore */ }
         await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());
@@ -462,12 +355,11 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
 
   const handleShare = async (e) => {
     e.stopPropagation();
-    // Lien MIROIR servi par le backend (/clip/:id) → aperçu Open Graph riche
-    // (miniature + titre + vidéo) sur WhatsApp/Discord/X + CTA « Ouvrir dans Nexus ».
-    const url = `${API.replace(/\/api\/?$/, "")}/clip/${post.id}`;
+    // URL partageable du clip : /nexus-clips/:clipId ouvre directement la vidéo.
+    const url = `${window.location.origin}/nexus-clips/${post.id}`;
     try {
-      if (navigator.share) await navigator.share({ title: "Nexus Clips", url });
-      else { await navigator.clipboard.writeText(url); toast.success(t("clips.link_copied")); }
+      if (navigator.share) await navigator.share({ title: t("nexus_clips"), url });
+      else { await navigator.clipboard.writeText(url); toast.success(t("link_copied")); }
     } catch { /* annulé */ }
   };
 
@@ -478,10 +370,10 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     try {
       const res = await axios.post(`${API}/posts/${post.id}/save`);
       setSaved(res.data.saved);
-      toast.success(res.data.saved ? "Clip enregistré" : "Retiré des enregistrements");
+      toast.success(res.data.saved ? t("clip_saved") : t("removed_from_saved"));
     } catch {
       setSaved(!next);
-      toast.error(t("clips.err_save"));
+      toast.error("Erreur lors de l'enregistrement");
     }
   };
 
@@ -491,65 +383,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       const res = await axios.post(`${API}/posts/${post.id}/like`);
       setIsLiked(res.data.liked);
       setLikes(p => res.data.liked ? p + 1 : p - 1);
-    } catch { toast.error(t("clips.err_generic")); }
-  };
-
-  // Suivre l'auteur depuis le fil : sur confirmation serveur, le « + » disparaît
-  // avec une animation (zoom-out + fondu). Gère compte public (following) et
-  // privé (pending → demande envoyée).
-  const handleFollow = async (e) => {
-    e.stopPropagation();
-    if (followBusy || following || isOwnClip) return;
-    setFollowBusy(true);
-    try {
-      const res = await axios.post(`${API}/users/${post.author_id}/follow`);
-      const status = res.data?.status;
-      if (status === "following" || status === "pending") {
-        setFollowDone(true);                 // lance l'animation de disparition
-        setTimeout(() => setFollowing(true), 380);
-        toast.success(status === "pending" ? "Demande d'abonnement envoyée" : `Abonné à @${post.author_username}`);
-      }
-    } catch {
-      toast.error(t("clips.err_subscribe"));
-    } finally {
-      setFollowBusy(false);
-    }
-  };
-
-  // Republier le clip (viralité). Réutilise l'API repost des publications.
-  const handleRepost = async (e) => {
-    e.stopPropagation();
-    if (repostBusy) return;
-    if (isOwnClip) { toast.error(t("clips.err_repost_own")); return; }
-    setRepostBusy(true);
-    try {
-      if (reposted) {
-        await axios.delete(`${API}/posts/${post.id}/repost`);
-        setReposted(false);
-        toast.success(t("clips.repost_undone"));
-      } else {
-        await axios.post(`${API}/posts/${post.id}/repost`);
-        setReposted(true);
-        toast.success(t("clips.reposted"));
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Erreur lors du repost");
-    } finally {
-      setRepostBusy(false);
-    }
-  };
-
-  // Menu « … » : supprimer (auteur) ou signaler (autres).
-  const handleReport = async () => {
-    setShowOptions(false);
-    try {
-      await axios.post(`${API}/reports`, {
-        reported_content_id: post.id,
-        content_type: "clip",
-        reason: "inappropriate",
-      });
-      toast.success(t("clips.report_sent"));
-    } catch { toast.error(t("clips.err_report")); }
+    } catch { toast.error(t("error")); }
   };
 
   const handleSendComment = async () => {
@@ -561,7 +395,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       if (res.data && res.data.id) setCommentsList((prev) => [res.data, ...prev]);
       else setCommentsList((prev) => [{ id: `tmp-${Date.now()}`, author_username: currentUser?.username, content: commentText, created_at: new Date().toISOString() }, ...prev]);
       setCommentText("");
-    } catch { toast.error(t("clips.err_generic")); }
+    } catch { toast.error(t("error")); }
   };
 
   const handleDeleteComment = async (commentId) => {
@@ -569,7 +403,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       await axios.delete(`${API}/posts/${post.id}/comments/${commentId}`);
       setCommentsList((prev) => prev.filter((c) => c.id !== commentId));
       setComments((p) => Math.max(0, p - 1));
-    } catch { toast.error(t("clips.err_generic")); }
+    } catch { toast.error(t("error")); }
   };
 
   const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1) + "k" : n;
@@ -588,23 +422,13 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       <video
         ref={videoRef}
         src={post.media_url}
-        // crossOrigin requis pour router le son par Web Audio (uniquement quand
-        // l'URL est CORS-safe, sinon on casserait le chargement de la vidéo).
-        crossOrigin={CLIP_CORS_SAFE(post.media_url) ? "anonymous" : undefined}
-        // Pas de bascule AirPlay/lecture à distance (évite l'indication système).
-        disableRemotePlayback
-        // 100 % IMMERSIF façon TikTok : la vidéo remplit tout l'écran (object-cover),
-        // plus de bandes noires. Les vidéos paysage restent visibles en entier via
-        // le bouton plein écran 16:9.
-        className="w-full h-full object-cover"
+        // Jamais de crop du contenu large : vidéos paysage/16:9 en `contain`
+        // (letterbox, entièrement visibles) ; vidéos verticales en `cover` (plein
+        // cadre, façon TikTok). Sur PC le conteneur est déjà en colonne 9:16.
+        className={`w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
         loop
         muted={muted}
         playsInline
-        // MOBILE : ne PAS pré-charger les clips non actifs. Sans ça, tous les
-        // clips de la liste immersive chargeaient leur vidéo (proxy base64) en
-        // même temps à l'ouverture → gros gel. Le clip actif se charge à la
-        // lecture (déclenchée par isActive) ; le cache backend accélère la suite.
-        preload="none"
         onClick={handleTap}
         onPointerDown={startSpeed}
         onPointerUp={endSpeed}
@@ -661,23 +485,33 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         </div>
       )}
 
-      {/* Barre de progression ÉPURÉE : une ligne blanche ultra-fine (1px) collée
-          juste au-dessus de la barre de navigation. Pas de chrono, pas de curseur
-          rond. Reste manipulable (glisser pour avancer) via une zone tactile plus
-          haute que la ligne. Masquée en plein écran (l'overlay 16:9 a sa barre). */}
+      {/* Barre de progression MANIPULABLE + durée visible (au-dessus de la barre
+          de navigation). Glisser pour avancer/reculer ; touch-none évite que le
+          geste déclenche le défilement vertical des clips. Masquée en plein écran
+          (l'overlay 16:9 a sa propre barre). */}
       {!isFs && (
-        <div
-          ref={barRef}
-          onPointerDown={onScrubDown}
-          onPointerMove={onScrubMove}
-          onPointerUp={onScrubUp}
-          onPointerCancel={onScrubUp}
-          onClick={(e) => e.stopPropagation()}
-          className="absolute left-0 right-0 z-20 flex items-end touch-none cursor-pointer"
-          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4rem)", height: 18 }}
-        >
-          <div className="w-full" style={{ height: scrubbing ? 3 : 1.5, background: "rgba(255,255,255,0.25)", transition: "height 0.12s" }}>
-            <div className="h-full" style={{ width: `${progress}%`, background: "#fff" }} />
+        <div className="absolute left-0 right-0 px-4 z-20" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)" }}>
+          <div className="flex items-center gap-2.5">
+            <div
+              ref={barRef}
+              onPointerDown={onScrubDown}
+              onPointerMove={onScrubMove}
+              onPointerUp={onScrubUp}
+              onPointerCancel={onScrubUp}
+              onClick={(e) => e.stopPropagation()}
+              className="relative flex-1 h-6 flex items-center cursor-pointer touch-none"
+            >
+              <div className="w-full rounded-full" style={{ height: scrubbing ? 6 : 4, background: "rgba(255,255,255,0.28)", transition: "height 0.1s" }}>
+                <div className="h-full rounded-full" style={{ width: `${progress}%`, background: C.cyan }} />
+              </div>
+              <div
+                className="absolute rounded-full bg-white shadow"
+                style={{ left: `${progress}%`, top: "50%", transform: "translate(-50%,-50%)", width: scrubbing ? 14 : 10, height: scrubbing ? 14 : 10, transition: "width 0.1s, height 0.1s" }}
+              />
+            </div>
+            <span className="text-white text-[11px] font-semibold tabular-nums flex-shrink-0" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>
+              {fmtTime(currentTime)} / {fmtTime(duration)}
+            </span>
           </div>
         </div>
       )}
@@ -696,7 +530,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
               {fmt(comments)}
             </span>
             <span className="ml-auto text-xs opacity-80">Double-tap : ±5 s · Appui long : 2x</span>
-            <button onClick={toggleFullscreen} className="flex items-center justify-center w-9 h-9 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} title={t("clips.exit_fullscreen")}>
+            <button onClick={toggleFullscreen} className="flex items-center justify-center w-9 h-9 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} title=t("exit_fullscreen")>
               <span className="material-symbols-outlined text-white text-xl">fullscreen_exit</span>
             </button>
           </div>
@@ -706,87 +540,88 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         </div>
       )}
 
-      {/* Right action bar — épurée façon TikTok/Reels : icônes fines SANS bulle
-          (ombre portée pour la lisibilité), compteurs centrés sous les icônes,
-          plus de libellés « Enreg. » / « Partager » ni d'icône de volume. */}
-      <div className="absolute right-3 bottom-28 flex flex-col gap-5 items-center">
-        {/* Avatar (réduit ~30 %, vraie photo de profil) */}
-        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="relative mb-1">
+      {/* Right action bar */}
+      <div className="absolute right-3 bottom-28 flex flex-col gap-4 items-center">
+        {/* Avatar */}
+        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="relative">
           {post.author_profile_pic ? (
-            <img src={post.author_profile_pic} alt="" className="w-9 h-9 rounded-full object-cover border-2" style={{ borderColor: "#fff" }} />
+            <img src={post.author_profile_pic} alt="" className="w-12 h-12 rounded-full object-cover border-2" style={{ borderColor: C.cyan }} />
           ) : (
-            <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm border-2" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary, borderColor: "#fff" }}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
               {post.author_username?.[0]?.toUpperCase()}
             </div>
           )}
-          {/* Bouton « + » de suivi : fonctionnel, disparaît en douceur une fois
-              l'abonnement confirmé par le serveur. Masqué sur son propre clip. */}
-          {!isOwnClip && !following && (
-            <span
-              role="button"
-              aria-label={t("clips.subscribe_to", { name: post.author_username })}
-              data-testid="clip-follow"
-              onClick={handleFollow}
-              className="absolute -bottom-1.5 left-1/2 w-4 h-4 rounded-full flex items-center justify-center"
-              style={{
-                background: C.cyan,
-                color: C.onPrimary,
-                boxShadow: "0 1px 5px rgba(0,0,0,0.45)",
-                transform: followDone ? "translateX(-50%) scale(0)" : "translateX(-50%) scale(1)",
-                opacity: followDone ? 0 : 1,
-                transition: "transform 0.36s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s ease",
-                cursor: "pointer",
-              }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 12, fontVariationSettings: "'FILL' 1, 'wght' 600" }}>add</span>
-            </span>
-          )}
+          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full flex items-center justify-center text-white" style={{ background: C.cyan }}>
+            <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
+          </div>
         </button>
 
         {/* Like */}
-        <button onClick={handleLike} className="flex flex-col items-center gap-0.5">
-          <span className="material-symbols-outlined text-[30px]" style={{ color: isLiked ? "#f87171" : "#fff", fontVariationSettings: `'FILL' ${isLiked ? 1 : 0}, 'wght' 300`, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>favorite</span>
-          <span className="text-white text-xs font-semibold" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>{fmt(likes)}</span>
+        <button onClick={handleLike} className="flex flex-col items-center gap-1">
+          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+            <span className="material-symbols-outlined text-2xl" style={{ color: isLiked ? "#f87171" : "#fff", fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}>
+              favorite
+            </span>
+          </div>
+          <span className="text-white text-xs font-bold">{fmt(likes)}</span>
         </button>
 
         {/* Comment */}
-        <button onClick={(e) => { e.stopPropagation(); openComments(); }} className="flex flex-col items-center gap-0.5">
-          <span className="material-symbols-outlined text-[30px] text-white" style={{ fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>chat_bubble</span>
-          <span className="text-white text-xs font-semibold" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>{fmt(comments)}</span>
+        <button onClick={(e) => { e.stopPropagation(); openComments(); }} className="flex flex-col items-center gap-1">
+          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+            <span className="material-symbols-outlined text-2xl text-white">chat_bubble</span>
+          </div>
+          <span className="text-white text-xs font-bold">{fmt(comments)}</span>
         </button>
 
-        {/* Republier (viralité) — icône fine, cohérente avec le reste de la colonne */}
-        <button onClick={handleRepost} disabled={repostBusy} title={reposted ? t("clips.cancel_repost") : t("clips.repost")} className="flex flex-col items-center" data-testid="repost-clip">
-          <span className="material-symbols-outlined text-[30px]" style={{ color: reposted ? C.cyan : "#fff", fontVariationSettings: `'FILL' ${reposted ? 1 : 0}, 'wght' 300`, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))", opacity: repostBusy ? 0.6 : 1 }}>repeat</span>
+        {/* Save (enregistrer) */}
+        <button onClick={toggleSave} className="flex flex-col items-center gap-1">
+          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+            <span className="material-symbols-outlined text-2xl" style={{ color: saved ? C.cyan : "#fff", fontVariationSettings: saved ? "'FILL' 1" : "'FILL' 0" }}>bookmark</span>
+          </div>
+          <span className="text-white text-xs font-bold">Enreg.</span>
         </button>
 
-        {/* Save (sans libellé) */}
-        <button onClick={toggleSave} className="flex flex-col items-center">
-          <span className="material-symbols-outlined text-[30px]" style={{ color: saved ? C.cyan : "#fff", fontVariationSettings: `'FILL' ${saved ? 1 : 0}, 'wght' 300`, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>bookmark</span>
+        {/* Share (partager) */}
+        <button onClick={handleShare} className="flex flex-col items-center gap-1">
+          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+            <span className="material-symbols-outlined text-2xl text-white">share</span>
+          </div>
+          <span className="text-white text-xs font-bold">{t("share")}</span>
         </button>
 
-        {/* Share (sans libellé) */}
-        <button onClick={handleShare} className="flex flex-col items-center">
-          <span className="material-symbols-outlined text-[30px] text-white" style={{ fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>share</span>
-        </button>
-
-        {/* Plein écran — paysage uniquement, icône seule */}
+        {/* Plein écran — uniquement pour les vidéos publiées en 16:9 (paysage) */}
         {isLandscape && (
-          <button onClick={toggleFullscreen} className="flex flex-col items-center" data-testid="clip-fullscreen">
-            <span className="material-symbols-outlined text-[28px] text-white" style={{ fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>{isFs ? "fullscreen_exit" : "fullscreen"}</span>
+          <button onClick={toggleFullscreen} className="flex flex-col items-center gap-1" data-testid="clip-fullscreen">
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+              <span className="material-symbols-outlined text-2xl text-white">{isFs ? "fullscreen_exit" : "fullscreen"}</span>
+            </div>
+            <span className="text-white text-xs font-bold">Plein écran</span>
           </button>
         )}
 
-        {/* Options « … » — discret, blanc. Ouvre un menu (supprimer / signaler). */}
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowOptions(true); }}
-          data-testid="clip-options"
-          title={t("clips.options")}
-          aria-label={t("clips.options_aria")}
-          className="flex flex-col items-center"
-        >
-          <span className="material-symbols-outlined text-[28px] text-white" style={{ fontVariationSettings: "'wght' 300", filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.55))" }}>more_horiz</span>
-        </button>
+        {/* Mute */}
+        {post.media_type === "video" && (
+          <button onClick={(e) => { e.stopPropagation(); setMuted(p => !p); }} className="flex flex-col items-center gap-1">
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+              <span className="material-symbols-outlined text-2xl text-white">{muted ? "volume_off" : "volume_up"}</span>
+            </div>
+          </button>
+        )}
+
+        {/* Supprimer (auteur uniquement) */}
+        {currentUser?.id === post.author_id && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete?.(post.id); }}
+            data-testid="delete-clip"
+            title=t("delete_this_clip")
+            className="flex flex-col items-center gap-1"
+          >
+            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+              <span className="material-symbols-outlined text-2xl" style={{ color: "#f87171" }}>delete</span>
+            </div>
+          </button>
+        )}
       </div>
 
       {/* Bottom info (relevé pour laisser la place à la barre de progression) */}
@@ -794,7 +629,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         <button onClick={() => navigate(`/profile/${post.author_id}`)} className="font-bold text-white text-sm mb-1 hover:text-cyan-300 transition-colors inline-flex items-center gap-1">
           @{post.author_username}
           {post.author_is_premium && (
-            <span className="material-symbols-outlined text-sm" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }} title={t("clips.premium_member")}>workspace_premium</span>
+            <span className="material-symbols-outlined text-sm" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }} title="Membre Nexus Premium">workspace_premium</span>
           )}
         </button>
         <p className="text-white/80 text-sm leading-snug line-clamp-2">{post.content}</p>
@@ -821,9 +656,9 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
           {/* Liste des commentaires */}
           <div className="max-h-[40vh] overflow-y-auto space-y-3 mb-3" style={{ scrollbarWidth: "none" }}>
             {loadingComments ? (
-              <p className="text-xs text-center py-4" style={{ color: C.outline }}>{t("clips.loading")}</p>
+              <p className="text-xs text-center py-4" style={{ color: C.outline }}>Chargement…</p>
             ) : commentsList.length === 0 ? (
-              <p className="text-xs text-center py-4" style={{ color: C.outline }}>{t("clips.no_comments")}</p>
+              <p className="text-xs text-center py-4" style={{ color: C.outline }}>Aucun commentaire. Soyez le premier !</p>
             ) : (
               commentsList.map((c) => (
                 <CommentItem
@@ -840,64 +675,13 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
             <input
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              placeholder={t("clips.add_comment")}
+              placeholder="Ajouter un commentaire…"
               className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500 py-2 px-3 rounded-xl"
               style={{ backgroundColor: C.high, color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}
               onKeyDown={(e) => { if (e.key === "Enter") handleSendComment(); }}
             />
             <button onClick={handleSendComment} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
               <span className="material-symbols-outlined text-sm">send</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Menu d'options « … » — feuille du bas épurée. */}
-      {showOptions && (
-        <div
-          className="absolute inset-0 z-40 flex items-end"
-          style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)" }}
-          onClick={(e) => { e.stopPropagation(); setShowOptions(false); }}
-        >
-          <div
-            className="w-full rounded-t-3xl p-2 pb-3"
-            style={{ background: "rgba(17,25,44,0.98)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.08)", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-10 h-1 rounded-full mx-auto my-2.5" style={{ background: "rgba(255,255,255,0.22)" }} />
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowOptions(false); handleShare(e); }}
-              className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-white text-[15px] font-medium active:bg-white/5"
-            >
-              <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'wght' 300" }}>share</span>
-              {t("clips.share_clip")}
-            </button>
-            {isOwnClip ? (
-              <button
-                onClick={(e) => { e.stopPropagation(); setShowOptions(false); onDelete?.(post.id); }}
-                data-testid="delete-clip"
-                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-[15px] font-medium active:bg-white/5"
-                style={{ color: "#f87171" }}
-              >
-                <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'wght' 300" }}>delete</span>
-                {t("clips.delete_clip")}
-              </button>
-            ) : (
-              <button
-                onClick={(e) => { e.stopPropagation(); handleReport(); }}
-                data-testid="report-clip"
-                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-[15px] font-medium active:bg-white/5"
-                style={{ color: "#f87171" }}
-              >
-                <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'wght' 300" }}>flag</span>
-                {t("clips.report_clip")}
-              </button>
-            )}
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowOptions(false); }}
-              className="w-full text-center px-4 py-3.5 mt-1 rounded-2xl text-white/60 text-[15px] font-medium active:bg-white/5"
-            >
-              {t("clips.cancel")}
             </button>
           </div>
         </div>
@@ -914,7 +698,6 @@ export default function ClipsPage({ user, setUser }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [showComposer, setShowComposer] = useState(false); // caméra plein écran (création clip)
   const [view, setView] = useState("immersive"); // "immersive" | "grid"
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1055,9 +838,7 @@ export default function ClipsPage({ user, setUser }) {
     if (reset) setLoading(true); else setLoadingMore(true);
     try {
       const res = await axios.get(`${API}/clips`, { params: { skip, limit: PAGE } });
-      // Mots masqués : on retire les clips dont la légende correspond.
-      const muteMatch = buildMutedMatcher(user?.muted_words || []);
-      const videos = (res.data || []).filter((p) => p.media_type === "video" && p.media_url && !muteMatch(p.content));
+      const videos = (res.data || []).filter((p) => p.media_type === "video" && p.media_url);
       if (reset) {
         setClips(videos);
         skipRef.current = videos.length;
@@ -1072,8 +853,8 @@ export default function ClipsPage({ user, setUser }) {
       }
       setHasMore(videos.length >= PAGE);
     } catch (err) {
-      console.error("Erreur clips:", err);
-      if (reset) toast.error(t("clips.err_load"));
+      console.error(t("error_clips_log"), err);
+      if (reset) toast.error(t("error_loading_clips"));
     } finally {
       setLoading(false); setLoadingMore(false);
     }
@@ -1084,7 +865,7 @@ export default function ClipsPage({ user, setUser }) {
   const handleUploadClick = () => fileInputRef.current?.click();
 
   const handleDeleteClip = async (clipId) => {
-    if (!window.confirm(t("clips.confirm_delete"))) return;
+    if (!window.confirm(t("delete_clip_confirm"))) return;
     try {
       await axios.delete(`${API}/posts/${clipId}`);
       setClips((prev) => {
@@ -1092,10 +873,10 @@ export default function ClipsPage({ user, setUser }) {
         setActiveIndex((idx) => Math.max(0, Math.min(idx, next.length - 1)));
         return next;
       });
-      toast.success(t("clips.deleted"));
+      toast.success(t("clip_deleted"));
     } catch (err) {
-      console.error("Erreur suppression clip:", err);
-      toast.error(t("clips.err_delete"));
+      console.error(t("error_deleting_clip"), err);
+      toast.error(t("error_deleting"));
     }
   };
 
@@ -1104,18 +885,18 @@ export default function ClipsPage({ user, setUser }) {
     e.target.value = ""; // permet de re-sélectionner le même fichier
     if (!file) return;
     if (!file.type.startsWith("video/")) {
-      toast.error(t("clips.err_choose_video"));
+      toast.error(t("please_choose_video"));
       return;
     }
     // Sans Firebase, on garde l'ancien chemin (base64 via le backend) qui
     // impose des vidéos courtes/légères. Avec Firebase, on autorise le long.
-    const BACKEND_MAX_MB = 50;
+    const BACKEND_MAX_MB = 25;
     if (!isFirebaseConfigured && file.size > BACKEND_MAX_MB * 1024 * 1024) {
-      toast.error(`Vidéo trop lourde (max ${BACKEND_MAX_MB} Mo)`);
+      toast.error(`Vidéo trop lourde (max ${BACKEND_MAX_MB} Mo sans stockage vidéo configuré)`);
       return;
     }
 
-    const caption = window.prompt(t("clips.clip_caption_prompt")) || "";
+    const caption = window.prompt("Légende de votre clip (optionnel)") || "";
     const euBlocked = window.confirm(
       "Restreindre ce clip dans l'Union européenne ?\n\nOK = masqué aux visiteurs de l'UE • Annuler = visible partout"
     );
@@ -1155,7 +936,7 @@ export default function ClipsPage({ user, setUser }) {
           },
         });
       }
-      toast.success(t("clips.published"));
+      toast.success("Clip publié !");
       setActiveIndex(0);
       skipRef.current = 0;
       await fetchClips(true);
@@ -1169,8 +950,6 @@ export default function ClipsPage({ user, setUser }) {
   };
 
   // Bouton flottant d'upload (réutilisé dans l'état vide et l'état principal)
-  // « + » = ouvre la caméra plein écran (composer). Appui LONG = import fichier.
-  const openImport = () => fileInputRef.current?.click();
   const uploadControls = (
     <>
       <input
@@ -1182,12 +961,11 @@ export default function ClipsPage({ user, setUser }) {
         data-testid="clip-file-input"
       />
       <button
-        onClick={() => setShowComposer(true)}
-        onContextMenu={(e) => { e.preventDefault(); openImport(); }}
+        onClick={handleUploadClick}
         disabled={uploading}
         data-testid="upload-clip"
-        title={t("clips.create_clip")}
-        className="fixed z-50 top-[calc(4rem_+_env(safe-area-inset-top))] right-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+        title="Publier un clip"
+        className="fixed z-50 top-16 right-4 lg:top-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
         style={{
           background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
           color: C.onPrimary,
@@ -1200,14 +978,6 @@ export default function ClipsPage({ user, setUser }) {
           <span className="material-symbols-outlined text-2xl">add</span>
         )}
       </button>
-      {showComposer && (
-        <StoryComposer
-          target="clip"
-          user={user}
-          onClose={() => setShowComposer(false)}
-          onPublished={() => { setShowComposer(false); fetchClips(true); }}
-        />
-      )}
     </>
   );
 
@@ -1217,7 +987,7 @@ export default function ClipsPage({ user, setUser }) {
       onClick={() => setView((v) => (v === "immersive" ? "grid" : "immersive"))}
       data-testid="toggle-clips-view"
       title={view === "immersive" ? "Vue grille" : "Vue immersive"}
-      className="fixed z-50 top-[calc(1rem_+_env(safe-area-inset-top))] left-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+      className="fixed z-50 top-4 left-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
       style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
     >
       <span className="material-symbols-outlined text-2xl">
@@ -1231,8 +1001,8 @@ export default function ClipsPage({ user, setUser }) {
     <button
       onClick={() => navigate("/nexus-clips/recherche")}
       data-testid="clips-search"
-      title={t("clips.search_clips")}
-      className="fixed z-50 top-[calc(1rem_+_env(safe-area-inset-top))] right-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+      title="Rechercher des clips"
+      className="fixed z-50 top-4 right-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
       style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
     >
       <span className="material-symbols-outlined text-2xl">search</span>
@@ -1254,18 +1024,18 @@ export default function ClipsPage({ user, setUser }) {
       <Layout user={user} setUser={setUser} compact hideMobileHeader>
         <div className="flex flex-col items-center justify-center h-screen gap-4">
           <span className="material-symbols-outlined text-6xl" style={{ color: C.outline, opacity: 0.4 }}>play_circle</span>
-          <p className="text-sm font-bold uppercase tracking-widest" style={{ color: C.outline }}>{t("clips.no_clips")}</p>
+          <p className="text-sm font-bold uppercase tracking-widest" style={{ color: C.outline }}>Aucun clip disponible</p>
           <p className="text-xs text-center max-w-xs" style={{ color: C.outline }}>
             Publiez une vidéo pour qu'elle apparaisse ici
           </p>
           <button
-            onClick={() => setShowComposer(true)}
+            onClick={handleUploadClick}
             disabled={uploading}
             data-testid="upload-clip-empty"
             className="mt-2 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 active:scale-95 transition-all"
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary, opacity: uploading ? 0.6 : 1 }}
           >
-            <span className="material-symbols-outlined text-lg">videocam</span>
+            <span className="material-symbols-outlined text-lg">upload</span>
             {uploading ? `Publication… ${uploadProgress}%` : "Publier un clip"}
           </button>
         </div>
@@ -1305,11 +1075,10 @@ export default function ClipsPage({ user, setUser }) {
         >
           <style>{`
             [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
-            @keyframes clipSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
           `}</style>
           {clips.map((clip, idx) => (
             <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100dvh" }}>
-              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex && !showComposer}
+              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex}
                 index={idx} registerVideo={registerVideo} onDelete={handleDeleteClip} />
             </div>
           ))}

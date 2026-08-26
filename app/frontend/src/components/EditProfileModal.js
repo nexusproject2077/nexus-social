@@ -21,8 +21,6 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
   const [bio, setBio] = useState(user.bio || "");
   const [profilePic, setProfilePic] = useState(null);
   const [profilePicPreview, setProfilePicPreview] = useState(user.profile_pic);
-  const [coverPic, setCoverPic] = useState(null);
-  const [coverPicPreview, setCoverPicPreview] = useState(user.cover_pic);
   const [loading, setLoading] = useState(false);
 
   const handleProfilePicChange = (e) => {
@@ -37,18 +35,6 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
     reader.readAsDataURL(file);
   };
 
-  const handleCoverPicChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setCoverPic(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setCoverPicPreview(reader.result);
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -59,9 +45,6 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
       if (profilePic) {
         formData.append('profile_pic', profilePic);
       }
-      if (coverPic) {
-        formData.append('cover_pic', coverPic);
-      }
 
       const response = await axios.put(`${API}/auth/profile`, formData, {
         headers: {
@@ -70,9 +53,9 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
       });
 
       onUpdate(response.data);
-      toast.success(t("editprofile.success"));
+      toast.success(t("profile_updated"));
     } catch (error) {
-      toast.error(t("editprofile.err"));
+      toast.error(t("error_updating_profile"));
     } finally {
       setLoading(false);
     }
@@ -82,70 +65,43 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl">{t("editprofile.title")}</DialogTitle>
+          <DialogTitle className="text-xl">Modifier le profil</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Bannière de couverture (façon X) + avatar chevauchant */}
-          <div className="relative -mx-6 -mt-2">
-            <div className="relative h-32 overflow-hidden bg-slate-800"
-              style={{ background: coverPicPreview ? undefined : "linear-gradient(135deg,#0d1e3d,#0b1326)" }}>
-              {coverPicPreview && (
-                <img src={coverPicPreview} alt={t("editprofile.cover_alt")} className="w-full h-full object-cover" />
-              )}
-              <div className="absolute inset-0" style={{ background: "rgba(2,6,23,0.25)" }} />
+          <div className="flex flex-col items-center">
+            <div className="relative">
+              <Avatar className="w-24 h-24">
+                <AvatarImage src={profilePicPreview} />
+                <AvatarFallback className="bg-slate-700 text-2xl">
+                  {user.username[0].toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
               <Label
-                htmlFor="cover-pic-upload"
-                className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 backdrop-blur rounded-full p-2 cursor-pointer"
+                htmlFor="profile-pic-upload"
+                className="absolute bottom-0 right-0 bg-cyan-500 hover:bg-cyan-600 rounded-full p-2 cursor-pointer"
               >
                 <Camera className="w-4 h-4 text-white" />
               </Label>
               <Input
-                id="cover-pic-upload"
-                data-testid="cover-pic-input"
+                id="profile-pic-upload"
+                data-testid="profile-pic-input"
                 type="file"
                 accept="image/*"
-                onChange={handleCoverPicChange}
+                onChange={handleProfilePicChange}
                 className="hidden"
               />
             </div>
-            {/* Avatar chevauchant la bannière */}
-            <div className="absolute left-6 -bottom-10">
-              <div className="relative">
-                <Avatar className="w-24 h-24 border-4 border-slate-900">
-                  <AvatarImage src={profilePicPreview} />
-                  <AvatarFallback className="bg-slate-700 text-2xl">
-                    {user.username[0].toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <Label
-                  htmlFor="profile-pic-upload"
-                  className="absolute bottom-0 right-0 bg-cyan-500 hover:bg-cyan-600 rounded-full p-2 cursor-pointer"
-                >
-                  <Camera className="w-4 h-4 text-white" />
-                </Label>
-                <Input
-                  id="profile-pic-upload"
-                  data-testid="profile-pic-input"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleProfilePicChange}
-                  className="hidden"
-                />
-              </div>
-            </div>
           </div>
-          {/* Espace réservé sous l'avatar chevauchant */}
-          <div className="h-12" aria-hidden />
 
           <div>
-            <Label htmlFor="bio">{t("editprofile.bio")}</Label>
+            <Label htmlFor="bio">Bio</Label>
             <Textarea
               id="bio"
               data-testid="edit-bio-input"
               value={bio}
               onChange={(e) => setBio(e.target.value)}
-              placeholder={t("editprofile.bio_placeholder")}
+              placeholder=t("tell_us_about_you")
               className="bg-slate-800 border-slate-700 text-white"
               rows={4}
             />
@@ -158,16 +114,16 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
               onClick={onClose}
               className="border-slate-700"
               data-testid="cancel-edit-button"
-            >
-              {t("editprofile.cancel")}
-            </Button>
+            >{
+              t("cancel")
+            }</Button>
             <Button
               type="submit"
               disabled={loading}
               className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
               data-testid="save-profile-button"
             >
-              {loading ? t("editprofile.saving") : t("editprofile.save")}
+              {loading ? t("saving") : t("save")}
             </Button>
           </div>
         </form>

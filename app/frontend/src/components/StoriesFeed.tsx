@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import StoryViewer from "./StoryViewer";
-import StoryComposer from "./StoryComposer";
+import AddStoryModal from "./AddStoryModal";
 import { API } from "../App";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -31,8 +31,8 @@ interface StoryGroup {
 }
 
 export default function StoriesFeed() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [stories, setStories] = useState<StoryGroup[]>([]);
   const [lives, setLives] = useState<LiveSession[]>([]);
   const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null);
@@ -60,9 +60,9 @@ export default function StoriesFeed() {
         setStories([]);
       }
     } catch (err: any) {
-      console.error("Erreur fetch stories :", err);
+      console.error(t("error_fetch_stories"), err);
       if (err.response?.status === 401) {
-        toast.error(t("storiesfeed.session_expired"));
+        toast.error(t("session_expired_short"));
         localStorage.removeItem("token");
         window.location.href = "/auth";
       }
@@ -81,18 +81,6 @@ export default function StoriesFeed() {
     const onVisible = () => { if (document.visibilityState === "visible") onFocus(); };
     const onRealtime = (e: any) => {
       const type = e?.detail?.type;
-      // Suppression d'une story par son auteur : on la retire IMMÉDIATEMENT de la
-      // barre (pour tout le monde), puis on resynchronise.
-      if (type === "story_deleted") {
-        const sid = e?.detail?.data?.story_id;
-        if (sid) {
-          setStories((prev) => prev
-            .map((g) => ({ ...g, stories: g.stories.filter((s: any) => s.id !== sid) }))
-            .filter((g) => g.stories.length > 0));
-        }
-        fetchStories();
-        return;
-      }
       if (type === "new_story" || type === "story" || type === "live_started" || type === "new_live") { fetchStories(); fetchLives(); }
     };
     const onResync = () => { fetchStories(); fetchLives(); };
@@ -133,13 +121,13 @@ export default function StoriesFeed() {
           className="flex flex-col items-center gap-2 flex-shrink-0 group"
         >
           <div
-            className="p-0.5 lg:p-1 rounded-full"
+            className="p-0.5 rounded-full"
             style={{
               background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)",
             }}
           >
             <div
-              className="w-14 h-14 lg:w-[52px] lg:h-[52px] rounded-full border-2 overflow-hidden relative flex items-center justify-center"
+              className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden relative flex items-center justify-center"
               style={{
                 backgroundColor: "#171f33",
                 borderColor: "#0b1326",
@@ -157,7 +145,7 @@ export default function StoriesFeed() {
             className="text-[9px] lg:text-[10px] font-medium"
             style={{ color: "#859397" }}
           >
-            {t("storiesfeed.your_story")}
+            Votre story
           </span>
         </button>
 
@@ -168,7 +156,7 @@ export default function StoriesFeed() {
         >
           <div className="p-0.5 rounded-full" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)" }}>
             <div
-              className="w-14 h-14 lg:w-[52px] lg:h-[52px] rounded-full border-2 overflow-hidden flex items-center justify-center"
+              className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden flex items-center justify-center"
               style={{ backgroundColor: "#171f33", borderColor: "#0b1326" }}
             >
               <span className="material-symbols-outlined text-2xl transition-transform group-hover:scale-110" style={{ color: "#ef4444" }}>
@@ -176,7 +164,7 @@ export default function StoriesFeed() {
               </span>
             </div>
           </div>
-          <span className="text-[9px] lg:text-[10px] font-medium" style={{ color: "#859397" }}>Direct</span>
+          <span className="text-[9px] lg:text-[10px] font-medium" style={{ color: "#859397" }}>{t("nav_live")}</span>
         </button>
 
         {/* Directs en cours (abonnements) */}
@@ -184,29 +172,22 @@ export default function StoriesFeed() {
           <button
             key={live.room_id}
             onClick={() => navigate(`/live/${live.room_id}`)}
-            className="flex flex-col items-center gap-2 flex-shrink-0 group"
+            className="flex flex-col items-center gap-2 flex-shrink-0 group relative"
           >
-            <div className="relative">
-              <div className="p-0.5 lg:p-1 rounded-full" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)" }}>
-                <div className="w-14 h-14 lg:w-[52px] lg:h-[52px] rounded-full border-2 overflow-hidden" style={{ borderColor: "#0b1326", backgroundColor: "#222a3d" }}>
-                  {live.host_profile_pic ? (
-                    <img src={live.host_profile_pic} alt={live.host_username} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center font-bold text-sm" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)", color: "#fff" }}>
-                      {live.host_username?.[0]?.toUpperCase() || "?"}
-                    </div>
-                  )}
-                </div>
+            <div className="p-0.5 lg:p-1 rounded-full" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)" }}>
+              <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden" style={{ borderColor: "#0b1326", backgroundColor: "#222a3d" }}>
+                {live.host_profile_pic ? (
+                  <img src={live.host_profile_pic} alt={live.host_username} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center font-bold text-sm" style={{ background: "linear-gradient(135deg,#ef4444,#f97316)", color: "#fff" }}>
+                    {live.host_username?.[0]?.toUpperCase() || "?"}
+                  </div>
+                )}
               </div>
-              {/* Badge LIVE : pastille rouge nette et brillante, superposée sur le
-                  bas du cercle (façon Instagram/TikTok). Bordure = fond de l'app. */}
-              <span
-                className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 px-1.5 py-[1px] rounded-md text-[8px] font-black tracking-wider"
-                style={{ background: "#ef4444", color: "#fff", boxShadow: "0 0 8px rgba(239,68,68,0.7)", border: "1.5px solid #0b1326" }}
-              >
-                LIVE
-              </span>
             </div>
+            <span className="absolute top-8 lg:top-10 left-1/2 -translate-x-1/2 px-1.5 rounded text-[8px] font-black tracking-wide" style={{ background: "#ef4444", color: "#fff" }}>
+              LIVE
+            </span>
             <span className="text-[9px] lg:text-[10px] max-w-[64px] truncate" style={{ color: "#dae2fd" }}>
               {live.host_username}
             </span>
@@ -233,7 +214,7 @@ export default function StoriesFeed() {
                   }}
                 >
                   <div
-                    className="w-14 h-14 lg:w-[52px] lg:h-[52px] rounded-full border-2 overflow-hidden"
+                    className="w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 overflow-hidden"
                     style={{
                       borderColor: "#0b1326",
                       backgroundColor: "#222a3d",
@@ -283,24 +264,14 @@ export default function StoriesFeed() {
           allStories={stories}
           initialGroupIndex={selectedGroupIndex}
           onClose={closeStoryViewer}
-          onDeleteStory={(storyId?: string) => {
-            // Retrait optimiste immédiat (les deux côtés : le backend a supprimé
-            // en base) puis rafraîchissement serveur.
-            if (storyId) {
-              setStories((prev) => prev
-                .map((g) => ({ ...g, stories: g.stories.filter((s) => s.id !== storyId) }))
-                .filter((g) => g.stories.length > 0));
-            }
-            fetchStories();
-          }}
+          onDeleteStory={fetchStories}
         />
       )}
 
       {showAddStory && (
-        <StoryComposer
-          user={(() => { try { return JSON.parse(localStorage.getItem("nexus_user") || "null"); } catch { return null; } })()}
+        <AddStoryModal
           onClose={() => setShowAddStory(false)}
-          onPublished={handleStoryAdded}
+          onSuccess={handleStoryAdded}
         />
       )}
     </>
