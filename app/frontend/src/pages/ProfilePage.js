@@ -520,7 +520,7 @@ export default function ProfilePage({ user, setUser }) {
           <div className="text-center py-16 px-6 rounded-2xl" style={{ background: `${C.surfaceContainer}80`, border: `1px solid ${C.outlineVariant}18` }}>
             <svg
               width="96" height="96" viewBox="0 0 96 96" fill="none"
-              className="mx-auto mb-6" role="img" aria-label="Profil privé"
+              className="mx-auto mb-6" role="img" aria-label="{t("private_profile")}"
             >
               <defs>
                 <linearGradient id="nexusLockGrad" x1="0" y1="0" x2="1" y2="1">
@@ -614,7 +614,7 @@ export default function ProfilePage({ user, setUser }) {
               posts.length === 0 ? (
                 <div className="text-center py-16" style={{ color: C.outline }}>
                   <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">article</span>
-                  <p className="text-sm">Aucune publication</p>
+                  <p className="text-sm">{t("no_posts_yet")}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -630,7 +630,7 @@ export default function ProfilePage({ user, setUser }) {
               reposts.length === 0 ? (
                 <div className="text-center py-16" style={{ color: C.outline }}>
                   <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">repeat</span>
-                  <p className="text-sm">Aucune republication</p>
+                  <p className="text-sm">{t("no_reposts")}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -647,7 +647,7 @@ export default function ProfilePage({ user, setUser }) {
               mentions.length === 0 ? (
                 <div className="text-center py-16" style={{ color: C.outline }}>
                   <span className="material-symbols-outlined text-5xl block mb-3 opacity-30">alternate_email</span>
-                  <p className="text-sm">Aucune mention</p>
+                  <p className="text-sm">{t("no_mentions")}</p>
                 </div>
               ) : (
                 <div className="space-y-4">

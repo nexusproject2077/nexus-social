@@ -44,12 +44,15 @@ const QUICK_EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
 
 // Durées des messages éphémères (doivent correspondre au backend).
 const EPHEMERAL_OPTIONS = [
-  { ttl: 0,     label: "Désactivé" },
-  { ttl: 300,   label: "5 minutes" },
-  { ttl: 3600,  label: "1 heure" },
-  { ttl: 86400, label: "24 heures" },
+  { ttl: 0,     labelKey: "disabled" },
+  { ttl: 300,   labelKey: "min_5" },
+  { ttl: 3600,  labelKey: "hour_1" },
+  { ttl: 86400, labelKey: "hours_24" },
 ];
-const ephemeralLabel = (ttl) => (EPHEMERAL_OPTIONS.find((o) => o.ttl === Number(ttl)) || EPHEMERAL_OPTIONS[0]).label;
+const ephemeralLabel = (ttl, tFn = (k) => k) => {
+  const opt = EPHEMERAL_OPTIONS.find((o) => o.ttl === Number(ttl)) || EPHEMERAL_OPTIONS[0];
+  return tFn(opt.labelKey || "disabled");
+};
 
 // Signatures base64 des formats image courants (début du blob encodé).
 const B64_IMAGE_SIGNATURES = [
@@ -92,15 +95,14 @@ const isSameDay = (a, b) => {
     && da.getMonth() === db.getMonth()
     && da.getDate() === db.getDate();
 };
-const formatDayLabel = (d) => {
-  if (!d) return "";
+const formatDayLabel = (d, lang = "en", tFn = (k) => k) => {
   const date = new Date(d);
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
-  if (isSameDay(date, today)) return t("today");
-  if (isSameDay(date, yesterday)) return t("yesterday");
-  return date.toLocaleDateString(getBcp47(typeof i18n !== "undefined" ? (i18n.resolvedLanguage || i18n.language) : "en"), { day: "numeric", month: "long", year: "numeric" });
+  if (isSameDay(date, today)) return tFn("today");
+  if (isSameDay(date, yesterday)) return tFn("yesterday");
+  return date.toLocaleDateString(getBcp47(lang), { day: "numeric", month: "long", year: "numeric" });
 };
 
 // Image de message avec repli propre si la source est corrompue/illisible.
@@ -291,7 +293,7 @@ export default function MessagesPage({ user }) {
   const [showDetails, setShowDetails] = useState(false);
   const [detailsMore, setDetailsMore] = useState(false); // options avancées (⋯)
 
-  // Messages éphémères (par conversation)
+  // {t("ephemeral_messages")} (par conversation)
   const [ephemeralTtl, setEphemeralTtl] = useState(0);
   const [showEphemeralChooser, setShowEphemeralChooser] = useState(false);
 
@@ -427,7 +429,7 @@ export default function MessagesPage({ user }) {
     const file = e.target.files?.[0];
     e.target.value = ""; // permet de re-sélectionner le même fichier
     if (!file) return;
-    if (!file.type.startsWith("image/")) { toast.error("Sélectionnez une image"); return; }
+    if (!file.type.startsWith("image/")) { toast.error(t("select_image")); return; }
     try {
       setCompressing(true);
       const dataUrl = await compressImage(file);
@@ -751,7 +753,7 @@ export default function MessagesPage({ user }) {
       setShowNoteComposer(false);
       setNoteText("");
       fetchNotes();
-      toast.success("Note publiée");
+      toast.success(t("note_published"));
     } catch (err) {
       toast.error(err.response?.data?.detail || t("error"));
     }
@@ -763,7 +765,7 @@ export default function MessagesPage({ user }) {
       setShowNoteComposer(false);
       setNoteText("");
       fetchNotes();
-      toast.success("Note supprimée");
+      toast.success(t("note_deleted"));
     } catch { toast.error(t("error")); }
   };
 
@@ -792,7 +794,7 @@ export default function MessagesPage({ user }) {
       await axios.put(`${API}/messages/conversations/${selectedUserId}/ephemeral`, { ttl_seconds: ttl });
       setEphemeralTtl(ttl);
       setShowEphemeralChooser(false);
-      toast.success(ttl ? `Messages éphémères : ${ephemeralLabel(ttl)}` : "Messages éphémères désactivés");
+      toast.success(ttl ? `{t("ephemeral_messages")} : ${ephemeralLabel(ttl, t)}` : "{t("ephemeral_messages")} désactivés");
     } catch { toast.error(t("error")); }
   };
 
@@ -850,7 +852,7 @@ export default function MessagesPage({ user }) {
   const handleMarkUnread = async () => {
     if (!convMenu) return;
     await setConvPref(convMenu.id, { marked_unread: true });
-    toast.success("Marqué comme non lu");
+    toast.success(t("marked_unread"));
     setConvMenu(null);
   };
 
@@ -864,7 +866,7 @@ export default function MessagesPage({ user }) {
   const handleToggleMutePref = async () => {
     if (!convMenu) return;
     await setConvPref(convMenu.id, { muted: !convMenu.muted });
-    toast.success(convMenu.muted ? "Notifications réactivées" : "Mis en sourdine");
+    toast.success(convMenu.muted ? t("notifications_on") : "Mis en sourdine");
     setConvMenu(null);
   };
 
@@ -879,7 +881,7 @@ export default function MessagesPage({ user }) {
         setGroups((prev) => prev.filter((g) => g.id !== m.id));
         if (selectedGroupId === m.id) navigate("/messages");
         fetchGroups();
-        toast.success("Groupe quitté");
+        toast.success(t("group_left"));
       } catch { toast.error("Impossible de quitter le groupe"); }
     } else {
       if (!window.confirm("Supprimer cette conversation ?")) return;
@@ -887,7 +889,7 @@ export default function MessagesPage({ user }) {
         await axios.delete(`${API}/messages/conversations/${m.id}`);
         if (selectedUserId === m.id) navigate("/messages");
         fetchConversations();
-        toast.success("Conversation supprimée");
+        toast.success(t("conversation_deleted"));
       } catch { toast.error("Suppression impossible"); }
     }
   };
@@ -998,7 +1000,7 @@ export default function MessagesPage({ user }) {
     if (!text && !pendingImage && !pendingAudio) return;
     try {
       if (isGroup && selectedGroupId) {
-        if (pendingImage || pendingAudio) { toast.error("Médias non disponibles dans les groupes"); return; }
+        if (pendingImage || pendingAudio) { toast.error(t("media_unavailable_groups")); return; }
         const res = await axios.post(`${API}/messages/groups/${selectedGroupId}/messages`, {
           content: text, reply_to_id: replyingTo?.id
         });
@@ -1050,7 +1052,7 @@ export default function MessagesPage({ user }) {
       await axios.delete(`${API}/messages/${messageId}`, { data: { delete_for: everyone ? "everyone" : "me" } });
       setMessages(p => p.filter(m => m.id !== messageId));
       fetchConversations();
-      toast.success(everyone ? "Message supprimé pour tout le monde" : "Message supprimé pour vous");
+      toast.success(everyone ? t("message_deleted_everyone") : t("message_deleted_you"));
     } catch { toast.error("Erreur suppression"); }
   };
 
@@ -1087,14 +1089,14 @@ export default function MessagesPage({ user }) {
           media_type: m.media_type || null,
         });
       }
-      toast.success("Message transféré");
+      toast.success(t("forwarded"));
       fetchConversations();
     } catch { toast.error("Transfert impossible"); }
   };
 
   const handleCopy = (content) => {
     navigator.clipboard.writeText(content);
-    toast.success("Copié !");
+    toast.success(t("copied"));
   };
 
   const handleCreateGroup = async () => {
@@ -1110,7 +1112,7 @@ export default function MessagesPage({ user }) {
         setShowNewGroup(false); setGroupName(""); setSelectedMembers([]); setGroupSearch("");
         await fetchGroups();
         navigate(`/messages/group/${res.data.group.id}`);
-        toast.success("Groupe créé !");
+        toast.success(t("group_created"));
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur création groupe");
@@ -1135,7 +1137,7 @@ export default function MessagesPage({ user }) {
       if (res.data?.group) setSelectedGroup(res.data.group);
       setEditingName(false);
       fetchGroups();
-      toast.success("Groupe renommé");
+      toast.success(t("group_renamed"));
     } catch (err) { toast.error(err.response?.data?.detail || t("error")); }
   };
 
@@ -1175,7 +1177,7 @@ export default function MessagesPage({ user }) {
       await axios.delete(`${API}/messages/groups/${gid}/members/${user.id}`);
       // Retire immédiatement le groupe de la liste (plus d'attente / de cache).
       setGroups((prev) => prev.filter((g) => g.id !== gid));
-      toast.success("Vous avez quitté le groupe");
+      toast.success(t("you_left_group"));
       navigate("/messages");
       fetchGroups();
     } catch (err) {
@@ -1193,7 +1195,7 @@ export default function MessagesPage({ user }) {
       : [...prev, u]);
   };
   const startConversation = async () => {
-    if (nmSelected.length === 0) { toast.error("Sélectionnez au moins une personne"); return; }
+    if (nmSelected.length === 0) { toast.error(t("select_at_least_one")); return; }
     // 1 personne → conversation privée. 2+ → groupe.
     if (nmSelected.length === 1) {
       setShowNewMessageModal(false);
@@ -1210,7 +1212,7 @@ export default function MessagesPage({ user }) {
         setShowNewMessageModal(false);
         await fetchGroups();
         navigate(`/messages/group/${res.data.group.id}`);
-        toast.success("Groupe créé !");
+        toast.success(t("group_created"));
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || "Erreur création groupe");
@@ -1220,13 +1222,13 @@ export default function MessagesPage({ user }) {
   // ── Actions « Détails » ──────────────────────────────────────────────────────
   const handleClearConversation = async () => {
     if (!selectedUserId) return;
-    if (!window.confirm("Supprimer cette discussion ? Elle disparaîtra de votre boîte.")) return;
+    if (!window.confirm("{t("delete_chat_confirm")}")) return;
     try {
       await axios.delete(`${API}/messages/conversations/${selectedUserId}`);
       setConversations((prev) => prev.filter((c) => c.user_id !== selectedUserId));
       setShowDetails(false);
       navigate("/messages");
-      toast.success("Discussion supprimée");
+      toast.success(t("chat_deleted"));
     } catch { toast.error(t("error")); }
   };
   const handleBlockUser = async () => {
@@ -1249,7 +1251,7 @@ export default function MessagesPage({ user }) {
         reason: "Signalé depuis la messagerie",
       });
       setShowDetails(false);
-      toast.success("Signalement envoyé");
+      toast.success(t("report_sent"));
     } catch { toast.error(t("error")); }
   };
 
@@ -1340,7 +1342,7 @@ export default function MessagesPage({ user }) {
       </button>
       {/* PC : 3 points au survol → menu (non lu / épingler / sourdine / supprimer). */}
       <button
-        title="Options"
+        title=t("options")
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvMenu(lp); }}
         className="hidden lg:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
@@ -1385,13 +1387,13 @@ export default function MessagesPage({ user }) {
             {group.muted && <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 13, color: C.outline }}>notifications_off</span>}
           </p>
           <p className="text-xs truncate" style={{ color: C.outline }}>
-            {group.last_message || `${group.member_ids?.length || 0} membres`}
+            {group.last_message || `${group.member_ids?.length || 0} ${t("members")}`}
           </p>
         </div>
       </button>
       {/* PC : 3 points au survol → menu (non lu / épingler / sourdine / supprimer). */}
       <button
-        title="Options"
+        title=t("options")
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvMenu(lp); }}
         className="hidden lg:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
@@ -1512,7 +1514,7 @@ export default function MessagesPage({ user }) {
         {chatItems.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <span className="material-symbols-outlined text-3xl block mb-2" style={{ color: C.outline, opacity: 0.4 }}>forum</span>
-            <p className="text-xs" style={{ color: C.outline }}>Aucune conversation</p>
+            <p className="text-xs" style={{ color: C.outline }}>{t("no_conversations")}</p>
             <button onClick={openNewMessage} className="mt-3 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ background: `${C.cyan}18`, color: C.cyan }}>
               Commencer
             </button>
@@ -1545,7 +1547,7 @@ export default function MessagesPage({ user }) {
                 <div>
                   <h3 className="font-bold text-sm" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{currentName}</h3>
                   <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: C.cyan }}>
-                    {isGroup ? `${selectedGroup?.member_ids?.length || 0} membres` : "Chiffré P2P"}
+                    {isGroup ? `${selectedGroup?.member_ids?.length || 0} ${t("members")}` : t("encrypted_p2p")}
                   </p>
                 </div>
               </button>
@@ -1591,7 +1593,7 @@ export default function MessagesPage({ user }) {
                 autoFocus
                 value={convSearch}
                 onChange={(e) => setConvSearch(e.target.value)}
-                placeholder="Rechercher dans la conversation..."
+                placeholder={t("search_in_conversation")}
                 className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600 select-text"
                 style={{ color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
               />
@@ -1609,7 +1611,7 @@ export default function MessagesPage({ user }) {
             <div className="flex items-center justify-center gap-2 px-4 py-1.5 flex-shrink-0"
               style={{ background: `${C.cyan}12`, color: C.cyan }}>
               <Ico name="timer" size={14} />
-              <span className="text-[11px] font-bold">Messages éphémères · {ephemeralLabel(ephemeralTtl)}</span>
+              <span className="text-[11px] font-bold">{t("ephemeral_messages")} · {ephemeralLabel(ephemeralTtl, t)}</span>
             </div>
           )}
 
@@ -1659,7 +1661,7 @@ export default function MessagesPage({ user }) {
                   <div className="flex justify-center py-2 select-none">
                     <span className="text-[10px] font-bold px-3 py-1 rounded-full"
                       style={{ background: C.container, color: C.outline }}>
-                      {formatDayLabel(msg.created_at)}
+                      {formatDayLabel(msg.created_at, i18n?.resolvedLanguage || i18n?.language, t)}
                     </span>
                   </div>
                 )}
@@ -1813,7 +1815,7 @@ export default function MessagesPage({ user }) {
                         <span title="Message éphémère" style={{ color: C.cyan }}><Ico name="timer" size={11} /></span>
                       )}
                       <span className="text-[9px]" style={{ color: C.outline }}>
-                        {msg.created_at ? new Date(msg.created_at).toLocaleTimeString(getBcp47(typeof i18n !== "undefined" ? (i18n.resolvedLanguage || i18n.language) : "en"), { hour: "2-digit", minute: "2-digit" }) : ""}
+                        {msg.created_at ? new Date(msg.created_at).toLocaleTimeString(getBcp47(i18n?.resolvedLanguage || i18n?.language || "en"), { hour: "2-digit", minute: "2-digit" }) : ""}
                       </span>
                       {getStatus(msg)}
                     </div>
@@ -1821,7 +1823,7 @@ export default function MessagesPage({ user }) {
                     {!isGroup && msg.id === lastOwnReadId && (
                       <div className="flex justify-end mt-0.5">
                         <span className="text-[9px] font-semibold" style={{ color: C.cyan }}>
-                          Vu{msg.read_at ? ` ${new Date(msg.read_at).toLocaleTimeString(getBcp47(typeof i18n !== "undefined" ? (i18n.resolvedLanguage || i18n.language) : "en"), { hour: "2-digit", minute: "2-digit" })}` : ""}
+                          Vu{msg.read_at ? ` ${new Date(msg.read_at).toLocaleTimeString(getBcp47(i18n?.resolvedLanguage || i18n?.language || "en"), { hour: "2-digit", minute: "2-digit" })}` : ""}
                         </span>
                       </div>
                     )}
@@ -2011,7 +2013,7 @@ export default function MessagesPage({ user }) {
             <UserAvatar username={currentName} pic={currentPic} size={22} />
             <p className="text-xl font-black mt-1" style={{ color: C.onSurface, fontFamily: "Space Grotesk, sans-serif" }}>{currentName}</p>
             <p className="text-sm" style={{ color: C.outline }}>
-              {isGroup ? `${selectedGroup?.member_ids?.length || 0} membres` : (selectedUser?.username ? `@${selectedUser.username}` : "")}
+              {isGroup ? `${selectedGroup?.member_ids?.length || 0} ${t("members")}` : (selectedUser?.username ? `@${selectedUser.username}` : "")}
             </p>
           </div>
 
@@ -2022,9 +2024,9 @@ export default function MessagesPage({ user }) {
                 onClick={() => { setShowDetails(false); navigate(`/profile/${selectedUserId}`); }} />
             )}
             <QuickAction icon="search" label=t("search") onClick={() => toast("Bientôt disponible")} />
-            <QuickAction icon={isMuted(muteId) ? "unmute" : "mute"} label={isMuted(muteId) ? "Réactiver" : "Mettre en sourdine"}
+            <QuickAction icon={isMuted(muteId) ? "unmute" : "mute"} label={isMuted(muteId) ? "{t("reactivate")}" : "{t("mute_notifications")}"}
               onClick={() => toggleMute(muteId)} />
-            <QuickAction icon="options" label="Options" onClick={() => setDetailsMore((v) => !v)} />
+            <QuickAction icon="options" label=t("options") onClick={() => setDetailsMore((v) => !v)} />
           </div>
 
           {isGroup ? (
@@ -2045,7 +2047,7 @@ export default function MessagesPage({ user }) {
                       onClick={() => { setGroupNameDraft(selectedGroup?.name || ""); setEditingName(true); }} />
                   )
                 )}
-                <DetailsRow icon="report" label="Quelque chose ne fonctionne pas" onClick={handleReport} />
+                <DetailsRow icon="report" label={t("something_wrong")} onClick={handleReport} />
               </div>
 
               {/* Membres */}
@@ -2064,7 +2066,7 @@ export default function MessagesPage({ user }) {
                 {showAddMember && groupIsAdmin && (
                   <div className="px-4 pb-2">
                     <input value={addMemberSearch} autoFocus onChange={(e) => setAddMemberSearch(e.target.value)}
-                      placeholder="Rechercher une personne..."
+                      placeholder={t("search_person")}
                       className="w-full px-3 py-2 rounded-xl text-sm border-none outline-none placeholder:text-slate-600"
                       style={{ background: C.high, color: C.onSurface }} />
                     {addMemberResults.map((u) => (
@@ -2110,16 +2112,16 @@ export default function MessagesPage({ user }) {
           ) : (
             /* ── Liste DM (façon Insta) ── */
             <div style={{ borderTop: `1px solid ${C.outline}14` }}>
-              <DetailsRow icon="palette" label="Personnaliser" sub="Thème et police"
+              <DetailsRow icon="palette" label={t("customize")} sub={t("theme_and_font")}
                 onClick={() => { setShowDetails(false); navigate("/settings"); }} />
-              <DetailsRow icon="nickname" label="Pseudos" onClick={() => toast("Bientôt disponible")} />
-              <DetailsRow icon="timer" label="Messages éphémères" sub={ephemeralLabel(ephemeralTtl)}
+              <DetailsRow icon="nickname" label={t("nicknames")} onClick={() => toast("Bientôt disponible")} />
+              <DetailsRow icon="timer" label={t("ephemeral_messages")} sub={ephemeralLabel(ephemeralTtl, t)}
                 onClick={() => { setShowDetails(false); setShowEphemeralChooser(true); }} />
-              <DetailsRow icon="privacy" label="Confidentialité et sécurité"
+              <DetailsRow icon="privacy" label={t("privacy_and_security")}
                 onClick={() => { setShowDetails(false); navigate("/settings"); }} />
-              <DetailsRow icon="group" label="Créer une discussion de groupe"
+              <DetailsRow icon="group" label={t("create_group_chat")}
                 onClick={() => { setShowDetails(false); openNewMessageModal(); }} />
-              <DetailsRow icon="report" label="Quelque chose ne fonctionne pas" onClick={handleReport} />
+              <DetailsRow icon="report" label={t("something_wrong")} onClick={handleReport} />
             </div>
           )}
 
@@ -2209,7 +2211,7 @@ export default function MessagesPage({ user }) {
               <button onClick={handleToggleMutePref}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-white/5 text-left" style={{ color: C.onSurface }}>
                 <span className="material-symbols-outlined" style={{ color: C.cyan }}>{convMenu.muted ? "notifications_active" : "notifications_off"}</span>
-                <span className="text-[15px]">{convMenu.muted ? "Réactiver les notifications" : "Mettre en sourdine"}</span>
+                <span className="text-[15px]">{convMenu.muted ? "{t("unmute_notifications")}" : "{t("mute_notifications")}"}</span>
               </button>
               <button onClick={handleDeleteFromMenu}
                 className="w-full flex items-center gap-4 px-6 py-3.5 transition-all hover:bg-red-500/10 text-left" style={{ color: "#f87171" }}>
@@ -2315,7 +2317,7 @@ export default function MessagesPage({ user }) {
             </div>
             <div className="overflow-y-auto flex-1" style={{ scrollbarWidth: "none" }}>
               {chatItems.length === 0 ? (
-                <p className="text-center text-xs py-6" style={{ color: C.outline }}>Aucune conversation</p>
+                <p className="text-center text-xs py-6" style={{ color: C.outline }}>{t("no_conversations")}</p>
               ) : chatItems.map((item) => {
                 const g = item.kind === "group";
                 const name = g ? item.data.name : item.data.username;
@@ -2447,7 +2449,7 @@ export default function MessagesPage({ user }) {
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-1 px-1">
               <span style={{ color: C.cyan }}><Ico name="timer" size={22} /></span>
-              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>Messages éphémères</h3>
+              <h3 className="font-black text-lg" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("ephemeral_messages")}</h3>
             </div>
             <p className="text-xs px-1 mb-4" style={{ color: C.outline }}>
               Les nouveaux messages disparaissent automatiquement après la durée choisie, des deux côtés.
@@ -2489,7 +2491,7 @@ export default function MessagesPage({ user }) {
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: C.outline }}>search</span>
                 <input autoFocus value={nmSearch} onChange={(e) => setNmSearch(e.target.value)}
-                  placeholder="Rechercher..."
+                  placeholder={t("search_ellipsis")}
                   className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border-none outline-none placeholder:text-slate-600"
                   style={{ background: C.high, color: C.onSurface }} />
               </div>
@@ -2562,7 +2564,7 @@ export default function MessagesPage({ user }) {
             <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Nom du groupe..."
               className="w-full mb-4 px-4 py-2.5 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
               style={{ background: C.high, color: C.onSurface }} />
-            <input value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder="Rechercher des membres..."
+            <input value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder={t("search_members")}
               className="w-full mb-3 px-4 py-2.5 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
               style={{ background: C.high, color: C.onSurface }} />
             {groupSearchRes.length > 0 && (

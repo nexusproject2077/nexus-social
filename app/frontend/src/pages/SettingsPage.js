@@ -129,7 +129,7 @@ function InputField({ label, value, onChange, disabled, type = "text", placehold
 // ── MAIN PAGE ──────────────────────────────────────────────────────────────────
 export default function SettingsPage({ user, setUser }) {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [activeSection, setActiveSection]   = useState("account");
   const [settings, setSettings]             = useState(null);
   const [loading, setLoading]               = useState(true);
@@ -267,15 +267,15 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Profile info card */}
       <Card>
-        <CardHeader title=t("profile_info") icon="person" />
+        <CardHeader title={t("profile_info") icon="person" />
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <InputField label="Nom d'utilisateur" value={settings?.account?.username} disabled />
-            <InputField label=t("email") value={settings?.account?.email} disabled />
-            <InputField label=t("first_name") value={profileData.first_name} onChange={e => setProfileData(p => ({ ...p, first_name: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("email")} value={settings?.account?.email} disabled />
+            <InputField label={t("first_name")} value={profileData.first_name} onChange={e => setProfileData(p => ({ ...p, first_name: e.target.value }))} disabled={!editMode} />
             <InputField label="Nom" value={profileData.last_name} onChange={e => setProfileData(p => ({ ...p, last_name: e.target.value }))} disabled={!editMode} />
-            <InputField label=t("phone") type="tel" value={profileData.phone} onChange={e => setProfileData(p => ({ ...p, phone: e.target.value }))} disabled={!editMode} />
-            <InputField label=t("birthdate") type="date" value={profileData.birthdate} onChange={e => setProfileData(p => ({ ...p, birthdate: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("phone")} type="tel" value={profileData.phone} onChange={e => setProfileData(p => ({ ...p, phone: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("birthdate")} type="date" value={profileData.birthdate} onChange={e => setProfileData(p => ({ ...p, birthdate: e.target.value }))} disabled={!editMode} />
             <InputField label="Localisation" value={profileData.location} onChange={e => setProfileData(p => ({ ...p, location: e.target.value }))} disabled={!editMode} />
             <InputField label="Site web" type="url" value={profileData.website} onChange={e => setProfileData(p => ({ ...p, website: e.target.value }))} disabled={!editMode} />
           </div>
@@ -318,10 +318,10 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Account actions */}
       <Card>
-        <CardHeader title=t("account_management") icon="settings" />
-        <RowItem icon="lock" label=t("change_password") sublabel=t("update_your_password") onClick={() => setShowPasswordModal(true)} />
-        <RowItem icon="download" label=t("export_my_data") sublabel=t("download_data_gdpr") onClick={handleDataExport} />
-        <RowItem icon="logout" label=t("logout") sublabel=t("end_current_session") onClick={handleLogout} danger />
+        <CardHeader title={t("account_management") icon="settings" />
+        <RowItem icon="lock" label={t("change_password")} sublabel={t("update_your_password")} onClick={() => setShowPasswordModal(true)} />
+        <RowItem icon="download" label={t("export_my_data")} sublabel={t("download_data_gdpr")} onClick={handleDataExport} />
+        <RowItem icon="logout" label={t("logout")} sublabel={t("end_current_session")} onClick={handleLogout} danger />
       </Card>
     </div>
   );
@@ -384,19 +384,19 @@ export default function SettingsPage({ user, setUser }) {
           <CardHeader title="Analytique" icon="insights" />
           <RowItem
             icon="bar_chart"
-            label=t("analytics_dashboard")
-            sublabel=t("analytics_desc")
+            label={t("analytics_dashboard")}
+            sublabel={t("analytics_desc")}
             onClick={() => navigate("/analytics")}
           />
         </Card>
 
         {/* Monétisation */}
         <Card>
-          <CardHeader title=t("monetization") icon="paid" />
+          <CardHeader title={t("monetization") icon="paid" />
           <ToggleRow
             icon="toll"
-            label=t("enable_monetization")
-            sublabel=t("monetization_desc")
+            label={t("enable_monetization")}
+            sublabel={t("monetization_desc")}
             checked={monetization}
             onChange={toggleMonetization}
           />
@@ -405,15 +405,15 @@ export default function SettingsPage({ user, setUser }) {
           </div>
         </Card>
 
-        {/* Tips crypto */}
+        {/* {t("tips_crypto")} */}
         <Card>
-          <CardHeader title="Tips crypto" icon="currency_bitcoin" />
+          <CardHeader title={t("tips_crypto")} icon="currency_bitcoin" />
           <div className="p-5 space-y-3">
             <p className="text-sm" style={{ color: C.outline }}>
               Ajoutez votre adresse (Solana, USDT, BTC…) pour recevoir des tips directement, sans intermédiaire ni frais de plateforme.
             </p>
             <InputField
-              label="Adresse wallet"
+              label={t("wallet_address")}
               value={profileData.crypto_wallet}
               onChange={(e) => setProfileData((p) => ({ ...p, crypto_wallet: e.target.value }))}
               placeholder="Ex : 7xKX…（Solana / USDT / BTC）"
@@ -424,7 +424,7 @@ export default function SettingsPage({ user, setUser }) {
               className="px-5 py-2 rounded-xl font-bold text-sm transition-all active:scale-95"
               style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
             >
-              Enregistrer le wallet
+              {t("save_wallet")}
             </button>
           </div>
         </Card>
@@ -436,7 +436,7 @@ export default function SettingsPage({ user, setUser }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.privacy_title")}</h2>
-        <p className="text-sm" style={{ color: C.outline }}>Contrôlez qui peut voir votre contenu et vos informations</p>
+        <p className="text-sm" style={{ color: C.outline }}>{t("control_who_sees")}</p>
       </div>
 
       {/* RGPD Notice */}
@@ -445,32 +445,32 @@ export default function SettingsPage({ user, setUser }) {
           <span className="material-symbols-outlined text-lg" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}>verified_user</span>
         </div>
         <div>
-          <p className="text-sm font-bold mb-1" style={{ color: C.onSurface }}>Conformité RGPD active</p>
-          <p className="text-xs" style={{ color: C.outline }}>Vos données sont traitées conformément au RGPD. Vous avez le droit d'accéder, de corriger et de supprimer vos données.</p>
+          <p className="text-sm font-bold mb-1" style={{ color: C.onSurface }}>{t("rgpd_active")}</p>
+          <p className="text-xs" style={{ color: C.outline }}>{t("rgpd_notice")}</p>
         </div>
       </div>
 
       {/* Privacy toggles */}
       <Card>
-        <CardHeader title=t("account_visibility") icon="visibility" />
-        <ToggleRow icon="lock" label=t("private_account") sublabel=t("private_account_desc") checked={settings?.privacy?.is_private || false} onChange={v => updatePrivacy("is_private", v)} />
-        <ToggleRow icon="chat" label=t("allow_story_replies") sublabel=t("story_replies_desc") checked={settings?.privacy?.allow_story_replies !== false} onChange={v => updatePrivacy("allow_story_replies", v)} />
-        <ToggleRow icon="alternate_email" label=t("allow_mentions") sublabel=t("mentions_desc") checked={settings?.privacy?.allow_mentions !== false} onChange={v => updatePrivacy("allow_mentions", v)} />
+        <CardHeader title={t("account_visibility") icon="visibility" />
+        <ToggleRow icon="lock" label={t("private_account")} sublabel={t("private_account_desc")} checked={settings?.privacy?.is_private || false} onChange={v => updatePrivacy("is_private", v)} />
+        <ToggleRow icon="chat" label={t("allow_story_replies")} sublabel={t("story_replies_desc")} checked={settings?.privacy?.allow_story_replies !== false} onChange={v => updatePrivacy("allow_story_replies", v)} />
+        <ToggleRow icon="alternate_email" label={t("allow_mentions")} sublabel={t("mentions_desc")} checked={settings?.privacy?.allow_mentions !== false} onChange={v => updatePrivacy("allow_mentions", v)} />
       </Card>
 
       {/* Data controls */}
       <Card>
-        <CardHeader title=t("data_control") icon="database" />
-        <RowItem icon="download" label=t("export_my_data") sublabel=t("download_all_personal_data") onClick={handleDataExport} />
-        <RowItem icon="delete_forever" label=t("request_deletion") sublabel=t("permanently_delete_account") onClick={() => toast.info("Contactez support@nexus-social.com")} danger />
+        <CardHeader title={t("data_control") icon="database" />
+        <RowItem icon="download" label={t("export_my_data")} sublabel={t("download_all_personal_data")} onClick={handleDataExport} />
+        <RowItem icon="delete_forever" label={t("request_deletion")} sublabel={t("permanently_delete_account")} onClick={() => toast.info("Contactez support@nexus-social.com")} danger />
       </Card>
 
       {/* Ad targeting */}
       <Card>
         <CardHeader title="Ciblage publicitaire (DMA)" icon="target" />
-        <ToggleRow label=t("personalized_ads") sublabel=t("based_on_activity") checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
-        <ToggleRow label=t("third_party_data") sublabel=t("partner_info") checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
-        <ToggleRow label=t("geo_targeting") sublabel=t("gps_usage") checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
+        <ToggleRow label={t("personalized_ads")} sublabel={t("based_on_activity")} checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
+        <ToggleRow label={t("third_party_data")} sublabel={t("partner_info")} checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
+        <ToggleRow label={t("geo_targeting")} sublabel={t("gps_usage")} checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
       </Card>
     </div>
   );
@@ -484,7 +484,7 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* 2FA */}
       <Card>
-        <CardHeader title=t("two_factor_auth") icon="security" />
+        <CardHeader title={t("two_factor_auth") icon="security" />
         <div className="p-5">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -505,7 +505,7 @@ export default function SettingsPage({ user, setUser }) {
         <div className="p-5 space-y-3">
           {[
             { icon: "laptop", name: "Navigateur Web", detail: "Cette session • Actif maintenant", active: true },
-            { icon: "smartphone", name: "Mobile", detail: "Dernière activité il y a 2h", active: false },
+            { icon: "smartphone", name: "Mobile", detail: {t("last_activity_2h")}, active: false },
           ].map((s, i) => (
             <div key={i} className="flex items-center gap-4 p-3 rounded-xl" style={{ background: C.high }}>
               <span className="material-symbols-outlined text-lg" style={{ color: s.active ? C.cyan : C.outline }}>{s.icon}</span>
@@ -516,7 +516,7 @@ export default function SettingsPage({ user, setUser }) {
               </div>
             </div>
           ))}
-          <button onClick={() => toast.info("Déconnexion des autres sessions...")} className="w-full mt-2 py-2 text-xs font-bold rounded-xl transition-all hover:opacity-80"
+          <button onClick={() => toast.info({t("logout_other_sessions")})} className="w-full mt-2 py-2 text-xs font-bold rounded-xl transition-all hover:opacity-80"
             style={{ border: `1px solid ${C.outlineVar}`, color: C.outline }}>
             Déconnecter tous les autres appareils
           </button>
@@ -525,8 +525,8 @@ export default function SettingsPage({ user, setUser }) {
 
       {/* Password */}
       <Card>
-        <CardHeader title=t("password") icon="key" />
-        <RowItem icon="lock_reset" label=t("change_password") sublabel="Mettez à jour votre mot de passe régulièrement" onClick={() => setShowPasswordModal(true)} />
+        <CardHeader title={t("password") icon="key" />
+        <RowItem icon="lock_reset" label={t("change_password")} sublabel={t("update_password_regularly")} onClick={() => setShowPasswordModal(true)} />
       </Card>
     </div>
   );
@@ -539,24 +539,24 @@ export default function SettingsPage({ user, setUser }) {
       </div>
       <Card>
         <CardHeader title="Filtre de contenu" icon="filter_alt" />
-        <ToggleRow label="Contenu sensible" sublabel="Afficher le contenu marqué comme sensible" checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
-        <ToggleRow label="Lecture auto des vidéos" sublabel="Les vidéos se lancent automatiquement" checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
-        <ToggleRow label="Suggestion algorithmique" sublabel="Contenu basé sur vos interactions" checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
+        <ToggleRow label="Contenu sensible" sublabel={t("show_sensitive")} checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
+        <ToggleRow label={t("autoplay_videos")} sublabel={t("videos_auto_start")} checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
+        <ToggleRow label="Suggestion algorithmique" sublabel={t("content_based_interactions")} checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
       </Card>
       <Card>
         <CardHeader title="Transparence algorithmique (DSA)" icon="analytics" />
         <div className="p-5">
-          <p className="text-sm mb-4" style={{ color: C.outline }}>Conformément au Digital Services Act, vous avez le droit de comprendre pourquoi vous voyez certains contenus.</p>
+          <p className="text-sm mb-4" style={{ color: C.outline }}>{t("dsa_desc")}</p>
           <button onClick={() => setShowAlgoModal(true)} className="px-5 py-2 rounded-xl font-bold text-sm transition-all hover:opacity-80"
             style={{ background: `${C.cyan}15`, color: C.cyan, border: `1px solid ${C.cyan}30` }}>
-            Inspecter l'algorithme
+            {t("inspect_algorithm")}
           </button>
         </div>
       </Card>
       <Card>
-        <CardHeader title="Comptes bloqués et muets" icon="block" />
-        <RowItem icon="block" label="Comptes bloqués" sublabel="Gérer les utilisateurs bloqués" onClick={() => toast.info("Liste à venir")} />
-        <RowItem icon="volume_off" label="Mots-clés muets" sublabel="Masquer certains mots du fil" onClick={() => toast.info("Configuration à venir")} />
+        <CardHeader title={t("blocked_and_muted")} icon="block" />
+        <RowItem icon="block" label={t("blocked_accounts")} sublabel={t("manage_blocked")} onClick={() => toast.info(t("list_coming_soon"))} />
+        <RowItem icon="volume_off" label={t("muted_keywords")} sublabel={t("hide_keywords")} onClick={() => toast.info(t("config_coming_soon"))} />
       </Card>
     </div>
   );
@@ -565,16 +565,16 @@ export default function SettingsPage({ user, setUser }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-black mb-2" style={{ fontFamily: "Space Grotesk, sans-serif", color: C.onSurface }}>{t("settings.display_title")}</h2>
-        <p className="text-sm" style={{ color: C.outline }}>Personnalisez l'apparence de Nexus</p>
+        <p className="text-sm" style={{ color: C.outline }}>{t("customize_appearance")}</p>
       </div>
       <Card>
-        <CardHeader title="Thème" icon="dark_mode" />
-        <ToggleRow icon="dark_mode" label="Mode sombre" sublabel="Toujours activé sur Nexus" checked={true} onChange={() => {}} disabled />
+        <CardHeader title={t("theme") icon="dark_mode" />
+        <ToggleRow icon="dark_mode" label={t("dark_mode")} sublabel={t("always_on_nexus")} checked={true} onChange={() => {}} disabled />
       </Card>
       <Card>
-        <CardHeader title="Couleur d'accentuation" icon="palette" />
+        <CardHeader title={t("accent_color")} icon="palette" />
         <div className="p-5">
-          <p className="text-sm mb-4" style={{ color: C.outline }}>Choisissez la couleur principale de l'interface</p>
+          <p className="text-sm mb-4" style={{ color: C.outline }}>{t("choose_main_color")}</p>
           <div className="flex flex-wrap gap-3">
             {ACCENTS.map((a) => {
               const selected = accent.toLowerCase() === a.value.toLowerCase();
@@ -603,7 +603,7 @@ export default function SettingsPage({ user, setUser }) {
         </div>
       </Card>
       <Card>
-        <CardHeader title=t("language") icon="language" />
+        <CardHeader title={t("language") icon="language" />
         <div className="p-5 flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-semibold" style={{ color: C.onSurface }}>Langue de l'interface</p>

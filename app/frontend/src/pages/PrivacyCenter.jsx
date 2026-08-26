@@ -265,7 +265,7 @@ export default function PrivacyCenter({ user, setUser }) {
           <div className="space-y-3 sm:space-y-4">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
               <h2 className="text-base sm:text-lg font-bold text-white mb-2">
-                Télécharger mes données
+                {t("download_my_data")}
               </h2>
               <p className="text-xs sm:text-sm text-slate-400 mb-4">
                 Droit à la portabilité (Article 20 RGPD)
@@ -275,7 +275,7 @@ export default function PrivacyCenter({ user, setUser }) {
                 className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all"
               >
                 <Download className="h-4 w-4" />
-                Exporter toutes mes données
+                {t("export_my_data")}
               </button>
             </div>
 
@@ -361,7 +361,7 @@ export default function PrivacyCenter({ user, setUser }) {
         {showExportModal && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowExportModal(false)}>
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-bold text-white mb-2">Exporter vos données</h3>
+              <h3 className="text-lg font-bold text-white mb-2">{t("export_my_data")}</h3>
               <p className="text-sm text-slate-300 mb-4">
                 Téléchargez une copie de toutes vos données au format JSON
               </p>
