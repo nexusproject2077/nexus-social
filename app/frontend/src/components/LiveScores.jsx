@@ -9,6 +9,7 @@ import { API } from "@/App";
 import { toast } from "sonner";
 import MatchCenter from "@/components/MatchCenter";
 import { fetchLiveScoresFromEspn } from "@/lib/espnClient";
+import { fetchWweEvents } from "@/lib/wweClient";
 import i18n from "@/i18n";
 
 const NEON = "#4ade80";      // vert néon (match en cours)
@@ -235,6 +236,49 @@ export function MmaCard({ m, compact, flash }) {
 }
 
 // Modale de filtres : cocher les ligues majeures (Toggles).
+
+export function WweCard({ m, compact, flash, onOpen }) {
+  const live = m.state === "in";
+  const upcoming = m.state === "pre";
+  const brandColor = m.brand_color || "#e11d48";
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen?.(m)}
+      className={`flex-shrink-0 text-left rounded-2xl p-3 transition-all active:scale-[0.98] ${compact ? "w-full" : "w-[200px]"}`}
+      style={{
+        background: live ? "linear-gradient(145deg,rgba(225,29,72,0.18),rgba(15,20,35,0.95))" : "#0d1424",
+        border: live ? `1px solid ${brandColor}66` : "1px solid rgba(255,255,255,0.06)",
+        boxShadow: flash ? `0 0 20px ${brandColor}44` : live ? `0 0 16px ${brandColor}22` : "none",
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span
+          className="text-[10px] font-black tracking-wider px-1.5 py-0.5 rounded"
+          style={{ background: brandColor, color: "#0b1220" }}
+        >
+          {m.brand || "WWE"}
+        </span>
+        {live ? (
+          <span className="flex items-center gap-1 text-[10px] font-bold" style={{ color: "#f87171" }}>
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#f87171" }} />
+            LIVE
+          </span>
+        ) : (
+          <span className="text-[10px]" style={{ color: "#859397" }}>{m.clock}</span>
+        )}
+      </div>
+      <p className="text-sm font-bold text-white leading-tight mb-1 truncate">{m.event}</p>
+      <p className="text-[11px] truncate" style={{ color: "#9fb0c8" }}>
+        {m.is_ple ? (m.venue || m.detail) : (live ? m.clock : m.detail)}
+      </p>
+      {upcoming && (
+        <p className="text-[10px] mt-1.5 font-semibold" style={{ color: brandColor }}>{m.clock}</p>
+      )}
+    </button>
+  );
+}
+
 function FilterModal({ favL, onSave, onClose }) {
   const [sel, setSel] = useState(new Set(favL));
   const [saving, setSaving] = useState(false);
@@ -298,9 +342,10 @@ export default function LiveScores({ variant = "mobile", setUser }) {
     // Favoris : backend (/livescores renvoie aussi les favoris de l'utilisateur).
     const favP = axios.get(`${API}/livescores`).then((r) => r.data || {}).catch(() => ({}));
     const espnP = fetchLiveScoresFromEspn().catch(() => []);
-    Promise.all([favP, espnP]).then(([d, espn]) => {
+    Promise.all([favP, espnP, fetchWweEvents().catch(() => [])]).then(([d, espn, wwe]) => {
       const backendItems = Array.isArray(d.matches) ? d.matches : [];
-      const items = espn.length ? espn : backendItems; // ESPN direct prioritaire
+      const base = espn.length ? espn : backendItems; // ESPN direct prioritaire
+      const items = [...base, ...(Array.isArray(wwe) ? wwe : [])];
       const changed = [];
       for (const m of items) {
         const key = `${m.sport}-${m.id}`;
@@ -375,22 +420,26 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   if (!src.length) return null;
   const cardProps = { favL, favT, onToggleLeague, onToggleTeam, onOpen: setOpenMatch };
 
-  // Foot + MMA : direct prioritaire, sinon 3 prochains à venir (par sport).
-  const footItems = displayMatches(src.filter((m) => m.sport !== "mma"), favL, favT);
+  // Foot + MMA + WWE
+  const footItems = displayMatches(src.filter((m) => m.sport === "foot" || (!m.sport && m.home)), favL, favT);
   const mmaItems = displayMatches(src.filter((m) => m.sport === "mma"), favL, favT);
-  let arranged;
-  if (footItems.length && mmaItems.length) {
-    arranged = [];
-    for (let i = 0; i < Math.max(footItems.length, mmaItems.length); i++) {
+  const wweItems = src.filter((m) => m.sport === "wwe");
+  let arranged = [];
+  const maxLen = Math.max(footItems.length, mmaItems.length, wweItems.length);
+  if (maxLen === 0) arranged = [];
+  else {
+    for (let i = 0; i < maxLen; i++) {
       if (i < footItems.length) arranged.push(footItems[i]);
       if (i < mmaItems.length) arranged.push(mmaItems[i]);
+      if (i < wweItems.length) arranged.push(wweItems[i]);
     }
-  } else {
-    arranged = footItems.length ? footItems : mmaItems;
   }
-  const renderCard = (m, compact) => (m.sport === "mma"
-    ? <MmaCard key={`mma-${m.id}`} m={m} compact={compact} flash={!!flashing[`mma-${m.id}`]} />
-    : <MatchCard key={`foot-${m.id}`} m={m} compact={compact} flash={!!flashing[`foot-${m.id}`]} {...cardProps} />);
+  if (!arranged.length) arranged = [...footItems, ...mmaItems, ...wweItems];
+  const renderCard = (m, compact) => {
+    if (m.sport === "mma") return <MmaCard key={`mma-${m.id}`} m={m} compact={compact} flash={!!flashing[`mma-${m.id}`]} />;
+    if (m.sport === "wwe") return <WweCard key={`wwe-${m.id}`} m={m} compact={compact} flash={!!flashing[`wwe-${m.id}`]} onOpen={setOpenMatch} />;
+    return <MatchCard key={`foot-${m.id}`} m={m} compact={compact} flash={!!flashing[`foot-${m.id}`]} {...cardProps} />;
+  };
   const fadeStyle = { opacity: fading ? 0 : 1, transition: "opacity 0.34s ease" };
 
   const iconBtn = (icon, onClick, label) => (

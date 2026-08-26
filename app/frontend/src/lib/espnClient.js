@@ -371,3 +371,7 @@ export async function fetchMatchDetailsFromEspn(eventId, slug) {
   }
   return { header, events };
 }
+
+
+// WWE (calendrier local — pas d'API ESPN catch)
+export { fetchWweEvents, buildWweSchedule } from "@/lib/wweClient";
