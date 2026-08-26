@@ -29,21 +29,25 @@ const matchesTab = (n, tab) => {
 
 // Étiquette de jour pour le groupement (Aujourd'hui / Hier / jour / date).
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-const dayLabel = (iso) => {
+const BCP = { en:"en-US", fr:"fr-FR", tr:"tr-TR", es:"es-ES", de:"de-DE", it:"it-IT", pt:"pt-PT", nl:"nl-NL", pl:"pl-PL", ru:"ru-RU", uk:"uk-UA", ar:"ar-SA", hi:"hi-IN", zh:"zh-CN", ja:"ja-JP", ko:"ko-KR" };
+const dayLabel = (iso, t, lang = "en") => {
   const d = new Date(iso);
   const diff = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86400000);
-  if (diff <= 0) return "Aujourd'hui";
-  if (diff === 1) return "Hier";
-  if (diff < 7)  return d.toLocaleDateString("fr-FR", { weekday: "long" });
-  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+  const bcp = BCP[(lang || "en").split("-")[0]] || "en-US";
+  if (diff <= 0) return t("today") || "Today";
+  if (diff === 1) return t("yesterday") || "Yesterday";
+  if (diff < 7)  return d.toLocaleDateString(bcp, { weekday: "long" });
+  return d.toLocaleDateString(bcp, { day: "numeric", month: "long" });
 };
-const timeLabel = (iso) =>
-  new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const timeLabel = (iso, lang = "en") => {
+  const bcp = BCP[(lang || "en").split("-")[0]] || "en-US";
+  return new Date(iso).toLocaleTimeString(bcp, { hour: "2-digit", minute: "2-digit" });
+};
 
 const PAGE = 30;
 
 export default function NotificationsPage({ user }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -266,8 +270,8 @@ export default function NotificationsPage({ user }) {
         ) : (
           <div>
             {filtered.map((notif, i) => {
-              const label = dayLabel(notif.created_at);
-              const showHeader = i === 0 || dayLabel(filtered[i - 1].created_at) !== label;
+              const label = dayLabel(notif.created_at, t, i18n.resolvedLanguage || i18n.language);
+              const showHeader = i === 0 || dayLabel(filtered[i - 1].created_at, t, i18n.resolvedLanguage || i18n.language) !== label;
               const isFollow = ["follow", "follow_accepted"].includes(notif.type);
               const canReply = ["comment", "comment_reply", "mention"].includes(notif.type);
               return (
@@ -310,7 +314,7 @@ export default function NotificationsPage({ user }) {
                         </button>{" "}
                         <span style={{ color: "#bbc9cd" }}>{getText(notif)}</span>
                       </p>
-                      <p className="text-xs mt-0.5" style={{ color: "#5c6b73" }}>{timeLabel(notif.created_at)}</p>
+                      <p className="text-xs mt-0.5" style={{ color: "#5c6b73" }}>{timeLabel(notif.created_at, i18n.resolvedLanguage || i18n.language)}</p>
 
                       {/* Demande d'abonnement : accepter / refuser */}
                       {notif.type === "follow_request" && (

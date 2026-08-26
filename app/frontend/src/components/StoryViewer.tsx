@@ -6,6 +6,9 @@ import { toast } from "sonner";
 import { API } from "../App";
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from "react-i18next";
+import { formatDistanceToNow } from "date-fns";
+import { getDateFnsLocale } from "@/lib/dateLocale";
+import { translateText } from "@/lib/translate";
 
 interface Story {
   id: string;
@@ -13,6 +16,8 @@ interface Story {
   media_type: "image" | "video";
   author_id?: string;
   has_viewed?: boolean;
+  created_at?: string;
+  caption?: string;
 }
 
 interface StoryGroup {
@@ -37,6 +42,33 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
   onClose, 
   onDeleteStory 
 }) => {
+  const { t, i18n } = useTranslation();
+  const [translatedCaption, setTranslatedCaption] = useState(null);
+  const [showOrigCaption, setShowOrigCaption] = useState(false);
+  const [translatingCaption, setTranslatingCaption] = useState(false);
+
+  useEffect(() => {
+    setTranslatedCaption(null);
+    setShowOrigCaption(false);
+  }, [currentStory?.id]);
+
+  const handleTranslateCaption = async () => {
+    if (!currentStory?.caption) return;
+    if (translatedCaption && !showOrigCaption) { setShowOrigCaption(true); return; }
+    if (translatedCaption && showOrigCaption) { setShowOrigCaption(false); return; }
+    setTranslatingCaption(true);
+    try {
+      const lang = (i18n.resolvedLanguage || i18n.language || "en").split("-")[0];
+      const out = await translateText(currentStory.caption, lang);
+      setTranslatedCaption(out);
+      setShowOrigCaption(false);
+    } catch {
+      toast.error(t("translate_error"));
+    } finally {
+      setTranslatingCaption(false);
+    }
+  };
+
   const navigate = useNavigate();
   const [currentGroupIndex, setCurrentGroupIndex] = useState(initialGroupIndex);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
@@ -345,9 +377,20 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
             <span className="text-white font-semibold text-sm drop-shadow-lg">
               {currentGroup.username}
             </span>
-            <span className="text-white/60 text-xs">
-              {Math.floor((Date.now() - startTimeRef.current) / 1000)}s
-            </span>
+            {currentStory?.created_at && (
+              <span className="text-white/60 text-xs">
+                {(() => {
+                  try {
+                    return formatDistanceToNow(new Date(currentStory.created_at), {
+                      addSuffix: true,
+                      locale: getDateFnsLocale(i18n.resolvedLanguage || i18n.language),
+                    });
+                  } catch {
+                    return t("just_now");
+                  }
+                })()}
+              </span>
+            )}
           </div>
         </div>
 
@@ -378,6 +421,29 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
               preload="auto"
             />
           )}
+
+          {currentStory?.caption && (
+            <div className="absolute bottom-24 left-0 right-0 px-4 z-20">
+              <p className="text-white text-sm drop-shadow-lg whitespace-pre-wrap">
+                {translatedCaption && !showOrigCaption ? translatedCaption : currentStory.caption}
+              </p>
+              <button
+                type="button"
+                onClick={handleTranslateCaption}
+                disabled={translatingCaption}
+                className="mt-1 text-xs font-semibold text-cyan-300"
+              >
+                {translatingCaption
+                  ? t("translating")
+                  : translatedCaption && !showOrigCaption
+                    ? t("show_original")
+                    : translatedCaption && showOrigCaption
+                      ? t("show_translation")
+                      : t("translate_post")}
+              </button>
+            </div>
+          )}
+
 
           {/* Indicateur pause */}
           {isPaused && (

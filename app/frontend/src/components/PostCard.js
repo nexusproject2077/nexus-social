@@ -3,7 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { getDateFnsLocale } from "@/lib/dateLocale";
+import { translateText } from "@/lib/translate";
 import { toast } from "sonner";
 import CommentsSection from "./CommentsSection";
 import { useTranslation } from "react-i18next";
@@ -72,7 +73,7 @@ function FeedVideo({ src }) {
 }
 
 export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [isLiked, setIsLiked]         = useState(post.is_liked || false);
   const [likesCount, setLikesCount]   = useState(post.likes_count || 0);
@@ -290,8 +291,14 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   };
 
   const formatDate = (d) => {
-    try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); }
-    catch { return t("just_now"); }
+    try {
+      return formatDistanceToNow(new Date(d), {
+        addSuffix: true,
+        locale: getDateFnsLocale(i18n.resolvedLanguage || i18n.language),
+      });
+    } catch {
+      return t("just_now");
+    }
   };
 
   const isOwnPost = currentUser?.id === post.author_id;
@@ -305,7 +312,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
       {post.repost_of && (
         <div className="flex items-center gap-2 px-4 py-2 border-b text-xs font-bold" style={{ backgroundColor: C.high, borderColor: "rgba(255,255,255,0.05)", color: C.outline }}>
           <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>repeat</span>
-          <span>Reposté par <span style={{ color: C.cyan }}>@{post.author_username}</span> depuis <Link to={`/profile/${post.original_author_id}`} style={{ color: C.onVariant }} className="hover:text-cyan-400">@{post.original_author_username}</Link></span>
+          <span>{t("reposted_by")} <span style={{ color: C.cyan }}>@{post.author_username}</span> {t("from")} <Link to={`/profile/${post.original_author_id}`} style={{ color: C.onVariant }} className="hover:text-cyan-400">@{post.original_author_username}</Link></span>
         </div>
       )}
 
@@ -347,9 +354,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               </p>
               <p className="text-xs flex items-center gap-1" style={{ color: C.outline }}>
                 {post.is_pinned && (
-                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title="Publication épinglée">
+                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title={t("pinned")}>
                     <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>push_pin</span>
-                    Épinglé ·
+                    {t("pinned")} ·
                   </span>
                 )}
                 {formatDate(post.created_at)}
@@ -369,7 +376,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                   <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: pinned ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
                 </button>
               )}
-              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title=t("delete")>
+              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title={t("delete")}>
                 <span className="material-symbols-outlined text-xl">delete</span>
               </button>
             </div>
@@ -379,13 +386,32 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         {/* Content — un clic ouvre le fil complet (façon X). Les liens/mentions
             à l'intérieur stoppent la propagation, donc restent cliquables. */}
         {post.content && (
-          <p
-            onClick={openThread}
-            className="leading-relaxed text-sm lg:text-base whitespace-pre-wrap cursor-pointer"
-            style={{ color: C.onVariant }}
-          >
-            {renderContent(post.content)}
-          </p>
+          <div className="space-y-1">
+            <p
+              onClick={openThread}
+              className="leading-relaxed text-sm lg:text-base whitespace-pre-wrap cursor-pointer"
+              style={{ color: C.onVariant }}
+            >
+              {renderContent(
+                translatedContent && !showOriginal ? translatedContent : post.content
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleTranslatePost(); }}
+              disabled={translating}
+              className="text-xs font-semibold transition-colors hover:opacity-80 disabled:opacity-50"
+              style={{ color: "var(--nexus-accent, #22d3ee)" }}
+            >
+              {translating
+                ? (t("translating") || "Translating…")
+                : translatedContent && !showOriginal
+                  ? (t("show_original") || "Show original")
+                  : translatedContent && showOriginal
+                    ? (t("show_translation") || "Show translation")
+                    : (t("translate_post") || "Translate")}
+            </button>
+          </div>
         )}
 
         {/* Poll / Sondage */}

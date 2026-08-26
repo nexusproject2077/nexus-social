@@ -378,5 +378,18 @@
   "error_profile_log": "Profile error:",
   "error_status_log": "Status error:",
   "error_posts_log": "Posts error:",
-  "error_loading_log": "Loading error:"
+  "error_loading_log": "Loading error:",
+  "translate_post": "Translate",
+  "translating": "Translating…",
+  "show_original": "Show original",
+  "show_translation": "Show translation",
+  "translate_error": "Translation failed",
+  "today": "Today",
+  "yesterday": "Yesterday",
+  "minutes_ago": "{{count}}m ago",
+  "hours_ago": "{{count}}h ago",
+  "days_ago": "{{count}}d ago",
+  "pinned": "Pinned",
+  "reposted_by": "Reposted by",
+  "from": "from"
 }

@@ -9,6 +9,7 @@ import { compressImage, dataUrlBytes } from "@/lib/compressImage";
 import { linkify, extractFirstUrl } from "@/lib/linkify";
 import LinkPreview from "@/components/LinkPreview";
 import { useTranslation } from "react-i18next";
+import { getBcp47 } from "@/lib/dateLocale";
 
 const C = {
   bg:         "#020617",
@@ -97,9 +98,9 @@ const formatDayLabel = (d) => {
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
-  if (isSameDay(date, today)) return "Aujourd'hui";
-  if (isSameDay(date, yesterday)) return "Hier";
-  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  if (isSameDay(date, today)) return t("today");
+  if (isSameDay(date, yesterday)) return t("yesterday");
+  return date.toLocaleDateString(getBcp47(typeof i18n !== "undefined" ? (i18n.resolvedLanguage || i18n.language) : "en"), { day: "numeric", month: "long", year: "numeric" });
 };
 
 // Image de message avec repli propre si la source est corrompue/illisible.
@@ -227,7 +228,7 @@ function Ico({ name, size = 20 }) {
 }
 
 export default function MessagesPage({ user }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const params = useParams();
   const navigate = useNavigate();
 
@@ -1812,7 +1813,7 @@ export default function MessagesPage({ user }) {
                         <span title="Message éphémère" style={{ color: C.cyan }}><Ico name="timer" size={11} /></span>
                       )}
                       <span className="text-[9px]" style={{ color: C.outline }}>
-                        {msg.created_at ? new Date(msg.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : ""}
+                        {msg.created_at ? new Date(msg.created_at).toLocaleTimeString(getBcp47(typeof i18n !== "undefined" ? (i18n.resolvedLanguage || i18n.language) : "en"), { hour: "2-digit", minute: "2-digit" }) : ""}
                       </span>
                       {getStatus(msg)}
                     </div>
@@ -1820,7 +1821,7 @@ export default function MessagesPage({ user }) {
                     {!isGroup && msg.id === lastOwnReadId && (
                       <div className="flex justify-end mt-0.5">
                         <span className="text-[9px] font-semibold" style={{ color: C.cyan }}>
-                          Vu{msg.read_at ? ` ${new Date(msg.read_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}
+                          Vu{msg.read_at ? ` ${new Date(msg.read_at).toLocaleTimeString(getBcp47(typeof i18n !== "undefined" ? (i18n.resolvedLanguage || i18n.language) : "en"), { hour: "2-digit", minute: "2-digit" })}` : ""}
                         </span>
                       </div>
                     )}

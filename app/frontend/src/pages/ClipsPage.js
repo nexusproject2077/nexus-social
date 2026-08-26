@@ -6,7 +6,7 @@ import Layout from "@/components/Layout";
 import PullToRefresh from "@/components/PullToRefresh";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { getDateFnsLocale } from "@/lib/dateLocale";
 import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
 import { useTranslation } from "react-i18next";
 
@@ -20,7 +20,7 @@ const C = {
 };
 
 const fmtNum = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
-const fmtRel = (d) => { try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); } catch { return ""; } };
+const fmtRel = (d, lang) => { try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: getDateFnsLocale(lang) }); } catch { return ""; } };
 
 // Un commentaire de clip : like, réponses, et suppression par son auteur.
 function CommentItem({ comment, currentUser, onDeleted }) {
@@ -94,7 +94,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
           <span>{comment.content}</span>
         </p>
         <div className="flex items-center gap-4 mt-1">
-          <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(comment.created_at)}</span>
+          <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(comment.created_at, _relLang)}</span>
           <button onClick={() => setReplyOpen((v) => !v)} className="text-[10px] font-semibold" style={{ color: C.outline }}>{
             t("answer")
           }</button>
@@ -135,7 +135,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
                 <span>{rp.content}</span>
               </p>
               <div className="flex items-center gap-3 mt-0.5">
-                <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(rp.created_at)}</span>
+                <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(rp.created_at, _relLang)}</span>
                 {currentUser?.id === rp.author_id && (
                   <button onClick={() => deleteReply(rp.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>{
                     t("delete")
@@ -407,7 +407,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   };
 
   const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1) + "k" : n;
-  const fmtDate = (d) => { try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); } catch { return ""; } };
+  const fmtDate = (d, lang) => { try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: getDateFnsLocale(lang) }); } catch { return ""; } };
 
   return (
     <div className="relative w-full h-full flex-shrink-0 overflow-hidden flex items-center justify-center" style={{ background: "#000" }}>
@@ -634,7 +634,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         </button>
         <p className="text-white/80 text-sm leading-snug line-clamp-2">{post.content}</p>
         <p className="text-white/40 text-xs mt-1 flex items-center gap-1.5">
-          <span>{fmtDate(post.created_at)}</span>
+          <span>{fmtDate(post.created_at, _relLang)}</span>
           <span>·</span>
           <span className="flex items-center gap-0.5">
             <span className="material-symbols-outlined text-xs">play_arrow</span>
@@ -692,7 +692,8 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
 }
 
 export default function ClipsPage({ user, setUser }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const _relLang = i18n.resolvedLanguage || i18n.language;
   const [clips, setClips]         = useState([]);
   const [loading, setLoading]     = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);

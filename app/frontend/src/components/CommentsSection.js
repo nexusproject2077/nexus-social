@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { getDateFnsLocale } from "@/lib/dateLocale";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
@@ -47,7 +47,7 @@ function AuthorAvatar({ username, profilePic, size = 8 }) {
 }
 
 export default function CommentsSection({ postId, currentUser, onCommentAdded, onCommentDeleted }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [comments,    setComments]    = useState([]);
   const [newComment,  setNewComment]  = useState("");
   const [replyingTo,  setReplyingTo]  = useState(null);
@@ -133,7 +133,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
   };
 
   const formatDate = (d) => {
-    try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); }
+    try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: getDateFnsLocale(i18n?.resolvedLanguage || i18n?.language) }); }
     catch { return t("just_now"); }
   };
 

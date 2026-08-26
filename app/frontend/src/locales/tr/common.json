@@ -378,5 +378,18 @@
   "error_profile_log": "Profil hatası:",
   "error_status_log": "Durum hatası:",
   "error_posts_log": "Gönderi hatası:",
-  "error_loading_log": "Yükleme hatası:"
+  "error_loading_log": "Yükleme hatası:",
+  "translate_post": "Çevir",
+  "translating": "Çevriliyor…",
+  "show_original": "Orijinali göster",
+  "show_translation": "Çeviriyi göster",
+  "translate_error": "Çeviri başarısız",
+  "today": "Bugün",
+  "yesterday": "Dün",
+  "minutes_ago": "{{count}}dk önce",
+  "hours_ago": "{{count}}sa önce",
+  "days_ago": "{{count}}g önce",
+  "pinned": "Sabitlendi",
+  "reposted_by": "Yeniden paylaşan",
+  "from": "kaynak"
 }

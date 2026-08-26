@@ -182,22 +182,22 @@ export default function NotificationDropdown() {
     }
   };
 
+  const { t, i18n } = useTranslation();
   const getTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
     const diffInMs = now.getTime() - date.getTime();
     const diffInMinutes = Math.floor(diffInMs / 60000);
-    
-    if (diffInMinutes < 1) return 'À l\'instant';
-    if (diffInMinutes < 60) return `Il y a ${diffInMinutes}m`;
-    
+    const lang = (i18n.resolvedLanguage || i18n.language || "en").split("-")[0];
+    const bcp = ({ en:"en-US", fr:"fr-FR", tr:"tr-TR", es:"es-ES", de:"de-DE", it:"it-IT", pt:"pt-PT", nl:"nl-NL", pl:"pl-PL", ru:"ru-RU", uk:"uk-UA", ar:"ar-SA", hi:"hi-IN", zh:"zh-CN", ja:"ja-JP", ko:"ko-KR" } as Record<string,string>)[lang] || "en-US";
+
+    if (diffInMinutes < 1) return t("just_now") || "Just now";
+    if (diffInMinutes < 60) return t("minutes_ago", { count: diffInMinutes }) || `${diffInMinutes}m`;
     const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `Il y a ${diffInHours}h`;
-    
+    if (diffInHours < 24) return t("hours_ago", { count: diffInHours }) || `${diffInHours}h`;
     const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `Il y a ${diffInDays}j`;
-    
-    return date.toLocaleDateString('fr-FR');
+    if (diffInDays < 7) return t("days_ago", { count: diffInDays }) || `${diffInDays}d`;
+    return date.toLocaleDateString(bcp);
   };
 
   // Demander la permission pour les notifications navigateur
