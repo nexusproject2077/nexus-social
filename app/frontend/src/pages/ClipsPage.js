@@ -9,6 +9,7 @@ import { formatDistanceToNow } from "date-fns";
 import { getDateFnsLocale } from "@/lib/dateLocale";
 import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
 import { useTranslation } from "react-i18next";
+import ClipPublishScreen from "@/components/ClipPublishScreen";
 
 const C = {
   surface:   "#0b1326",
@@ -698,6 +699,8 @@ export default function ClipsPage({ user, setUser }) {
   const [loading, setLoading]     = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [pendingClipFile, setPendingClipFile] = useState(null);
+  const [pendingClipUrl, setPendingClipUrl] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [view, setView] = useState("immersive"); // "immersive" | "grid"
   const [hasMore, setHasMore] = useState(true);
@@ -883,53 +886,51 @@ export default function ClipsPage({ user, setUser }) {
 
   const uploadClip = async (e) => {
     const file = e.target.files?.[0];
-    e.target.value = ""; // permet de re-sélectionner le même fichier
+    e.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("video/")) {
       toast.error(t("please_choose_video"));
       return;
     }
-    // Sans Firebase, on garde l'ancien chemin (base64 via le backend) qui
-    // impose des vidéos courtes/légères. Avec Firebase, on autorise le long.
-    const BACKEND_MAX_MB = 25;
-    if (!isFirebaseConfigured && file.size > BACKEND_MAX_MB * 1024 * 1024) {
-      toast.error(`Vidéo trop lourde (max ${BACKEND_MAX_MB} Mo sans stockage vidéo configuré)`);
+    const BACKEND_MAX_MB = isFirebaseConfigured ? 500 : 50;
+    const sizeMb = file.size / (1024 * 1024);
+    if (file.size > BACKEND_MAX_MB * 1024 * 1024) {
+      toast.error(t("clip_file_too_large", { max: BACKEND_MAX_MB, size: sizeMb.toFixed(1) }) || `Fichier trop lourd (${sizeMb.toFixed(1)} Mo, max ${BACKEND_MAX_MB} Mo).`);
       return;
     }
+    // Ouvre l'écran de publication (type TikTok) au lieu d'envoyer tout de suite
+    if (pendingClipUrl) URL.revokeObjectURL(pendingClipUrl);
+    const url = URL.createObjectURL(file);
+    setPendingClipFile(file);
+    setPendingClipUrl(url);
+  };
 
-    const caption = window.prompt("Légende de votre clip (optionnel)") || "";
-    const euBlocked = window.confirm(
-      "Restreindre ce clip dans l'Union européenne ?\n\nOK = masqué aux visiteurs de l'UE • Annuler = visible partout"
-    );
+  const closePublishScreen = () => {
+    if (pendingClipUrl) URL.revokeObjectURL(pendingClipUrl);
+    setPendingClipFile(null);
+    setPendingClipUrl(null);
+  };
+
+  const publishPendingClip = async (meta) => {
+    const file = pendingClipFile;
+    if (!file) return;
     setUploading(true);
     setUploadProgress(0);
     try {
       if (isFirebaseConfigured) {
-        // Upload direct navigateur → Firebase (reprise auto), puis on
-        // n'envoie que l'URL au backend : longues vidéos autorisées.
         const url = await uploadVideoResumable(file, user?.id, setUploadProgress);
-        let duration = null;
-        try {
-          duration = await new Promise((resolve, reject) => {
-            const probe = document.createElement("video");
-            const obj = URL.createObjectURL(file);
-            probe.preload = "metadata";
-            probe.onloadedmetadata = () => { URL.revokeObjectURL(obj); resolve(probe.duration || null); };
-            probe.onerror = () => { URL.revokeObjectURL(obj); reject(new Error("probe")); };
-            probe.src = obj;
-          });
-        } catch { /* durée facultative */ }
+        let duration = meta?.duration || null;
         await axios.post(`${API}/clips/external`, {
           media_url: url,
-          caption,
-          eu_blocked: euBlocked,
+          caption: meta?.caption || "",
+          eu_blocked: !!meta?.euBlocked,
           duration,
         });
       } else {
         const form = new FormData();
         form.append("file", file);
-        form.append("caption", caption);
-        form.append("eu_blocked", euBlocked ? "true" : "false");
+        form.append("caption", meta?.caption || "");
+        form.append("eu_blocked", meta?.euBlocked ? "true" : "false");
         await axios.post(`${API}/clips`, form, {
           headers: { "Content-Type": "multipart/form-data" },
           onUploadProgress: (evt) => {
@@ -937,19 +938,21 @@ export default function ClipsPage({ user, setUser }) {
           },
         });
       }
-      toast.success("Clip publié !");
+      toast.success(t("clip_published") || "Clip publié !");
+      closePublishScreen();
       setActiveIndex(0);
-      skipRef.current = 0;
       await fetchClips(true);
     } catch (err) {
       console.error("Erreur upload clip:", err);
-      toast.error(err.response?.data?.detail || "Erreur lors de la publication du clip");
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : (t("error_action") || "Erreur"));
     } finally {
       setUploading(false);
       setUploadProgress(0);
     }
   };
 
+  const _uploadClip_REMOVED = async (e) => {
   // Bouton flottant d'upload (réutilisé dans l'état vide et l'état principal)
   const uploadControls = (
     <>
@@ -1009,6 +1012,20 @@ export default function ClipsPage({ user, setUser }) {
       <span className="material-symbols-outlined text-2xl">search</span>
     </button>
   );
+
+  if (pendingClipFile && pendingClipUrl) {
+    return (
+      <ClipPublishScreen
+        file={pendingClipFile}
+        previewUrl={pendingClipUrl}
+        user={user}
+        onClose={closePublishScreen}
+        onPublish={publishPendingClip}
+        publishing={uploading}
+        uploadProgress={uploadProgress}
+      />
+    );
+  }
 
   if (loading) {
     return (
