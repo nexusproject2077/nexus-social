@@ -67,7 +67,7 @@ export default function ContentLayout({ title, description, children }) {
           {/* Hamburger (mobile uniquement) */}
           <button
             type="button"
-            aria-label={t("content.menu")}
+            aria-label={t("content.menu")}}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
             className="nx-burger"

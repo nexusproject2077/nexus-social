@@ -155,7 +155,7 @@ export default function ClipPublishScreen({
     <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: C.bg, color: C.text }}>
       {/* Header */}
       <header className="flex items-center gap-3 px-3 py-3 safe-top" style={{ borderBottom: `1px solid ${C.line}` }}>
-        <button type="button" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full" aria-label={t("back")}>
+        <button type="button" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full" aria-label={t("back")}}>
           <span className="material-symbols-outlined text-2xl">arrow_back</span>
         </button>
         <h1 className="flex-1 text-base font-bold">{t("clip_publish_title")}</h1>
@@ -168,7 +168,7 @@ export default function ClipPublishScreen({
             ref={captionRef}
             value={caption}
             onChange={(e) => setCaption(e.target.value.slice(0, 2200))}
-            placeholder={t("clip_add_description")}
+            placeholder={t("clip_add_description")}}
             className="flex-1 bg-transparent border-none outline-none resize-none text-[15px] leading-relaxed min-h-[120px] placeholder:text-slate-500"
             maxLength={2200}
           />
@@ -303,7 +303,7 @@ export default function ClipPublishScreen({
 
       {/* ---- Sheets ---- */}
       {showCover && (
-        <Sheet title={t("clip_edit_cover")} onClose={() => setShowCover(false)}>
+        <Sheet title={t("clip_edit_cover")}} onClose={() => setShowCover(false)}>
           <p className="text-xs mb-3" style={{ color: C.muted }}>{t("clip_cover_hint")}</p>
           <video
             src={previewUrl}
@@ -337,11 +337,11 @@ export default function ClipPublishScreen({
       )}
 
       {showLocation && (
-        <Sheet title={t("clip_location")} onClose={() => setShowLocation(false)}>
+        <Sheet title={t("clip_location")}} onClose={() => setShowLocation(false)}>
           <input
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            placeholder={t("clip_location_placeholder")}
+            placeholder={t("clip_location_placeholder")}}
             className="w-full rounded-xl px-4 py-3 mb-3 text-sm outline-none"
             style={{ background: C.card, color: C.text }}
           />
@@ -365,7 +365,7 @@ export default function ClipPublishScreen({
       )}
 
       {showLink && (
-        <Sheet title={t("clip_add_link")} onClose={() => setShowLink(false)}>
+        <Sheet title={t("clip_add_link")}} onClose={() => setShowLink(false)}>
           <input
             value={link}
             onChange={(e) => setLink(e.target.value)}
@@ -381,7 +381,7 @@ export default function ClipPublishScreen({
       )}
 
       {showPrivacy && (
-        <Sheet title={t("clip_who_can_watch")} onClose={() => setShowPrivacy(false)}>
+        <Sheet title={t("clip_who_can_watch")}} onClose={() => setShowPrivacy(false)}>
           {[
             { id: "public", icon: "public", label: t("clip_vis_public"), sub: t("clip_vis_public_sub") },
             { id: "followers", icon: "group", label: t("clip_vis_followers"), sub: t("clip_vis_followers_sub") },
@@ -406,15 +406,15 @@ export default function ClipPublishScreen({
       )}
 
       {showMore && (
-        <Sheet title={t("clip_more_options")} onClose={() => setShowMore(false)}>
+        <Sheet title={t("clip_more_options")}} onClose={() => setShowMore(false)}>
           <ToggleRow
-            label={t("clip_allow_comments")}
+            label={t("clip_allow_comments")}}
             sub={t("clip_allow_comments_sub")}
             checked={allowComments}
             onChange={setAllowComments}
           />
           <ToggleRow
-            label={t("clip_eu_block")}
+            label={t("clip_eu_block")}}
             sub={t("clip_eu_block_sub")}
             checked={euBlocked}
             onChange={setEuBlocked}

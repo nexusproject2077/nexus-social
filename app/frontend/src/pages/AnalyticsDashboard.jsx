@@ -187,7 +187,7 @@ export default function AnalyticsDashboard({ user, setUser }) {
                       labelStyle={{ color: "#e2e8f0" }}
                     />
                     <Legend wrapperStyle={{ fontSize: "11px" }} />
-                    <Bar dataKey="likes" fill="#ec4899" name=t("likes_received") />
+                    <Bar dataKey="likes" fill="#ec4899" name={t("likes_received")} />
                     <Bar dataKey="comments" fill="#8b5cf6" name="Commentaires" />
                     <Bar dataKey="posts" fill="#06b6d4" name="Mes posts" />
                   </BarChart>
@@ -216,9 +216,9 @@ export default function AnalyticsDashboard({ user, setUser }) {
                       labelStyle={{ color: "#e2e8f0" }}
                     />
                     <Legend wrapperStyle={{ fontSize: "11px" }} />
-                    <Line type="monotone" dataKey="followers" stroke="#06b6d4" name=t("new_followers") strokeWidth={2} />
-                    <Line type="monotone" dataKey="posts" stroke="#3b82f6" name=t("posts_label") strokeWidth={2} />
-                    <Line type="monotone" dataKey="likes" stroke="#ec4899" name=t("likes_received") strokeWidth={2} />
+                    <Line type="monotone" dataKey="followers" stroke="#06b6d4" name={t("new_followers")} strokeWidth={2} />
+                    <Line type="monotone" dataKey="posts" stroke="#3b82f6" name={t("posts_label")} strokeWidth={2} />
+                    <Line type="monotone" dataKey="likes" stroke="#ec4899" name={t("likes_received")} strokeWidth={2} />
                     <Line type="monotone" dataKey="comments" stroke="#f59e0b" name="Commentaires" strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>

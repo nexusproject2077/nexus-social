@@ -125,7 +125,7 @@ function ListsPanel({ user }) {
             <div className="flex items-center gap-2 px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <span className="material-symbols-outlined" style={{ color: "var(--nexus-accent)" }}>group</span>
               <p className="flex-1 font-black truncate" style={{ color: "#dae2fd" }}>{detail.name}</p>
-              <button onClick={() => deleteList(detail.id)} title=t("delete_list") style={{ color: "#f87171" }}>
+              <button onClick={() => deleteList(detail.id)} title={t("delete_list")} style={{ color: "#f87171" }}>
                 <span className="material-symbols-outlined">delete</span>
               </button>
               <button onClick={() => setDetail(null)} style={{ color: "#859397" }}>
@@ -141,7 +141,7 @@ function ListsPanel({ user }) {
                 <div className="flex items-center gap-2 rounded-full px-3 h-10" style={{ background: "#131b2e" }}>
                   <span className="material-symbols-outlined" style={{ color: "#859397", fontSize: 18 }}>search</span>
                   <input autoFocus value={addQuery} onChange={(e) => setAddQuery(e.target.value)}
-                    placeholder=t("search_user") className="flex-1 bg-transparent outline-none text-sm select-text"
+                    placeholder={t("search_user")} className="flex-1 bg-transparent outline-none text-sm select-text"
                     style={{ color: "#dae2fd" }} />
                   <button onClick={() => { setAdding(false); setAddQuery(""); }} style={{ color: "#859397" }}>
                     <span className="material-symbols-outlined text-base">close</span>
@@ -311,7 +311,7 @@ export default function SearchPage({ user }) {
                 data-testid="search-input"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder=t("search_on_nexus")
+                placeholder={t("search_on_nexus")}
                 autoFocus
                 className="flex-1 bg-transparent border-none outline-none text-sm select-text"
                 style={{ color: "#dae2fd" }}

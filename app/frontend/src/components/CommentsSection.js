@@ -150,7 +150,7 @@ export default function CommentsSection({ postId, currentUser, onCommentAdded, o
           <input
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
-            placeholder=t("add_comment")
+            placeholder={t("add_comment")}
             className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500"
             style={{ color: C.onSurface }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitComment(e); } }}

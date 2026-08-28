@@ -357,7 +357,7 @@ export default function NotificationsPage({ user }) {
                     <button
                       onClick={(e) => handleDelete(e, notif.id)}
                       className="flex-shrink-0 text-slate-600 hover:text-red-400 transition-all p-1 lg:opacity-0 lg:group-hover:opacity-100"
-                      title=t("delete")
+                      title={t("delete")}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

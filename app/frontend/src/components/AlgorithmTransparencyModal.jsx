@@ -95,14 +95,14 @@ export default function AlgorithmTransparencyModal({ onClose }) {
           </Section>
 
           {/* Tendances */}
-          <Section icon={TrendingUp} title=t("trending")>
+          <Section icon={TrendingUp} title={t("trending")}>
             Les tendances reflètent les hashtags les plus utilisés au cours des
             <b> dernières 24 heures</b>, pondérés par le nombre de publications et de
             likes. Elles se renouvellent automatiquement : aucun choix éditorial manuel.
           </Section>
 
           {/* Publicité */}
-          <Section icon={Megaphone} title=t("ads")>
+          <Section icon={Megaphone} title={t("ads")}>
             Les publicités affichées sont <b>non personnalisées</b> par défaut : elles ne
             reposent pas sur un profilage de votre comportement. Elles ne s'affichent
             qu'après votre consentement aux cookies.

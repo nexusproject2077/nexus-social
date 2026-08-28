@@ -101,7 +101,7 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
               data-testid="edit-bio-input"
               value={bio}
               onChange={(e) => setBio(e.target.value)}
-              placeholder=t("tell_us_about_you")
+              placeholder={t("tell_us_about_you")}
               className="bg-slate-800 border-slate-700 text-white"
               rows={4}
             />

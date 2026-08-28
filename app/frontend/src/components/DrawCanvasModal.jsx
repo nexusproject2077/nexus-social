@@ -92,11 +92,11 @@ export default function DrawCanvasModal({ open, onClose, onSubmit }) {
   return (
     <div className="fixed inset-0 z-[95] flex flex-col" style={{ background: "rgba(2,6,20,0.92)" }}>
       <div className="flex items-center justify-between px-4 py-3">
-        <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }} aria-label={t("dm.cancel")}>
+        <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }} aria-label={t("dm.cancel")}}>
           <span className="material-symbols-outlined" style={{ color: "#dae2fd" }}>close</span>
         </button>
         <span className="text-sm font-bold" style={{ color: "#dae2fd" }}>{t("dm.draw")}</span>
-        <button onClick={clear} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }} aria-label={t("dm.erase")}>
+        <button onClick={clear} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }} aria-label={t("dm.erase")}}>
           <span className="material-symbols-outlined" style={{ color: "#dae2fd" }}>ink_eraser</span>
         </button>
       </div>

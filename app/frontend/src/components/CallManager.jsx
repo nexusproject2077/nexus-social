@@ -331,7 +331,7 @@ export default function CallManager({ user }) {
               style={{ background: "#ef4444", color: "#fff" }}>
               <span className="material-symbols-outlined text-2xl">call_end</span>
             </button>
-            <button onClick={acceptCall} title=t("answer")
+            <button onClick={acceptCall} title={t("answer")}
               className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition"
               style={{ background: "#22c55e", color: "#fff" }}>
               <span className="material-symbols-outlined text-2xl">{withVideo ? "videocam" : "call"}</span>

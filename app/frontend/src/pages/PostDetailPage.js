@@ -108,7 +108,7 @@ export default function PostDetailPage({ user }) {
                 data-testid="comment-input"
                 value={commentContent}
                 onChange={(e) => setCommentContent(e.target.value)}
-                placeholder=t("write_comment")
+                placeholder={t("write_comment")}
                 className="bg-slate-900 border-slate-700 text-white mb-3"
                 rows={3}
               />

@@ -336,7 +336,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                   <span
                     className="material-symbols-outlined text-sm"
                     style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1" }}
-                    title=t("verified_account")
+                    title={t("verified_account")}
                   >
                     verified
                   </span>
@@ -354,7 +354,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               </p>
               <p className="text-xs flex items-center gap-1" style={{ color: C.outline }}>
                 {post.is_pinned && (
-                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title={t("pinned")}>
+                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title={t("pinned")}}>
                     <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>push_pin</span>
                     {t("pinned")} ·
                   </span>
@@ -376,7 +376,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                   <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: pinned ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
                 </button>
               )}
-              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title={t("delete")}>
+              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title={t("delete")}}>
                 <span className="material-symbols-outlined text-xl">delete</span>
               </button>
             </div>
@@ -526,7 +526,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           {/* Like */}
           <button
             onClick={handleLike}
-            title=t("like")
+            title={t("like")}
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: isLiked ? "#f87171" : C.outline }}
           >
@@ -539,7 +539,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           {/* Comment — ouvre le composeur / fil de commentaires */}
           <button
             onClick={() => setShowComments(!showComments)}
-            title=t("comment")
+            title={t("comment")}
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: showComments ? C.cyan : C.outline }}
           >
@@ -577,7 +577,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           {/* Share */}
           <button
             onClick={handleShare}
-            title=t("share")
+            title={t("share")}
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: C.outline }}
           >

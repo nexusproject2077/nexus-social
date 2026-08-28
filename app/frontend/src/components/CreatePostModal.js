@@ -334,7 +334,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                 onClick={handleRemoveMedia}
                 className="absolute top-2 left-2 bg-slate-900/80 hover:bg-slate-800"
                 data-testid="remove-media-button"
-                title=t("remove_media")
+                title={t("remove_media")}
               >
                 <X className="w-4 h-4" />
               </Button>

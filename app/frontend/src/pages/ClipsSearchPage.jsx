@@ -198,11 +198,11 @@ export default function ClipsSearchPage({ user, setUser }) {
         </div>
       );
     }
-    if (tab === "videos") return data.videos.length ? <VideoGrid items={data.videos} /> : <Empty label=t("search_videos") />;
+    if (tab === "videos") return data.videos.length ? <VideoGrid items={data.videos} /> : <Empty label={t("search_videos")} />;
     if (tab === "users") return data.users.length ? <div>{data.users.map((u) => <UserRow key={u.id} u={u} />)}</div> : <Empty label="Cherche des comptes" />;
     if (tab === "posts") return data.posts.length ? <div>{data.posts.map((p) => <PostRow key={p.id} p={p} />)}</div> : <Empty label="Cherche des posts" />;
     if (tab === "hashtags") return data.hashtags.length ? <div>{data.hashtags.map((t) => <HashRow key={t.tag} t={t} />)}</div> : <Empty label="Cherche des hashtags" />;
-    if (tab === "live") return data.lives.length ? <div>{data.lives.map((l) => <LiveRow key={l.room_id} l={l} />)}</div> : <Empty label=t("no_live") />;
+    if (tab === "live") return data.lives.length ? <div>{data.lives.map((l) => <LiveRow key={l.room_id} l={l} />)}</div> : <Empty label={t("no_live")} />;
     return null;
   };
 

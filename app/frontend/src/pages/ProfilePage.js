@@ -204,7 +204,7 @@ export default function ProfilePage({ user, setUser }) {
         <button
           data-testid="saved-shortcut"
           onClick={() => navigate("/enregistres")}
-          title=t("saved")
+          title={t("saved")}
           style={{ background: C.surfaceHigh, color: C.onSurface, border: `1px solid ${C.outlineVariant}` }}
           className="flex items-center justify-center w-10 h-10 rounded-xl transition-all active:scale-95 hover:opacity-90"
         >
@@ -285,7 +285,7 @@ export default function ProfilePage({ user, setUser }) {
           data-testid="profile-settings-button"
           className="lg:hidden fixed top-3 right-4 z-[55] w-10 h-10 flex items-center justify-center"
           style={{ color: "#dae2fd", textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
-          title=t("settings.title")
+          title={t("settings.title")}
         >
           <span className="material-symbols-outlined" style={{ fontSize: 26 }}>settings</span>
         </button>
@@ -342,7 +342,7 @@ export default function ProfilePage({ user, setUser }) {
                   <span
                     className="material-symbols-outlined"
                     style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1", fontSize: "24px" }}
-                    title=t("verified_account")
+                    title={t("verified_account")}
                   >
                     verified
                   </span>
@@ -364,7 +364,7 @@ export default function ProfilePage({ user, setUser }) {
                 {!isOwnProfile && profile.can_receive_tips && (
                   <button
                     data-testid="tip-button"
-                    title=t("tip")
+                    title={t("tip")}
                     onClick={() => setShowTip(true)}
                     style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 hover:opacity-90"
@@ -376,7 +376,7 @@ export default function ProfilePage({ user, setUser }) {
                 {/* Partager le profil : copie l'URL /profil/:userId (ou partage natif). */}
                 <button
                   data-testid="share-profile"
-                  title=t("share_profile")
+                  title={t("share_profile")}
                   onClick={async () => {
                     const url = `${window.location.origin}/profil/${userId}`;
                     try {

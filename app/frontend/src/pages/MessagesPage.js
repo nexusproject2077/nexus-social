@@ -1342,7 +1342,7 @@ export default function MessagesPage({ user }) {
       </button>
       {/* PC : 3 points au survol → menu (non lu / épingler / sourdine / supprimer). */}
       <button
-        title=t("options")
+        title={t("options")}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvMenu(lp); }}
         className="hidden lg:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
@@ -1393,7 +1393,7 @@ export default function MessagesPage({ user }) {
       </button>
       {/* PC : 3 points au survol → menu (non lu / épingler / sourdine / supprimer). */}
       <button
-        title=t("options")
+        title={t("options")}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConvMenu(lp); }}
         className="hidden lg:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
@@ -1434,7 +1434,7 @@ export default function MessagesPage({ user }) {
             ref={newMsgSearchRef}
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); if (!e.target.value.trim()) setShowNewMsg(false); else setShowNewMsg(true); }}
-            placeholder=t("search_or_start_conversation")
+            placeholder={t("search_or_start_conversation")}
             className="w-full text-sm pl-9 pr-4 py-2 rounded-xl border-none outline-none placeholder:text-slate-600 select-text"
             style={{ background: C.high, color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
           />
@@ -1569,7 +1569,7 @@ export default function MessagesPage({ user }) {
                 </>
               )}
               {/* Rechercher dans la conversation */}
-              <button onClick={() => { setShowConvSearch((v) => { if (v) setConvSearch(""); return !v; }); }} title=t("search")
+              <button onClick={() => { setShowConvSearch((v) => { if (v) setConvSearch(""); return !v; }); }} title={t("search")}
                 className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/5"
                 style={{ color: showConvSearch ? C.cyan : C.outline }}>
                 <Ico name="search" size={20} />
@@ -1593,7 +1593,7 @@ export default function MessagesPage({ user }) {
                 autoFocus
                 value={convSearch}
                 onChange={(e) => setConvSearch(e.target.value)}
-                placeholder={t("search_in_conversation")}
+                placeholder={t("search_in_conversation")}}
                 className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-600 select-text"
                 style={{ color: C.onSurface, WebkitUserSelect: "text", userSelect: "text" }}
               />
@@ -1883,7 +1883,7 @@ export default function MessagesPage({ user }) {
               /* Barre d'enregistrement vocal (façon Insta : corbeille · mic rouge ·
                  chrono · onde animée · valider) */
               <div className="flex items-center gap-2.5 px-3 py-2 rounded-2xl" style={glass}>
-                <button type="button" onClick={cancelRecording} title=t("delete")
+                <button type="button" onClick={cancelRecording} title={t("delete")}
                   className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
                   style={{ color: "#f87171" }}>
                   <span className="material-symbols-outlined text-lg">delete</span>
@@ -2020,13 +2020,13 @@ export default function MessagesPage({ user }) {
           {/* Actions rapides */}
           <div className="flex items-start gap-1 px-4 pb-5">
             {!isGroup && (
-              <QuickAction icon="profile" label=t("profile")
+              <QuickAction icon="profile" label={t("profile")}
                 onClick={() => { setShowDetails(false); navigate(`/profile/${selectedUserId}`); }} />
             )}
-            <QuickAction icon="search" label=t("search") onClick={() => toast("Bientôt disponible")} />
+            <QuickAction icon="search" label={t("search")} onClick={() => toast("Bientôt disponible")} />
             <QuickAction icon={isMuted(muteId) ? "unmute" : "mute"} label={isMuted(muteId) ? "{t("reactivate")}" : "{t("mute_notifications")}"}
               onClick={() => toggleMute(muteId)} />
-            <QuickAction icon="options" label=t("options") onClick={() => setDetailsMore((v) => !v)} />
+            <QuickAction icon="options" label={t("options")} onClick={() => setDetailsMore((v) => !v)} />
           </div>
 
           {isGroup ? (
@@ -2047,7 +2047,7 @@ export default function MessagesPage({ user }) {
                       onClick={() => { setGroupNameDraft(selectedGroup?.name || ""); setEditingName(true); }} />
                   )
                 )}
-                <DetailsRow icon="report" label={t("something_wrong")} onClick={handleReport} />
+                <DetailsRow icon="report" label={t("something_wrong")}} onClick={handleReport} />
               </div>
 
               {/* Membres */}
@@ -2066,7 +2066,7 @@ export default function MessagesPage({ user }) {
                 {showAddMember && groupIsAdmin && (
                   <div className="px-4 pb-2">
                     <input value={addMemberSearch} autoFocus onChange={(e) => setAddMemberSearch(e.target.value)}
-                      placeholder={t("search_person")}
+                      placeholder={t("search_person")}}
                       className="w-full px-3 py-2 rounded-xl text-sm border-none outline-none placeholder:text-slate-600"
                       style={{ background: C.high, color: C.onSurface }} />
                     {addMemberResults.map((u) => (
@@ -2112,16 +2112,16 @@ export default function MessagesPage({ user }) {
           ) : (
             /* ── Liste DM (façon Insta) ── */
             <div style={{ borderTop: `1px solid ${C.outline}14` }}>
-              <DetailsRow icon="palette" label={t("customize")} sub={t("theme_and_font")}
+              <DetailsRow icon="palette" label={t("customize")}} sub={t("theme_and_font")}
                 onClick={() => { setShowDetails(false); navigate("/settings"); }} />
-              <DetailsRow icon="nickname" label={t("nicknames")} onClick={() => toast("Bientôt disponible")} />
-              <DetailsRow icon="timer" label={t("ephemeral_messages")} sub={ephemeralLabel(ephemeralTtl, t)}
+              <DetailsRow icon="nickname" label={t("nicknames")}} onClick={() => toast("Bientôt disponible")} />
+              <DetailsRow icon="timer" label={t("ephemeral_messages")}} sub={ephemeralLabel(ephemeralTtl, t)}
                 onClick={() => { setShowDetails(false); setShowEphemeralChooser(true); }} />
-              <DetailsRow icon="privacy" label={t("privacy_and_security")}
+              <DetailsRow icon="privacy" label={t("privacy_and_security")}}
                 onClick={() => { setShowDetails(false); navigate("/settings"); }} />
-              <DetailsRow icon="group" label={t("create_group_chat")}
+              <DetailsRow icon="group" label={t("create_group_chat")}}
                 onClick={() => { setShowDetails(false); openNewMessageModal(); }} />
-              <DetailsRow icon="report" label={t("something_wrong")} onClick={handleReport} />
+              <DetailsRow icon="report" label={t("something_wrong")}} onClick={handleReport} />
             </div>
           )}
 
@@ -2491,7 +2491,7 @@ export default function MessagesPage({ user }) {
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: C.outline }}>search</span>
                 <input autoFocus value={nmSearch} onChange={(e) => setNmSearch(e.target.value)}
-                  placeholder={t("search_ellipsis")}
+                  placeholder={t("search_ellipsis")}}
                   className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border-none outline-none placeholder:text-slate-600"
                   style={{ background: C.high, color: C.onSurface }} />
               </div>
@@ -2564,7 +2564,7 @@ export default function MessagesPage({ user }) {
             <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Nom du groupe..."
               className="w-full mb-4 px-4 py-2.5 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
               style={{ background: C.high, color: C.onSurface }} />
-            <input value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder={t("search_members")}
+            <input value={groupSearch} onChange={e => setGroupSearch(e.target.value)} placeholder={t("search_members")}}
               className="w-full mb-3 px-4 py-2.5 rounded-xl text-sm border-none outline-none placeholder:text-slate-500"
               style={{ background: C.high, color: C.onSurface }} />
             {groupSearchRes.length > 0 && (

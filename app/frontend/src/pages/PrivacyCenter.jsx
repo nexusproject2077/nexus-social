@@ -405,7 +405,7 @@ export default function PrivacyCenter({ user, setUser }) {
                     value={deleteReason}
                     onChange={(e) => setDeleteReason(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm resize-none"
-                    placeholder=t("why_delete_account")
+                    placeholder={t("why_delete_account")}
                     rows={3}
                   />
                 </div>
@@ -417,7 +417,7 @@ export default function PrivacyCenter({ user, setUser }) {
                     value={deleteConfirm}
                     onChange={(e) => setDeleteConfirm(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm"
-                    placeholder=t("DELETE_CONFIRM")
+                    placeholder={t("DELETE_CONFIRM")}
                   />
                 </div>
               </div>

@@ -14,7 +14,7 @@ export default function GuidesIndexPage() {
 
   return (
     <ContentLayout
-      title={t("guides.index_title")}
+      title={t("guides.index_title")}}
       description={t("guides.index_desc")}
     >
       <h1 style={{ fontSize: 30, color: "#fff", margin: "0 0 8px", letterSpacing: "-0.02em" }}>{t("guides.index_h1")}</h1>

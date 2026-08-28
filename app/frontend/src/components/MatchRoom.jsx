@@ -133,7 +133,7 @@ export default function MatchRoom({ match, currentUser, onClose }) {
         <input
           value={text}
           onChange={(e) => setText(e.target.value.slice(0, 280))}
-          placeholder={t("match_room.placeholder")}
+          placeholder={t("match_room.placeholder")}}
           className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none text-white"
           style={{ background: "#222a3d", border: "1px solid rgba(34,211,238,0.15)" }}
           onKeyDown={(e) => e.key === "Enter" && send()}

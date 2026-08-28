@@ -531,7 +531,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
               {fmt(comments)}
             </span>
             <span className="ml-auto text-xs opacity-80">Double-tap : ±5 s · Appui long : 2x</span>
-            <button onClick={toggleFullscreen} className="flex items-center justify-center w-9 h-9 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} title=t("exit_fullscreen")>
+            <button onClick={toggleFullscreen} className="flex items-center justify-center w-9 h-9 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} title={t("exit_fullscreen")}>
               <span className="material-symbols-outlined text-white text-xl">fullscreen_exit</span>
             </button>
           </div>
@@ -615,7 +615,7 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
           <button
             onClick={(e) => { e.stopPropagation(); onDelete?.(post.id); }}
             data-testid="delete-clip"
-            title=t("delete_this_clip")
+            title={t("delete_this_clip")}
             className="flex flex-col items-center gap-1"
           >
             <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>

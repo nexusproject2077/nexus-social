@@ -296,7 +296,7 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
             return (
               <div key={id} className="absolute left-0 right-0" style={{ top: i * ROW_H, height: ROW_H, transform: rowTransform(i), transition: dragging ? "none" : "transform 0.18s ease", zIndex: dragging ? 5 : 1 }}>
                 {/* Bouton supprimer (révélé au swipe) */}
-                <button onClick={() => remove(id)} aria-label={t("stack.remove")}
+                <button onClick={() => remove(id)} aria-label={t("stack.remove")}}
                   className="absolute right-0 top-1 bottom-1 flex items-center justify-center rounded-2xl"
                   style={{ width: 64, background: "#f87171", color: "#2a0808" }}>
                   <span className="material-symbols-outlined">delete</span>
@@ -306,7 +306,7 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
                   style={{ background: dragging ? "#232c40" : "#1a2234", boxShadow: dragging ? "0 8px 22px rgba(0,0,0,0.5)" : "none", transform: `translateX(${isSwiped ? -72 : 0}px)`, transition: "transform 0.2s ease, background 0.15s" }}
                   onTouchStart={(e) => onRowTouchStart(id, e)} onTouchMove={(e) => onRowTouchMove(id, e)}
                   onClick={() => isSwiped && setSwiped(null)}>
-                  <span onPointerDown={(e) => startDrag(i, e)} className="flex-shrink-0 touch-none cursor-grab active:cursor-grabbing" style={{ color: "#5b6577" }} aria-label={t("stack.move")}>
+                  <span onPointerDown={(e) => startDrag(i, e)} className="flex-shrink-0 touch-none cursor-grab active:cursor-grabbing" style={{ color: "#5b6577" }} aria-label={t("stack.move")}}>
                     <span className="material-symbols-outlined">drag_indicator</span>
                   </span>
                   <span className="material-symbols-outlined" style={{ color: w.color }}>{w.icon}</span>
@@ -451,11 +451,11 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
               style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)" }}>
               <span className="material-symbols-outlined flex-shrink-0" style={{ color: "#6b7686", fontSize: 20 }}>search</span>
               <input value={teamQ} onChange={(e) => setTeamQ(e.target.value)}
-                placeholder={t("stack.search_club")}
+                placeholder={t("stack.search_club")}}
                 className="flex-1 bg-transparent text-sm text-white outline-none min-w-0"
                 style={{ caretColor: NEON }} />
               {teamQ && (
-                <button onClick={() => setTeamQ("")} className="flex-shrink-0" aria-label={t("stack.erase")}>
+                <button onClick={() => setTeamQ("")} className="flex-shrink-0" aria-label={t("stack.erase")}}>
                   <span className="material-symbols-outlined" style={{ color: "#6b7686", fontSize: 18 }}>close</span>
                 </button>
               )}
@@ -575,7 +575,7 @@ function WidgetConfig({ widgetId, favL, favT, financeAssets, weatherCity, onSave
           <div>
             <div className="flex gap-2">
               <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && searchCity()}
-                placeholder={t("stack.search_city")}
+                placeholder={t("stack.search_city")}}
                 className="flex-1 px-4 py-2.5 rounded-2xl text-sm text-white outline-none"
                 style={{ background: "#1a2234", border: "1px solid rgba(255,255,255,0.08)" }} />
               <button onClick={searchCity} className="px-4 rounded-2xl font-bold text-sm" style={{ background: "#232c40", color: "#c7d0e0" }}>
@@ -933,9 +933,9 @@ export default function WidgetStack({ user, setUser }) {
           <span className="material-symbols-outlined" style={{ color: w.color, fontSize: 15 }}>{w.icon}</span>
           <span className="text-[11px] font-black uppercase tracking-wider" style={{ color: "#8b96a8" }}>{t("widgets." + id)}</span>
         </div>
-        <button onClick={() => openWidgetMenu(id)} aria-label={t("stack.customize_widget")}
+        <button onClick={() => openWidgetMenu(id)} aria-label={t("stack.customize_widget")}}
           className="flex items-center justify-center -m-1 p-1 rounded-lg active:scale-90 transition-transform">
-          <span className="material-symbols-outlined" style={{ color: "#6b7686", fontSize: 16 }} title={t("stack.customize")}>more_horiz</span>
+          <span className="material-symbols-outlined" style={{ color: "#6b7686", fontSize: 16 }} title={t("stack.customize")}}>more_horiz</span>
         </button>
       </div>
     );

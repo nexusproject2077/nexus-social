@@ -9,7 +9,7 @@ export default function AboutPage() {
   const { t } = useTranslation();
   return (
     <ContentLayout
-      title={t("about.page_title")}
+      title={t("about.page_title")}}
       description={t("about.page_desc")}
     >
       <style>{proseStyle}</style>
