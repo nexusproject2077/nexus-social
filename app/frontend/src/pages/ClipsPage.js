@@ -12,21 +12,33 @@ import { useTranslation } from "react-i18next";
 import ClipPublishScreen from "@/components/ClipPublishScreen";
 
 const C = {
-  surface:   "#0b1326",
-  high:      "#222a3d",
-  cyan:      (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
+  surface: "#0b1326",
+  high: "#222a3d",
+  cyan:
+    (typeof window !== "undefined" &&
+      window.localStorage.getItem("nexus_accent")) ||
+    "#22d3ee",
   onPrimary: "#00363e",
-  outline:   "#859397",
+  outline: "#859397",
   onSurface: "#dae2fd",
 };
 
 const fmtNum = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
-const fmtRel = (d, lang) => { try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: getDateFnsLocale(lang) }); } catch { return ""; } };
+const fmtRel = (d, lang) => {
+  try {
+    return formatDistanceToNow(new Date(d), {
+      addSuffix: true,
+      locale: getDateFnsLocale(lang),
+    });
+  } catch {
+    return "";
+  }
+};
 
 // Un commentaire de clip : like, réponses, et suppression par son auteur.
 function CommentItem({ comment, currentUser, onDeleted }) {
-  const [liked, setLiked]   = useState(comment.is_liked || false);
-  const [likes, setLikes]   = useState(comment.likes_count || 0);
+  const [liked, setLiked] = useState(comment.is_liked || false);
+  const [likes, setLikes] = useState(comment.likes_count || 0);
   const [repCount, setRepCount] = useState(comment.replies_count || 0);
   const [showReplies, setShowReplies] = useState(false);
   const [replies, setReplies] = useState([]);
@@ -53,19 +65,25 @@ function CommentItem({ comment, currentUser, onDeleted }) {
       try {
         const r = await axios.get(`${API}/comments/${comment.id}/replies`);
         setReplies(r.data || []);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   };
 
   const sendReply = async () => {
     if (!replyText.trim()) return;
     try {
-      const r = await axios.post(`${API}/comments/${comment.id}/replies`, { content: replyText });
+      const r = await axios.post(`${API}/comments/${comment.id}/replies`, {
+        content: replyText,
+      });
       if (r.data && r.data.id) setReplies((prev) => [...prev, r.data]);
       setRepCount((n) => n + 1);
       setReplyText("");
       setShowReplies(true);
-    } catch { toast.error(t("error")); }
+    } catch {
+      toast.error(t("error"));
+    }
   };
 
   const deleteReply = async (rid) => {
@@ -73,18 +91,29 @@ function CommentItem({ comment, currentUser, onDeleted }) {
       await axios.delete(`${API}/comments/${comment.id}/replies/${rid}`);
       setReplies((prev) => prev.filter((x) => x.id !== rid));
       setRepCount((n) => Math.max(0, n - 1));
-    } catch { toast.error(t("error")); }
+    } catch {
+      toast.error(t("error"));
+    }
   };
 
-  const Avatar = ({ pic, name, size = "w-7 h-7" }) => (
+  const Avatar = ({ pic, name, size = "w-7 h-7" }) =>
     pic ? (
-      <img src={pic} alt={name} className={`${size} rounded-full object-cover flex-shrink-0`} />
+      <img
+        src={pic}
+        alt={name}
+        className={`${size} rounded-full object-cover flex-shrink-0`}
+      />
     ) : (
-      <div className={`${size} rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0`} style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+      <div
+        className={`${size} rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0`}
+        style={{
+          background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+          color: C.onPrimary,
+        }}
+      >
         {(name || "?")[0].toUpperCase()}
       </div>
-    )
-  );
+    );
 
   return (
     <div className="flex gap-2.5 items-start">
@@ -95,19 +124,35 @@ function CommentItem({ comment, currentUser, onDeleted }) {
           <span>{comment.content}</span>
         </p>
         <div className="flex items-center gap-4 mt-1">
-          <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(comment.created_at, _relLang)}</span>
-          <button onClick={() => setReplyOpen((v) => !v)} className="text-[10px] font-semibold" style={{ color: C.outline }}>{
-            t("answer")
-          }</button>
+          <span className="text-[10px]" style={{ color: C.outline }}>
+            {fmtRel(comment.created_at, _relLang)}
+          </span>
+          <button
+            onClick={() => setReplyOpen((v) => !v)}
+            className="text-[10px] font-semibold"
+            style={{ color: C.outline }}
+          >
+            {t("answer")}
+          </button>
           {repCount > 0 && (
-            <button onClick={loadReplies} className="text-[10px] font-semibold" style={{ color: C.cyan }}>
-              {showReplies ? "Masquer" : `${repCount} réponse${repCount > 1 ? "s" : ""}`}
+            <button
+              onClick={loadReplies}
+              className="text-[10px] font-semibold"
+              style={{ color: C.cyan }}
+            >
+              {showReplies
+                ? "Masquer"
+                : `${repCount} réponse${repCount > 1 ? "s" : ""}`}
             </button>
           )}
           {currentUser?.id === comment.author_id && (
-            <button onClick={() => onDeleted?.(comment.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>{
-              t("delete")
-            }</button>
+            <button
+              onClick={() => onDeleted?.(comment.id)}
+              className="text-[10px] font-semibold"
+              style={{ color: "#f87171" }}
+            >
+              {t("delete")}
+            </button>
           )}
         </div>
 
@@ -118,78 +163,126 @@ function CommentItem({ comment, currentUser, onDeleted }) {
               onChange={(e) => setReplyText(e.target.value)}
               placeholder={`Répondre à @${comment.author_username}…`}
               className="flex-1 bg-transparent outline-none text-xs py-1.5 px-2.5 rounded-lg"
-              style={{ backgroundColor: C.high, color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}
-              onKeyDown={(e) => { if (e.key === "Enter") sendReply(); }}
+              style={{
+                backgroundColor: C.high,
+                color: C.onSurface,
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") sendReply();
+              }}
             />
-            <button onClick={sendReply} className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+            <button
+              onClick={sendReply}
+              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{
+                background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+                color: C.onPrimary,
+              }}
+            >
               <span className="material-symbols-outlined text-xs">send</span>
             </button>
           </div>
         )}
 
-        {showReplies && replies.map((rp) => (
-          <div key={rp.id} className="flex gap-2 items-start mt-2 pl-1">
-            <Avatar pic={rp.author_profile_pic} name={rp.author_username} size="w-6 h-6" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs" style={{ color: C.onSurface }}>
-                <span className="font-bold">@{rp.author_username}</span>{" "}
-                <span>{rp.content}</span>
-              </p>
-              <div className="flex items-center gap-3 mt-0.5">
-                <span className="text-[10px]" style={{ color: C.outline }}>{fmtRel(rp.created_at, _relLang)}</span>
-                {currentUser?.id === rp.author_id && (
-                  <button onClick={() => deleteReply(rp.id)} className="text-[10px] font-semibold" style={{ color: "#f87171" }}>{
-                    t("delete")
-                  }</button>
-                )}
+        {showReplies &&
+          replies.map((rp) => (
+            <div key={rp.id} className="flex gap-2 items-start mt-2 pl-1">
+              <Avatar
+                pic={rp.author_profile_pic}
+                name={rp.author_username}
+                size="w-6 h-6"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs" style={{ color: C.onSurface }}>
+                  <span className="font-bold">@{rp.author_username}</span>{" "}
+                  <span>{rp.content}</span>
+                </p>
+                <div className="flex items-center gap-3 mt-0.5">
+                  <span className="text-[10px]" style={{ color: C.outline }}>
+                    {fmtRel(rp.created_at, _relLang)}
+                  </span>
+                  {currentUser?.id === rp.author_id && (
+                    <button
+                      onClick={() => deleteReply(rp.id)}
+                      className="text-[10px] font-semibold"
+                      style={{ color: "#f87171" }}
+                    >
+                      {t("delete")}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
       </div>
 
       {/* Like du commentaire */}
-      <button onClick={toggleLike} className="flex flex-col items-center gap-0.5 flex-shrink-0">
-        <span className="material-symbols-outlined text-base" style={{ color: liked ? "#f87171" : C.outline, fontVariationSettings: liked ? "'FILL' 1" : "'FILL' 0" }}>
+      <button
+        onClick={toggleLike}
+        className="flex flex-col items-center gap-0.5 flex-shrink-0"
+      >
+        <span
+          className="material-symbols-outlined text-base"
+          style={{
+            color: liked ? "#f87171" : C.outline,
+            fontVariationSettings: liked ? "'FILL' 1" : "'FILL' 0",
+          }}
+        >
           favorite
         </span>
-        {likes > 0 && <span className="text-[10px]" style={{ color: C.outline }}>{fmtNum(likes)}</span>}
+        {likes > 0 && (
+          <span className="text-[10px]" style={{ color: C.outline }}>
+            {fmtNum(likes)}
+          </span>
+        )}
       </button>
     </div>
   );
 }
 
-function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete }) {
-  const navigate  = useNavigate();
-  const videoRef  = useRef(null);
-  const sceneRef  = useRef(null);
-  const [isLiked, setIsLiked]       = useState(post.is_liked || false);
-  const [likes, setLikes]           = useState(post.likes_count || 0);
-  const [comments, setComments]     = useState(post.comments_count || 0);
+function ClipCard({
+  post,
+  currentUser,
+  isActive,
+  index,
+  registerVideo,
+  onDelete,
+}) {
+  const navigate = useNavigate();
+  const videoRef = useRef(null);
+  const sceneRef = useRef(null);
+  const [isLiked, setIsLiked] = useState(post.is_liked || false);
+  const [likes, setLikes] = useState(post.likes_count || 0);
+  const [comments, setComments] = useState(post.comments_count || 0);
   // Son ACTIVÉ par défaut. Si le navigateur bloque l'autoplay avec son (politique
   // mobile), on retombe automatiquement en muet pour au moins lancer la lecture,
   // puis un tap réactive le son. La préférence de l'utilisateur est mémorisée.
   const [muted, setMuted] = useState(() => {
-    try { return localStorage.getItem("nexus_clips_muted") === "1"; } catch { return false; }
+    try {
+      return localStorage.getItem("nexus_clips_muted") === "1";
+    } catch {
+      return false;
+    }
   });
-  const [paused, setPaused]         = useState(false);
-  const [saved, setSaved]           = useState(post.is_saved || false);
-  const [progress, setProgress]     = useState(0);
-  const [duration, setDuration]     = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [saved, setSaved] = useState(post.is_saved || false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [scrubbing, setScrubbing]   = useState(false);
+  const [scrubbing, setScrubbing] = useState(false);
   const barRef = useRef(null);
-  const [heart, setHeart]           = useState(false);   // cœur animé (double-tap)
+  const [heart, setHeart] = useState(false); // cœur animé (double-tap)
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [commentsList, setCommentsList] = useState([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const tapTimer = useRef(null);
   // Vitesse 2x (appui long) + plein écran 16:9 + seek ±5s.
-  const [speeding, setSpeeding]     = useState(false);   // lecture 2x en cours
+  const [speeding, setSpeeding] = useState(false); // lecture 2x en cours
   const [isLandscape, setIsLandscape] = useState(false); // vidéo publiée en 16:9 ?
-  const [isFs, setIsFs]             = useState(false);    // plein écran actif
-  const [seekFlash, setSeekFlash]   = useState(null);     // "+5" | "-5" (feedback)
+  const [isFs, setIsFs] = useState(false); // plein écran actif
+  const [seekFlash, setSeekFlash] = useState(null); // "+5" | "-5" (feedback)
   const longPressTimer = useRef(null);
   const longPressFired = useRef(false);
 
@@ -207,8 +300,11 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
         setLoadingComments(true);
         const r = await axios.get(`${API}/posts/${post.id}/comments`);
         setCommentsList(r.data || []);
-      } catch { /* ignore */ }
-      finally { setLoadingComments(false); }
+      } catch {
+        /* ignore */
+      } finally {
+        setLoadingComments(false);
+      }
     }
   };
 
@@ -237,26 +333,43 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   useEffect(() => {
     const v = videoRef.current;
     if (v) v.muted = muted;
-    try { localStorage.setItem("nexus_clips_muted", muted ? "1" : "0"); } catch { /* ignore */ }
+    try {
+      localStorage.setItem("nexus_clips_muted", muted ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
   }, [muted]);
 
   const togglePlay = () => {
     const video = videoRef.current;
     if (!video) return;
-    if (video.paused) { video.play().catch(() => {}); setPaused(false); }
-    else { video.pause(); setPaused(true); }
+    if (video.paused) {
+      video.play().catch(() => {});
+      setPaused(false);
+    } else {
+      video.pause();
+      setPaused(true);
+    }
   };
 
   const likeHeart = async () => {
     if (isLiked) return; // double-tap = « like », ne dé-like pas
-    setIsLiked(true); setLikes((p) => p + 1);
+    setIsLiked(true);
+    setLikes((p) => p + 1);
     try {
       const res = await axios.post(`${API}/posts/${post.id}/like`);
-      setIsLiked(res.data.liked); setLikes((p) => (res.data.liked ? p : p - 1));
-    } catch { setIsLiked(false); setLikes((p) => p - 1); }
+      setIsLiked(res.data.liked);
+      setLikes((p) => (res.data.liked ? p : p - 1));
+    } catch {
+      setIsLiked(false);
+      setLikes((p) => p - 1);
+    }
   };
 
-  const triggerHeart = () => { setHeart(true); setTimeout(() => setHeart(false), 800); };
+  const triggerHeart = () => {
+    setHeart(true);
+    setTimeout(() => setHeart(false), 800);
+  };
 
   // Barre de progression manipulable : on convertit la position X du doigt/souris
   // en temps de lecture. Fonctionne au clic simple comme au glissement.
@@ -270,9 +383,28 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     setProgress(frac * 100);
     setCurrentTime(v.currentTime);
   };
-  const onScrubDown = (e) => { e.stopPropagation(); setScrubbing(true); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ } seekToClientX(e.clientX); };
-  const onScrubMove = (e) => { if (scrubbing) { e.stopPropagation(); seekToClientX(e.clientX); } };
-  const onScrubUp   = (e) => { if (scrubbing) { e.stopPropagation(); setScrubbing(false); } };
+  const onScrubDown = (e) => {
+    e.stopPropagation();
+    setScrubbing(true);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    seekToClientX(e.clientX);
+  };
+  const onScrubMove = (e) => {
+    if (scrubbing) {
+      e.stopPropagation();
+      seekToClientX(e.clientX);
+    }
+  };
+  const onScrubUp = (e) => {
+    if (scrubbing) {
+      e.stopPropagation();
+      setScrubbing(false);
+    }
+  };
 
   const fmtTime = (s) => {
     if (!s || !isFinite(s)) return "0:00";
@@ -295,19 +427,27 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   // il sert à avancer (droite) / reculer (gauche) de 5 s.
   const handleTap = (e) => {
     // Un appui long (vitesse 2x) vient de se terminer → on ignore ce clic.
-    if (longPressFired.current) { longPressFired.current = false; return; }
+    if (longPressFired.current) {
+      longPressFired.current = false;
+      return;
+    }
     const seekMode = isFs && isLandscape;
     if (tapTimer.current) {
-      clearTimeout(tapTimer.current); tapTimer.current = null;
+      clearTimeout(tapTimer.current);
+      tapTimer.current = null;
       if (seekMode) {
         const rect = e.currentTarget.getBoundingClientRect();
         const x = (e.clientX ?? rect.left + rect.width / 2) - rect.left;
         seekBy(x > rect.width / 2 ? 5 : -5);
       } else {
-        likeHeart(); triggerHeart();
+        likeHeart();
+        triggerHeart();
       }
     } else {
-      tapTimer.current = setTimeout(() => { tapTimer.current = null; togglePlay(); }, 260);
+      tapTimer.current = setTimeout(() => {
+        tapTimer.current = null;
+        togglePlay();
+      }, 260);
     }
   };
 
@@ -316,11 +456,18 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     longPressFired.current = false;
     longPressTimer.current = setTimeout(() => {
       const v = videoRef.current;
-      if (v) { v.playbackRate = 2; setSpeeding(true); longPressFired.current = true; }
+      if (v) {
+        v.playbackRate = 2;
+        setSpeeding(true);
+        longPressFired.current = true;
+      }
     }, 350);
   };
   const endSpeed = () => {
-    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
     const v = videoRef.current;
     if (v && v.playbackRate !== 1) v.playbackRate = 1;
     if (speeding) setSpeeding(false);
@@ -335,12 +482,23 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       if (!document.fullscreenElement) {
         await (el.requestFullscreen?.() || el.webkitRequestFullscreen?.());
         // Best-effort : verrouille l'orientation paysage (mobiles compatibles).
-        try { await window.screen?.orientation?.lock?.("landscape"); } catch { /* refusé sur PC */ }
+        try {
+          await window.screen?.orientation?.lock?.("landscape");
+        } catch {
+          /* refusé sur PC */
+        }
       } else {
-        try { window.screen?.orientation?.unlock?.(); } catch { /* ignore */ }
-        await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());
+        try {
+          window.screen?.orientation?.unlock?.();
+        } catch {
+          /* ignore */
+        }
+        await (document.exitFullscreen?.() ||
+          document.webkitExitFullscreen?.());
       }
-    } catch { /* Fullscreen refusé (contexte non autorisé) */ }
+    } catch {
+      /* Fullscreen refusé (contexte non autorisé) */
+    }
   };
 
   // Suit l'état réel du plein écran (bouton Échap, geste système…).
@@ -359,9 +517,15 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     // URL partageable du clip : /nexus-clips/:clipId ouvre directement la vidéo.
     const url = `${window.location.origin}/nexus-clips/${post.id}`;
     try {
-      if (navigator.share) await navigator.share({ title: t("nexus_clips"), url });
-      else { await navigator.clipboard.writeText(url); toast.success(t("link_copied")); }
-    } catch { /* annulé */ }
+      if (navigator.share)
+        await navigator.share({ title: t("nexus_clips"), url });
+      else {
+        await navigator.clipboard.writeText(url);
+        toast.success(t("link_copied"));
+      }
+    } catch {
+      /* annulé */
+    }
   };
 
   const toggleSave = async (e) => {
@@ -383,20 +547,36 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
     try {
       const res = await axios.post(`${API}/posts/${post.id}/like`);
       setIsLiked(res.data.liked);
-      setLikes(p => res.data.liked ? p + 1 : p - 1);
-    } catch { toast.error(t("error")); }
+      setLikes((p) => (res.data.liked ? p + 1 : p - 1));
+    } catch {
+      toast.error(t("error"));
+    }
   };
 
   const handleSendComment = async () => {
     if (!commentText.trim()) return;
     try {
-      const res = await axios.post(`${API}/posts/${post.id}/comments`, { content: commentText });
-      setComments(p => p + 1);
+      const res = await axios.post(`${API}/posts/${post.id}/comments`, {
+        content: commentText,
+      });
+      setComments((p) => p + 1);
       // Ajoute le commentaire en tête de liste immédiatement.
-      if (res.data && res.data.id) setCommentsList((prev) => [res.data, ...prev]);
-      else setCommentsList((prev) => [{ id: `tmp-${Date.now()}`, author_username: currentUser?.username, content: commentText, created_at: new Date().toISOString() }, ...prev]);
+      if (res.data && res.data.id)
+        setCommentsList((prev) => [res.data, ...prev]);
+      else
+        setCommentsList((prev) => [
+          {
+            id: `tmp-${Date.now()}`,
+            author_username: currentUser?.username,
+            content: commentText,
+            created_at: new Date().toISOString(),
+          },
+          ...prev,
+        ]);
       setCommentText("");
-    } catch { toast.error(t("error")); }
+    } catch {
+      toast.error(t("error"));
+    }
   };
 
   const handleDeleteComment = async (commentId) => {
@@ -404,290 +584,548 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       await axios.delete(`${API}/posts/${post.id}/comments/${commentId}`);
       setCommentsList((prev) => prev.filter((c) => c.id !== commentId));
       setComments((p) => Math.max(0, p - 1));
-    } catch { toast.error(t("error")); }
+    } catch {
+      toast.error(t("error"));
+    }
   };
 
-  const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1) + "k" : n;
-  const fmtDate = (d, lang) => { try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: getDateFnsLocale(lang) }); } catch { return ""; } };
+  const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
+  const fmtDate = (d, lang) => {
+    try {
+      return formatDistanceToNow(new Date(d), {
+        addSuffix: true,
+        locale: getDateFnsLocale(lang),
+      });
+    } catch {
+      return "";
+    }
+  };
 
   return (
-    <div className="relative w-full h-full flex-shrink-0 overflow-hidden flex items-center justify-center" style={{ background: "#000" }}>
+    <div
+      className="relative w-full h-full flex-shrink-0 overflow-hidden flex items-center justify-center"
+      style={{ background: "#000" }}
+    >
       {/* Scène : plein écran sur mobile ; colonne 9:16 centrée (letterbox, barres
           noires sur les côtés) sur PC. En plein écran 16:9, on occupe tout l'écran. */}
       <div
         ref={sceneRef}
         className={`relative overflow-hidden ${isFs ? "h-screen w-screen bg-black flex items-center justify-center" : "h-full w-full lg:w-auto lg:aspect-[9/16]"}`}
       >
-      {/* Video (Nexus Clips = vidéos uniquement).
+        {/* Video (Nexus Clips = vidéos uniquement).
           En plein écran 16:9 on passe en object-contain pour respecter le format. */}
-      <video
-        ref={videoRef}
-        src={post.media_url}
-        // Jamais de crop du contenu large : vidéos paysage/16:9 en `contain`
-        // (letterbox, entièrement visibles) ; vidéos verticales en `cover` (plein
-        // cadre, façon TikTok). Sur PC le conteneur est déjà en colonne 9:16.
-        className={`w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
-        loop
-        muted={muted}
-        playsInline
-        onClick={handleTap}
-        onPointerDown={startSpeed}
-        onPointerUp={endSpeed}
-        onPointerLeave={endSpeed}
-        onPointerCancel={endSpeed}
-        onContextMenu={(e) => e.preventDefault()}
-        onLoadedMetadata={(e) => {
-          const v = e.target;
-          if (v.videoWidth && v.videoHeight) setIsLandscape(v.videoWidth / v.videoHeight >= 1.4);
-          if (v.duration && isFinite(v.duration)) setDuration(v.duration);
-        }}
-        onTimeUpdate={(e) => {
-          const v = e.target;
-          if (scrubbing) return; // pendant le glissement, on ne suit pas la lecture
-          if (v.duration) setProgress((v.currentTime / v.duration) * 100);
-          setCurrentTime(v.currentTime);
-        }}
-      />
+        <video
+          ref={videoRef}
+          src={post.media_url}
+          // Jamais de crop du contenu large : vidéos paysage/16:9 en `contain`
+          // (letterbox, entièrement visibles) ; vidéos verticales en `cover` (plein
+          // cadre, façon TikTok). Sur PC le conteneur est déjà en colonne 9:16.
+          className={`w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
+          loop
+          muted={muted}
+          playsInline
+          onClick={handleTap}
+          onPointerDown={startSpeed}
+          onPointerUp={endSpeed}
+          onPointerLeave={endSpeed}
+          onPointerCancel={endSpeed}
+          onContextMenu={(e) => e.preventDefault()}
+          onLoadedMetadata={(e) => {
+            const v = e.target;
+            if (v.videoWidth && v.videoHeight)
+              setIsLandscape(v.videoWidth / v.videoHeight >= 1.4);
+            if (v.duration && isFinite(v.duration)) setDuration(v.duration);
+          }}
+          onTimeUpdate={(e) => {
+            const v = e.target;
+            if (scrubbing) return; // pendant le glissement, on ne suit pas la lecture
+            if (v.duration) setProgress((v.currentTime / v.duration) * 100);
+            setCurrentTime(v.currentTime);
+          }}
+        />
 
-      {/* Indicateur vitesse 2x (appui long) */}
-      {speeding && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none flex items-center gap-1 px-3 py-1 rounded-full" style={{ background: "rgba(0,0,0,0.6)" }}>
-          <span className="material-symbols-outlined text-white text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>fast_forward</span>
-          <span className="text-white text-sm font-bold">2x</span>
-        </div>
-      )}
-
-      {/* Feedback ±5 s (double-tap en plein écran 16:9) */}
-      {seekFlash && (
-        <div className={`absolute top-1/2 -translate-y-1/2 ${seekFlash === "+5" ? "right-10" : "left-10"} pointer-events-none flex flex-col items-center`}>
-          <span className="material-symbols-outlined text-white text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-            {seekFlash === "+5" ? "forward_5" : "replay_5"}
-          </span>
-          <span className="text-white text-sm font-bold">{seekFlash} s</span>
-        </div>
-      )}
-
-      {/* Gradient overlay */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 40%, rgba(0,0,0,0.2) 100%)" }} />
-
-      {/* Cœur animé (double-tap) */}
-      {heart && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="material-symbols-outlined" style={{ color: "#f87171", fontSize: 120, fontVariationSettings: "'FILL' 1", animation: "ping 0.7s cubic-bezier(0,0,0.2,1)", filter: "drop-shadow(0 4px 20px rgba(0,0,0,0.5))" }}>favorite</span>
-        </div>
-      )}
-
-      {/* Pause indicator */}
-      {paused && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
-            <span className="material-symbols-outlined text-white text-4xl">pause</span>
-          </div>
-        </div>
-      )}
-
-      {/* Barre de progression MANIPULABLE + durée visible (au-dessus de la barre
-          de navigation). Glisser pour avancer/reculer ; touch-none évite que le
-          geste déclenche le défilement vertical des clips. Masquée en plein écran
-          (l'overlay 16:9 a sa propre barre). */}
-      {!isFs && (
-        <div className="absolute left-0 right-0 px-4 z-20" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)" }}>
-          <div className="flex items-center gap-2.5">
-            <div
-              ref={barRef}
-              onPointerDown={onScrubDown}
-              onPointerMove={onScrubMove}
-              onPointerUp={onScrubUp}
-              onPointerCancel={onScrubUp}
-              onClick={(e) => e.stopPropagation()}
-              className="relative flex-1 h-6 flex items-center cursor-pointer touch-none"
+        {/* Indicateur vitesse 2x (appui long) */}
+        {speeding && (
+          <div
+            className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none flex items-center gap-1 px-3 py-1 rounded-full"
+            style={{ background: "rgba(0,0,0,0.6)" }}
+          >
+            <span
+              className="material-symbols-outlined text-white text-lg"
+              style={{ fontVariationSettings: "'FILL' 1" }}
             >
-              <div className="w-full rounded-full" style={{ height: scrubbing ? 6 : 4, background: "rgba(255,255,255,0.28)", transition: "height 0.1s" }}>
-                <div className="h-full rounded-full" style={{ width: `${progress}%`, background: C.cyan }} />
-              </div>
-              <div
-                className="absolute rounded-full bg-white shadow"
-                style={{ left: `${progress}%`, top: "50%", transform: "translate(-50%,-50%)", width: scrubbing ? 14 : 10, height: scrubbing ? 14 : 10, transition: "width 0.1s, height 0.1s" }}
-              />
-            </div>
-            <span className="text-white text-[11px] font-semibold tabular-nums flex-shrink-0" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>
-              {fmtTime(currentTime)} / {fmtTime(duration)}
+              fast_forward
             </span>
+            <span className="text-white text-sm font-bold">2x</span>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Overlay d'infos en plein écran 16:9 (progression + likes + commentaires),
-          comme la capture. Masqué en mode vertical normal. */}
-      {isFs && isLandscape && (
-        <div className="absolute bottom-0 left-0 right-0 px-5 pb-4 pt-10" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent)" }}>
-          <div className="flex items-center gap-4 mb-2 text-white">
-            <span className="flex items-center gap-1 text-sm font-bold">
-              <span className="material-symbols-outlined text-lg" style={{ color: "#f87171", fontVariationSettings: "'FILL' 1" }}>favorite</span>
-              {fmt(likes)}
+        {/* Feedback ±5 s (double-tap en plein écran 16:9) */}
+        {seekFlash && (
+          <div
+            className={`absolute top-1/2 -translate-y-1/2 ${seekFlash === "+5" ? "right-10" : "left-10"} pointer-events-none flex flex-col items-center`}
+          >
+            <span
+              className="material-symbols-outlined text-white text-4xl"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              {seekFlash === "+5" ? "forward_5" : "replay_5"}
             </span>
-            <span className="flex items-center gap-1 text-sm font-bold">
-              <span className="material-symbols-outlined text-lg">chat_bubble</span>
-              {fmt(comments)}
-            </span>
-            <span className="ml-auto text-xs opacity-80">Double-tap : ±5 s · Appui long : 2x</span>
-            <button onClick={toggleFullscreen} className="flex items-center justify-center w-9 h-9 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} title={t("exit_fullscreen")}>
-              <span className="material-symbols-outlined text-white text-xl">fullscreen_exit</span>
-            </button>
+            <span className="text-white text-sm font-bold">{seekFlash} s</span>
           </div>
-          <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.25)" }}>
-            <div className="h-full" style={{ width: `${progress}%`, background: C.cyan }} />
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* Right action bar */}
-      <div className="absolute right-3 bottom-28 flex flex-col gap-4 items-center">
-        {/* Avatar */}
-        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="relative">
-          {post.author_profile_pic ? (
-            <img src={post.author_profile_pic} alt="" className="w-12 h-12 rounded-full object-cover border-2" style={{ borderColor: C.cyan }} />
-          ) : (
-            <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
-              {post.author_username?.[0]?.toUpperCase()}
-            </div>
-          )}
-          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full flex items-center justify-center text-white" style={{ background: C.cyan }}>
-            <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
-          </div>
-        </button>
+        {/* Gradient overlay */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 40%, rgba(0,0,0,0.2) 100%)",
+          }}
+        />
 
-        {/* Like */}
-        <button onClick={handleLike} className="flex flex-col items-center gap-1">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-            <span className="material-symbols-outlined text-2xl" style={{ color: isLiked ? "#f87171" : "#fff", fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}>
+        {/* Cœur animé (double-tap) */}
+        {heart && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span
+              className="material-symbols-outlined"
+              style={{
+                color: "#f87171",
+                fontSize: 120,
+                fontVariationSettings: "'FILL' 1",
+                animation: "ping 0.7s cubic-bezier(0,0,0.2,1)",
+                filter: "drop-shadow(0 4px 20px rgba(0,0,0,0.5))",
+              }}
+            >
               favorite
             </span>
           </div>
-          <span className="text-white text-xs font-bold">{fmt(likes)}</span>
-        </button>
-
-        {/* Comment */}
-        <button onClick={(e) => { e.stopPropagation(); openComments(); }} className="flex flex-col items-center gap-1">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-            <span className="material-symbols-outlined text-2xl text-white">chat_bubble</span>
-          </div>
-          <span className="text-white text-xs font-bold">{fmt(comments)}</span>
-        </button>
-
-        {/* Save (enregistrer) */}
-        <button onClick={toggleSave} className="flex flex-col items-center gap-1">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-            <span className="material-symbols-outlined text-2xl" style={{ color: saved ? C.cyan : "#fff", fontVariationSettings: saved ? "'FILL' 1" : "'FILL' 0" }}>bookmark</span>
-          </div>
-          <span className="text-white text-xs font-bold">Enreg.</span>
-        </button>
-
-        {/* Share (partager) */}
-        <button onClick={handleShare} className="flex flex-col items-center gap-1">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-            <span className="material-symbols-outlined text-2xl text-white">share</span>
-          </div>
-          <span className="text-white text-xs font-bold">{t("share")}</span>
-        </button>
-
-        {/* Plein écran — uniquement pour les vidéos publiées en 16:9 (paysage) */}
-        {isLandscape && (
-          <button onClick={toggleFullscreen} className="flex flex-col items-center gap-1" data-testid="clip-fullscreen">
-            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-              <span className="material-symbols-outlined text-2xl text-white">{isFs ? "fullscreen_exit" : "fullscreen"}</span>
-            </div>
-            <span className="text-white text-xs font-bold">Plein écran</span>
-          </button>
         )}
 
-        {/* Mute */}
-        {post.media_type === "video" && (
-          <button onClick={(e) => { e.stopPropagation(); setMuted(p => !p); }} className="flex flex-col items-center gap-1">
-            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-              <span className="material-symbols-outlined text-2xl text-white">{muted ? "volume_off" : "volume_up"}</span>
+        {/* Pause indicator */}
+        {paused && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(0,0,0,0.5)" }}
+            >
+              <span className="material-symbols-outlined text-white text-4xl">
+                pause
+              </span>
             </div>
-          </button>
+          </div>
         )}
 
-        {/* Supprimer (auteur uniquement) */}
-        {currentUser?.id === post.author_id && (
+        {/* Barre de progression MANIPULABLE + durée visible (au-dessus de la barre
+          de navigation). Glisser pour avancer/reculer ; touch-none évite que le
+          geste déclenche le défilement vertical des clips. Masquée en plein écran
+          (l'overlay 16:9 a sa propre barre). */}
+        {!isFs && (
+          <div
+            className="absolute left-0 right-0 px-4 z-20"
+            style={{
+              bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.25rem)",
+            }}
+          >
+            <div className="flex items-center gap-2.5">
+              <div
+                ref={barRef}
+                onPointerDown={onScrubDown}
+                onPointerMove={onScrubMove}
+                onPointerUp={onScrubUp}
+                onPointerCancel={onScrubUp}
+                onClick={(e) => e.stopPropagation()}
+                className="relative flex-1 h-6 flex items-center cursor-pointer touch-none"
+              >
+                <div
+                  className="w-full rounded-full"
+                  style={{
+                    height: scrubbing ? 6 : 4,
+                    background: "rgba(255,255,255,0.28)",
+                    transition: "height 0.1s",
+                  }}
+                >
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${progress}%`, background: C.cyan }}
+                  />
+                </div>
+                <div
+                  className="absolute rounded-full bg-white shadow"
+                  style={{
+                    left: `${progress}%`,
+                    top: "50%",
+                    transform: "translate(-50%,-50%)",
+                    width: scrubbing ? 14 : 10,
+                    height: scrubbing ? 14 : 10,
+                    transition: "width 0.1s, height 0.1s",
+                  }}
+                />
+              </div>
+              <span
+                className="text-white text-[11px] font-semibold tabular-nums flex-shrink-0"
+                style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
+              >
+                {fmtTime(currentTime)} / {fmtTime(duration)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Overlay d'infos en plein écran 16:9 (progression + likes + commentaires),
+          comme la capture. Masqué en mode vertical normal. */}
+        {isFs && isLandscape && (
+          <div
+            className="absolute bottom-0 left-0 right-0 px-5 pb-4 pt-10"
+            style={{
+              background:
+                "linear-gradient(to top, rgba(0,0,0,0.75), transparent)",
+            }}
+          >
+            <div className="flex items-center gap-4 mb-2 text-white">
+              <span className="flex items-center gap-1 text-sm font-bold">
+                <span
+                  className="material-symbols-outlined text-lg"
+                  style={{
+                    color: "#f87171",
+                    fontVariationSettings: "'FILL' 1",
+                  }}
+                >
+                  favorite
+                </span>
+                {fmt(likes)}
+              </span>
+              <span className="flex items-center gap-1 text-sm font-bold">
+                <span className="material-symbols-outlined text-lg">
+                  chat_bubble
+                </span>
+                {fmt(comments)}
+              </span>
+              <span className="ml-auto text-xs opacity-80">
+                Double-tap : ±5 s · Appui long : 2x
+              </span>
+              <button
+                onClick={toggleFullscreen}
+                className="flex items-center justify-center w-9 h-9 rounded-full"
+                style={{ background: "rgba(255,255,255,0.15)" }}
+                title={t("exit_fullscreen")}
+              >
+                <span className="material-symbols-outlined text-white text-xl">
+                  fullscreen_exit
+                </span>
+              </button>
+            </div>
+            <div
+              className="w-full h-1.5 rounded-full overflow-hidden"
+              style={{ background: "rgba(255,255,255,0.25)" }}
+            >
+              <div
+                className="h-full"
+                style={{ width: `${progress}%`, background: C.cyan }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Right action bar */}
+        <div className="absolute right-3 bottom-28 flex flex-col gap-4 items-center">
+          {/* Avatar */}
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete?.(post.id); }}
-            data-testid="delete-clip"
-            title={t("delete_this_clip")}
+            onClick={() => navigate(`/profile/${post.author_id}`)}
+            className="relative"
+          >
+            {post.author_profile_pic ? (
+              <img
+                src={post.author_profile_pic}
+                alt=""
+                className="w-12 h-12 rounded-full object-cover border-2"
+                style={{ borderColor: C.cyan }}
+              />
+            ) : (
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg"
+                style={{
+                  background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+                  color: C.onPrimary,
+                }}
+              >
+                {post.author_username?.[0]?.toUpperCase()}
+              </div>
+            )}
+            <div
+              className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full flex items-center justify-center text-white"
+              style={{ background: C.cyan }}
+            >
+              <span
+                className="material-symbols-outlined text-xs"
+                style={{ fontVariationSettings: "'FILL' 1" }}
+              >
+                add
+              </span>
+            </div>
+          </button>
+
+          {/* Like */}
+          <button
+            onClick={handleLike}
             className="flex flex-col items-center gap-1"
           >
-            <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-              <span className="material-symbols-outlined text-2xl" style={{ color: "#f87171" }}>delete</span>
+            <div
+              className="w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(0,0,0,0.4)" }}
+            >
+              <span
+                className="material-symbols-outlined text-2xl"
+                style={{
+                  color: isLiked ? "#f87171" : "#fff",
+                  fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0",
+                }}
+              >
+                favorite
+              </span>
             </div>
+            <span className="text-white text-xs font-bold">{fmt(likes)}</span>
           </button>
+
+          {/* Comment */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              openComments();
+            }}
+            className="flex flex-col items-center gap-1"
+          >
+            <div
+              className="w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(0,0,0,0.4)" }}
+            >
+              <span className="material-symbols-outlined text-2xl text-white">
+                chat_bubble
+              </span>
+            </div>
+            <span className="text-white text-xs font-bold">
+              {fmt(comments)}
+            </span>
+          </button>
+
+          {/* Save (enregistrer) */}
+          <button
+            onClick={toggleSave}
+            className="flex flex-col items-center gap-1"
+          >
+            <div
+              className="w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(0,0,0,0.4)" }}
+            >
+              <span
+                className="material-symbols-outlined text-2xl"
+                style={{
+                  color: saved ? C.cyan : "#fff",
+                  fontVariationSettings: saved ? "'FILL' 1" : "'FILL' 0",
+                }}
+              >
+                bookmark
+              </span>
+            </div>
+            <span className="text-white text-xs font-bold">Enreg.</span>
+          </button>
+
+          {/* Share (partager) */}
+          <button
+            onClick={handleShare}
+            className="flex flex-col items-center gap-1"
+          >
+            <div
+              className="w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(0,0,0,0.4)" }}
+            >
+              <span className="material-symbols-outlined text-2xl text-white">
+                share
+              </span>
+            </div>
+            <span className="text-white text-xs font-bold">{t("share")}</span>
+          </button>
+
+          {/* Plein écran — uniquement pour les vidéos publiées en 16:9 (paysage) */}
+          {isLandscape && (
+            <button
+              onClick={toggleFullscreen}
+              className="flex flex-col items-center gap-1"
+              data-testid="clip-fullscreen"
+            >
+              <div
+                className="w-11 h-11 rounded-full flex items-center justify-center"
+                style={{ background: "rgba(0,0,0,0.4)" }}
+              >
+                <span className="material-symbols-outlined text-2xl text-white">
+                  {isFs ? "fullscreen_exit" : "fullscreen"}
+                </span>
+              </div>
+              <span className="text-white text-xs font-bold">Plein écran</span>
+            </button>
+          )}
+
+          {/* Mute */}
+          {post.media_type === "video" && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMuted((p) => !p);
+              }}
+              className="flex flex-col items-center gap-1"
+            >
+              <div
+                className="w-11 h-11 rounded-full flex items-center justify-center"
+                style={{ background: "rgba(0,0,0,0.4)" }}
+              >
+                <span className="material-symbols-outlined text-2xl text-white">
+                  {muted ? "volume_off" : "volume_up"}
+                </span>
+              </div>
+            </button>
+          )}
+
+          {/* Supprimer (auteur uniquement) */}
+          {currentUser?.id === post.author_id && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete?.(post.id);
+              }}
+              data-testid="delete-clip"
+              title={t("delete_this_clip")}
+              className="flex flex-col items-center gap-1"
+            >
+              <div
+                className="w-11 h-11 rounded-full flex items-center justify-center"
+                style={{ background: "rgba(0,0,0,0.4)" }}
+              >
+                <span
+                  className="material-symbols-outlined text-2xl"
+                  style={{ color: "#f87171" }}
+                >
+                  delete
+                </span>
+              </div>
+            </button>
+          )}
+        </div>
+
+        {/* Bottom info (relevé pour laisser la place à la barre de progression) */}
+        <div
+          className="absolute left-4 right-20"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 6.5rem)" }}
+        >
+          <button
+            onClick={() => navigate(`/profile/${post.author_id}`)}
+            className="font-bold text-white text-sm mb-1 hover:text-cyan-300 transition-colors inline-flex items-center gap-1"
+          >
+            @{post.author_username}
+            {post.author_is_premium && (
+              <span
+                className="material-symbols-outlined text-sm"
+                style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }}
+                title="Membre Nexus Premium"
+              >
+                workspace_premium
+              </span>
+            )}
+          </button>
+          <p className="text-white/80 text-sm leading-snug line-clamp-2">
+            {post.content}
+          </p>
+          <p className="text-white/40 text-xs mt-1 flex items-center gap-1.5">
+            <span>{fmtDate(post.created_at, _relLang)}</span>
+            <span>·</span>
+            <span className="flex items-center gap-0.5">
+              <span className="material-symbols-outlined text-xs">
+                play_arrow
+              </span>
+              {fmt(post.views || 0)} vues
+            </span>
+          </p>
+        </div>
+
+        {/* Comment panel */}
+        {showComment && (
+          <div
+            className="absolute bottom-0 left-0 right-0 rounded-t-3xl p-4"
+            style={{
+              background: "rgba(11,19,38,0.95)",
+              backdropFilter: "blur(20px)",
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="w-10 h-1 rounded-full mx-auto mb-4"
+              style={{ background: C.outline }}
+            />
+            <h3 className="text-white font-bold text-sm mb-3">
+              {comments} commentaire{comments !== 1 ? "s" : ""}
+            </h3>
+
+            {/* Liste des commentaires */}
+            <div
+              className="max-h-[40vh] overflow-y-auto space-y-3 mb-3"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {loadingComments ? (
+                <p
+                  className="text-xs text-center py-4"
+                  style={{ color: C.outline }}
+                >
+                  Chargement…
+                </p>
+              ) : commentsList.length === 0 ? (
+                <p
+                  className="text-xs text-center py-4"
+                  style={{ color: C.outline }}
+                >
+                  Aucun commentaire. Soyez le premier !
+                </p>
+              ) : (
+                commentsList.map((c) => (
+                  <CommentItem
+                    key={c.id}
+                    comment={c}
+                    currentUser={currentUser}
+                    onDeleted={handleDeleteComment}
+                  />
+                ))
+              )}
+            </div>
+
+            <div className="flex gap-3 items-center">
+              <input
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Ajouter un commentaire…"
+                className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500 py-2 px-3 rounded-xl"
+                style={{
+                  backgroundColor: C.high,
+                  color: C.onSurface,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSendComment();
+                }}
+              />
+              <button
+                onClick={handleSendComment}
+                className="w-9 h-9 rounded-xl flex items-center justify-center"
+                style={{
+                  background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+                  color: C.onPrimary,
+                }}
+              >
+                <span className="material-symbols-outlined text-sm">send</span>
+              </button>
+            </div>
+          </div>
         )}
       </div>
-
-      {/* Bottom info (relevé pour laisser la place à la barre de progression) */}
-      <div className="absolute left-4 right-20" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 6.5rem)" }}>
-        <button onClick={() => navigate(`/profile/${post.author_id}`)} className="font-bold text-white text-sm mb-1 hover:text-cyan-300 transition-colors inline-flex items-center gap-1">
-          @{post.author_username}
-          {post.author_is_premium && (
-            <span className="material-symbols-outlined text-sm" style={{ color: C.cyan, fontVariationSettings: "'FILL' 1" }} title="Membre Nexus Premium">workspace_premium</span>
-          )}
-        </button>
-        <p className="text-white/80 text-sm leading-snug line-clamp-2">{post.content}</p>
-        <p className="text-white/40 text-xs mt-1 flex items-center gap-1.5">
-          <span>{fmtDate(post.created_at, _relLang)}</span>
-          <span>·</span>
-          <span className="flex items-center gap-0.5">
-            <span className="material-symbols-outlined text-xs">play_arrow</span>
-            {fmt(post.views || 0)} vues
-          </span>
-        </p>
-      </div>
-
-      {/* Comment panel */}
-      {showComment && (
-        <div
-          className="absolute bottom-0 left-0 right-0 rounded-t-3xl p-4"
-          style={{ background: "rgba(11,19,38,0.95)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.08)" }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: C.outline }} />
-          <h3 className="text-white font-bold text-sm mb-3">{comments} commentaire{comments !== 1 ? "s" : ""}</h3>
-
-          {/* Liste des commentaires */}
-          <div className="max-h-[40vh] overflow-y-auto space-y-3 mb-3" style={{ scrollbarWidth: "none" }}>
-            {loadingComments ? (
-              <p className="text-xs text-center py-4" style={{ color: C.outline }}>Chargement…</p>
-            ) : commentsList.length === 0 ? (
-              <p className="text-xs text-center py-4" style={{ color: C.outline }}>Aucun commentaire. Soyez le premier !</p>
-            ) : (
-              commentsList.map((c) => (
-                <CommentItem
-                  key={c.id}
-                  comment={c}
-                  currentUser={currentUser}
-                  onDeleted={handleDeleteComment}
-                />
-              ))
-            )}
-          </div>
-
-          <div className="flex gap-3 items-center">
-            <input
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Ajouter un commentaire…"
-              className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500 py-2 px-3 rounded-xl"
-              style={{ backgroundColor: C.high, color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleSendComment(); }}
-            />
-            <button onClick={handleSendComment} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
-              <span className="material-symbols-outlined text-sm">send</span>
-            </button>
-          </div>
-        </div>
-      )}
-      </div>{/* /stage */}
+      {/* /stage */}
     </div>
   );
 }
@@ -695,8 +1133,8 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
 export default function ClipsPage({ user, setUser }) {
   const { t, i18n } = useTranslation();
   const _relLang = i18n.resolvedLanguage || i18n.language;
-  const [clips, setClips]         = useState([]);
-  const [loading, setLoading]     = useState(true);
+  const [clips, setClips] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [pendingClipFile, setPendingClipFile] = useState(null);
@@ -706,21 +1144,22 @@ export default function ClipsPage({ user, setUser }) {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const containerRef = useRef(null);
-  const observerRef  = useRef(null);
+  const observerRef = useRef(null);
   const fileInputRef = useRef(null);
-  const viewedRef    = useRef(new Set());
-  const videosRef    = useRef({});   // registre des <video> par index (contrôle clavier)
-  const skipRef      = useRef(0);
+  const viewedRef = useRef(new Set());
+  const videosRef = useRef({}); // registre des <video> par index (contrôle clavier)
+  const skipRef = useRef(0);
   const openedShareRef = useRef(false);
   const PAGE = 10;
 
   const navigate = useNavigate();
   const location = useLocation();
-  const { clipId } = useParams();  // /nexus-clips/:clipId → clip partagé à ouvrir
+  const { clipId } = useParams(); // /nexus-clips/:clipId → clip partagé à ouvrir
 
   // Le parent enregistre chaque vidéo pour piloter la lecture au clavier.
   const registerVideo = useCallback((idx, el) => {
-    if (el) videosRef.current[idx] = el; else delete videosRef.current[idx];
+    if (el) videosRef.current[idx] = el;
+    else delete videosRef.current[idx];
   }, []);
 
   // Défilement programmé vers un clip (clavier / navigation).
@@ -740,14 +1179,22 @@ export default function ClipsPage({ user, setUser }) {
     if (!clipId || loading || openedShareRef.current) return;
     openedShareRef.current = true;
     const idx = clips.findIndex((c) => c.id === clipId);
-    if (idx >= 0) { setTimeout(() => goTo(idx), 150); return; }
-    axios.get(`${API}/posts/${clipId}`).then((res) => {
-      const c = res.data;
-      if (c && c.media_type === "video" && c.media_url) {
-        setClips((prev) => (prev.some((x) => x.id === c.id) ? prev : [c, ...prev]));
-        setActiveIndex(0);
-      }
-    }).catch(() => {});
+    if (idx >= 0) {
+      setTimeout(() => goTo(idx), 150);
+      return;
+    }
+    axios
+      .get(`${API}/posts/${clipId}`)
+      .then((res) => {
+        const c = res.data;
+        if (c && c.media_type === "video" && c.media_url) {
+          setClips((prev) =>
+            prev.some((x) => x.id === c.id) ? prev : [c, ...prev],
+          );
+          setActiveIndex(0);
+        }
+      })
+      .catch(() => {});
   }, [clipId, loading, clips, goTo]);
 
   // Garde la barre d'adresse synchronisée avec le clip affiché (URL partageable).
@@ -774,12 +1221,16 @@ export default function ClipsPage({ user, setUser }) {
         const v = videosRef.current[activeIndex];
         if (!v) return;
         spaceTimer = setTimeout(() => {
-          v.playbackRate = 2; spaceSpeeding = true; spaceTimer = null;
+          v.playbackRate = 2;
+          spaceSpeeding = true;
+          spaceTimer = null;
         }, 350);
       } else if (e.key === "Enter" || e.key === "ArrowDown") {
-        e.preventDefault(); goTo(activeIndex + 1);
+        e.preventDefault();
+        goTo(activeIndex + 1);
       } else if (e.key === "ArrowUp") {
-        e.preventDefault(); goTo(activeIndex - 1);
+        e.preventDefault();
+        goTo(activeIndex - 1);
       }
     };
     const onKeyUp = (e) => {
@@ -787,8 +1238,11 @@ export default function ClipsPage({ user, setUser }) {
       const v = videosRef.current[activeIndex];
       if (spaceTimer) {
         // Relâché avant le seuil → c'était un appui court = play/pause.
-        clearTimeout(spaceTimer); spaceTimer = null;
-        if (v) { v.paused ? v.play().catch(() => {}) : v.pause(); }
+        clearTimeout(spaceTimer);
+        spaceTimer = null;
+        if (v) {
+          v.paused ? v.play().catch(() => {}) : v.pause();
+        }
       } else if (spaceSpeeding) {
         // Fin de l'appui long → retour à la vitesse normale.
         if (v) v.playbackRate = 1;
@@ -806,7 +1260,12 @@ export default function ClipsPage({ user, setUser }) {
 
   // Scroll infini : charge la page suivante en approchant de la fin.
   useEffect(() => {
-    if (!loadingMore && hasMore && clips.length > 0 && activeIndex >= clips.length - 3) {
+    if (
+      !loadingMore &&
+      hasMore &&
+      clips.length > 0 &&
+      activeIndex >= clips.length - 3
+    ) {
       loadMore();
     }
   }, [activeIndex, clips.length]);
@@ -820,7 +1279,8 @@ export default function ClipsPage({ user, setUser }) {
   }, [activeIndex, clips]);
 
   useEffect(() => {
-    if (view !== "immersive" || !containerRef.current || clips.length === 0) return;
+    if (view !== "immersive" || !containerRef.current || clips.length === 0)
+      return;
     observerRef.current = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -830,7 +1290,7 @@ export default function ClipsPage({ user, setUser }) {
           }
         });
       },
-      { threshold: 0.6 }
+      { threshold: 0.6 },
     );
     const items = containerRef.current.querySelectorAll("[data-index]");
     items.forEach((el) => observerRef.current.observe(el));
@@ -839,10 +1299,15 @@ export default function ClipsPage({ user, setUser }) {
 
   const fetchClips = async (reset = false) => {
     const skip = reset ? 0 : skipRef.current;
-    if (reset) setLoading(true); else setLoadingMore(true);
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
     try {
-      const res = await axios.get(`${API}/clips`, { params: { skip, limit: PAGE } });
-      const videos = (res.data || []).filter((p) => p.media_type === "video" && p.media_url);
+      const res = await axios.get(`${API}/clips`, {
+        params: { skip, limit: PAGE },
+      });
+      const videos = (res.data || []).filter(
+        (p) => p.media_type === "video" && p.media_url,
+      );
       if (reset) {
         setClips(videos);
         skipRef.current = videos.length;
@@ -860,11 +1325,14 @@ export default function ClipsPage({ user, setUser }) {
       console.error(t("error_clips_log"), err);
       if (reset) toast.error(t("error_loading_clips"));
     } finally {
-      setLoading(false); setLoadingMore(false);
+      setLoading(false);
+      setLoadingMore(false);
     }
   };
 
-  const loadMore = () => { if (!loadingMore && hasMore) fetchClips(false); };
+  const loadMore = () => {
+    if (!loadingMore && hasMore) fetchClips(false);
+  };
 
   const handleUploadClick = () => fileInputRef.current?.click();
 
@@ -895,7 +1363,13 @@ export default function ClipsPage({ user, setUser }) {
     const BACKEND_MAX_MB = isFirebaseConfigured ? 500 : 50;
     const sizeMb = file.size / (1024 * 1024);
     if (file.size > BACKEND_MAX_MB * 1024 * 1024) {
-      toast.error(t("clip_file_too_large", { max: BACKEND_MAX_MB, size: sizeMb.toFixed(1) }) || `Fichier trop lourd (${sizeMb.toFixed(1)} Mo, max ${BACKEND_MAX_MB} Mo).`);
+      toast.error(
+        t("clip_file_too_large", {
+          max: BACKEND_MAX_MB,
+          size: sizeMb.toFixed(1),
+        }) ||
+          `Fichier trop lourd (${sizeMb.toFixed(1)} Mo, max ${BACKEND_MAX_MB} Mo).`,
+      );
       return;
     }
     // Ouvre l'écran de publication (type TikTok) au lieu d'envoyer tout de suite
@@ -918,7 +1392,11 @@ export default function ClipsPage({ user, setUser }) {
     setUploadProgress(0);
     try {
       if (isFirebaseConfigured) {
-        const url = await uploadVideoResumable(file, user?.id, setUploadProgress);
+        const url = await uploadVideoResumable(
+          file,
+          user?.id,
+          setUploadProgress,
+        );
         let duration = meta?.duration || null;
         await axios.post(`${API}/clips/external`, {
           media_url: url,
@@ -934,7 +1412,8 @@ export default function ClipsPage({ user, setUser }) {
         await axios.post(`${API}/clips`, form, {
           headers: { "Content-Type": "multipart/form-data" },
           onUploadProgress: (evt) => {
-            if (evt.total) setUploadProgress(Math.round((evt.loaded * 100) / evt.total));
+            if (evt.total)
+              setUploadProgress(Math.round((evt.loaded * 100) / evt.total));
           },
         });
       }
@@ -945,14 +1424,15 @@ export default function ClipsPage({ user, setUser }) {
     } catch (err) {
       console.error("Erreur upload clip:", err);
       const detail = err?.response?.data?.detail;
-      toast.error(typeof detail === "string" ? detail : (t("error_action") || "Erreur"));
+      toast.error(
+        typeof detail === "string" ? detail : t("error_action") || "Erreur",
+      );
     } finally {
       setUploading(false);
       setUploadProgress(0);
     }
   };
 
-  const _uploadClip_REMOVED = async (e) => {
   // Bouton flottant d'upload (réutilisé dans l'état vide et l'état principal)
   const uploadControls = (
     <>
@@ -992,7 +1472,11 @@ export default function ClipsPage({ user, setUser }) {
       data-testid="toggle-clips-view"
       title={view === "immersive" ? "Vue grille" : "Vue immersive"}
       className="fixed z-50 top-4 left-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
-      style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
+      style={{
+        background: "rgba(0,0,0,0.5)",
+        color: "#fff",
+        backdropFilter: "blur(8px)",
+      }}
     >
       <span className="material-symbols-outlined text-2xl">
         {view === "immersive" ? "grid_view" : "smart_display"}
@@ -1007,7 +1491,11 @@ export default function ClipsPage({ user, setUser }) {
       data-testid="clips-search"
       title="Rechercher des clips"
       className="fixed z-50 top-4 right-4 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
-      style={{ background: "rgba(0,0,0,0.5)", color: "#fff", backdropFilter: "blur(8px)" }}
+      style={{
+        background: "rgba(0,0,0,0.5)",
+        color: "#fff",
+        backdropFilter: "blur(8px)",
+      }}
     >
       <span className="material-symbols-outlined text-2xl">search</span>
     </button>
@@ -1031,7 +1519,10 @@ export default function ClipsPage({ user, setUser }) {
     return (
       <Layout user={user} setUser={setUser} compact hideMobileHeader>
         <div className="flex items-center justify-center h-screen">
-          <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} />
+          <div
+            className="w-8 h-8 rounded-full border-2 animate-spin"
+            style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }}
+          />
         </div>
       </Layout>
     );
@@ -1041,9 +1532,22 @@ export default function ClipsPage({ user, setUser }) {
     return (
       <Layout user={user} setUser={setUser} compact hideMobileHeader>
         <div className="flex flex-col items-center justify-center h-screen gap-4">
-          <span className="material-symbols-outlined text-6xl" style={{ color: C.outline, opacity: 0.4 }}>play_circle</span>
-          <p className="text-sm font-bold uppercase tracking-widest" style={{ color: C.outline }}>Aucun clip disponible</p>
-          <p className="text-xs text-center max-w-xs" style={{ color: C.outline }}>
+          <span
+            className="material-symbols-outlined text-6xl"
+            style={{ color: C.outline, opacity: 0.4 }}
+          >
+            play_circle
+          </span>
+          <p
+            className="text-sm font-bold uppercase tracking-widest"
+            style={{ color: C.outline }}
+          >
+            Aucun clip disponible
+          </p>
+          <p
+            className="text-xs text-center max-w-xs"
+            style={{ color: C.outline }}
+          >
             Publiez une vidéo pour qu'elle apparaisse ici
           </p>
           <button
@@ -1051,7 +1555,11 @@ export default function ClipsPage({ user, setUser }) {
             disabled={uploading}
             data-testid="upload-clip-empty"
             className="mt-2 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 active:scale-95 transition-all"
-            style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary, opacity: uploading ? 0.6 : 1 }}
+            style={{
+              background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+              color: C.onPrimary,
+              opacity: uploading ? 0.6 : 1,
+            }}
           >
             <span className="material-symbols-outlined text-lg">upload</span>
             {uploading ? `Publication… ${uploadProgress}%` : "Publier un clip"}
@@ -1088,30 +1596,58 @@ export default function ClipsPage({ user, setUser }) {
             WebkitOverflowScrolling: "touch",
             marginTop: 0,
             scrollbarWidth: "none",
-            WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none",
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            WebkitTouchCallout: "none",
           }}
         >
           <style>{`
             [data-index] { scroll-snap-align: start; scroll-snap-stop: always; }
           `}</style>
           {clips.map((clip, idx) => (
-            <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100dvh" }}>
-              <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex}
-                index={idx} registerVideo={registerVideo} onDelete={handleDeleteClip} />
+            <div
+              key={clip.id}
+              data-index={idx}
+              className="w-full"
+              style={{ height: "100dvh" }}
+            >
+              <ClipCard
+                post={clip}
+                currentUser={user}
+                isActive={idx === activeIndex}
+                index={idx}
+                registerVideo={registerVideo}
+                onDelete={handleDeleteClip}
+              />
             </div>
           ))}
           {loadingMore && (
-            <div className="flex justify-center py-8"><div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }} /></div>
+            <div className="flex justify-center py-8">
+              <div
+                className="w-6 h-6 rounded-full border-2 animate-spin"
+                style={{ borderColor: `${C.cyan}33`, borderTopColor: C.cyan }}
+              />
+            </div>
           )}
         </div>
       ) : (
         /* Grille des clips (style Reels) */
-        <div className="h-screen overflow-y-auto px-2 pt-16 pb-24 lg:pt-6 select-none" style={{ background: "#000", WebkitUserSelect: "none", userSelect: "none" }}>
+        <div
+          className="h-screen overflow-y-auto px-2 pt-16 pb-24 lg:pt-6 select-none"
+          style={{
+            background: "#000",
+            WebkitUserSelect: "none",
+            userSelect: "none",
+          }}
+        >
           <div className="grid grid-cols-3 gap-1.5 max-w-4xl mx-auto">
             {clips.map((clip, idx) => (
               <button
                 key={clip.id}
-                onClick={() => { setActiveIndex(idx); setView("immersive"); }}
+                onClick={() => {
+                  setActiveIndex(idx);
+                  setView("immersive");
+                }}
                 data-testid={`clip-grid-${clip.id}`}
                 className="relative rounded-lg overflow-hidden active:scale-95 transition-transform"
                 style={{ aspectRatio: "9 / 16", background: "#111" }}
@@ -1125,7 +1661,10 @@ export default function ClipsPage({ user, setUser }) {
                 />
                 <div
                   className="absolute inset-0 pointer-events-none"
-                  style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent 55%)" }}
+                  style={{
+                    background:
+                      "linear-gradient(to top, rgba(0,0,0,0.75), transparent 55%)",
+                  }}
                 />
                 {clip.content && (
                   <div className="absolute top-1.5 left-2 right-2 text-white text-[10px] line-clamp-1 opacity-80 text-left">
@@ -1134,11 +1673,21 @@ export default function ClipsPage({ user, setUser }) {
                 )}
                 <div className="absolute bottom-1.5 left-2 right-2 flex items-center gap-2 text-white text-[11px]">
                   <span className="flex items-center gap-0.5">
-                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1", color: "#f87171" }}>favorite</span>
+                    <span
+                      className="material-symbols-outlined text-sm"
+                      style={{
+                        fontVariationSettings: "'FILL' 1",
+                        color: "#f87171",
+                      }}
+                    >
+                      favorite
+                    </span>
                     <span className="font-bold">{clip.likes_count || 0}</span>
                   </span>
                   <span className="flex items-center gap-0.5">
-                    <span className="material-symbols-outlined text-sm">play_arrow</span>
+                    <span className="material-symbols-outlined text-sm">
+                      play_arrow
+                    </span>
                     <span className="font-bold">{clip.views || 0}</span>
                   </span>
                 </div>
@@ -1156,7 +1705,10 @@ export default function ClipsPage({ user, setUser }) {
       <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none lg:top-4">
         <span
           className="text-white font-black text-sm tracking-widest uppercase"
-          style={{ fontFamily: "Space Grotesk, sans-serif", textShadow: `0 0 20px ${C.cyan}` }}
+          style={{
+            fontFamily: "Space Grotesk, sans-serif",
+            textShadow: `0 0 20px ${C.cyan}`,
+          }}
         >
           NEXUS CLIPS
         </span>
