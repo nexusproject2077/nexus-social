@@ -10,34 +10,34 @@ import { useTranslation } from "react-i18next";
 // paiement). On liste honnêtement ce qui est ACTIF aujourd'hui et ce qui arrive.
 const ACCENT = "#22d3ee";
 
-// « live: true » = avantage réellement fonctionnel aujourd'hui.
-// « live: false » = prévu / en cours de déploiement (affiché « Bientôt »).
-const USER_PERKS = [
-  { icon: "verified", label: t("premium_badge"), live: true },
-  { icon: "block", label: t("ad_free"), live: true },
-  { icon: "trending_up", label: t("for_you_priority"), live: true },
-  { icon: "schedule", label: t("stories_48h"), live: true },
-  { icon: "hd", label: "Upload vidéo 4K", live: false },
-  { icon: "cloud_done", label: t("extended_storage"), live: false },
-  { icon: "palette", label: t("exclusive_themes"), live: false },
-  { icon: "download_for_offline", label: t("offline_playback"), live: false },
-  { icon: "rocket_launch", label: t("early_access"), live: false },
-];
-
-const CREATOR_PERKS = [
-  { icon: "push_pin", label: t("pin_post"), live: true },
-  { icon: "analytics", label: t("advanced_analytics"), live: false },
-  { icon: "payments", label: t("monetization_features"), live: false },
-  { icon: "campaign", label: t("rec_priority"), live: false },
-  { icon: "auto_fix_high", label: "Outils d'édition vidéo/photo plus poussés", live: false },
-  { icon: "shield", label: "Anti-spam renforcé + modération prioritaire", live: false },
-];
-
 export default function PremiumPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // "live: true" = avantage réellement fonctionnel aujourd'hui.
+  // "live: false" = prévu / en cours de déploiement (affiché « Bientôt »).
+  const USER_PERKS = [
+    { icon: "verified", label: t("premium_badge"), live: true },
+    { icon: "block", label: t("ad_free"), live: true },
+    { icon: "trending_up", label: t("for_you_priority"), live: true },
+    { icon: "schedule", label: t("stories_48h"), live: true },
+    { icon: "hd", label: "Upload vidéo 4K", live: false },
+    { icon: "cloud_done", label: t("extended_storage"), live: false },
+    { icon: "palette", label: t("exclusive_themes"), live: false },
+    { icon: "download_for_offline", label: t("offline_playback"), live: false },
+    { icon: "rocket_launch", label: t("early_access"), live: false },
+  ];
+
+  const CREATOR_PERKS = [
+    { icon: "push_pin", label: t("pin_post"), live: true },
+    { icon: "analytics", label: t("advanced_analytics"), live: false },
+    { icon: "payments", label: t("monetization_features"), live: false },
+    { icon: "campaign", label: t("rec_priority"), live: false },
+    { icon: "auto_fix_high", label: "Outils d'édition vidéo/photo plus poussés", live: false },
+    { icon: "shield", label: "Anti-spam renforcé + modération prioritaire", live: false },
+  ];
 
   // Utilisateur courant (facultatif : la page marche déconnecté).
   let user = null;
