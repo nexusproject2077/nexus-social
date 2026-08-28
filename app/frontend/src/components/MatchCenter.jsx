@@ -1,3 +1,5 @@
+import { useState, useEffect } from "react";
+import MatchRoom from "@/components/MatchRoom";
 import MatchSocialPanel from "@/components/MatchSocialPanel";
 // Match Center — chronologie détaillée d'un match (données ESPN gratuites).
 // Design sombre premium, typo fine (Inter), icônes 100 % SVG (aucun emoji).
@@ -85,6 +87,10 @@ function eventTexts(ev) {
 const Side = ({ ev, align }) => {
   const { title, sub } = eventTexts(ev);
   return (
+    <>
+    {roomOpen && (
+      <MatchRoom match={match} currentUser={currentUser} onClose={() => setRoomOpen(false)} />
+    )}
     <div className={align === "right" ? "text-right" : "text-left"}>
       <p className="text-[13px] text-white leading-tight" style={{ fontWeight: 600 }}>{title}</p>
       {sub && <p className="text-[11px] leading-tight mt-0.5" style={{ color: "#8b96a8", fontWeight: 300 }}>{sub}</p>}
@@ -92,7 +98,8 @@ const Side = ({ ev, align }) => {
   );
 };
 
-export default function MatchCenter({ match, onClose }) {
+export default function MatchCenter({ match, onClose, currentUser }) {
+  const [roomOpen, setRoomOpen] = useState(false);
   const [detail, setDetail] = useState(null);
   const eventId = match?.id;
   const slug = match?.league_slug;
@@ -181,9 +188,16 @@ export default function MatchCenter({ match, onClose }) {
               </div>
             </div>
           )}
-          <MatchSocialPanel match={h} />
+          <button type="button" onClick={() => setRoomOpen(true)}
+        className="mx-1 mb-2 w-[calc(100%-8px)] py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+        style={{ background: "linear-gradient(90deg,rgba(34,211,238,0.15),rgba(59,130,246,0.15))", border: "1px solid rgba(34,211,238,0.35)", color: "#67e8f9" }}>
+        <span className="material-symbols-outlined text-base">forum</span>
+        Salle du match
+      </button>
+      <MatchSocialPanel match={h} />
         </div>
       </div>
     </div>
-  );
+      </>
+);
 }
