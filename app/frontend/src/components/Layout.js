@@ -288,7 +288,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             </div>
           </div>
         ) : (
-          <button onClick={() => navigate("/search")} title={t("search")}}
+          <button onClick={() => navigate("/search")} title={t("search")}
             className="mb-2 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#131b2e", color: "#859397" }}>
             <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>search</span>
           </button>
@@ -332,7 +332,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             <button
               data-testid="create-post-button"
               onClick={handleCreatePost}
-              title={t("create_post")}}
+              title={t("create_post")}
               className={`font-headline font-bold rounded-xl transition-all active:scale-95 hover:opacity-90 text-sm flex items-center justify-center ${sbExpanded ? "w-full py-3.5" : "w-11 h-11 mx-auto"}`}
               style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 8px 20px rgba(34,211,238,0.2)" }}
             >
