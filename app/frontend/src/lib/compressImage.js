@@ -3,11 +3,14 @@
 // Objectif : quelques dizaines de Ko, sans perte visible notable.
 // Renvoie une data URL (string) directement stockable/affichable.
 
-export async function compressImage(file, {
-  maxDim = 1280,      // plus grande dimension conservée
-  quality = 0.72,     // qualité de ré-encodage
-  maxBytes = 200 * 1024, // cible : on baisse la qualité si dépassé
-} = {}) {
+export async function compressImage(
+  file,
+  {
+    maxDim = 1280, // plus grande dimension conservée
+    quality = 0.72, // qualité de ré-encodage
+    maxBytes = 200 * 1024, // cible : on baisse la qualité si dépassé
+  } = {},
+) {
   if (!file || !file.type?.startsWith("image/")) {
     throw new Error("Fichier image invalide");
   }

@@ -15,7 +15,7 @@ const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );
 
 // Enregistre le service worker (nécessaire aux notifications push). Le SW ne
@@ -35,9 +35,16 @@ if ("serviceWorker" in navigator) {
     window.location.reload();
   });
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/service-worker.js").then((reg) => {
-      // Force la vérification d'une mise à jour du SW à chaque chargement.
-      try { reg.update(); } catch (e) { /* ignore */ }
-    }).catch(() => {});
+    navigator.serviceWorker
+      .register("/service-worker.js")
+      .then((reg) => {
+        // Force la vérification d'une mise à jour du SW à chaque chargement.
+        try {
+          reg.update();
+        } catch (e) {
+          /* ignore */
+        }
+      })
+      .catch(() => {});
   });
 }

@@ -34,7 +34,10 @@ export function isStandalone() {
 export function isIOS() {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
-  return /iPad|iPhone|iPod/.test(ua) || (/(Macintosh)/.test(ua) && "ontouchend" in document);
+  return (
+    /iPad|iPhone|iPod/.test(ua) ||
+    (/(Macintosh)/.test(ua) && "ontouchend" in document)
+  );
 }
 
 // Clé publique VAPID base64url → Uint8Array (format applicationServerKey).
@@ -51,7 +54,8 @@ let _swReg = null;
 
 // Enregistre le Service Worker (idempotent). Renvoie l'enregistrement ou null.
 export async function registerServiceWorker() {
-  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator))
+    return null;
   try {
     if (_swReg) return _swReg;
     _swReg = await navigator.serviceWorker.register("/service-worker.js");
@@ -65,7 +69,8 @@ export async function registerServiceWorker() {
 export async function getPushState() {
   const base = {
     supported: pushSupported(),
-    permission: typeof Notification !== "undefined" ? Notification.permission : "denied",
+    permission:
+      typeof Notification !== "undefined" ? Notification.permission : "denied",
     subscribed: false,
     standalone: isStandalone(),
     ios: isIOS(),
@@ -77,7 +82,9 @@ export async function getPushState() {
       const sub = await reg.pushManager.getSubscription();
       base.subscribed = !!sub;
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    /* ignore */
+  }
   return base;
 }
 
@@ -111,7 +118,11 @@ export async function enablePush({ interactive = true } = {}) {
   const reg = await registerServiceWorker();
   if (!reg) return { ok: false, reason: "no-sw" };
   // Le SW doit être actif avant de s'abonner.
-  try { await navigator.serviceWorker.ready; } catch (e) { /* ignore */ }
+  try {
+    await navigator.serviceWorker.ready;
+  } catch (e) {
+    /* ignore */
+  }
 
   let key;
   try {
@@ -151,20 +162,33 @@ export async function disablePush() {
     const sub = await reg.pushManager.getSubscription();
     if (sub) {
       try {
-        await axios.post(`${API}/push/unsubscribe`, { subscription: sub.toJSON() });
-      } catch (e) { /* ignore */ }
+        await axios.post(`${API}/push/unsubscribe`, {
+          subscription: sub.toJSON(),
+        });
+      } catch (e) {
+        /* ignore */
+      }
       await sub.unsubscribe();
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    /* ignore */
+  }
   return { ok: true };
 }
 
 // Libellés FR de chaque cause de succès/échec (toasts clairs). Couvre les codes
 // des deux écrans (unifiés).
 export function pushReasonLabel(reason) {
-  const key = {
-    ok: "ok", unsupported: "unsupported", "ios-install": "ios_install", denied: "denied",
-    "no-sw": "no_sw", "no-key": "no_key", "subscribe-failed": "subscribe_failed", "backend-failed": "backend_failed",
-  }[reason] || "unavailable";
+  const key =
+    {
+      ok: "ok",
+      unsupported: "unsupported",
+      "ios-install": "ios_install",
+      denied: "denied",
+      "no-sw": "no_sw",
+      "no-key": "no_key",
+      "subscribe-failed": "subscribe_failed",
+      "backend-failed": "backend_failed",
+    }[reason] || "unavailable";
   return i18n.t("push." + key);
 }

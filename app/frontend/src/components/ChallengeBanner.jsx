@@ -11,7 +11,8 @@ export default function ChallengeBanner({ onUseTag }) {
     <div
       className="mx-4 mb-3 rounded-2xl p-3 flex items-center gap-3"
       style={{
-        background: "linear-gradient(135deg,rgba(34,211,238,0.12),rgba(59,130,246,0.1))",
+        background:
+          "linear-gradient(135deg,rgba(34,211,238,0.12),rgba(59,130,246,0.1))",
         border: "1px solid rgba(34,211,238,0.25)",
       }}
     >
@@ -36,7 +37,10 @@ export default function ChallengeBanner({ onUseTag }) {
           navigate("/nexus-clips");
         }}
         className="px-3 py-1.5 rounded-full text-[11px] font-bold flex-shrink-0"
-        style={{ background: "linear-gradient(90deg,#22d3ee,#3b82f6)", color: "#00363e" }}
+        style={{
+          background: "linear-gradient(90deg,#22d3ee,#3b82f6)",
+          color: "#00363e",
+        }}
       >
         {t("challenge.join")}
       </button>

@@ -26,23 +26,53 @@ export default function Layout({ children, user, setUser }) {
   // Navigation principale (visible en bas sur mobile, sidebar sur desktop)
   const mainNavItems = [
     { icon: CustomLogo, label: t("home"), path: "/", testId: "nav-home" },
-    { icon: CustomSearchIcon, label: t("search"), path: "/search", testId: "nav-search" },
-    { icon: CustomNotificationIcon, label: t("notifications"), path: "/notifications", testId: "nav-notifications" },
-    { icon: CustomMessagingIcon, label: t("messages"), path: "/messages", testId: "nav-messages" },
-    { icon: CustomAccountIcon, label: t("profile"), path: `/profile/${user.id}`, testId: "nav-profile" },
+    {
+      icon: CustomSearchIcon,
+      label: t("search"),
+      path: "/search",
+      testId: "nav-search",
+    },
+    {
+      icon: CustomNotificationIcon,
+      label: t("notifications"),
+      path: "/notifications",
+      testId: "nav-notifications",
+    },
+    {
+      icon: CustomMessagingIcon,
+      label: t("messages"),
+      path: "/messages",
+      testId: "nav-messages",
+    },
+    {
+      icon: CustomAccountIcon,
+      label: t("profile"),
+      path: `/profile/${user.id}`,
+      testId: "nav-profile",
+    },
   ];
 
   // Navigation secondaire (UNIQUEMENT dans le menu burger - juste Paramètres)
   const secondaryNavItems = [
-    { icon: CustomSettingsIcon, label: t("settings.title"), path: "/settings", testId: "nav-settings" },
+    {
+      icon: CustomSettingsIcon,
+      label: t("settings.title"),
+      path: "/settings",
+      testId: "nav-settings",
+    },
   ];
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-slate-800 px-4 py-3 flex items-center justify-between">
-        <h1 className="text-xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-          <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
+        <h1
+          className="text-xl font-bold"
+          style={{ fontFamily: "Space Grotesk, sans-serif" }}
+        >
+          <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+            Social
+          </span>
         </h1>
         <Button
           variant="ghost"
@@ -51,7 +81,11 @@ export default function Layout({ children, user, setUser }) {
           data-testid="mobile-menu-toggle"
           className="h-9 w-9"
         >
-          {showMobileMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          {showMobileMenu ? (
+            <X className="w-5 h-5" />
+          ) : (
+            <Menu className="w-5 h-5" />
+          )}
         </Button>
       </div>
 
@@ -68,7 +102,9 @@ export default function Layout({ children, user, setUser }) {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-white truncate">@{user.username}</p>
+                <p className="font-semibold text-white truncate">
+                  @{user.username}
+                </p>
                 <p className="text-xs text-slate-400 truncate">{user.email}</p>
               </div>
             </div>
@@ -115,8 +151,13 @@ export default function Layout({ children, user, setUser }) {
       <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 bg-slate-950 border-r border-slate-800 flex-col z-50">
         {/* Logo - SANS icône à côté */}
         <div className="p-6 border-b border-slate-800">
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Social</span>
+          <h1
+            className="text-2xl font-bold"
+            style={{ fontFamily: "Space Grotesk, sans-serif" }}
+          >
+            <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+              Social
+            </span>
           </h1>
         </div>
 
@@ -171,7 +212,9 @@ export default function Layout({ children, user, setUser }) {
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white truncate">@{user.username}</p>
+              <p className="text-sm font-semibold text-white truncate">
+                @{user.username}
+              </p>
               <p className="text-xs text-slate-400 truncate">{user.email}</p>
             </div>
           </div>
@@ -189,9 +232,7 @@ export default function Layout({ children, user, setUser }) {
 
       {/* Main Content */}
       <main className="lg:ml-64 pt-16 lg:pt-0 pb-20 lg:pb-0">
-        <div className="container mx-auto max-w-7xl">
-          {children}
-        </div>
+        <div className="container mx-auto max-w-7xl">{children}</div>
       </main>
 
       {/* Mobile Bottom Navigation - 5 icônes uniquement */}
@@ -208,7 +249,9 @@ export default function Layout({ children, user, setUser }) {
                   isActive ? "text-cyan-500" : "text-slate-400"
                 }`}
               >
-                <item.icon className={`w-6 h-6 mb-1 ${isActive ? "text-cyan-500" : ""}`} />
+                <item.icon
+                  className={`w-6 h-6 mb-1 ${isActive ? "text-cyan-500" : ""}`}
+                />
                 <span className="text-[10px] font-medium truncate max-w-full px-1">
                   {item.label}
                 </span>

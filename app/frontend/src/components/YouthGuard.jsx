@@ -38,14 +38,18 @@ export default function YouthGuard({ user, setUser }) {
   const isMinor = !!user.is_minor;
   const curfew = isMinor && (hour >= 22 || hour < 6);
   const limit = Number(user.daily_time_limit) || 0;
-  const limitOn = user.time_limit_enabled !== false && limit > 0 && minutes >= limit;
+  const limitOn =
+    user.time_limit_enabled !== false && limit > 0 && minutes >= limit;
 
   if (!curfew && !limitOn) return null;
 
   const disableLimit = () => {
     setBusy(true);
-    axios.put(`${API}/users/me/time-limit`, { time_limit_enabled: false })
-      .then(() => setUser?.((p) => (p ? { ...p, time_limit_enabled: false } : p)))
+    axios
+      .put(`${API}/users/me/time-limit`, { time_limit_enabled: false })
+      .then(() =>
+        setUser?.((p) => (p ? { ...p, time_limit_enabled: false } : p)),
+      )
       .catch(() => {})
       .finally(() => setBusy(false));
   };
@@ -55,7 +59,9 @@ export default function YouthGuard({ user, setUser }) {
     return (
       <Screen bg="#05070f">
         <MoonSvg />
-        <p className="text-white text-xl font-black mt-6 mb-2">{i18n.t("youthguard.curfew_title")}</p>
+        <p className="text-white text-xl font-black mt-6 mb-2">
+          {i18n.t("youthguard.curfew_title")}
+        </p>
         <p className="text-sm max-w-xs" style={{ color: "#8b96a8" }}>
           {i18n.t("youthguard.curfew_body")}
         </p>
@@ -67,13 +73,23 @@ export default function YouthGuard({ user, setUser }) {
   return (
     <Screen bg="#080c18">
       <HourglassSvg />
-      <p className="text-white text-xl font-black mt-6 mb-2">{i18n.t("youthguard.limit_title")}</p>
+      <p className="text-white text-xl font-black mt-6 mb-2">
+        {i18n.t("youthguard.limit_title")}
+      </p>
       <p className="text-sm max-w-xs mb-7" style={{ color: "#8b96a8" }}>
         {i18n.t("youthguard.limit_body", { min: Math.floor(minutes) })}
       </p>
-      <button onClick={disableLimit} disabled={busy}
+      <button
+        onClick={disableLimit}
+        disabled={busy}
         className="px-5 py-2.5 rounded-full text-sm font-bold transition-opacity"
-        style={{ background: "#1a2234", color: "#c7d0e0", border: "1px solid rgba(255,255,255,0.1)", opacity: busy ? 0.6 : 1 }}>
+        style={{
+          background: "#1a2234",
+          color: "#c7d0e0",
+          border: "1px solid rgba(255,255,255,0.1)",
+          opacity: busy ? 0.6 : 1,
+        }}
+      >
         {i18n.t("youthguard.disable_limit")}
       </button>
     </Screen>
@@ -82,8 +98,10 @@ export default function YouthGuard({ user, setUser }) {
 
 function Screen({ bg, children }) {
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center text-center px-8"
-      style={{ background: bg, animation: "youthFade 0.4s ease" }}>
+    <div
+      className="fixed inset-0 z-[70] flex flex-col items-center justify-center text-center px-8"
+      style={{ background: bg, animation: "youthFade 0.4s ease" }}
+    >
       {children}
     </div>
   );
@@ -91,7 +109,16 @@ function Screen({ bg, children }) {
 
 function MoonSvg() {
   return (
-    <svg width="76" height="76" viewBox="0 0 48 48" fill="none" stroke="#93c5fd" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="76"
+      height="76"
+      viewBox="0 0 48 48"
+      fill="none"
+      stroke="#93c5fd"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M31,30 a13,13 0 1 1 -11,-20 a10.5,10.5 0 0 0 11,20 z" />
       <circle cx="34" cy="12" r="0.9" fill="#93c5fd" stroke="none" />
       <circle cx="30" cy="7" r="0.7" fill="#93c5fd" stroke="none" />
@@ -102,7 +129,16 @@ function MoonSvg() {
 
 function HourglassSvg() {
   return (
-    <svg width="72" height="72" viewBox="0 0 48 48" fill="none" stroke="#fbbf24" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="72"
+      height="72"
+      viewBox="0 0 48 48"
+      fill="none"
+      stroke="#fbbf24"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M14,8 h20 M14,40 h20" />
       <path d="M15,8 c0,9 8,11 9,16 c1,-5 9,-7 9,-16" />
       <path d="M15,40 c0,-9 8,-11 9,-16 c1,5 9,7 9,16" />

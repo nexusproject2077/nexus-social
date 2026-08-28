@@ -4,8 +4,17 @@ import usePullToRefresh from "@/hooks/usePullToRefresh";
  * Indicateur visuel de pull-to-refresh (spinner en haut de l'écran). À poser
  * une fois par page ; il gère lui-même l'écoute du geste via le hook.
  */
-export default function PullToRefresh({ onRefresh, getScrollTop, enabled = true, threshold = 70 }) {
-  const { pull, refreshing } = usePullToRefresh(onRefresh, { getScrollTop, enabled, threshold });
+export default function PullToRefresh({
+  onRefresh,
+  getScrollTop,
+  enabled = true,
+  threshold = 70,
+}) {
+  const { pull, refreshing } = usePullToRefresh(onRefresh, {
+    getScrollTop,
+    enabled,
+    threshold,
+  });
   const visible = pull > 0 || refreshing;
   if (!visible) return null;
 

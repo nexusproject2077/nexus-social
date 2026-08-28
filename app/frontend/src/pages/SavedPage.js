@@ -31,7 +31,9 @@ export default function SavedPage({ user, setUser }) {
     }
   }, []);
 
-  useEffect(() => { fetchSaved(); }, [fetchSaved]);
+  useEffect(() => {
+    fetchSaved();
+  }, [fetchSaved]);
 
   // Retirer localement un élément désenregistré (le bouton signet renvoie l'état).
   const handleUpdate = (updated) => {
@@ -60,12 +62,23 @@ export default function SavedPage({ user, setUser }) {
         {/* Header */}
         <header
           className="sticky top-0 z-30 h-16 flex items-center gap-2 px-4 lg:px-8"
-          style={{ backgroundColor: "rgba(11,19,38,0.7)", backdropFilter: "blur(20px)" }}
+          style={{
+            backgroundColor: "rgba(11,19,38,0.7)",
+            backdropFilter: "blur(20px)",
+          }}
         >
-          <span className="material-symbols-outlined" style={{ color: "var(--nexus-accent)" }}>bookmark</span>
-          <h1 className="font-headline font-bold text-xl tracking-tight" style={{ color: "#dae2fd" }}>{
-            t("saved")
-          }</h1>
+          <span
+            className="material-symbols-outlined"
+            style={{ color: "var(--nexus-accent)" }}
+          >
+            bookmark
+          </span>
+          <h1
+            className="font-headline font-bold text-xl tracking-tight"
+            style={{ color: "#dae2fd" }}
+          >
+            {t("saved")}
+          </h1>
         </header>
 
         {/* Filtres */}
@@ -94,8 +107,14 @@ export default function SavedPage({ user, setUser }) {
           {loading ? (
             <div className="space-y-4 lg:space-y-6">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="rounded-2xl border p-4 lg:p-5"
-                  style={{ backgroundColor: "#171f33", borderColor: "rgba(255,255,255,0.05)" }}>
+                <div
+                  key={i}
+                  className="rounded-2xl border p-4 lg:p-5"
+                  style={{
+                    backgroundColor: "#171f33",
+                    borderColor: "rgba(255,255,255,0.05)",
+                  }}
+                >
                   <div className="flex items-center gap-3 mb-4">
                     <Skeleton className="w-10 h-10 rounded-full" />
                     <div className="flex-1 space-y-2">
@@ -109,10 +128,16 @@ export default function SavedPage({ user, setUser }) {
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-16" style={{ color: "#859397" }}>
-              <span className="material-symbols-outlined text-5xl mb-3 block" style={{ color: "#334155" }}>bookmark_border</span>
+              <span
+                className="material-symbols-outlined text-5xl mb-3 block"
+                style={{ color: "#334155" }}
+              >
+                bookmark_border
+              </span>
               <p className="text-lg">Rien d'enregistré pour le moment</p>
               <p className="text-sm mt-2">
-                Appuyez sur l'icône signet d'une publication ou d'un clip pour le retrouver ici.
+                Appuyez sur l'icône signet d'une publication ou d'un clip pour
+                le retrouver ici.
               </p>
             </div>
           ) : (

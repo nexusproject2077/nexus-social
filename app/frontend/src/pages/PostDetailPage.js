@@ -90,7 +90,12 @@ export default function PostDetailPage({ user }) {
     <Layout user={user}>
       <div className="max-w-2xl mx-auto">
         <div className="sticky top-0 z-10 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800 p-4">
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>{t("publication")}</h1>
+          <h1
+            className="text-2xl font-bold"
+            style={{ fontFamily: "Space Grotesk, sans-serif" }}
+          >
+            {t("publication")}
+          </h1>
         </div>
 
         <div className="p-4">

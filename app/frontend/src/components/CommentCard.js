@@ -20,8 +20,14 @@ export default function CommentCard({ comment }) {
   const goProfile = () => navigate(`/profile/${comment.author_id}`);
 
   return (
-    <div data-testid={`comment-${comment.id}`} className="flex gap-3 py-3 border-b border-slate-800/70">
-      <Avatar className="w-9 h-9 flex-shrink-0 cursor-pointer" onClick={goProfile}>
+    <div
+      data-testid={`comment-${comment.id}`}
+      className="flex gap-3 py-3 border-b border-slate-800/70"
+    >
+      <Avatar
+        className="w-9 h-9 flex-shrink-0 cursor-pointer"
+        onClick={goProfile}
+      >
         <AvatarImage src={comment.author_profile_pic} />
         <AvatarFallback className="bg-slate-700 text-sm">
           {(comment.author_username || "?")[0].toUpperCase()}
@@ -29,20 +35,36 @@ export default function CommentCard({ comment }) {
       </Avatar>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap leading-tight">
-          <span className="font-semibold text-sm text-white cursor-pointer hover:underline" onClick={goProfile}>
+          <span
+            className="font-semibold text-sm text-white cursor-pointer hover:underline"
+            onClick={goProfile}
+          >
             {comment.author_username}
           </span>
-          {comment.author_is_verified && <BadgeCheck className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />}
+          {comment.author_is_verified && (
+            <BadgeCheck className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+          )}
           {premium && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full flex-shrink-0"
-              style={{ background: "linear-gradient(135deg,#f9d976,#c8962c)", color: "#3a2a05" }}>
+            <span
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full flex-shrink-0"
+              style={{
+                background: "linear-gradient(135deg,#f9d976,#c8962c)",
+                color: "#3a2a05",
+              }}
+            >
               <Crown className="w-2.5 h-2.5" />
-              <span className="text-[9px] font-black tracking-wide">PREMIUM</span>
+              <span className="text-[9px] font-black tracking-wide">
+                PREMIUM
+              </span>
             </span>
           )}
-          <span className="text-xs text-slate-500">· {timeAgo(comment.created_at)}</span>
+          <span className="text-xs text-slate-500">
+            · {timeAgo(comment.created_at)}
+          </span>
         </div>
-        <p className="text-[15px] text-slate-100 mt-0.5 whitespace-pre-wrap break-words">{comment.content}</p>
+        <p className="text-[15px] text-slate-100 mt-0.5 whitespace-pre-wrap break-words">
+          {comment.content}
+        </p>
       </div>
     </div>
   );

@@ -19,9 +19,12 @@ export default function MatchRoom({ match, currentUser, onClose }) {
 
   const load = async () => {
     try {
-      const r = await axios.get(`${API}/match-rooms/${encodeURIComponent(mid)}/messages`, {
-        params: { limit: 80 },
-      });
+      const r = await axios.get(
+        `${API}/match-rooms/${encodeURIComponent(mid)}/messages`,
+        {
+          params: { limit: 80 },
+        },
+      );
       setMessages(r.data?.messages || r.data || []);
     } catch {
       // fallback local demo thread
@@ -36,7 +39,10 @@ export default function MatchRoom({ match, currentUser, onClose }) {
   }, [mid]);
 
   useEffect(() => {
-    listRef.current?.scrollTo?.({ top: listRef.current.scrollHeight, behavior: "smooth" });
+    listRef.current?.scrollTo?.({
+      top: listRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [messages.length]);
 
   const send = async () => {
@@ -53,11 +59,14 @@ export default function MatchRoom({ match, currentUser, onClose }) {
     setMessages((m) => [...m, optimistic]);
     setText("");
     try {
-      await axios.post(`${API}/match-rooms/${encodeURIComponent(mid)}/messages`, {
-        content,
-        room_id: roomId,
-        match_label: `${match?.home || ""} vs ${match?.away || ""}`,
-      });
+      await axios.post(
+        `${API}/match-rooms/${encodeURIComponent(mid)}/messages`,
+        {
+          content,
+          room_id: roomId,
+          match_label: `${match?.home || ""} vs ${match?.away || ""}`,
+        },
+      );
       load();
     } catch {
       // keep optimistic if API missing
@@ -75,14 +84,21 @@ export default function MatchRoom({ match, currentUser, onClose }) {
   return (
     <div
       className="fixed inset-0 z-[80] flex flex-col"
-      style={{ background: "rgba(11,19,38,0.92)", backdropFilter: "blur(12px)" }}
+      style={{
+        background: "rgba(11,19,38,0.92)",
+        backdropFilter: "blur(12px)",
+      }}
     >
       <div
         className="flex items-center gap-3 px-4 py-3"
         style={{ borderBottom: "1px solid rgba(34,211,238,0.15)" }}
       >
-        <button type="button" onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center"
-          style={{ background: "rgba(255,255,255,0.06)" }}>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-9 h-9 rounded-full flex items-center justify-center"
+          style={{ background: "rgba(255,255,255,0.06)" }}
+        >
           <span className="material-symbols-outlined text-white">close</span>
         </button>
         <div className="flex-1 min-w-0">
@@ -96,13 +112,19 @@ export default function MatchRoom({ match, currentUser, onClose }) {
           </p>
         </div>
         {match?.state === "in" && (
-          <span className="text-[10px] font-black px-2 py-1 rounded-full" style={{ background: "#4ade80", color: "#052e16" }}>
+          <span
+            className="text-[10px] font-black px-2 py-1 rounded-full"
+            style={{ background: "#4ade80", color: "#052e16" }}
+          >
             LIVE
           </span>
         )}
       </div>
 
-      <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+      <div
+        ref={listRef}
+        className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5"
+      >
         {messages.length === 0 && (
           <p className="text-center text-sm py-12" style={{ color: "#859397" }}>
             {t("match_room.empty")}
@@ -112,12 +134,18 @@ export default function MatchRoom({ match, currentUser, onClose }) {
           <div key={m.id} className="flex gap-2">
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-              style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}
+              style={{
+                background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+                color: "#00363e",
+              }}
             >
               {(m.author_username || "?")[0]?.toUpperCase()}
             </div>
             <div className="min-w-0">
-              <span className="text-[12px] font-bold" style={{ color: "#67e8f9" }}>
+              <span
+                className="text-[12px] font-bold"
+                style={{ color: "#67e8f9" }}
+              >
                 {m.author_username}
               </span>
               <p className="text-[14px] text-white break-words">{m.content}</p>
@@ -128,14 +156,20 @@ export default function MatchRoom({ match, currentUser, onClose }) {
 
       <div
         className="px-3 py-3 flex gap-2"
-        style={{ borderTop: "1px solid rgba(34,211,238,0.12)", paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
+        style={{
+          borderTop: "1px solid rgba(34,211,238,0.12)",
+          paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+        }}
       >
         <input
           value={text}
           onChange={(e) => setText(e.target.value.slice(0, 280))}
           placeholder={t("match_room.placeholder")}
           className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none text-white"
-          style={{ background: "#222a3d", border: "1px solid rgba(34,211,238,0.15)" }}
+          style={{
+            background: "#222a3d",
+            border: "1px solid rgba(34,211,238,0.15)",
+          }}
           onKeyDown={(e) => e.key === "Enter" && send()}
         />
         <button
@@ -143,7 +177,10 @@ export default function MatchRoom({ match, currentUser, onClose }) {
           onClick={send}
           disabled={!text.trim() || sending}
           className="w-11 h-11 rounded-full flex items-center justify-center disabled:opacity-40"
-          style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#00363e" }}
+          style={{
+            background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+            color: "#00363e",
+          }}
         >
           <span className="material-symbols-outlined">send</span>
         </button>

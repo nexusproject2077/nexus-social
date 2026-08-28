@@ -7,11 +7,30 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
 } from "recharts";
-import { Users, UserPlus, Activity, Repeat, ShieldAlert, TrendingUp } from "lucide-react";
+import {
+  Users,
+  UserPlus,
+  Activity,
+  Repeat,
+  ShieldAlert,
+  TrendingUp,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export default function AdminMetrics({ user, setUser }) {
@@ -40,7 +59,8 @@ export default function AdminMetrics({ user, setUser }) {
 
   // "YYYY-MM-DD" → "DD/MM" pour l'axe des graphiques.
   const shortDay = (d) => (d ? d.slice(8, 10) + "/" + d.slice(5, 7) : "");
-  const pct = (v) => (v === null || v === undefined ? t("adminmetrics.na") : `${v}%`);
+  const pct = (v) =>
+    v === null || v === undefined ? t("adminmetrics.na") : `${v}%`;
 
   if (loading) {
     return (
@@ -57,18 +77,42 @@ export default function AdminMetrics({ user, setUser }) {
       <Layout user={user} setUser={setUser} compact>
         <div className="flex flex-col items-center justify-center h-screen gap-3 text-center px-6">
           <ShieldAlert className="h-12 w-12 text-slate-500" />
-          <h1 className="text-lg font-bold text-white">{t("adminmetrics.access_denied")}</h1>
-          <p className="text-sm text-slate-400">{t("adminmetrics.admin_only_msg")}</p>
+          <h1 className="text-lg font-bold text-white">
+            {t("adminmetrics.access_denied")}
+          </h1>
+          <p className="text-sm text-slate-400">
+            {t("adminmetrics.admin_only_msg")}
+          </p>
         </div>
       </Layout>
     );
   }
 
   const kpis = [
-    { icon: Users, color: "text-cyan-400", label: t("adminmetrics.kpi_total"), value: data?.total_users },
-    { icon: UserPlus, color: "text-blue-400", label: t("adminmetrics.kpi_new7"), value: data?.new_signups_7d },
-    { icon: UserPlus, color: "text-green-400", label: t("adminmetrics.kpi_new_today"), value: data?.new_signups_today },
-    { icon: Activity, color: "text-fuchsia-400", label: t("adminmetrics.kpi_dau"), value: data?.dau_today },
+    {
+      icon: Users,
+      color: "text-cyan-400",
+      label: t("adminmetrics.kpi_total"),
+      value: data?.total_users,
+    },
+    {
+      icon: UserPlus,
+      color: "text-blue-400",
+      label: t("adminmetrics.kpi_new7"),
+      value: data?.new_signups_7d,
+    },
+    {
+      icon: UserPlus,
+      color: "text-green-400",
+      label: t("adminmetrics.kpi_new_today"),
+      value: data?.new_signups_today,
+    },
+    {
+      icon: Activity,
+      color: "text-fuchsia-400",
+      label: t("adminmetrics.kpi_dau"),
+      value: data?.dau_today,
+    },
   ];
 
   const ret = data?.retention || {};
@@ -84,10 +128,15 @@ export default function AdminMetrics({ user, setUser }) {
         {/* Header */}
         <div className="mb-4 sm:mb-6 flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-white mb-0.5" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+            <h1
+              className="text-xl sm:text-2xl font-bold text-white mb-0.5"
+              style={{ fontFamily: "Space Grotesk, sans-serif" }}
+            >
               {t("adminmetrics.title")}
             </h1>
-            <p className="text-slate-400 text-xs sm:text-sm">{t("adminmetrics.subtitle")}</p>
+            <p className="text-slate-400 text-xs sm:text-sm">
+              {t("adminmetrics.subtitle")}
+            </p>
           </div>
           <span className="text-[10px] text-slate-500 flex items-center gap-1 flex-shrink-0 mt-1">
             <TrendingUp className="h-3 w-3" /> {t("adminmetrics.auto_update")}
@@ -99,9 +148,15 @@ export default function AdminMetrics({ user, setUser }) {
           {kpis.map((k) => (
             <Card key={k.label} className="bg-slate-900 border-slate-800">
               <CardContent className="p-3 sm:p-4">
-                <k.icon className={`h-4 w-4 sm:h-5 sm:w-5 ${k.color} mb-1.5 sm:mb-2`} />
-                <p className="text-[11px] sm:text-sm text-slate-400 leading-tight">{k.label}</p>
-                <p className="text-xl sm:text-3xl font-black text-white">{(k.value ?? 0).toLocaleString()}</p>
+                <k.icon
+                  className={`h-4 w-4 sm:h-5 sm:w-5 ${k.color} mb-1.5 sm:mb-2`}
+                />
+                <p className="text-[11px] sm:text-sm text-slate-400 leading-tight">
+                  {k.label}
+                </p>
+                <p className="text-xl sm:text-3xl font-black text-white">
+                  {(k.value ?? 0).toLocaleString()}
+                </p>
               </CardContent>
             </Card>
           ))}
@@ -111,7 +166,8 @@ export default function AdminMetrics({ user, setUser }) {
         <Card className="bg-slate-900 border-slate-800 mb-3 sm:mb-4">
           <CardHeader className="pb-2">
             <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-              <Repeat className="h-4 w-4 text-cyan-400" /> {t("adminmetrics.retention")}
+              <Repeat className="h-4 w-4 text-cyan-400" />{" "}
+              {t("adminmetrics.retention")}
             </CardTitle>
             <CardDescription className="text-xs">
               {t("adminmetrics.retention_desc")}
@@ -122,11 +178,23 @@ export default function AdminMetrics({ user, setUser }) {
               {retItems.map(({ label, key }) => {
                 const r = ret[key] || {};
                 return (
-                  <div key={key} className="rounded-xl bg-slate-800/50 p-3 text-center">
-                    <p className="text-[10px] sm:text-xs text-slate-400 mb-1">{label}</p>
-                    <p className="text-2xl sm:text-4xl font-black text-cyan-400 leading-none">{pct(r.rate)}</p>
+                  <div
+                    key={key}
+                    className="rounded-xl bg-slate-800/50 p-3 text-center"
+                  >
+                    <p className="text-[10px] sm:text-xs text-slate-400 mb-1">
+                      {label}
+                    </p>
+                    <p className="text-2xl sm:text-4xl font-black text-cyan-400 leading-none">
+                      {pct(r.rate)}
+                    </p>
                     <p className="text-[10px] text-slate-500 mt-1.5">
-                      {r.cohort ? t("adminmetrics.signups_count", { retained: r.retained, cohort: r.cohort }) : t("adminmetrics.not_enough")}
+                      {r.cohort
+                        ? t("adminmetrics.signups_count", {
+                            retained: r.retained,
+                            cohort: r.cohort,
+                          })
+                        : t("adminmetrics.not_enough")}
                     </p>
                   </div>
                 );
@@ -138,17 +206,45 @@ export default function AdminMetrics({ user, setUser }) {
         {/* Nouveaux inscrits (14 j) */}
         <Card className="bg-slate-900 border-slate-800 mb-3 sm:mb-4">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base sm:text-lg">{t("adminmetrics.new_signups")}</CardTitle>
-            <CardDescription className="text-xs">{t("adminmetrics.last_14d")}</CardDescription>
+            <CardTitle className="text-base sm:text-lg">
+              {t("adminmetrics.new_signups")}
+            </CardTitle>
+            <CardDescription className="text-xs">
+              {t("adminmetrics.last_14d")}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={(data?.signups_series || []).map((d) => ({ ...d, label: shortDay(d.day) }))}>
+              <BarChart
+                data={(data?.signups_series || []).map((d) => ({
+                  ...d,
+                  label: shortDay(d.day),
+                }))}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="label" stroke="#94a3b8" style={{ fontSize: 10 }} />
-                <YAxis allowDecimals={false} stroke="#94a3b8" style={{ fontSize: 10 }} />
-                <Tooltip contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155" }} labelStyle={{ color: "#e2e8f0" }} />
-                <Bar dataKey="count" fill="#3b82f6" name={t("adminmetrics.chart_signups")} radius={[3, 3, 0, 0]} />
+                <XAxis
+                  dataKey="label"
+                  stroke="#94a3b8"
+                  style={{ fontSize: 10 }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  stroke="#94a3b8"
+                  style={{ fontSize: 10 }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#1e293b",
+                    border: "1px solid #334155",
+                  }}
+                  labelStyle={{ color: "#e2e8f0" }}
+                />
+                <Bar
+                  dataKey="count"
+                  fill="#3b82f6"
+                  name={t("adminmetrics.chart_signups")}
+                  radius={[3, 3, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -157,17 +253,45 @@ export default function AdminMetrics({ user, setUser }) {
         {/* DAU (14 j) */}
         <Card className="bg-slate-900 border-slate-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base sm:text-lg">{t("adminmetrics.dau_title")}</CardTitle>
-            <CardDescription className="text-xs">{t("adminmetrics.last_14d")}</CardDescription>
+            <CardTitle className="text-base sm:text-lg">
+              {t("adminmetrics.dau_title")}
+            </CardTitle>
+            <CardDescription className="text-xs">
+              {t("adminmetrics.last_14d")}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={(data?.dau_series || []).map((d) => ({ ...d, label: shortDay(d.day) }))}>
+              <BarChart
+                data={(data?.dau_series || []).map((d) => ({
+                  ...d,
+                  label: shortDay(d.day),
+                }))}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="label" stroke="#94a3b8" style={{ fontSize: 10 }} />
-                <YAxis allowDecimals={false} stroke="#94a3b8" style={{ fontSize: 10 }} />
-                <Tooltip contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155" }} labelStyle={{ color: "#e2e8f0" }} />
-                <Bar dataKey="dau" fill="#22d3ee" name="DAU" radius={[3, 3, 0, 0]} />
+                <XAxis
+                  dataKey="label"
+                  stroke="#94a3b8"
+                  style={{ fontSize: 10 }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  stroke="#94a3b8"
+                  style={{ fontSize: 10 }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#1e293b",
+                    border: "1px solid #334155",
+                  }}
+                  labelStyle={{ color: "#e2e8f0" }}
+                />
+                <Bar
+                  dataKey="dau"
+                  fill="#22d3ee"
+                  name="DAU"
+                  radius={[3, 3, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

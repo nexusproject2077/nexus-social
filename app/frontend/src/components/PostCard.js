@@ -10,14 +10,17 @@ import CommentsSection from "./CommentsSection";
 import { useTranslation } from "react-i18next";
 
 const C = {
-  surface:    "#0b1326",
-  container:  "#171f33",
-  high:       "#222a3d",
-  cyan:       (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
-  onPrimary:  "#00363e",
-  outline:    "#859397",
-  onSurface:  "#dae2fd",
-  onVariant:  "#bbc9cd",
+  surface: "#0b1326",
+  container: "#171f33",
+  high: "#222a3d",
+  cyan:
+    (typeof window !== "undefined" &&
+      window.localStorage.getItem("nexus_accent")) ||
+    "#22d3ee",
+  onPrimary: "#00363e",
+  outline: "#859397",
+  onSurface: "#dae2fd",
+  onVariant: "#bbc9cd",
 };
 
 /**
@@ -40,14 +43,17 @@ function FeedVideo({ src }) {
           video.pause();
         }
       },
-      { threshold: [0, 0.6, 1] }
+      { threshold: [0, 0.6, 1] },
     );
     io.observe(video);
     return () => io.disconnect();
   }, []);
 
   return (
-    <div className="relative rounded-xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+    <div
+      className="relative rounded-xl overflow-hidden border"
+      style={{ borderColor: "rgba(255,255,255,0.06)" }}
+    >
       <video
         ref={ref}
         src={src}
@@ -61,12 +67,17 @@ function FeedVideo({ src }) {
       {/* Bouton son (l'autoplay impose le mode muet au départ) */}
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setMuted((m) => !m);
+        }}
         className="absolute bottom-3 right-3 w-9 h-9 rounded-full flex items-center justify-center"
         style={{ background: "rgba(0,0,0,0.55)" }}
         title={muted ? "Activer le son" : "Couper le son"}
       >
-        <span className="material-symbols-outlined text-white text-lg">{muted ? "volume_off" : "volume_up"}</span>
+        <span className="material-symbols-outlined text-white text-lg">
+          {muted ? "volume_off" : "volume_up"}
+        </span>
       </button>
     </div>
   );
@@ -75,14 +86,15 @@ function FeedVideo({ src }) {
 export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [isLiked, setIsLiked]         = useState(post.is_liked || false);
-  const [likesCount, setLikesCount]   = useState(post.likes_count || 0);
+  const [isLiked, setIsLiked] = useState(post.is_liked || false);
+  const [likesCount, setLikesCount] = useState(post.likes_count || 0);
   const [sharesCount, setSharesCount] = useState(post.shares_count || 0);
   const [commentsCount, setCommentsCount] = useState(post.comments_count || 0);
-  const [isSaved, setIsSaved]         = useState(post.is_saved || false);
-  const [showComments, setShowComments]   = useState(false);
-  const [reposted, setReposted]       = useState(
-    post.is_reposted || (!!post.repost_of && post.author_id === currentUser?.id)
+  const [isSaved, setIsSaved] = useState(post.is_saved || false);
+  const [showComments, setShowComments] = useState(false);
+  const [reposted, setReposted] = useState(
+    post.is_reposted ||
+      (!!post.repost_of && post.author_id === currentUser?.id),
   );
   const [repostLoading, setRepostLoading] = useState(false);
 
@@ -91,11 +103,17 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const originalId = post.repost_of || post.id;
   // Auteur affiché : l'auteur d'origine pour un repost, sinon l'auteur du post.
   const displayAuthorId = isRepost ? post.original_author_id : post.author_id;
-  const displayAuthorName = isRepost ? post.original_author_username : post.author_username;
-  const displayAuthorPic = isRepost ? post.original_author_profile_pic : post.author_profile_pic;
-  const displayAuthorVerified = isRepost ? post.original_author_is_verified : post.author_is_verified;
-  const [poll, setPoll]               = useState(post.poll || null);
-  const [pollVote, setPollVote]       = useState(post.poll_user_vote || null);
+  const displayAuthorName = isRepost
+    ? post.original_author_username
+    : post.author_username;
+  const displayAuthorPic = isRepost
+    ? post.original_author_profile_pic
+    : post.author_profile_pic;
+  const displayAuthorVerified = isRepost
+    ? post.original_author_is_verified
+    : post.author_is_verified;
+  const [poll, setPoll] = useState(post.poll || null);
+  const [pollVote, setPollVote] = useState(post.poll_user_vote || null);
   const [pollLoading, setPollLoading] = useState(false);
 
   const handleLike = async () => {
@@ -126,7 +144,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     const url = `${window.location.origin}/post/${post.id}`;
     const shareData = {
       title: `${displayAuthorName} sur Nexus`,
-      text: post.content ? post.content.slice(0, 120) : "Découvre cette publication sur Nexus",
+      text: post.content
+        ? post.content.slice(0, 120)
+        : "Découvre cette publication sur Nexus",
       url,
     };
     try {
@@ -139,8 +159,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     } catch (err) {
       // L'utilisateur a annulé le partage natif → on ne fait rien.
       if (err && err.name !== "AbortError") {
-        try { await navigator.clipboard.writeText(url); toast.success(t("link_copied")); }
-        catch { toast.error("Impossible de partager"); }
+        try {
+          await navigator.clipboard.writeText(url);
+          toast.success(t("link_copied"));
+        } catch {
+          toast.error("Impossible de partager");
+        }
       }
     }
   };
@@ -150,7 +174,11 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     try {
       const res = await axios.post(`${API}/posts/${post.id}/pin`);
       setPinned(res.data.pinned);
-      toast.success(res.data.pinned ? "Publication épinglée en haut du profil" : "Publication désépinglée");
+      toast.success(
+        res.data.pinned
+          ? "Publication épinglée en haut du profil"
+          : "Publication désépinglée",
+      );
       onUpdate?.({ ...post, is_pinned: res.data.pinned });
     } catch (e) {
       toast.error(e.response?.data?.detail || "Action impossible");
@@ -165,20 +193,28 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const lastTapRef = useRef(0);
   const [heartBurst, setHeartBurst] = useState(false);
   const doubleTapLike = () => {
-    if (!isLiked) handleLike();          // ne fait que liker (jamais unliker) au double-tap
+    if (!isLiked) handleLike(); // ne fait que liker (jamais unliker) au double-tap
     setHeartBurst(true);
     setTimeout(() => setHeartBurst(false), 700);
   };
   const onMediaTap = () => {
     const now = Date.now();
-    if (now - lastTapRef.current < 300) { doubleTapLike(); lastTapRef.current = 0; }
-    else lastTapRef.current = now;
+    if (now - lastTapRef.current < 300) {
+      doubleTapLike();
+      lastTapRef.current = 0;
+    } else lastTapRef.current = now;
   };
 
   const handleRepost = async () => {
-    if (!currentUser) { toast.error(t("must_be_logged_in")); return; }
+    if (!currentUser) {
+      toast.error(t("must_be_logged_in"));
+      return;
+    }
     if (repostLoading) return;
-    if (displayAuthorId === currentUser.id) { toast.error("Vous ne pouvez pas reposter votre propre publication"); return; }
+    if (displayAuthorId === currentUser.id) {
+      toast.error("Vous ne pouvez pas reposter votre propre publication");
+      return;
+    }
 
     try {
       setRepostLoading(true);
@@ -186,7 +222,11 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         // Annuler la republication : le compteur se met à jour.
         const res = await axios.delete(`${API}/posts/${originalId}/repost`);
         setReposted(false);
-        setSharesCount((p) => (typeof res.data?.shares_count === "number" ? res.data.shares_count : Math.max(0, p - 1)));
+        setSharesCount((p) =>
+          typeof res.data?.shares_count === "number"
+            ? res.data.shares_count
+            : Math.max(0, p - 1),
+        );
         toast.success(t("repost_cancelled"));
         // Si on regardait notre propre repost, il disparaît de la liste.
         if (isRepost && post.author_id === currentUser.id) onDelete?.(post.id);
@@ -206,7 +246,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const handleDelete = async () => {
     // Pour un repost, « supprimer » = annuler la republication (met à jour le
     // compteur de partages de l'original et retire le repost du profil).
-    const label = isRepost ? "Annuler cette republication ?" : t("confirm_delete_post");
+    const label = isRepost
+      ? "Annuler cette republication ?"
+      : t("confirm_delete_post");
     if (!window.confirm(label)) return;
     try {
       if (isRepost) {
@@ -226,7 +268,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     if (pollLoading || pollVote === optionId) return;
     try {
       setPollLoading(true);
-      const res = await axios.post(`${API}/posts/${post.id}/vote`, { option_id: optionId });
+      const res = await axios.post(`${API}/posts/${post.id}/vote`, {
+        option_id: optionId,
+      });
       setPoll(res.data.poll);
       setPollVote(res.data.poll_user_vote);
     } catch (err) {
@@ -236,8 +280,9 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     }
   };
 
-  const handleCommentAdded   = () => setCommentsCount((p) => p + 1);
-  const handleCommentDeleted = () => setCommentsCount((p) => Math.max(0, p - 1));
+  const handleCommentAdded = () => setCommentsCount((p) => p + 1);
+  const handleCommentDeleted = () =>
+    setCommentsCount((p) => Math.max(0, p - 1));
 
   const getInitials = (u) => (u ? u.substring(0, 2).toUpperCase() : "??");
 
@@ -306,36 +351,80 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   return (
     <article
       className="rounded-2xl border overflow-hidden"
-      style={{ backgroundColor: C.container, borderColor: "rgba(255,255,255,0.05)" }}
+      style={{
+        backgroundColor: C.container,
+        borderColor: "rgba(255,255,255,0.05)",
+      }}
     >
       {/* Repost banner */}
       {post.repost_of && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b text-xs font-bold" style={{ backgroundColor: C.high, borderColor: "rgba(255,255,255,0.05)", color: C.outline }}>
-          <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>repeat</span>
-          <span>{t("reposted_by")} <span style={{ color: C.cyan }}>@{post.author_username}</span> {t("from")} <Link to={`/profile/${post.original_author_id}`} style={{ color: C.onVariant }} className="hover:text-cyan-400">@{post.original_author_username}</Link></span>
+        <div
+          className="flex items-center gap-2 px-4 py-2 border-b text-xs font-bold"
+          style={{
+            backgroundColor: C.high,
+            borderColor: "rgba(255,255,255,0.05)",
+            color: C.outline,
+          }}
+        >
+          <span
+            className="material-symbols-outlined text-base"
+            style={{ color: C.cyan }}
+          >
+            repeat
+          </span>
+          <span>
+            {t("reposted_by")}{" "}
+            <span style={{ color: C.cyan }}>@{post.author_username}</span>{" "}
+            {t("from")}{" "}
+            <Link
+              to={`/profile/${post.original_author_id}`}
+              style={{ color: C.onVariant }}
+              className="hover:text-cyan-400"
+            >
+              @{post.original_author_username}
+            </Link>
+          </span>
         </div>
       )}
 
       <div className="p-4 lg:p-5 space-y-4">
         {/* Header */}
         <div className="flex justify-between items-start">
-          <Link to={`/profile/${displayAuthorId}`} className="flex gap-3 items-center">
+          <Link
+            to={`/profile/${displayAuthorId}`}
+            className="flex gap-3 items-center"
+          >
             {displayAuthorPic ? (
-              <img src={displayAuthorPic} alt={displayAuthorName} className="w-10 h-10 rounded-full object-cover" />
+              <img
+                src={displayAuthorPic}
+                alt={displayAuthorName}
+                className="w-10 h-10 rounded-full object-cover"
+              />
             ) : (
-              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
+                style={{
+                  background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+                  color: C.onPrimary,
+                }}
+              >
                 {getInitials(displayAuthorName)}
               </div>
             )}
             <div className="min-w-0">
               {/* Nom + @username côte à côte (façon X) */}
-              <p className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1 flex-wrap" style={{ color: C.onSurface }}>
+              <p
+                className="font-bold text-sm transition-colors hover:text-cyan-400 flex items-center gap-1 flex-wrap"
+                style={{ color: C.onSurface }}
+              >
                 <span className="truncate">{displayAuthorName}</span>
                 {displayAuthorVerified && (
                   <span
                     className="material-symbols-outlined text-sm"
-                    style={{ color: "#3b82f6", fontVariationSettings: "'FILL' 1" }}
+                    style={{
+                      color: "#3b82f6",
+                      fontVariationSettings: "'FILL' 1",
+                    }}
                     title={t("verified_account")}
                   >
                     verified
@@ -350,12 +439,29 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                     workspace_premium
                   </span>
                 )}
-                <span className="font-normal truncate" style={{ color: C.outline }}>@{displayAuthorName}</span>
+                <span
+                  className="font-normal truncate"
+                  style={{ color: C.outline }}
+                >
+                  @{displayAuthorName}
+                </span>
               </p>
-              <p className="text-xs flex items-center gap-1" style={{ color: C.outline }}>
+              <p
+                className="text-xs flex items-center gap-1"
+                style={{ color: C.outline }}
+              >
                 {post.is_pinned && (
-                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title={t("pinned")}>
-                    <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>push_pin</span>
+                  <span
+                    className="inline-flex items-center gap-0.5"
+                    style={{ color: C.cyan }}
+                    title={t("pinned")}
+                  >
+                    <span
+                      className="material-symbols-outlined text-[13px]"
+                      style={{ fontVariationSettings: "'FILL' 1" }}
+                    >
+                      push_pin
+                    </span>
                     {t("pinned")} ·
                   </span>
                 )}
@@ -371,13 +477,31 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                   onClick={handlePin}
                   className="transition-colors hover:text-cyan-400"
                   style={{ color: pinned ? C.cyan : C.outline }}
-                  title={pinned ? "Désépingler" : "Épingler en haut du profil (Premium)"}
+                  title={
+                    pinned
+                      ? "Désépingler"
+                      : "Épingler en haut du profil (Premium)"
+                  }
                 >
-                  <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: pinned ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
+                  <span
+                    className="material-symbols-outlined text-xl"
+                    style={{
+                      fontVariationSettings: pinned ? "'FILL' 1" : "'FILL' 0",
+                    }}
+                  >
+                    push_pin
+                  </span>
                 </button>
               )}
-              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title={t("delete")}>
-                <span className="material-symbols-outlined text-xl">delete</span>
+              <button
+                onClick={handleDelete}
+                className="transition-colors hover:text-red-400"
+                style={{ color: C.outline }}
+                title={t("delete")}
+              >
+                <span className="material-symbols-outlined text-xl">
+                  delete
+                </span>
               </button>
             </div>
           )}
@@ -393,23 +517,28 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               style={{ color: C.onVariant }}
             >
               {renderContent(
-                translatedContent && !showOriginal ? translatedContent : post.content
+                translatedContent && !showOriginal
+                  ? translatedContent
+                  : post.content,
               )}
             </p>
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); handleTranslatePost(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleTranslatePost();
+              }}
               disabled={translating}
               className="text-xs font-semibold transition-colors hover:opacity-80 disabled:opacity-50"
               style={{ color: "var(--nexus-accent, #22d3ee)" }}
             >
               {translating
-                ? (t("translating") || "Translating…")
+                ? t("translating") || "Translating…"
                 : translatedContent && !showOriginal
-                  ? (t("show_original") || "Show original")
+                  ? t("show_original") || "Show original"
                   : translatedContent && showOriginal
-                    ? (t("show_translation") || "Show translation")
-                    : (t("translate_post") || "Translate")}
+                    ? t("show_translation") || "Show translation"
+                    : t("translate_post") || "Translate"}
             </button>
           </div>
         )}
@@ -441,21 +570,32 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                     className="absolute inset-y-0 left-0"
                     style={{
                       width: voted ? `${pct}%` : "0%",
-                      background: selected ? "rgba(34,211,238,0.25)" : "rgba(255,255,255,0.06)",
+                      background: selected
+                        ? "rgba(34,211,238,0.25)"
+                        : "rgba(255,255,255,0.06)",
                       transition: "width 0.4s ease",
                     }}
                   />
-                  <div className="relative flex items-center justify-between gap-2" style={{ color: C.onSurface }}>
+                  <div
+                    className="relative flex items-center justify-between gap-2"
+                    style={{ color: C.onSurface }}
+                  >
                     <span className="flex items-center gap-1.5 font-medium">
                       {selected && (
-                        <span className="material-symbols-outlined text-base" style={{ color: C.cyan }}>
+                        <span
+                          className="material-symbols-outlined text-base"
+                          style={{ color: C.cyan }}
+                        >
                           check_circle
                         </span>
                       )}
                       {opt.text}
                     </span>
                     {voted && (
-                      <span className="text-xs font-bold flex-shrink-0" style={{ color: C.onVariant }}>
+                      <span
+                        className="text-xs font-bold flex-shrink-0"
+                        style={{ color: C.onVariant }}
+                      >
                         {pct}%
                       </span>
                     )}
@@ -464,7 +604,8 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               );
             })}
             <p className="text-xs" style={{ color: C.outline }}>
-              {poll.total_votes || 0} vote{(poll.total_votes || 0) !== 1 ? "s" : ""}
+              {poll.total_votes || 0} vote
+              {(poll.total_votes || 0) !== 1 ? "s" : ""}
               {!pollVote && " · Appuyez pour voter"}
             </p>
           </div>
@@ -479,12 +620,19 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             data-testid="affiliate-shop"
             onClick={(e) => {
               e.stopPropagation();
-              axios.post(`${API}/posts/${post.id}/affiliate-click`).catch(() => {});
+              axios
+                .post(`${API}/posts/${post.id}/affiliate-click`)
+                .catch(() => {});
             }}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
-            style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}
+            style={{
+              background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+              color: C.onPrimary,
+            }}
           >
-            <span className="material-symbols-outlined text-lg">shopping_bag</span>
+            <span className="material-symbols-outlined text-lg">
+              shopping_bag
+            </span>
             Shop
           </a>
         )}
@@ -497,7 +645,13 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             onClick={onMediaTap}
             onDoubleClick={doubleTapLike}
           >
-            <img src={post.media_url} alt="Post media" className="w-full h-auto object-contain max-h-[560px]" loading="lazy" draggable={false} />
+            <img
+              src={post.media_url}
+              alt="Post media"
+              className="w-full h-auto object-contain max-h-[560px]"
+              loading="lazy"
+              draggable={false}
+            />
             {/* Cœur animé au double-tap */}
             {heartBurst && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -522,7 +676,10 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         )}
 
         {/* Action bar — réparti (pas serré) : J'aime · Commentaire · Repost · Partage · Enregistrer */}
-        <div className="flex items-center justify-between pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+        <div
+          className="flex items-center justify-between pt-2"
+          style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}
+        >
           {/* Like */}
           <button
             onClick={handleLike}
@@ -530,7 +687,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: isLiked ? "#f87171" : C.outline }}
           >
-            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}>
+            <span
+              className="material-symbols-outlined text-lg"
+              style={{
+                fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0",
+              }}
+            >
               favorite
             </span>
             {likesCount > 0 && <span>{likesCount}</span>}
@@ -543,7 +705,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: showComments ? C.cyan : C.outline }}
           >
-            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: showComments ? "'FILL' 1" : "'FILL' 0" }}>
+            <span
+              className="material-symbols-outlined text-lg"
+              style={{
+                fontVariationSettings: showComments ? "'FILL' 1" : "'FILL' 0",
+              }}
+            >
               chat_bubble
             </span>
             {commentsCount > 0 && <span>{commentsCount}</span>}
@@ -556,19 +723,40 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               disabled={repostLoading}
               title={reposted ? "Annuler la republication" : "Reposter"}
               className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
-              style={{ color: reposted ? C.cyan : C.outline, opacity: repostLoading ? 0.6 : 1 }}
+              style={{
+                color: reposted ? C.cyan : C.outline,
+                opacity: repostLoading ? 0.6 : 1,
+              }}
             >
               {repostLoading ? (
-                <span className="material-symbols-outlined text-lg animate-spin" style={{ animationDuration: "0.7s" }}>refresh</span>
+                <span
+                  className="material-symbols-outlined text-lg animate-spin"
+                  style={{ animationDuration: "0.7s" }}
+                >
+                  refresh
+                </span>
               ) : (
-                <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: reposted ? "'FILL' 1" : "'FILL' 0" }}>repeat</span>
+                <span
+                  className="material-symbols-outlined text-lg"
+                  style={{
+                    fontVariationSettings: reposted ? "'FILL' 1" : "'FILL' 0",
+                  }}
+                >
+                  repeat
+                </span>
               )}
               {sharesCount > 0 && <span>{sharesCount}</span>}
             </button>
           ) : (
             sharesCount > 0 && (
-              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.outline }} title="Republications">
-                <span className="material-symbols-outlined text-lg">repeat</span>
+              <span
+                className="flex items-center gap-1.5 text-xs font-medium"
+                style={{ color: C.outline }}
+                title="Republications"
+              >
+                <span className="material-symbols-outlined text-lg">
+                  repeat
+                </span>
                 {sharesCount}
               </span>
             )
@@ -591,7 +779,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:scale-105"
             style={{ color: isSaved ? C.cyan : C.outline }}
           >
-            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: isSaved ? "'FILL' 1" : "'FILL' 0" }}>
+            <span
+              className="material-symbols-outlined text-lg"
+              style={{
+                fontVariationSettings: isSaved ? "'FILL' 1" : "'FILL' 0",
+              }}
+            >
               bookmark
             </span>
           </button>

@@ -13,8 +13,24 @@ export default function AboutPage() {
       description={t("about.page_desc")}
     >
       <style>{proseStyle}</style>
-      <h1 style={{ fontSize: 32, color: "#fff", margin: "0 0 12px", letterSpacing: "-0.02em" }}>{t("about.h1")}</h1>
-      <p style={{ color: "#bbc9cd", fontSize: 18, lineHeight: 1.6, marginBottom: 8 }}>
+      <h1
+        style={{
+          fontSize: 32,
+          color: "#fff",
+          margin: "0 0 12px",
+          letterSpacing: "-0.02em",
+        }}
+      >
+        {t("about.h1")}
+      </h1>
+      <p
+        style={{
+          color: "#bbc9cd",
+          fontSize: 18,
+          lineHeight: 1.6,
+          marginBottom: 8,
+        }}
+      >
         {t("about.intro")}
       </p>
 
@@ -25,11 +41,21 @@ export default function AboutPage() {
         <h2>{t("about.do_h2")}</h2>
         <p>{t("about.do_intro")}</p>
         <ul>
-          <li><Trans i18nKey="about.do_1" components={{ b: <strong /> }} /></li>
-          <li><Trans i18nKey="about.do_2" components={{ b: <strong /> }} /></li>
-          <li><Trans i18nKey="about.do_3" components={{ b: <strong /> }} /></li>
-          <li><Trans i18nKey="about.do_4" components={{ b: <strong /> }} /></li>
-          <li><Trans i18nKey="about.do_5" components={{ b: <strong /> }} /></li>
+          <li>
+            <Trans i18nKey="about.do_1" components={{ b: <strong /> }} />
+          </li>
+          <li>
+            <Trans i18nKey="about.do_2" components={{ b: <strong /> }} />
+          </li>
+          <li>
+            <Trans i18nKey="about.do_3" components={{ b: <strong /> }} />
+          </li>
+          <li>
+            <Trans i18nKey="about.do_4" components={{ b: <strong /> }} />
+          </li>
+          <li>
+            <Trans i18nKey="about.do_5" components={{ b: <strong /> }} />
+          </li>
         </ul>
 
         <h2>{t("about.values_h2")}</h2>
@@ -43,7 +69,12 @@ export default function AboutPage() {
         <p>{t("about.v_creation_p")}</p>
 
         <h3>{t("about.v_community_h3")}</h3>
-        <p><Trans i18nKey="about.v_community_p" components={{ a: <Link to="/guides/regles-de-la-communaute" /> }} /></p>
+        <p>
+          <Trans
+            i18nKey="about.v_community_p"
+            components={{ a: <Link to="/guides/regles-de-la-communaute" /> }}
+          />
+        </p>
 
         <h2>{t("about.age_h2")}</h2>
         <p>{t("about.age_p")}</p>
@@ -52,11 +83,30 @@ export default function AboutPage() {
         <p>{t("about.tech_p")}</p>
 
         <h2>{t("about.join_h2")}</h2>
-        <p><Trans i18nKey="about.join_p" components={{ a: <Link to="/comment-ca-marche" />, b: <Link to="/auth" /> }} /></p>
+        <p>
+          <Trans
+            i18nKey="about.join_p"
+            components={{
+              a: <Link to="/comment-ca-marche" />,
+              b: <Link to="/auth" />,
+            }}
+          />
+        </p>
       </div>
 
       <div style={{ marginTop: 36, textAlign: "center" }}>
-        <Link to="/auth" style={{ display: "inline-block", textDecoration: "none", fontWeight: 800, color: "#00363e", background: ACCENT, padding: "12px 28px", borderRadius: 999 }}>
+        <Link
+          to="/auth"
+          style={{
+            display: "inline-block",
+            textDecoration: "none",
+            fontWeight: 800,
+            color: "#00363e",
+            background: ACCENT,
+            padding: "12px 28px",
+            borderRadius: 999,
+          }}
+        >
           {t("about.cta")}
         </Link>
       </div>

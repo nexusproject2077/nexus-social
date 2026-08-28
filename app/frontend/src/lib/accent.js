@@ -21,10 +21,26 @@ export const FREE_ACCENTS = [
 // Thèmes PREMIUM (dégradés de luxe). `solid` = repli uni pour les usages en
 // couleur de texte / bordure (un dégradé n'est valide qu'en fond).
 export const PREMIUM_ACCENTS = [
-  { name: "Or Impérial", value: "linear-gradient(135deg,#f9d976 0%,#c8962c 45%,#f7e39a 100%)", solid: "#e0a92e" },
-  { name: "Néon Cyberpunk", value: "linear-gradient(135deg,#b026ff 0%,#ff2bd6 100%)", solid: "#d63be8" },
-  { name: "Émeraude de Luxe", value: "linear-gradient(135deg,#0f9b6c 0%,#10d98a 100%)", solid: "#12c67f" },
-  { name: "Holographique", value: "linear-gradient(135deg,#22d3ee 0%,#8b5cf6 55%,#ec4899 100%)", solid: "#7bb6e8" },
+  {
+    name: "Or Impérial",
+    value: "linear-gradient(135deg,#f9d976 0%,#c8962c 45%,#f7e39a 100%)",
+    solid: "#e0a92e",
+  },
+  {
+    name: "Néon Cyberpunk",
+    value: "linear-gradient(135deg,#b026ff 0%,#ff2bd6 100%)",
+    solid: "#d63be8",
+  },
+  {
+    name: "Émeraude de Luxe",
+    value: "linear-gradient(135deg,#0f9b6c 0%,#10d98a 100%)",
+    solid: "#12c67f",
+  },
+  {
+    name: "Holographique",
+    value: "linear-gradient(135deg,#22d3ee 0%,#8b5cf6 55%,#ec4899 100%)",
+    solid: "#7bb6e8",
+  },
 ];
 
 // Rétrocompat : anciens imports { ACCENTS }.

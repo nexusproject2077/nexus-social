@@ -18,7 +18,9 @@ function getCtx() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     _ctx = new AC();
-  } catch { return null; }
+  } catch {
+    return null;
+  }
   return _ctx;
 }
 
@@ -28,9 +30,13 @@ let _unlockBound = false;
 function bindUnlock() {
   if (_unlockBound || typeof window === "undefined") return;
   _unlockBound = true;
-  const resume = () => { const c = getCtx(); if (c && c.state === "suspended") c.resume().catch(() => {}); };
+  const resume = () => {
+    const c = getCtx();
+    if (c && c.state === "suspended") c.resume().catch(() => {});
+  };
   ["touchend", "pointerdown", "mousedown", "keydown"].forEach((ev) =>
-    window.addEventListener(ev, resume, { passive: true }));
+    window.addEventListener(ev, resume, { passive: true }),
+  );
 }
 if (typeof window !== "undefined") bindUnlock();
 
@@ -57,7 +63,9 @@ export function clearNowPlaying() {
       navigator.mediaSession.metadata = null;
       navigator.mediaSession.playbackState = "none";
     }
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
 }
 
 // Branche la neutralisation « Now Playing » sur un élément média rendu par React
@@ -68,10 +76,15 @@ export function clearNowPlaying() {
 export function attachSilent(el, { onFallback } = {}) {
   if (!el) return () => {};
   let done = false;
-  const onCanPlay = () => { if (!done && routeThroughWebAudio(el)) done = true; };
+  const onCanPlay = () => {
+    if (!done && routeThroughWebAudio(el)) done = true;
+  };
   const onError = () => {
     if (done) return;
-    if (el.crossOrigin) { done = true; onFallback && onFallback(); }
+    if (el.crossOrigin) {
+      done = true;
+      onFallback && onFallback();
+    }
   };
   el.addEventListener("canplay", onCanPlay);
   el.addEventListener("error", onError);
@@ -87,7 +100,8 @@ export function attachSilent(el, { onFallback } = {}) {
 // automatique si le CORS bloque. Idéal pour les aperçus musique des stories.
 export class PreviewAudio {
   constructor() {
-    this.el = typeof document !== "undefined" ? document.createElement("audio") : null;
+    this.el =
+      typeof document !== "undefined" ? document.createElement("audio") : null;
     this._routed = false;
     this._fellBack = false;
     if (this.el) {
@@ -95,7 +109,8 @@ export class PreviewAudio {
       this.el.preload = "auto";
       this.el.crossOrigin = "anonymous"; // requis pour router le son par Web Audio
       this.el.addEventListener("canplay", () => {
-        if (!this._routed && !this._fellBack) this._routed = routeThroughWebAudio(this.el);
+        if (!this._routed && !this._fellBack)
+          this._routed = routeThroughWebAudio(this.el);
       });
       this.el.addEventListener("error", () => {
         // Échec de chargement (souvent CORS) → repli natif sans crossOrigin.
@@ -105,8 +120,13 @@ export class PreviewAudio {
         try {
           this.el.removeAttribute("crossorigin");
           this.el.crossOrigin = null;
-          if (src) { this.el.src = src; this.el.play().catch(() => {}); }
-        } catch { /* noop */ }
+          if (src) {
+            this.el.src = src;
+            this.el.play().catch(() => {});
+          }
+        } catch {
+          /* noop */
+        }
       });
     }
   }
@@ -115,14 +135,41 @@ export class PreviewAudio {
     if (!el || !url) return;
     this._src = url;
     if (el.src !== url) el.src = url;
-    const start = () => { try { if (offset) el.currentTime = offset; } catch { /* noop */ } el.play().catch(() => {}); };
+    const start = () => {
+      try {
+        if (offset) el.currentTime = offset;
+      } catch {
+        /* noop */
+      }
+      el.play().catch(() => {});
+    };
     if (el.readyState >= 1) start();
     else el.addEventListener("loadedmetadata", start, { once: true });
   }
-  seek(t) { try { if (this.el) this.el.currentTime = t; } catch { /* noop */ } }
-  pause() { try { this.el && this.el.pause(); } catch { /* noop */ } }
+  seek(t) {
+    try {
+      if (this.el) this.el.currentTime = t;
+    } catch {
+      /* noop */
+    }
+  }
+  pause() {
+    try {
+      this.el && this.el.pause();
+    } catch {
+      /* noop */
+    }
+  }
   destroy() {
-    try { if (this.el) { this.el.pause(); this.el.removeAttribute("src"); this.el.load(); } } catch { /* noop */ }
+    try {
+      if (this.el) {
+        this.el.pause();
+        this.el.removeAttribute("src");
+        this.el.load();
+      }
+    } catch {
+      /* noop */
+    }
     clearNowPlaying();
   }
 }

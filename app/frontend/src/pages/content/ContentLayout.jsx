@@ -38,30 +38,95 @@ export default function ContentLayout({ title, description, children }) {
     if (title) document.title = `${title} · Nexus Social`;
     if (description) {
       let m = document.querySelector('meta[name="description"]');
-      if (!m) { m = document.createElement("meta"); m.name = "description"; document.head.appendChild(m); }
+      if (!m) {
+        m = document.createElement("meta");
+        m.name = "description";
+        document.head.appendChild(m);
+      }
       m.setAttribute("content", description);
     }
     window.scrollTo(0, 0);
   }, [title, description]);
 
   return (
-    <div style={{ background: "#0b1326", color: "#dae2fd", minHeight: "100vh" }}>
+    <div
+      style={{ background: "#0b1326", color: "#dae2fd", minHeight: "100vh" }}
+    >
       <style>{HEADER_CSS}</style>
       {/* En-tête */}
-      <header style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(11,19,38,0.9)", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        <div style={{ maxWidth: 1040, margin: "0 auto", padding: "12px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-          <Link to="/a-propos" onClick={() => setMenuOpen(false)} style={{ textDecoration: "none", fontWeight: 900, fontSize: 18, letterSpacing: "-0.02em", background: `linear-gradient(90deg, ${ACCENT}, #3b82f6)`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", whiteSpace: "nowrap" }}>
+      <header
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+          background: "rgba(11,19,38,0.9)",
+          backdropFilter: "blur(16px)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1040,
+            margin: "0 auto",
+            padding: "12px 18px",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+          }}
+        >
+          <Link
+            to="/a-propos"
+            onClick={() => setMenuOpen(false)}
+            style={{
+              textDecoration: "none",
+              fontWeight: 900,
+              fontSize: 18,
+              letterSpacing: "-0.02em",
+              background: `linear-gradient(90deg, ${ACCENT}, #3b82f6)`,
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              whiteSpace: "nowrap",
+            }}
+          >
             Nexus Social
           </Link>
           {/* Liens en ligne (écran large uniquement) */}
-          <nav className="nx-nav-inline" style={{ gap: 14, marginLeft: 8, alignItems: "center" }}>
+          <nav
+            className="nx-nav-inline"
+            style={{ gap: 14, marginLeft: 8, alignItems: "center" }}
+          >
             {NAV.map((n) => (
-              <Link key={n.to} to={n.to} style={{ color: "#bbc9cd", textDecoration: "none", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap" }}>{t("content."+n.k)}</Link>
+              <Link
+                key={n.to}
+                to={n.to}
+                style={{
+                  color: "#bbc9cd",
+                  textDecoration: "none",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {t("content." + n.k)}
+              </Link>
             ))}
           </nav>
           {/* Pousse le bouton/burger à droite */}
           <div style={{ flex: 1 }} />
-          <Link to="/auth" onClick={() => setMenuOpen(false)} style={{ textDecoration: "none", fontSize: 13, fontWeight: 800, color: "#00363e", background: ACCENT, padding: "8px 16px", borderRadius: 999, whiteSpace: "nowrap" }}>
+          <Link
+            to="/auth"
+            onClick={() => setMenuOpen(false)}
+            style={{
+              textDecoration: "none",
+              fontSize: 13,
+              fontWeight: 800,
+              color: "#00363e",
+              background: ACCENT,
+              padding: "8px 16px",
+              borderRadius: 999,
+              whiteSpace: "nowrap",
+            }}
+          >
             {t("content.join")}
           </Link>
           {/* Hamburger (mobile uniquement) */}
@@ -71,26 +136,69 @@ export default function ContentLayout({ title, description, children }) {
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
             className="nx-burger"
-            style={{ background: "transparent", border: "none", padding: 6, cursor: "pointer", color: "#dae2fd", alignItems: "center", justifyContent: "center" }}
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: 6,
+              cursor: "pointer",
+              color: "#dae2fd",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             {menuOpen ? (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
             ) : (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <path d="M3 6h18M3 12h18M3 18h18" />
+              </svg>
             )}
           </button>
         </div>
         {/* Panneau déroulant mobile */}
         {menuOpen && (
-          <nav className="nx-mobile-menu" style={{ flexDirection: "column", padding: "6px 18px 14px", borderTop: "1px solid rgba(255,255,255,0.06)", gap: 2 }}>
+          <nav
+            className="nx-mobile-menu"
+            style={{
+              flexDirection: "column",
+              padding: "6px 18px 14px",
+              borderTop: "1px solid rgba(255,255,255,0.06)",
+              gap: 2,
+            }}
+          >
             {NAV.map((n) => (
               <Link
                 key={n.to}
                 to={n.to}
                 onClick={() => setMenuOpen(false)}
-                style={{ color: "#dae2fd", textDecoration: "none", fontSize: 16, fontWeight: 600, padding: "12px 8px", borderRadius: 10 }}
+                style={{
+                  color: "#dae2fd",
+                  textDecoration: "none",
+                  fontSize: 16,
+                  fontWeight: 600,
+                  padding: "12px 8px",
+                  borderRadius: 10,
+                }}
               >
-                {t("content."+n.k)}
+                {t("content." + n.k)}
               </Link>
             ))}
           </nav>
@@ -98,40 +206,147 @@ export default function ContentLayout({ title, description, children }) {
       </header>
 
       {/* Contenu */}
-      <main style={{ maxWidth: 800, margin: "0 auto", padding: "28px 22px 64px", lineHeight: 1.75, fontSize: 16 }}>
+      <main
+        style={{
+          maxWidth: 800,
+          margin: "0 auto",
+          padding: "28px 22px 64px",
+          lineHeight: 1.75,
+          fontSize: 16,
+        }}
+      >
         {children}
       </main>
 
       {/* Pied de page */}
-      <footer style={{ borderTop: "1px solid rgba(255,255,255,0.08)", background: "#080f1f" }}>
-        <div style={{ maxWidth: 1040, margin: "0 auto", padding: "32px 22px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 24 }}>
+      <footer
+        style={{
+          borderTop: "1px solid rgba(255,255,255,0.08)",
+          background: "#080f1f",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1040,
+            margin: "0 auto",
+            padding: "32px 22px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 24,
+          }}
+        >
           <div>
-            <p style={{ fontWeight: 900, marginBottom: 8, color: "#fff" }}>Nexus Social</p>
-            <p style={{ color: "#859397", fontSize: 14 }}>{t("content.tagline")}</p>
+            <p style={{ fontWeight: 900, marginBottom: 8, color: "#fff" }}>
+              Nexus Social
+            </p>
+            <p style={{ color: "#859397", fontSize: 14 }}>
+              {t("content.tagline")}
+            </p>
           </div>
           <div>
-            <p style={{ fontWeight: 700, marginBottom: 8, color: "#dae2fd", fontSize: 14 }}>{t("content.discover")}</p>
+            <p
+              style={{
+                fontWeight: 700,
+                marginBottom: 8,
+                color: "#dae2fd",
+                fontSize: 14,
+              }}
+            >
+              {t("content.discover")}
+            </p>
             {NAV.map((n) => (
               <div key={n.to} style={{ margin: "6px 0" }}>
-                <Link to={n.to} style={{ color: "#859397", textDecoration: "none", fontSize: 14 }}>{t("content."+n.k)}</Link>
+                <Link
+                  to={n.to}
+                  style={{
+                    color: "#859397",
+                    textDecoration: "none",
+                    fontSize: 14,
+                  }}
+                >
+                  {t("content." + n.k)}
+                </Link>
               </div>
             ))}
           </div>
           <div>
-            <p style={{ fontWeight: 700, marginBottom: 8, color: "#dae2fd", fontSize: 14 }}>{t("content.legal")}</p>
-            {[[t("content.terms"), "/legal/terms-of-service"], [t("content.privacy_policy"), "/legal/privacy-policy"], [t("content.cookie_policy"), "/legal/cookie-policy"]].map(([l, p]) => (
+            <p
+              style={{
+                fontWeight: 700,
+                marginBottom: 8,
+                color: "#dae2fd",
+                fontSize: 14,
+              }}
+            >
+              {t("content.legal")}
+            </p>
+            {[
+              [t("content.terms"), "/legal/terms-of-service"],
+              [t("content.privacy_policy"), "/legal/privacy-policy"],
+              [t("content.cookie_policy"), "/legal/cookie-policy"],
+            ].map(([l, p]) => (
               <div key={p} style={{ margin: "6px 0" }}>
-                <a href={`${API}${p}`} target="_blank" rel="noopener noreferrer" style={{ color: "#859397", textDecoration: "none", fontSize: 14 }}>{l}</a>
+                <a
+                  href={`${API}${p}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: "#859397",
+                    textDecoration: "none",
+                    fontSize: 14,
+                  }}
+                >
+                  {l}
+                </a>
               </div>
             ))}
           </div>
           <div>
-            <p style={{ fontWeight: 700, marginBottom: 8, color: "#dae2fd", fontSize: 14 }}>{t("content.contact")}</p>
-            <div style={{ margin: "6px 0" }}><a href="mailto:support@nexussocial.com" style={{ color: "#859397", textDecoration: "none", fontSize: 14 }}>support@nexussocial.com</a></div>
-            <div style={{ margin: "6px 0" }}><a href="mailto:privacy@nexussocial.com" style={{ color: "#859397", textDecoration: "none", fontSize: 14 }}>privacy@nexussocial.com</a></div>
+            <p
+              style={{
+                fontWeight: 700,
+                marginBottom: 8,
+                color: "#dae2fd",
+                fontSize: 14,
+              }}
+            >
+              {t("content.contact")}
+            </p>
+            <div style={{ margin: "6px 0" }}>
+              <a
+                href="mailto:support@nexussocial.com"
+                style={{
+                  color: "#859397",
+                  textDecoration: "none",
+                  fontSize: 14,
+                }}
+              >
+                support@nexussocial.com
+              </a>
+            </div>
+            <div style={{ margin: "6px 0" }}>
+              <a
+                href="mailto:privacy@nexussocial.com"
+                style={{
+                  color: "#859397",
+                  textDecoration: "none",
+                  fontSize: 14,
+                }}
+              >
+                privacy@nexussocial.com
+              </a>
+            </div>
           </div>
         </div>
-        <div style={{ textAlign: "center", padding: "16px", color: "#5b6b8c", fontSize: 13, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div
+          style={{
+            textAlign: "center",
+            padding: "16px",
+            color: "#5b6b8c",
+            fontSize: 13,
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
           {t("content.rights")}
         </div>
       </footer>

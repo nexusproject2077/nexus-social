@@ -31,7 +31,9 @@ export function setPrivacyStrict(on) {
     /* quota / mode privé : on continue quand même côté mémoire */
   }
   try {
-    window.dispatchEvent(new CustomEvent(PRIVACY_STRICT_EVENT, { detail: { on: !!on } }));
+    window.dispatchEvent(
+      new CustomEvent(PRIVACY_STRICT_EVENT, { detail: { on: !!on } }),
+    );
   } catch {
     /* environnement sans window (SSR) : ignoré */
   }

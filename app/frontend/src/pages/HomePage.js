@@ -27,7 +27,9 @@ export default function HomePage({ user, setUser }) {
   };
 
   // Force « Pour vous » à chaque arrivée sur la page d'accueil.
-  useEffect(() => { selectFeed("foryou"); }, []);
+  useEffect(() => {
+    selectFeed("foryou");
+  }, []);
 
   useEffect(() => {
     fetchFeed();
@@ -35,7 +37,10 @@ export default function HomePage({ user, setUser }) {
 
   // Onglets déplacés dans le header (mobile) : on écoute leurs changements.
   useEffect(() => {
-    const onTab = (e) => setFeedType(e.detail || localStorage.getItem("nexus_feedtab") || "foryou");
+    const onTab = (e) =>
+      setFeedType(
+        e.detail || localStorage.getItem("nexus_feedtab") || "foryou",
+      );
     window.addEventListener("nexus:feedtab", onTab);
     return () => window.removeEventListener("nexus:feedtab", onTab);
   }, []);
@@ -90,9 +95,9 @@ export default function HomePage({ user, setUser }) {
           <h1
             className="font-headline font-bold text-xl tracking-tight"
             style={{ color: "#dae2fd" }}
-          >{
-            t("news_feed")
-          }</h1>
+          >
+            {t("news_feed")}
+          </h1>
         </header>
 
         {/* Stories */}
@@ -133,7 +138,10 @@ export default function HomePage({ user, setUser }) {
                 <div
                   key={i}
                   className="rounded-2xl border p-4 lg:p-5"
-                  style={{ backgroundColor: "#171f33", borderColor: "rgba(255,255,255,0.05)" }}
+                  style={{
+                    backgroundColor: "#171f33",
+                    borderColor: "rgba(255,255,255,0.05)",
+                  }}
                 >
                   <div className="flex items-center gap-3 mb-4">
                     <Skeleton className="w-10 h-10 rounded-full" />

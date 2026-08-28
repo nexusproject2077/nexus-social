@@ -38,7 +38,12 @@ export default function CookieConsent() {
           <span className="text-lg">🍪</span>
           <p className="flex-1 text-xs sm:text-sm text-slate-300 leading-snug">
             Nous utilisons des cookies pour améliorer votre expérience.{" "}
-            <a href="/api/legal/cookie-policy" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline">
+            <a
+              href="/api/legal/cookie-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-cyan-400 hover:text-cyan-300 underline"
+            >
               En savoir plus
             </a>
           </p>
@@ -73,17 +78,32 @@ export default function CookieConsent() {
                   🍪 Nous respectons votre vie privée
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  Nous utilisons uniquement des <strong>cookies essentiels</strong> pour le fonctionnement du site (connexion, préférences).
-                  <span className="hidden sm:inline"> Pas de cookies publicitaires ni de tracking tiers.</span>
+                  Nous utilisons uniquement des{" "}
+                  <strong>cookies essentiels</strong> pour le fonctionnement du
+                  site (connexion, préférences).
+                  <span className="hidden sm:inline">
+                    {" "}
+                    Pas de cookies publicitaires ni de tracking tiers.
+                  </span>
                 </p>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  <a href="/api/legal/cookie-policy" target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:text-cyan-300 underline">
+                  <a
+                    href="/api/legal/cookie-policy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-cyan-400 hover:text-cyan-300 underline"
+                  >
                     Politique des cookies
                   </a>
                   <span className="text-slate-600">•</span>
-                  <a href="/api/legal/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:text-cyan-300 underline">{
-                    t("privacy")
-                  }</a>
+                  <a
+                    href="/api/legal/privacy-policy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-cyan-400 hover:text-cyan-300 underline"
+                  >
+                    {t("privacy")}
+                  </a>
                 </div>
               </div>
 

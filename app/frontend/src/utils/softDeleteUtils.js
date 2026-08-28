@@ -29,7 +29,9 @@ export async function softDeletePost(postId) {
  */
 export async function softDeleteComment(postId, commentId) {
   try {
-    await axios.post(`${API}/posts/${postId}/comments/${commentId}/soft-delete`);
+    await axios.post(
+      `${API}/posts/${postId}/comments/${commentId}/soft-delete`,
+    );
     toast.success(i18n.t("trash.comment_trashed"));
     return true;
   } catch (error) {

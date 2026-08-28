@@ -26,14 +26,18 @@ export default function OnboardingOverlay() {
       // vu le guide. Sinon, 1re fois seulement (drapeau « déjà vu » absent).
       const forced = localStorage.getItem("nexus_show_onboarding") === "1";
       if (forced || !localStorage.getItem(STORAGE_KEY)) setShow(true);
-    } catch { /* localStorage indisponible → on n'affiche rien */ }
+    } catch {
+      /* localStorage indisponible → on n'affiche rien */
+    }
   }, []);
 
   const finish = () => {
     try {
       localStorage.setItem(STORAGE_KEY, "1");
       localStorage.removeItem("nexus_show_onboarding");
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setShow(false);
   };
 
@@ -45,7 +49,9 @@ export default function OnboardingOverlay() {
     <div
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ background: "rgba(2,6,23,0.78)", backdropFilter: "blur(4px)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) finish(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) finish();
+      }}
     >
       <div
         className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden"
@@ -60,12 +66,22 @@ export default function OnboardingOverlay() {
             className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-5"
             style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)" }}
           >
-            <span className="material-symbols-outlined text-white" style={{ fontSize: 32 }}>{s.icon}</span>
+            <span
+              className="material-symbols-outlined text-white"
+              style={{ fontSize: 32 }}
+            >
+              {s.icon}
+            </span>
           </div>
-          <h2 className="text-xl font-black text-white mb-2" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
-            {i18n.t("onboarding."+s.k+"_title")}
+          <h2
+            className="text-xl font-black text-white mb-2"
+            style={{ fontFamily: "Space Grotesk, sans-serif" }}
+          >
+            {i18n.t("onboarding." + s.k + "_title")}
           </h2>
-          <p className="text-sm text-slate-300 leading-relaxed max-w-xs mx-auto">{i18n.t("onboarding."+s.k+"_text")}</p>
+          <p className="text-sm text-slate-300 leading-relaxed max-w-xs mx-auto">
+            {i18n.t("onboarding." + s.k + "_text")}
+          </p>
 
           {/* Indicateurs de progression */}
           <div className="flex justify-center gap-1.5 mt-6">
@@ -73,14 +89,20 @@ export default function OnboardingOverlay() {
               <span
                 key={k}
                 className="h-1.5 rounded-full transition-all"
-                style={{ width: k === i ? 20 : 6, background: k === i ? "#22d3ee" : "rgba(255,255,255,0.2)" }}
+                style={{
+                  width: k === i ? 20 : 6,
+                  background: k === i ? "#22d3ee" : "rgba(255,255,255,0.2)",
+                }}
               />
             ))}
           </div>
         </div>
 
         <div className="flex items-center justify-between gap-3 px-6 pb-6 pt-1">
-          <button onClick={finish} className="text-xs font-bold text-slate-400 px-3 py-2 hover:text-slate-200 transition-colors">
+          <button
+            onClick={finish}
+            className="text-xs font-bold text-slate-400 px-3 py-2 hover:text-slate-200 transition-colors"
+          >
             {i18n.t("onboarding.skip")}
           </button>
           <div className="flex items-center gap-2">
@@ -95,7 +117,10 @@ export default function OnboardingOverlay() {
             <button
               onClick={() => (last ? finish() : setI(i + 1))}
               className="px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95"
-              style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: "#04121f" }}
+              style={{
+                background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
+                color: "#04121f",
+              }}
             >
               {last ? i18n.t("onboarding.start") : i18n.t("onboarding.next")}
             </button>

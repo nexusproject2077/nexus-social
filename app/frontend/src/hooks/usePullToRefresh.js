@@ -24,22 +24,35 @@ export default function usePullToRefresh(onRefresh, options = {}) {
   const active = useRef(false);
   const refreshingRef = useRef(false);
 
-  const setPullBoth = (v) => { pullRef.current = v; setPull(v); };
+  const setPullBoth = (v) => {
+    pullRef.current = v;
+    setPull(v);
+  };
 
   useEffect(() => {
     if (!enabled) return undefined;
 
     const scrollTop = () =>
-      getScrollTop ? getScrollTop() : (window.scrollY || document.documentElement.scrollTop || 0);
+      getScrollTop
+        ? getScrollTop()
+        : window.scrollY || document.documentElement.scrollTop || 0;
 
     const onStart = (e) => {
-      if (refreshingRef.current || e.touches.length !== 1) { active.current = false; return; }
-      if (scrollTop() <= 0) { startY.current = e.touches[0].clientY; active.current = true; }
-      else { active.current = false; }
+      if (refreshingRef.current || e.touches.length !== 1) {
+        active.current = false;
+        return;
+      }
+      if (scrollTop() <= 0) {
+        startY.current = e.touches[0].clientY;
+        active.current = true;
+      } else {
+        active.current = false;
+      }
     };
 
     const onMove = (e) => {
-      if (!active.current || startY.current == null || refreshingRef.current) return;
+      if (!active.current || startY.current == null || refreshingRef.current)
+        return;
       const dy = e.touches[0].clientY - startY.current;
       if (dy > 0 && scrollTop() <= 0) {
         const damped = Math.min(120, dy * 0.5); // résistance
@@ -58,7 +71,11 @@ export default function usePullToRefresh(onRefresh, options = {}) {
         refreshingRef.current = true;
         setRefreshing(true);
         setPullBoth(threshold);
-        try { await onRefresh(); } catch { /* ignore */ }
+        try {
+          await onRefresh();
+        } catch {
+          /* ignore */
+        }
         refreshingRef.current = false;
         setRefreshing(false);
         setPullBoth(0);

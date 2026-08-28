@@ -26,14 +26,16 @@ async function fetchJson(url) {
 
 function brandFromName(name = "") {
   const n = name.toUpperCase();
-  if (n.includes("SMACKDOWN") || n.includes("SMACK DOWN")) return { brand: "SD", color: "#3b82f6" };
+  if (n.includes("SMACKDOWN") || n.includes("SMACK DOWN"))
+    return { brand: "SD", color: "#3b82f6" };
   if (n.includes("NXT")) return { brand: "NXT", color: "#fbbf24" };
-  if (n.includes("RAW") || n.includes("MONDAY NIGHT")) return { brand: "RAW", color: "#e11d48" };
+  if (n.includes("RAW") || n.includes("MONDAY NIGHT"))
+    return { brand: "RAW", color: "#e11d48" };
   if (n.includes("EVOLVE")) return { brand: "EVOLVE", color: "#a3e635" };
   // PLE / specials
   if (
     /WRESTLEMANIA|SUMMERSLAM|ROYAL RUMBLE|SURVIVOR|MONEY IN THE BANK|ELIMINATION CHAMBER|CROWN JEWEL|BAD BLOOD|FASTLANE|CLASH|HEATWAVE|HALLOWEEN|SATURDAY NIGHT/i.test(
-      name
+      name,
     )
   ) {
     return { brand: "PLE", color: "#a855f7" };
@@ -44,12 +46,14 @@ function brandFromName(name = "") {
 function stateFromTimestamp(ts, dateEvent, timeStr) {
   let start;
   if (ts) start = new Date(ts.endsWith("Z") ? ts : ts + "Z");
-  else if (dateEvent) start = new Date(`${dateEvent}T${(timeStr || "00:00:00").slice(0, 8)}Z`);
+  else if (dateEvent)
+    start = new Date(`${dateEvent}T${(timeStr || "00:00:00").slice(0, 8)}Z`);
   else return "pre";
   if (Number.isNaN(start.getTime())) return "pre";
   const now = Date.now();
   const durationMs = 3.5 * 3600 * 1000; // show ~3h30
-  if (now >= start.getTime() && now <= start.getTime() + durationMs) return "in";
+  if (now >= start.getTime() && now <= start.getTime() + durationMs)
+    return "in";
   if (now > start.getTime() + durationMs) return "post";
   return "pre";
 }
@@ -57,7 +61,8 @@ function stateFromTimestamp(ts, dateEvent, timeStr) {
 function clockLabel(ts, dateEvent, timeStr, state) {
   let start;
   if (ts) start = new Date(ts.endsWith("Z") ? ts : ts + "Z");
-  else if (dateEvent) start = new Date(`${dateEvent}T${(timeStr || "00:00:00").slice(0, 8)}Z`);
+  else if (dateEvent)
+    start = new Date(`${dateEvent}T${(timeStr || "00:00:00").slice(0, 8)}Z`);
   else return "";
   if (Number.isNaN(start.getTime())) return dateEvent || "";
   if (state === "in") {
@@ -79,8 +84,11 @@ function normalizeEvent(ev) {
   const name = ev.strEvent || ev.strFilename || "WWE";
   const { brand, color } = brandFromName(name);
   const state = stateFromTimestamp(ev.strTimestamp, ev.dateEvent, ev.strTime);
-  const venue = [ev.strVenue, ev.strCity, ev.strCountry].filter(Boolean).join(" · ");
-  const cardHint = (ev.strDescriptionEN || "").split("\n").filter(Boolean)[0] || "";
+  const venue = [ev.strVenue, ev.strCity, ev.strCountry]
+    .filter(Boolean)
+    .join(" · ");
+  const cardHint =
+    (ev.strDescriptionEN || "").split("\n").filter(Boolean)[0] || "";
   return {
     id: String(ev.idEvent || name),
     sport: "wwe",
@@ -140,7 +148,7 @@ export async function fetchWweEvents() {
   filtered.sort(
     (a, b) =>
       (order[a.state] ?? 3) - (order[b.state] ?? 3) ||
-      new Date(a.date) - new Date(b.date)
+      new Date(a.date) - new Date(b.date),
   );
 
   return filtered.slice(0, 12);

@@ -8,7 +8,12 @@
 // sécurité Firebase Storage (voir les instructions de configuration).
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import {
+  getStorage,
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
+} from "firebase/storage";
 
 // Config Firebase du projet « nexus-social ». Ces valeurs « web » sont PUBLIQUES
 // par conception (elles sont livrées au navigateur) : les inclure dans le code
@@ -16,16 +21,27 @@ import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/
 // Les variables d'environnement, si présentes, restent prioritaires (utile pour
 // pointer vers un autre projet sans toucher au code).
 const config = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyDU8t0OEpveu5154NJIn5D6l-jU3yBdjL4",
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "nexus-social-733af.firebaseapp.com",
+  apiKey:
+    process.env.REACT_APP_FIREBASE_API_KEY ||
+    "AIzaSyDU8t0OEpveu5154NJIn5D6l-jU3yBdjL4",
+  authDomain:
+    process.env.REACT_APP_FIREBASE_AUTH_DOMAIN ||
+    "nexus-social-733af.firebaseapp.com",
   projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "nexus-social-733af",
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "nexus-social-733af.firebasestorage.app",
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "858336748678",
-  appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:858336748678:web:f1a694555f610594025d07",
+  storageBucket:
+    process.env.REACT_APP_FIREBASE_STORAGE_BUCKET ||
+    "nexus-social-733af.firebasestorage.app",
+  messagingSenderId:
+    process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "858336748678",
+  appId:
+    process.env.REACT_APP_FIREBASE_APP_ID ||
+    "1:858336748678:web:f1a694555f610594025d07",
 };
 
 // Firebase est utilisable seulement si le bucket + la clé sont fournis.
-export const isFirebaseConfigured = Boolean(config.apiKey && config.storageBucket);
+export const isFirebaseConfigured = Boolean(
+  config.apiKey && config.storageBucket,
+);
 
 let _app = null;
 function app() {
@@ -48,26 +64,40 @@ export async function uploadVideoResumable(file, userId, onProgress) {
   // règles de sécurité (write réservé aux utilisateurs authentifiés).
   const auth = getAuth(a);
   if (!auth.currentUser) {
-    try { await signInAnonymously(auth); } catch { /* règles publiques éventuelles */ }
+    try {
+      await signInAnonymously(auth);
+    } catch {
+      /* règles publiques éventuelles */
+    }
   }
   const storage = getStorage(a);
-  const safeExt = (file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
+  const safeExt =
+    (file.name.split(".").pop() || "mp4")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "") || "mp4";
   const path = `clips/${userId || "anon"}/${Date.now()}-${Math.random().toString(36).slice(2)}.${safeExt}`;
-  const task = uploadBytesResumable(ref(storage, path), file, { contentType: file.type || "video/mp4" });
+  const task = uploadBytesResumable(ref(storage, path), file, {
+    contentType: file.type || "video/mp4",
+  });
 
   return new Promise((resolve, reject) => {
     task.on(
       "state_changed",
       (snap) => {
         if (onProgress && snap.totalBytes) {
-          onProgress(Math.round((snap.bytesTransferred * 100) / snap.totalBytes));
+          onProgress(
+            Math.round((snap.bytesTransferred * 100) / snap.totalBytes),
+          );
         }
       },
       (err) => reject(err),
       async () => {
-        try { resolve(await getDownloadURL(task.snapshot.ref)); }
-        catch (e) { reject(e); }
-      }
+        try {
+          resolve(await getDownloadURL(task.snapshot.ref));
+        } catch (e) {
+          reject(e);
+        }
+      },
     );
   });
 }

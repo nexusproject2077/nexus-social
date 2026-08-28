@@ -27,9 +27,11 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
   const addOption = () =>
     setPollOptions((opts) => (opts.length >= 6 ? opts : [...opts, ""]));
   const removeOption = (i) =>
-    setPollOptions((opts) => (opts.length <= 2 ? opts : opts.filter((_, idx) => idx !== i)));
+    setPollOptions((opts) =>
+      opts.length <= 2 ? opts : opts.filter((_, idx) => idx !== i),
+    );
 
-  const MAX_VIDEO_SECONDS = 60;   // Nexus Clips = vidéos courtes
+  const MAX_VIDEO_SECONDS = 60; // Nexus Clips = vidéos courtes
   const MAX_FILE_MB = 25;
 
   const readAndSet = (file, type) => {
@@ -50,21 +52,23 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
       return;
     }
 
-    if (file.type.startsWith('image')) {
-      readAndSet(file, 'image');
-    } else if (file.type.startsWith('video')) {
+    if (file.type.startsWith("image")) {
+      readAndSet(file, "image");
+    } else if (file.type.startsWith("video")) {
       // Vérifier la durée : on n'accepte que les vidéos courtes
       const url = URL.createObjectURL(file);
-      const probe = document.createElement('video');
-      probe.preload = 'metadata';
+      const probe = document.createElement("video");
+      probe.preload = "metadata";
       probe.onloadedmetadata = () => {
         URL.revokeObjectURL(url);
         if (probe.duration > MAX_VIDEO_SECONDS + 0.5) {
-          toast.error(`Vidéo trop longue (max ${MAX_VIDEO_SECONDS}s pour un clip)`);
+          toast.error(
+            `Vidéo trop longue (max ${MAX_VIDEO_SECONDS}s pour un clip)`,
+          );
           e.target.value = "";
           return;
         }
-        readAndSet(file, 'video');
+        readAndSet(file, "video");
       };
       probe.onerror = () => {
         URL.revokeObjectURL(url);
@@ -111,7 +115,9 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
         onClose?.();
       } catch (error) {
         console.error(t("error_create_story_log"), error);
-        toast.error(error.response?.data?.detail || t("error_publishing_story"));
+        toast.error(
+          error.response?.data?.detail || t("error_publishing_story"),
+        );
       } finally {
         setLoading(false);
       }
@@ -120,7 +126,11 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
     // --- Post / Sondage ---
     if (!content.trim()) {
-      toast.error(mode === "poll" ? t("poll_question_hint") : t("content_cannot_be_empty"));
+      toast.error(
+        mode === "poll"
+          ? t("poll_question_hint")
+          : t("content_cannot_be_empty"),
+      );
       return;
     }
 
@@ -146,7 +156,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
       const response = await axios.post(`${API}/posts`, postData, {
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       });
 
@@ -164,16 +174,26 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
   // Verrouille le scroll de l'arrière-plan + ferme sur Échap quand ouvert.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
   }, [open, onClose]);
 
   if (!open) return null;
 
-  const title = mode === "story" ? t("create_story") : mode === "poll" ? t("create_poll") : t("whats_new");
+  const title =
+    mode === "story"
+      ? t("create_story")
+      : mode === "poll"
+        ? t("create_poll")
+        : t("whats_new");
   const canSubmit = mode === "story" ? !!mediaPreview : !!content.trim();
 
   return (
@@ -181,17 +201,25 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     <div
       className="fixed inset-0 z-[60] flex sm:items-center sm:justify-center sm:p-4"
       style={{ background: "rgba(2,6,20,0.85)" }}
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
     >
       <div
         className="relative flex flex-col w-full bg-[#0b1326] text-white overflow-hidden
                    h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-lg sm:rounded-2xl sm:border sm:border-slate-800"
       >
         {/* Barre supérieure : fermer · titre · Publier (façon X) */}
-        <div className="flex items-center gap-3 px-4 h-14 border-b border-slate-800 flex-shrink-0"
-             style={{ paddingTop: "env(safe-area-inset-top)" }}>
-          <button type="button" onClick={onClose} data-testid="cancel-post-button"
-                  className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full hover:bg-slate-800">
+        <div
+          className="flex items-center gap-3 px-4 h-14 border-b border-slate-800 flex-shrink-0"
+          style={{ paddingTop: "env(safe-area-inset-top)" }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            data-testid="cancel-post-button"
+            className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full hover:bg-slate-800"
+          >
             <X className="w-5 h-5" />
           </button>
           <h2 className="text-base font-bold flex-1 truncate">{title}</h2>
@@ -202,11 +230,21 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
             className="rounded-full px-5 h-9 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-slate-900 font-bold disabled:opacity-50"
             data-testid="submit-post-button"
           >
-            {loading ? "…" : mode === "story" ? "Publier" : mode === "poll" ? "Publier" : "Publier"}
+            {loading
+              ? "…"
+              : mode === "story"
+                ? "Publier"
+                : mode === "poll"
+                  ? "Publier"
+                  : "Publier"}
           </Button>
         </div>
 
-        <form id="create-post-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
+        <form
+          id="create-post-form"
+          onSubmit={handleSubmit}
+          className="flex-1 overflow-y-auto p-4 space-y-4"
+        >
           {/* Mode selector : Post / Story / Sondage */}
           <div className="flex gap-2">
             {[
@@ -225,7 +263,9 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                     : "bg-slate-800 text-slate-400 hover:bg-slate-700"
                 }`}
               >
-                <span className="material-symbols-outlined text-base">{icon}</span>
+                <span className="material-symbols-outlined text-base">
+                  {icon}
+                </span>
                 {label}
               </button>
             ))}
@@ -233,13 +273,17 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
           {mode !== "story" && (
             <div>
-              <Label htmlFor="content">{mode === "poll" ? "Question" : "Contenu"}</Label>
+              <Label htmlFor="content">
+                {mode === "poll" ? "Question" : "Contenu"}
+              </Label>
               <Textarea
                 id="content"
                 data-testid="create-post-content"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder={mode === "poll" ? t("ask_your_question") : t("what_to_share")}
+                placeholder={
+                  mode === "poll" ? t("ask_your_question") : t("what_to_share")
+                }
                 className="bg-slate-800 border-slate-700 text-white min-h-32"
                 rows={mode === "poll" ? 2 : 5}
               />
@@ -289,7 +333,8 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
           {mode === "story" && (
             <p className="text-sm text-slate-400">
-              Votre story sera visible 24h puis disparaîtra. Ajoutez une photo ou une vidéo ci-dessous.
+              Votre story sera visible 24h puis disparaîtra. Ajoutez une photo
+              ou une vidéo ci-dessous.
             </p>
           )}
 
@@ -307,20 +352,21 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                 className="bg-slate-800 border-slate-700 text-white"
               />
               <p className="text-xs text-slate-500 mt-1">
-                Affiche un bouton « Shop » sur votre publication (liens http/https uniquement).
+                Affiche un bouton « Shop » sur votre publication (liens
+                http/https uniquement).
               </p>
             </div>
           )}
 
           {mediaPreview && (
             <div className="relative">
-              {mediaType === 'image' ? (
+              {mediaType === "image" ? (
                 <img
                   src={mediaPreview}
                   alt="Preview"
                   className="w-full rounded-lg max-h-64 object-cover"
                 />
-              ) : mediaType === 'video' ? (
+              ) : mediaType === "video" ? (
                 <video
                   src={mediaPreview}
                   controls
@@ -342,9 +388,30 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
           )}
 
           {/* Inputs fichiers cachés (déclenchés par la barre d'outils ci-dessous) */}
-          <Input id="image-upload" data-testid="upload-image-input" type="file" accept="image/*" onChange={handleMediaChange} className="hidden" />
-          <Input id="video-upload" data-testid="upload-video-input" type="file" accept="video/*" onChange={handleMediaChange} className="hidden" />
-          <Input id="gif-upload" data-testid="upload-gif-input" type="file" accept="image/gif" onChange={handleMediaChange} className="hidden" />
+          <Input
+            id="image-upload"
+            data-testid="upload-image-input"
+            type="file"
+            accept="image/*"
+            onChange={handleMediaChange}
+            className="hidden"
+          />
+          <Input
+            id="video-upload"
+            data-testid="upload-video-input"
+            type="file"
+            accept="video/*"
+            onChange={handleMediaChange}
+            className="hidden"
+          />
+          <Input
+            id="gif-upload"
+            data-testid="upload-gif-input"
+            type="file"
+            accept="image/gif"
+            onChange={handleMediaChange}
+            className="hidden"
+          />
         </form>
 
         {/* Barre d'outils média (bas de page, façon « Quoi de neuf ? ») */}
@@ -352,31 +419,60 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
           className="flex items-center gap-1 px-2 py-2 border-t border-slate-800 flex-shrink-0 overflow-x-auto no-scrollbar"
           style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
         >
-          <Label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
+          <Label
+            htmlFor="image-upload"
+            className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400"
+          >
             <Image className="w-5 h-5" />
             <span className="text-[11px] font-medium">Photo</span>
           </Label>
-          <Label htmlFor="video-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
+          <Label
+            htmlFor="video-upload"
+            className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400"
+          >
             <Video className="w-5 h-5" />
             <span className="text-[11px] font-medium">Vidéo</span>
           </Label>
-          <Label htmlFor="gif-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
-            <span className="material-symbols-outlined text-[22px] leading-none">gif_box</span>
+          <Label
+            htmlFor="gif-upload"
+            className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400"
+          >
+            <span className="material-symbols-outlined text-[22px] leading-none">
+              gif_box
+            </span>
             <span className="text-[11px] font-medium">GIF</span>
           </Label>
-          <button type="button" onClick={() => setMode("poll")}
-                  className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "poll" ? "text-cyan-300" : "text-cyan-400"}`}>
-            <span className="material-symbols-outlined text-[22px] leading-none">bar_chart</span>
+          <button
+            type="button"
+            onClick={() => setMode("poll")}
+            className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "poll" ? "text-cyan-300" : "text-cyan-400"}`}
+          >
+            <span className="material-symbols-outlined text-[22px] leading-none">
+              bar_chart
+            </span>
             <span className="text-[11px] font-medium">Sondage</span>
           </button>
-          <button type="button" onClick={() => { onClose?.(); navigate("/live"); }}
-                  className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-rose-400">
-            <span className="material-symbols-outlined text-[22px] leading-none">sensors</span>
+          <button
+            type="button"
+            onClick={() => {
+              onClose?.();
+              navigate("/live");
+            }}
+            className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-rose-400"
+          >
+            <span className="material-symbols-outlined text-[22px] leading-none">
+              sensors
+            </span>
             <span className="text-[11px] font-medium">Live</span>
           </button>
-          <button type="button" onClick={() => setMode("story")}
-                  className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "story" ? "text-cyan-300" : "text-cyan-400"}`}>
-            <span className="material-symbols-outlined text-[22px] leading-none">auto_stories</span>
+          <button
+            type="button"
+            onClick={() => setMode("story")}
+            className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "story" ? "text-cyan-300" : "text-cyan-400"}`}
+          >
+            <span className="material-symbols-outlined text-[22px] leading-none">
+              auto_stories
+            </span>
             <span className="text-[11px] font-medium">Story</span>
           </button>
         </div>

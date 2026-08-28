@@ -2,7 +2,24 @@
  * Mappe la langue i18n active vers une locale date-fns.
  * Utilisé pour formatDistanceToNow, toLocaleDateString, etc.
  */
-import { fr, enUS, es, de, it, pt, nl, pl, tr, ru, uk, ar, hi, zhCN, ja, ko } from "date-fns/locale";
+import {
+  fr,
+  enUS,
+  es,
+  de,
+  it,
+  pt,
+  nl,
+  pl,
+  tr,
+  ru,
+  uk,
+  ar,
+  hi,
+  zhCN,
+  ja,
+  ko,
+} from "date-fns/locale";
 
 const MAP = {
   en: enUS,

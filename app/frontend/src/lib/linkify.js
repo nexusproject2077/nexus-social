@@ -25,10 +25,14 @@ export function linkify(text, opts = {}) {
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
-        style={{ color: color || "#60a5fa", textDecoration: underline ? "underline" : "none", wordBreak: "break-word" }}
+        style={{
+          color: color || "#60a5fa",
+          textDecoration: underline ? "underline" : "none",
+          wordBreak: "break-word",
+        }}
       >
         {href}
-      </a>
+      </a>,
     );
     last = m.index + href.length;
   }

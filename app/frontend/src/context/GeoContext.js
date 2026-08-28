@@ -17,7 +17,9 @@ function applyCountryLanguage(suggested) {
   if (!suggested || suggested === "en") return;
   if (hasExplicitLanguageChoice()) return;
   if (!CATALOG_CODES.has(suggested)) return;
-  const current = (i18n.resolvedLanguage || i18n.language || "en").split("-")[0];
+  const current = (i18n.resolvedLanguage || i18n.language || "en").split(
+    "-",
+  )[0];
   if (current === "en" && suggested !== current) {
     i18n.changeLanguage(suggested);
   }
@@ -29,12 +31,12 @@ const DEFAULT_GEO = {
   block: "GLOBAL_STANDARD",
   consentStyle: "minimal",
   minAge: 15,
-  restricted: false,      // rétro-compat (= eu)
+  restricted: false, // rétro-compat (= eu)
   eu: false,
-  readOnly: false,        // RU/CN : consultation seule
+  readOnly: false, // RU/CN : consultation seule
   readOnlyMessage: null,
   cookieBanner: false,
-  consentScreen: false,   // APPI (Japon…)
+  consentScreen: false, // APPI (Japon…)
   adTrackingDefault: true,
 };
 
@@ -71,7 +73,9 @@ export function GeoProvider({ children }) {
         // Échec (ex. GeoIP absente) : profil neutre, aucune friction (fail-open).
         if (!cancelled) setGeo({ ...DEFAULT_GEO, loaded: true });
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return <GeoContext.Provider value={geo}>{children}</GeoContext.Provider>;

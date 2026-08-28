@@ -27,6 +27,10 @@ export function getCurrentChallenge() {
 }
 
 export function clipMatchesChallenge(clip, challenge = getCurrentChallenge()) {
-  const c = `${clip?.content || ""} ${clip?.caption || ""} ${clip?.hashtags || ""}`.toLowerCase();
-  return c.includes(challenge.tag.toLowerCase()) || c.includes(challenge.hashtag.toLowerCase());
+  const c =
+    `${clip?.content || ""} ${clip?.caption || ""} ${clip?.hashtags || ""}`.toLowerCase();
+  return (
+    c.includes(challenge.tag.toLowerCase()) ||
+    c.includes(challenge.hashtag.toLowerCase())
+  );
 }

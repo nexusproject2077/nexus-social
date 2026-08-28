@@ -13,19 +13,19 @@
 
 // Échelle de surfaces : du fond le plus sombre aux surfaces surélevées.
 export const SURFACE = {
-  deep:      "#020617", // fond profond (derrière le verre, ex. chat)
-  base:      "#0b1326", // fond de l'app
-  low:       "#131b2e",
+  deep: "#020617", // fond profond (derrière le verre, ex. chat)
+  base: "#0b1326", // fond de l'app
+  low: "#131b2e",
   container: "#171f33",
-  high:      "#222a3d",
-  bright:    "#31394d",
+  high: "#222a3d",
+  bright: "#31394d",
 };
 
 // Texte & bordures.
 export const TEXT = {
-  primary:  "#dae2fd", // sur surface
-  variant:  "#bbc9cd", // texte secondaire
-  muted:    "#859397", // libellés discrets
+  primary: "#dae2fd", // sur surface
+  variant: "#bbc9cd", // texte secondaire
+  muted: "#859397", // libellés discrets
   onAccent: "#00363e", // texte sur bouton accent
 };
 export const OUTLINE = "#3c494c"; // bordures discrètes
@@ -33,7 +33,9 @@ export const OUTLINE = "#3c494c"; // bordures discrètes
 // Accent (couleur choisie par l'utilisateur ; défaut cyan). Lu une fois ;
 // pour la réactivité live, la variable CSS `--nexus-accent` reste la référence.
 export const ACCENT =
-  (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
+  (typeof window !== "undefined" &&
+    window.localStorage.getItem("nexus_accent")) ||
+  "#22d3ee";
 export const ACCENT_2 = "#3b82f6"; // 2e teinte des dégradés d'accent
 export const ACCENT_GRADIENT = `linear-gradient(135deg, ${ACCENT}, ${ACCENT_2})`;
 
@@ -50,6 +52,6 @@ export const RADIUS = { sm: 10, md: 14, lg: 18, xl: 24, pill: 9999 };
 
 // Ombres standard.
 export const SHADOW = {
-  soft:   "0 4px 14px rgba(0,0,0,0.25)",
+  soft: "0 4px 14px rgba(0,0,0,0.25)",
   accent: `0 6px 20px ${ACCENT}40`,
 };

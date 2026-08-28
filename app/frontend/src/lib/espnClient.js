@@ -10,7 +10,8 @@
 // Le backend reste la source des FAVORIS (ligues/équipes) et le repli éventuel.
 
 const SOCCER_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
-const MMA_URL = "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard";
+const MMA_URL =
+  "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard";
 
 // Mêmes ligues que ESPN_SOCCER_LEAGUES côté backend.
 const SOCCER_LEAGUES = [
@@ -28,7 +29,11 @@ const SOCCER_LEAGUES = [
 
 async function fetchJson(url) {
   try {
-    const r = await fetch(url, { headers: { Accept: "application/json" }, mode: "cors", credentials: "omit" });
+    const r = await fetch(url, {
+      headers: { Accept: "application/json" },
+      mode: "cors",
+      credentials: "omit",
+    });
     if (!r.ok) return null;
     return await r.json();
   } catch {
@@ -78,8 +83,17 @@ function normalizeMma(data) {
   const fighter = (c) => {
     const a = c.athlete || {};
     const hs = a.headshot;
-    const avatar = hs && typeof hs === "object" ? hs.href : typeof hs === "string" ? hs : null;
-    return { name: a.displayName || a.shortName || "?", avatar, winner: !!c.winner };
+    const avatar =
+      hs && typeof hs === "object"
+        ? hs.href
+        : typeof hs === "string"
+          ? hs
+          : null;
+    return {
+      name: a.displayName || a.shortName || "?",
+      avatar,
+      winner: !!c.winner,
+    };
   };
   for (const ev of data.events || []) {
     const eventName = ev.shortName || ev.name || "UFC";
@@ -91,7 +105,8 @@ function normalizeMma(data) {
       const f1 = fighter(comps[0]);
       const f2 = fighter(comps[1]);
       const result = cs.result || {};
-      const method = result.shortDisplayName || result.description || ctype.detail || "";
+      const method =
+        result.shortDisplayName || result.description || ctype.detail || "";
       const winner = f1.winner ? f1.name : f2.winner ? f2.name : null;
       out.push({
         id: String(comp.id || ev.id || ""),
@@ -114,15 +129,27 @@ function normalizeMma(data) {
 
 // Récupère foot (toutes les ligues, en parallèle) + MMA, directement depuis le
 // navigateur. Renvoie une liste plate normalisée (même forme que /api/livescores).
-export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) {
+export async function fetchLiveScoresFromEspn({
+  foot = true,
+  mma = true,
+} = {}) {
   const jobs = [];
   if (foot) {
     for (const [slug, name] of SOCCER_LEAGUES) {
-      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/scoreboard`).then((d) => normalizeLeague(d, slug, name)));
+      jobs.push(
+        fetchJson(`${SOCCER_BASE}/${slug}/scoreboard`).then((d) =>
+          normalizeLeague(d, slug, name),
+        ),
+      );
     }
   }
-  const mmaJob = mma ? fetchJson(MMA_URL).then(normalizeMma) : Promise.resolve([]);
-  const [footResults, mmaResult] = await Promise.all([Promise.all(jobs), mmaJob]);
+  const mmaJob = mma
+    ? fetchJson(MMA_URL).then(normalizeMma)
+    : Promise.resolve([]);
+  const [footResults, mmaResult] = await Promise.all([
+    Promise.all(jobs),
+    mmaJob,
+  ]);
   return [...footResults.flat(), ...mmaResult];
 }
 
@@ -132,11 +159,24 @@ export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) 
 // Chargé une seule fois puis mis en cache mémoire.
 
 const TEAM_DIR_LEAGUES = [
-  "uefa.champions", "uefa.europa",          // Coupes d'Europe → élite de tous les pays
-  "fifa.world", "uefa.euro",                // Sélections nationales (CdM / Euro)
-  "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", // top 5
-  "eng.2", "ned.1", "por.1", "tur.1",        // autres championnats européens
-  "usa.1", "mex.1", "bra.1", "arg.1", "sau.1", // Amériques + Saudi
+  "uefa.champions",
+  "uefa.europa", // Coupes d'Europe → élite de tous les pays
+  "fifa.world",
+  "uefa.euro", // Sélections nationales (CdM / Euro)
+  "eng.1",
+  "esp.1",
+  "ita.1",
+  "ger.1",
+  "fra.1", // top 5
+  "eng.2",
+  "ned.1",
+  "por.1",
+  "tur.1", // autres championnats européens
+  "usa.1",
+  "mex.1",
+  "bra.1",
+  "arg.1",
+  "sau.1", // Amériques + Saudi
 ];
 
 let _teamDirCache = null; // Promise<Team[]>
@@ -189,10 +229,13 @@ function extractTeamsFromScoreboard(data, slug) {
 
 // Plage « saison » YYYYMMDD-YYYYMMDD (−8 mois → +2 mois) pour le scoreboard large.
 function _seasonRange() {
-  const fmt = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  const fmt = (d) =>
+    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
   const now = new Date();
-  const start = new Date(now); start.setMonth(start.getMonth() - 8);
-  const end = new Date(now); end.setMonth(end.getMonth() + 2);
+  const start = new Date(now);
+  start.setMonth(start.getMonth() - 8);
+  const end = new Date(now);
+  end.setMonth(end.getMonth() + 2);
   return `${fmt(start)}-${fmt(end)}`;
 }
 
@@ -204,9 +247,21 @@ function loadTeamDirectory() {
     for (const slug of TEAM_DIR_LEAGUES) {
       // 3 sources fusionnées, par ordre de fiabilité décroissante :
       // 1) scoreboard du jour (fiable), 2) scoreboard saison (large), 3) /teams (bonus).
-      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/scoreboard`).then((d) => extractTeamsFromScoreboard(d, slug)));
-      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/scoreboard?dates=${range}&limit=1000`).then((d) => extractTeamsFromScoreboard(d, slug)));
-      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/teams`).then((d) => extractTeams(d, slug)));
+      jobs.push(
+        fetchJson(`${SOCCER_BASE}/${slug}/scoreboard`).then((d) =>
+          extractTeamsFromScoreboard(d, slug),
+        ),
+      );
+      jobs.push(
+        fetchJson(
+          `${SOCCER_BASE}/${slug}/scoreboard?dates=${range}&limit=1000`,
+        ).then((d) => extractTeamsFromScoreboard(d, slug)),
+      );
+      jobs.push(
+        fetchJson(`${SOCCER_BASE}/${slug}/teams`).then((d) =>
+          extractTeams(d, slug),
+        ),
+      );
     }
     const all = (await Promise.all(jobs)).flat();
     // Dédoublonnage par id (une équipe apparaît dans plusieurs sources/listes).
@@ -226,7 +281,8 @@ function loadTeamDirectory() {
 
 // Minuscule + suppression des accents (« münchen » ≈ « munchen »).
 const _DIACRITICS = new RegExp("[\\u0300-\\u036f]", "g");
-const _fold = (s) => (s || "").toLowerCase().normalize("NFD").replace(_DIACRITICS, "");
+const _fold = (s) =>
+  (s || "").toLowerCase().normalize("NFD").replace(_DIACRITICS, "");
 
 // Résout l'ID ESPN EXACT d'une sélection nationale (ou club) à partir de son nom
 // officiel (« France », « Türkiye »…), en interrogeant l'annuaire (qui inclut
@@ -236,7 +292,10 @@ const _fold = (s) => (s || "").toLowerCase().normalize("NFD").replace(_DIACRITIC
 export async function resolveTeamIdByName(names) {
   const wanted = (Array.isArray(names) ? names : [names]).map(_fold);
   const dir = await loadTeamDirectory();
-  const hit = dir.find((t) => wanted.includes(_fold(t.name)) || wanted.includes(_fold(t.shortName)));
+  const hit = dir.find(
+    (t) =>
+      wanted.includes(_fold(t.name)) || wanted.includes(_fold(t.shortName)),
+  );
   return hit ? hit.id : null;
 }
 
@@ -253,7 +312,8 @@ export async function searchTeamsFromEspn(query, limit = 24) {
     let score = -1;
     if (abbr === q || name === q || short === q) score = 0;
     else if (name.startsWith(q) || short.startsWith(q)) score = 1;
-    else if (name.includes(q) || short.includes(q) || abbr.includes(q)) score = 2;
+    else if (name.includes(q) || short.includes(q) || abbr.includes(q))
+      score = 2;
     if (score >= 0) scored.push([score, t]);
   }
   scored.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name));
@@ -270,7 +330,8 @@ function mapEventType(text, ev) {
   if (t.includes("goal")) return ev.penaltyKick ? "penalty_goal" : "goal";
   if (t.includes("yellow")) return "yellow";
   if (t.includes("red")) return "red";
-  if (t.includes("substitution") || t.includes("sub ") || t === "sub") return "sub";
+  if (t.includes("substitution") || t.includes("sub ") || t === "sub")
+    return "sub";
   if (t.includes("var")) return "var";
   if (t.includes("penalty")) return "penalty";
   if (t.includes("injur")) return "injury";
@@ -282,11 +343,16 @@ function mapEventType(text, ev) {
 export async function fetchMatchDetailsFromEspn(eventId, slug) {
   const empty = { header: {}, events: [] };
   const id = String(eventId || "").trim();
-  const lg = String(slug || "").trim().toLowerCase();
+  const lg = String(slug || "")
+    .trim()
+    .toLowerCase();
   // Validation stricte (ces valeurs entrent dans l'URL ESPN → anti-injection).
-  if (!/^[0-9]{3,20}$/.test(id) || !/^[a-z0-9.\-]{2,30}$/.test(lg)) return empty;
+  if (!/^[0-9]{3,20}$/.test(id) || !/^[a-z0-9.\-]{2,30}$/.test(lg))
+    return empty;
 
-  const data = await fetchJson(`${SOCCER_BASE}/${lg}/summary?event=${encodeURIComponent(id)}`);
+  const data = await fetchJson(
+    `${SOCCER_BASE}/${lg}/summary?event=${encodeURIComponent(id)}`,
+  );
   if (!data) return empty;
 
   // team.id -> "home" / "away"
@@ -305,7 +371,7 @@ export async function fetchMatchDetailsFromEspn(eventId, slug) {
     const stype = st.type || {};
     const logo = (team) => {
       const logos = team?.logos || [];
-      return (logos[0]?.href || null) || team?.logo || null;
+      return logos[0]?.href || null || team?.logo || null;
     };
     header = {
       home: h.team?.displayName || h.team?.shortDisplayName,
@@ -335,22 +401,51 @@ export async function fetchMatchDetailsFromEspn(eventId, slug) {
     // Athlètes impliqués : `participants` porte le RÔLE (buteur, passeur,
     // entrant, sortant), `athletesInvolved` est le repli.
     const parts = (ev.participants || [])
-      .map((p) => ({ name: nm(p.athlete || p), role: String(p.type || p.role || "").toLowerCase() }))
+      .map((p) => ({
+        name: nm(p.athlete || p),
+        role: String(p.type || p.role || "").toLowerCase(),
+      }))
       .filter((p) => p.name);
-    const involved = (ev.athletesInvolved || []).map((a) => nm(a)).filter(Boolean);
+    const involved = (ev.athletesInvolved || [])
+      .map((a) => nm(a))
+      .filter(Boolean);
     const players = parts.length ? parts.map((p) => p.name) : involved;
-    const byRole = (...keys) => (parts.find((p) => keys.some((k) => p.role.includes(k))) || {}).name || null;
+    const byRole = (...keys) =>
+      (parts.find((p) => keys.some((k) => p.role.includes(k))) || {}).name ||
+      null;
 
-    let scorer = null, assist = null, playerIn = null, playerOut = null, player = null;
+    let scorer = null,
+      assist = null,
+      playerIn = null,
+      playerOut = null,
+      player = null;
     if (kind === "goal" || kind === "penalty_goal" || kind === "own_goal") {
       scorer = byRole("scor", "goal") || players[0] || null;
-      assist = byRole("assist") || (players[1] && players[1] !== scorer ? players[1] : null);
+      assist =
+        byRole("assist") ||
+        (players[1] && players[1] !== scorer ? players[1] : null);
     } else if (kind === "sub") {
-      playerIn = byRole("subbed-in", "sub-in", "sub in", "playerin", "enter", "in");
-      playerOut = byRole("subbed-out", "sub-out", "sub out", "playerout", "exit", "out");
+      playerIn = byRole(
+        "subbed-in",
+        "sub-in",
+        "sub in",
+        "playerin",
+        "enter",
+        "in",
+      );
+      playerOut = byRole(
+        "subbed-out",
+        "sub-out",
+        "sub out",
+        "playerout",
+        "exit",
+        "out",
+      );
       // Repli si aucun rôle : ordre ESPN habituel = [entrant, sortant].
-      if (!playerIn && !playerOut) { playerIn = players[0] || null; playerOut = players[1] || null; }
-      else {
+      if (!playerIn && !playerOut) {
+        playerIn = players[0] || null;
+        playerOut = players[1] || null;
+      } else {
         if (!playerIn) playerIn = players.find((n) => n !== playerOut) || null;
         if (!playerOut) playerOut = players.find((n) => n !== playerIn) || null;
       }
@@ -364,14 +459,17 @@ export async function fetchMatchDetailsFromEspn(eventId, slug) {
       side: sideMap[teamId],
       text,
       players,
-      scorer, assist, playerIn, playerOut, player,
+      scorer,
+      assist,
+      playerIn,
+      playerOut,
+      player,
       penalty: !!ev.penaltyKick,
       own_goal: !!ev.ownGoal,
     });
   }
   return { header, events };
 }
-
 
 // WWE (calendrier local — pas d'API ESPN catch)
 export { fetchWweEvents, buildWweSchedule } from "@/lib/wweClient";

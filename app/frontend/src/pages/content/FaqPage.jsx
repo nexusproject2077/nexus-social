@@ -19,26 +19,72 @@ const SECTIONS = [
 export default function FaqPage() {
   const { t } = useTranslation();
   return (
-    <ContentLayout
-      title={t("faq.page_title")}
-      description={t("faq.page_desc")}
-    >
-      <h1 style={{ fontSize: 32, color: "#fff", margin: "0 0 12px", letterSpacing: "-0.02em" }}>{t("faq.h1")}</h1>
+    <ContentLayout title={t("faq.page_title")} description={t("faq.page_desc")}>
+      <h1
+        style={{
+          fontSize: 32,
+          color: "#fff",
+          margin: "0 0 12px",
+          letterSpacing: "-0.02em",
+        }}
+      >
+        {t("faq.h1")}
+      </h1>
       <p style={{ color: "#bbc9cd", fontSize: 17, marginBottom: 28 }}>
-        {t("faq.lead")} <a href="mailto:support@nexussocial.com" style={{ color: ACCENT }}>support@nexussocial.com</a>.
+        {t("faq.lead")}{" "}
+        <a href="mailto:support@nexussocial.com" style={{ color: ACCENT }}>
+          support@nexussocial.com
+        </a>
+        .
       </p>
 
       {SECTIONS.map((section) => (
         <section key={section.c} style={{ marginBottom: 30 }}>
-          <h2 style={{ fontSize: 14, color: ACCENT, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 14 }}>{t("faq." + section.c + "_cat")}</h2>
+          <h2
+            style={{
+              fontSize: 14,
+              color: ACCENT,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              marginBottom: 14,
+            }}
+          >
+            {t("faq." + section.c + "_cat")}
+          </h2>
           <div style={{ display: "grid", gap: 12 }}>
             {Array.from({ length: section.n }).map((_, i) => {
               const q = t("faq." + section.c + "_q" + (i + 1));
               const a = t("faq." + section.c + "_a" + (i + 1));
               return (
-                <div key={i} style={{ background: "#131b2e", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: "16px 18px" }}>
-                  <p style={{ color: "#fff", fontWeight: 700, margin: "0 0 6px", fontSize: 16 }}>{q}</p>
-                  <p style={{ color: "#a7b3cc", margin: 0, lineHeight: 1.6, fontSize: 15 }}>{a}</p>
+                <div
+                  key={i}
+                  style={{
+                    background: "#131b2e",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    borderRadius: 14,
+                    padding: "16px 18px",
+                  }}
+                >
+                  <p
+                    style={{
+                      color: "#fff",
+                      fontWeight: 700,
+                      margin: "0 0 6px",
+                      fontSize: 16,
+                    }}
+                  >
+                    {q}
+                  </p>
+                  <p
+                    style={{
+                      color: "#a7b3cc",
+                      margin: 0,
+                      lineHeight: 1.6,
+                      fontSize: 15,
+                    }}
+                  >
+                    {a}
+                  </p>
                 </div>
               );
             })}
@@ -46,9 +92,25 @@ export default function FaqPage() {
         </section>
       ))}
 
-      <div style={{ marginTop: 24, padding: 20, background: "rgba(34,211,238,0.06)", border: "1px solid rgba(34,211,238,0.2)", borderRadius: 16 }}>
-        <p style={{ color: "#fff", fontWeight: 700, margin: "0 0 6px" }}>{t("faq.cta_title")}</p>
-        <p style={{ color: "#a7b3cc", margin: "0 0 4px" }}>{t("faq.cta_body_1")} <Link to="/guides" style={{ color: ACCENT }}>{t("faq.cta_guides")}</Link> {t("faq.cta_body_2")}</p>
+      <div
+        style={{
+          marginTop: 24,
+          padding: 20,
+          background: "rgba(34,211,238,0.06)",
+          border: "1px solid rgba(34,211,238,0.2)",
+          borderRadius: 16,
+        }}
+      >
+        <p style={{ color: "#fff", fontWeight: 700, margin: "0 0 6px" }}>
+          {t("faq.cta_title")}
+        </p>
+        <p style={{ color: "#a7b3cc", margin: "0 0 4px" }}>
+          {t("faq.cta_body_1")}{" "}
+          <Link to="/guides" style={{ color: ACCENT }}>
+            {t("faq.cta_guides")}
+          </Link>{" "}
+          {t("faq.cta_body_2")}
+        </p>
       </div>
     </ContentLayout>
   );

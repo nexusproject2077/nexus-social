@@ -151,17 +151,17 @@ export default function AuthPage({ setUser }) {
             </span>
             <h2 className="font-headline text-6xl font-bold leading-[1.1] mb-8">
               Rejoignez le{" "}
-              <span style={{ color: "rgba(218,226,253,0.5)" }}>{
-                t("future_of_interaction")
-              }</span>{" "}
+              <span style={{ color: "rgba(218,226,253,0.5)" }}>
+                {t("future_of_interaction")}
+              </span>{" "}
               digitale.
             </h2>
             <p
               className="text-lg leading-relaxed font-light"
               style={{ color: "#bbc9cd" }}
             >
-              Une architecture conçue pour la rapidité, l'élégance et la
-              clarté. Redéfinissez votre présence sociale.
+              Une architecture conçue pour la rapidité, l'élégance et la clarté.
+              Redéfinissez votre présence sociale.
             </p>
           </div>
         </section>
@@ -187,9 +187,7 @@ export default function AuthPage({ setUser }) {
                 {isLogin ? t("login_title") : t("register_title")}
               </h2>
               <p style={{ color: "#bbc9cd" }}>
-                {isLogin
-                  ? t("welcome_back")
-                  : t("create_profile_start")}
+                {isLogin ? t("welcome_back") : t("create_profile_start")}
               </p>
             </header>
 
@@ -202,9 +200,9 @@ export default function AuthPage({ setUser }) {
                       className="font-label text-xs uppercase tracking-widest ml-1"
                       style={{ color: "#bbc9cd" }}
                       htmlFor="name"
-                    >{
-                      t("full_name")
-                    }</label>
+                    >
+                      {t("full_name")}
+                    </label>
                     <div className="relative group">
                       <div
                         className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors"
@@ -234,9 +232,9 @@ export default function AuthPage({ setUser }) {
                     className="font-label text-xs uppercase tracking-widest ml-1"
                     style={{ color: "#bbc9cd" }}
                     htmlFor="email"
-                  >{
-                    t("email")
-                  }</label>
+                  >
+                    {t("email")}
+                  </label>
                   <div className="relative group">
                     <div
                       className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors"
@@ -266,9 +264,9 @@ export default function AuthPage({ setUser }) {
                       className="font-label text-xs uppercase tracking-widest ml-1"
                       style={{ color: "#bbc9cd" }}
                       htmlFor="password"
-                    >{
-                      t("password")
-                    }</label>
+                    >
+                      {t("password")}
+                    </label>
                     <div className="relative group">
                       <div
                         className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors"
@@ -298,9 +296,9 @@ export default function AuthPage({ setUser }) {
                         className="font-label text-xs uppercase tracking-widest ml-1"
                         style={{ color: "#bbc9cd" }}
                         htmlFor="password"
-                      >{
-                        t("password")
-                      }</label>
+                      >
+                        {t("password")}
+                      </label>
                       <div className="relative group">
                         <div
                           className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors"
@@ -328,9 +326,9 @@ export default function AuthPage({ setUser }) {
                         className="font-label text-xs uppercase tracking-widest ml-1"
                         style={{ color: "#bbc9cd" }}
                         htmlFor="confirm-password"
-                      >{
-                        t("confirm")
-                      }</label>
+                      >
+                        {t("confirm")}
+                      </label>
                       <div className="relative group">
                         <div
                           className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors"
@@ -379,9 +377,9 @@ export default function AuthPage({ setUser }) {
                       href={`${API}/legal/terms-of-service`}
                       target="_blank"
                       rel="noopener noreferrer"
-                    >{
-                      t("terms_of_use")
-                    }</a>
+                    >
+                      {t("terms_of_use")}
+                    </a>
                   </label>
                 </div>
               )}

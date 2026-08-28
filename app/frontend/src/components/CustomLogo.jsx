@@ -1,19 +1,22 @@
 // CustomLogo.jsx - Votre logo personnalisé
 
-export default function CustomLogo({ className = "w-6 h-6", color = "currentColor" }) {
+export default function CustomLogo({
+  className = "w-6 h-6",
+  color = "currentColor",
+}) {
   return (
-    <svg 
-      viewBox="0 0 297.87 299.15" 
+    <svg
+      viewBox="0 0 297.87 299.15"
       className={className}
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path 
+      <path
         fill={color}
         stroke={color}
         strokeMiterlimit="10"
         d="M164.37,9.74L22.21,117.96l-.31,180.69H.5V114.96c0-3.5,1.64-6.79,4.43-8.89L142.37,2.49c3.45-2.6,8.2-2.66,11.71-.14l10.3,7.38Z"
       />
-      <path 
+      <path
         fill={color}
         stroke={color}
         strokeMiterlimit="10"

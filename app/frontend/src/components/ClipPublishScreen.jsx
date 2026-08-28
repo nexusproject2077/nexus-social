@@ -8,7 +8,10 @@ const C = {
   line: "rgba(255,255,255,0.08)",
   muted: "#888",
   text: "#fff",
-  accent: (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
+  accent:
+    (typeof window !== "undefined" &&
+      window.localStorage.getItem("nexus_accent")) ||
+    "#22d3ee",
 };
 
 const DRAFTS_KEY = "nexus_clip_drafts";
@@ -45,7 +48,13 @@ export default function ClipPublishScreen({
   const captionRef = useRef(null);
 
   const suggestedPlaces = [
-    "Paris", "Istanbul", "London", "New York", "Berlin", "Madrid", "Tokyo",
+    "Paris",
+    "Istanbul",
+    "London",
+    "New York",
+    "Berlin",
+    "Madrid",
+    "Tokyo",
   ];
 
   useEffect(() => {
@@ -70,11 +79,16 @@ export default function ClipPublishScreen({
         canvas.getContext("2d").drawImage(v, 0, 0);
         setCoverDataUrl(canvas.toDataURL("image/jpeg", 0.85));
         setCoverTime(timeSec);
-      } catch { /* CORS / decode */ }
+      } catch {
+        /* CORS / decode */
+      }
     };
     if (Math.abs((v.currentTime || 0) - timeSec) < 0.05) seek();
     else {
-      const onSeeked = () => { v.removeEventListener("seeked", onSeeked); seek(); };
+      const onSeeked = () => {
+        v.removeEventListener("seeked", onSeeked);
+        seek();
+      };
       v.addEventListener("seeked", onSeeked);
       v.currentTime = timeSec;
     }
@@ -152,13 +166,26 @@ export default function ClipPublishScreen({
         : t("clip_vis_public");
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: C.bg, color: C.text }}>
+    <div
+      className="fixed inset-0 z-[100] flex flex-col"
+      style={{ background: C.bg, color: C.text }}
+    >
       {/* Header */}
-      <header className="flex items-center gap-3 px-3 py-3 safe-top" style={{ borderBottom: `1px solid ${C.line}` }}>
-        <button type="button" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full" aria-label={t("back")}>
+      <header
+        className="flex items-center gap-3 px-3 py-3 safe-top"
+        style={{ borderBottom: `1px solid ${C.line}` }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-10 h-10 flex items-center justify-center rounded-full"
+          aria-label={t("back")}
+        >
           <span className="material-symbols-outlined text-2xl">arrow_back</span>
         </button>
-        <h1 className="flex-1 text-base font-bold">{t("clip_publish_title")}</h1>
+        <h1 className="flex-1 text-base font-bold">
+          {t("clip_publish_title")}
+        </h1>
       </header>
 
       <div className="flex-1 overflow-y-auto pb-28">
@@ -173,15 +200,36 @@ export default function ClipPublishScreen({
             maxLength={2200}
           />
           <div className="relative w-28 flex-shrink-0">
-            <div className="rounded-xl overflow-hidden relative" style={{ aspectRatio: "9/16", background: "#111" }}>
+            <div
+              className="rounded-xl overflow-hidden relative"
+              style={{ aspectRatio: "9/16", background: "#111" }}
+            >
               {coverDataUrl ? (
-                <img src={coverDataUrl} alt="" className="w-full h-full object-cover" />
+                <img
+                  src={coverDataUrl}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
               ) : (
-                <video ref={videoRef} src={previewUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                <video
+                  ref={videoRef}
+                  src={previewUrl}
+                  className="w-full h-full object-cover"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
               )}
               {/* hidden video for frame capture if cover already set */}
               {coverDataUrl && (
-                <video ref={videoRef} src={previewUrl} className="hidden" muted playsInline preload="metadata" />
+                <video
+                  ref={videoRef}
+                  src={previewUrl}
+                  className="hidden"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
               )}
               <div className="absolute top-1 left-1 right-1 text-center text-[10px] font-bold text-white/90 drop-shadow">
                 {t("clip_preview")}
@@ -221,55 +269,141 @@ export default function ClipPublishScreen({
         <div style={{ height: 1, background: C.line }} className="mx-4 my-1" />
 
         {/* Location */}
-        <button type="button" onClick={() => setShowLocation(true)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:opacity-80">
-          <span className="material-symbols-outlined text-xl" style={{ color: C.muted }}>location_on</span>
+        <button
+          type="button"
+          onClick={() => setShowLocation(true)}
+          className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:opacity-80"
+        >
+          <span
+            className="material-symbols-outlined text-xl"
+            style={{ color: C.muted }}
+          >
+            location_on
+          </span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">{location || t("clip_location")}</p>
-            {location && <p className="text-xs mt-0.5" style={{ color: C.muted }}>{t("clip_location_hint")}</p>}
+            <p className="text-sm font-medium">
+              {location || t("clip_location")}
+            </p>
+            {location && (
+              <p className="text-xs mt-0.5" style={{ color: C.muted }}>
+                {t("clip_location_hint")}
+              </p>
+            )}
           </div>
-          <span className="material-symbols-outlined" style={{ color: C.muted }}>chevron_right</span>
+          <span
+            className="material-symbols-outlined"
+            style={{ color: C.muted }}
+          >
+            chevron_right
+          </span>
         </button>
 
         {/* Link */}
-        <button type="button" onClick={() => setShowLink(true)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:opacity-80">
-          <span className="material-symbols-outlined text-xl" style={{ color: C.muted }}>add_link</span>
+        <button
+          type="button"
+          onClick={() => setShowLink(true)}
+          className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:opacity-80"
+        >
+          <span
+            className="material-symbols-outlined text-xl"
+            style={{ color: C.muted }}
+          >
+            add_link
+          </span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{link || t("clip_add_link")}</p>
+            <p className="text-sm font-medium truncate">
+              {link || t("clip_add_link")}
+            </p>
           </div>
-          <span className="material-symbols-outlined" style={{ color: C.muted }}>chevron_right</span>
+          <span
+            className="material-symbols-outlined"
+            style={{ color: C.muted }}
+          >
+            chevron_right
+          </span>
         </button>
 
         {/* Visibility */}
-        <button type="button" onClick={() => setShowPrivacy(true)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:opacity-80">
-          <span className="material-symbols-outlined text-xl" style={{ color: C.muted }}>public</span>
+        <button
+          type="button"
+          onClick={() => setShowPrivacy(true)}
+          className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:opacity-80"
+        >
+          <span
+            className="material-symbols-outlined text-xl"
+            style={{ color: C.muted }}
+          >
+            public
+          </span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium">{visLabel}</p>
           </div>
-          <span className="material-symbols-outlined" style={{ color: C.muted }}>chevron_right</span>
+          <span
+            className="material-symbols-outlined"
+            style={{ color: C.muted }}
+          >
+            chevron_right
+          </span>
         </button>
 
         {/* Privacy settings */}
-        <button type="button" onClick={() => setShowMore(true)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:opacity-80">
-          <span className="material-symbols-outlined text-xl" style={{ color: C.muted }}>lock</span>
+        <button
+          type="button"
+          onClick={() => setShowMore(true)}
+          className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:opacity-80"
+        >
+          <span
+            className="material-symbols-outlined text-xl"
+            style={{ color: C.muted }}
+          >
+            lock
+          </span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium">{t("clip_privacy_settings")}</p>
-            <p className="text-xs mt-0.5" style={{ color: C.muted }}>{t("clip_privacy_settings_sub")}</p>
+            <p className="text-xs mt-0.5" style={{ color: C.muted }}>
+              {t("clip_privacy_settings_sub")}
+            </p>
           </div>
-          <span className="material-symbols-outlined" style={{ color: C.muted }}>chevron_right</span>
+          <span
+            className="material-symbols-outlined"
+            style={{ color: C.muted }}
+          >
+            chevron_right
+          </span>
         </button>
 
         {/* More options */}
-        <button type="button" onClick={() => setShowMore(true)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:opacity-80">
-          <span className="material-symbols-outlined text-xl" style={{ color: C.muted }}>settings</span>
+        <button
+          type="button"
+          onClick={() => setShowMore(true)}
+          className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:opacity-80"
+        >
+          <span
+            className="material-symbols-outlined text-xl"
+            style={{ color: C.muted }}
+          >
+            settings
+          </span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium">{t("clip_more_options")}</p>
           </div>
-          <span className="material-symbols-outlined" style={{ color: C.muted }}>chevron_right</span>
+          <span
+            className="material-symbols-outlined"
+            style={{ color: C.muted }}
+          >
+            chevron_right
+          </span>
         </button>
       </div>
 
       {/* Bottom actions */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 flex gap-3" style={{ background: "linear-gradient(transparent, #000 30%)", paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+      <div
+        className="fixed bottom-0 left-0 right-0 p-4 flex gap-3"
+        style={{
+          background: "linear-gradient(transparent, #000 30%)",
+          paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
+        }}
+      >
         <button
           type="button"
           onClick={handleSaveDraft}
@@ -285,7 +419,10 @@ export default function ClipPublishScreen({
           onClick={handlePublish}
           disabled={publishing}
           className="flex-[1.4] py-3.5 rounded-full font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
-          style={{ background: "linear-gradient(90deg,#ec4899,#f43f5e)", color: "#fff" }}
+          style={{
+            background: "linear-gradient(90deg,#ec4899,#f43f5e)",
+            color: "#fff",
+          }}
         >
           {publishing ? (
             <>
@@ -304,7 +441,9 @@ export default function ClipPublishScreen({
       {/* ---- Sheets ---- */}
       {showCover && (
         <Sheet title={t("clip_edit_cover")} onClose={() => setShowCover(false)}>
-          <p className="text-xs mb-3" style={{ color: C.muted }}>{t("clip_cover_hint")}</p>
+          <p className="text-xs mb-3" style={{ color: C.muted }}>
+            {t("clip_cover_hint")}
+          </p>
           <video
             src={previewUrl}
             className="w-full rounded-xl mb-3"
@@ -327,7 +466,10 @@ export default function ClipPublishScreen({
           />
           <button
             type="button"
-            onClick={() => { captureFrame(coverTime); setShowCover(false); }}
+            onClick={() => {
+              captureFrame(coverTime);
+              setShowCover(false);
+            }}
             className="w-full py-3 rounded-full font-bold"
             style={{ background: C.accent, color: "#00363e" }}
           >
@@ -337,7 +479,10 @@ export default function ClipPublishScreen({
       )}
 
       {showLocation && (
-        <Sheet title={t("clip_location")} onClose={() => setShowLocation(false)}>
+        <Sheet
+          title={t("clip_location")}
+          onClose={() => setShowLocation(false)}
+        >
           <input
             value={location}
             onChange={(e) => setLocation(e.target.value)}
@@ -352,13 +497,21 @@ export default function ClipPublishScreen({
                 type="button"
                 onClick={() => setLocation(p)}
                 className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                style={{ background: location === p ? C.accent : C.card, color: location === p ? "#00363e" : C.text }}
+                style={{
+                  background: location === p ? C.accent : C.card,
+                  color: location === p ? "#00363e" : C.text,
+                }}
               >
                 {p}
               </button>
             ))}
           </div>
-          <button type="button" onClick={() => setShowLocation(false)} className="w-full py-3 rounded-full font-bold" style={{ background: C.accent, color: "#00363e" }}>
+          <button
+            type="button"
+            onClick={() => setShowLocation(false)}
+            className="w-full py-3 rounded-full font-bold"
+            style={{ background: C.accent, color: "#00363e" }}
+          >
             {t("done")}
           </button>
         </Sheet>
@@ -374,39 +527,80 @@ export default function ClipPublishScreen({
             className="w-full rounded-xl px-4 py-3 mb-4 text-sm outline-none"
             style={{ background: C.card, color: C.text }}
           />
-          <button type="button" onClick={() => setShowLink(false)} className="w-full py-3 rounded-full font-bold" style={{ background: C.accent, color: "#00363e" }}>
+          <button
+            type="button"
+            onClick={() => setShowLink(false)}
+            className="w-full py-3 rounded-full font-bold"
+            style={{ background: C.accent, color: "#00363e" }}
+          >
             {t("done")}
           </button>
         </Sheet>
       )}
 
       {showPrivacy && (
-        <Sheet title={t("clip_who_can_watch")} onClose={() => setShowPrivacy(false)}>
+        <Sheet
+          title={t("clip_who_can_watch")}
+          onClose={() => setShowPrivacy(false)}
+        >
           {[
-            { id: "public", icon: "public", label: t("clip_vis_public"), sub: t("clip_vis_public_sub") },
-            { id: "followers", icon: "group", label: t("clip_vis_followers"), sub: t("clip_vis_followers_sub") },
-            { id: "private", icon: "lock", label: t("clip_vis_private"), sub: t("clip_vis_private_sub") },
+            {
+              id: "public",
+              icon: "public",
+              label: t("clip_vis_public"),
+              sub: t("clip_vis_public_sub"),
+            },
+            {
+              id: "followers",
+              icon: "group",
+              label: t("clip_vis_followers"),
+              sub: t("clip_vis_followers_sub"),
+            },
+            {
+              id: "private",
+              icon: "lock",
+              label: t("clip_vis_private"),
+              sub: t("clip_vis_private_sub"),
+            },
           ].map((o) => (
             <button
               key={o.id}
               type="button"
-              onClick={() => { setVisibility(o.id); setShowPrivacy(false); }}
+              onClick={() => {
+                setVisibility(o.id);
+                setShowPrivacy(false);
+              }}
               className="w-full flex items-center gap-3 px-2 py-3 text-left rounded-xl mb-1"
-              style={{ background: visibility === o.id ? "rgba(34,211,238,0.12)" : "transparent" }}
+              style={{
+                background:
+                  visibility === o.id ? "rgba(34,211,238,0.12)" : "transparent",
+              }}
             >
               <span className="material-symbols-outlined">{o.icon}</span>
               <div className="flex-1">
                 <p className="text-sm font-semibold">{o.label}</p>
-                <p className="text-xs" style={{ color: C.muted }}>{o.sub}</p>
+                <p className="text-xs" style={{ color: C.muted }}>
+                  {o.sub}
+                </p>
               </div>
-              {visibility === o.id && <span className="material-symbols-outlined" style={{ color: C.accent }}>check_circle</span>}
+              {visibility === o.id && (
+                <span
+                  className="material-symbols-outlined"
+                  style={{ color: C.accent }}
+                >
+                  check_circle
+                </span>
+              )}
             </button>
           ))}
         </Sheet>
       )}
 
       {showMore && (
-        <Sheet title={t("clip_more_options")} onClose={() => setShowMore(false)}>
+        <Sheet
+          title={t("clip_more_options")}
+          onClose={() => setShowMore(false)}
+        >
           <ToggleRow
             label={t("clip_allow_comments")}
             sub={t("clip_allow_comments_sub")}
@@ -419,7 +613,12 @@ export default function ClipPublishScreen({
             checked={euBlocked}
             onChange={setEuBlocked}
           />
-          <button type="button" onClick={() => setShowMore(false)} className="w-full mt-4 py-3 rounded-full font-bold" style={{ background: C.accent, color: "#00363e" }}>
+          <button
+            type="button"
+            onClick={() => setShowMore(false)}
+            className="w-full mt-4 py-3 rounded-full font-bold"
+            style={{ background: C.accent, color: "#00363e" }}
+          >
             {t("done")}
           </button>
         </Sheet>
@@ -430,7 +629,11 @@ export default function ClipPublishScreen({
 
 function Sheet({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-[110] flex flex-col justify-end" style={{ background: "rgba(0,0,0,0.55)" }} onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[110] flex flex-col justify-end"
+      style={{ background: "rgba(0,0,0,0.55)" }}
+      onClick={onClose}
+    >
       <div
         className="rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto"
         style={{ background: "#121212" }}
@@ -438,7 +641,12 @@ function Sheet({ title, onClose, children }) {
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-bold text-base">{title}</h2>
-          <button type="button" onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full" style={{ background: "#222" }}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full"
+            style={{ background: "#222" }}
+          >
             <span className="material-symbols-outlined text-lg">close</span>
           </button>
         </div>
@@ -450,18 +658,31 @@ function Sheet({ title, onClose, children }) {
 
 function ToggleRow({ label, sub, checked, onChange }) {
   return (
-    <div className="flex items-center gap-3 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+    <div
+      className="flex items-center gap-3 py-3"
+      style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+    >
       <div className="flex-1">
         <p className="text-sm font-medium">{label}</p>
-        {sub && <p className="text-xs mt-0.5" style={{ color: "#888" }}>{sub}</p>}
+        {sub && (
+          <p className="text-xs mt-0.5" style={{ color: "#888" }}>
+            {sub}
+          </p>
+        )}
       </div>
       <button
         type="button"
         onClick={() => onChange(!checked)}
         className="relative w-11 h-6 rounded-full transition-all flex-shrink-0"
-        style={{ background: checked ? "linear-gradient(90deg,#22d3ee,#3b82f6)" : "#333" }}
+        style={{
+          background: checked
+            ? "linear-gradient(90deg,#22d3ee,#3b82f6)"
+            : "#333",
+        }}
       >
-        <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`} />
+        <div
+          className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`}
+        />
       </button>
     </div>
   );

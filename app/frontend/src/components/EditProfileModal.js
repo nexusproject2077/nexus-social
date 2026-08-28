@@ -41,14 +41,14 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
 
     try {
       const formData = new FormData();
-      formData.append('bio', bio);
+      formData.append("bio", bio);
       if (profilePic) {
-        formData.append('profile_pic', profilePic);
+        formData.append("profile_pic", profilePic);
       }
 
       const response = await axios.put(`${API}/auth/profile`, formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          "Content-Type": "multipart/form-data",
         },
       });
 
@@ -114,9 +114,9 @@ export default function EditProfileModal({ open, onClose, user, onUpdate }) {
               onClick={onClose}
               className="border-slate-700"
               data-testid="cancel-edit-button"
-            >{
-              t("cancel")
-            }</Button>
+            >
+              {t("cancel")}
+            </Button>
             <Button
               type="submit"
               disabled={loading}

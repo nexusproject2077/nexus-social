@@ -52,7 +52,9 @@ export function useTimeTracking(user) {
 
       // Envoyer un ping toutes les 30 secondes
       try {
-        await axios.post(`${API}/users/me/sessions/${sessionIdRef.current}/ping`);
+        await axios.post(
+          `${API}/users/me/sessions/${sessionIdRef.current}/ping`,
+        );
       } catch (error) {
         console.error("Erreur ping session:", error);
       }
@@ -62,12 +64,17 @@ export function useTimeTracking(user) {
     const endSession = async () => {
       if (!sessionIdRef.current || !startTimeRef.current) return;
 
-      const duration = Math.floor((Date.now() - startTimeRef.current) / 1000 / 60); // en minutes
+      const duration = Math.floor(
+        (Date.now() - startTimeRef.current) / 1000 / 60,
+      ); // en minutes
 
       try {
-        await axios.post(`${API}/users/me/sessions/${sessionIdRef.current}/end`, {
-          duration,
-        });
+        await axios.post(
+          `${API}/users/me/sessions/${sessionIdRef.current}/end`,
+          {
+            duration,
+          },
+        );
         console.log("📊 Session terminée:", duration, "minutes");
       } catch (error) {
         console.error("Erreur fin session:", error);
@@ -114,12 +121,14 @@ export function useTimeTracking(user) {
 
     const handleBeforeUnload = async () => {
       if (sessionIdRef.current && startTimeRef.current) {
-        const duration = Math.floor((Date.now() - startTimeRef.current) / 1000 / 60);
-        
+        const duration = Math.floor(
+          (Date.now() - startTimeRef.current) / 1000 / 60,
+        );
+
         // Utiliser sendBeacon pour envoyer les données même si la page se ferme
         navigator.sendBeacon(
           `${API}/users/me/sessions/${sessionIdRef.current}/end`,
-          JSON.stringify({ duration })
+          JSON.stringify({ duration }),
         );
       }
     };
