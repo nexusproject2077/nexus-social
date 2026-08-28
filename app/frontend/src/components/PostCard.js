@@ -354,7 +354,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
               </p>
               <p className="text-xs flex items-center gap-1" style={{ color: C.outline }}>
                 {post.is_pinned && (
-                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title={t("pinned")}}>
+                  <span className="inline-flex items-center gap-0.5" style={{ color: C.cyan }} title={t("pinned")}>
                     <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>push_pin</span>
                     {t("pinned")} ·
                   </span>
@@ -376,7 +376,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
                   <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: pinned ? "'FILL' 1" : "'FILL' 0" }}>push_pin</span>
                 </button>
               )}
-              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title={t("delete")}}>
+              <button onClick={handleDelete} className="transition-colors hover:text-red-400" style={{ color: C.outline }} title={t("delete")}>
                 <span className="material-symbols-outlined text-xl">delete</span>
               </button>
             </div>

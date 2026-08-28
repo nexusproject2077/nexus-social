@@ -48,7 +48,7 @@ export default function CloseFriendsPanel() {
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder={t("close_friends.search")}}
+        placeholder={t("close_friends.search")}
         className="w-full mb-3 rounded-xl px-3 py-2 text-sm outline-none text-white"
         style={{ background: "#0b1326", border: "1px solid rgba(255,255,255,0.08)" }}
       />

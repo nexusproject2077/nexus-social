@@ -20,7 +20,7 @@ export default function FaqPage() {
   const { t } = useTranslation();
   return (
     <ContentLayout
-      title={t("faq.page_title")}}
+      title={t("faq.page_title")}
       description={t("faq.page_desc")}
     >
       <h1 style={{ fontSize: 32, color: "#fff", margin: "0 0 12px", letterSpacing: "-0.02em" }}>{t("faq.h1")}</h1>

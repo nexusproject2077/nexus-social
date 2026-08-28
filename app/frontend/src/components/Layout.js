@@ -541,7 +541,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           onClick={handleCreatePost}
           className="lg:hidden fixed right-4 z-[55] w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95"
           style={{ bottom: "calc(4.5rem + env(safe-area-inset-bottom))", background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 6px 20px rgba(34,211,238,0.45)" }}
-          aria-label={t("create_post")}}
+          aria-label={t("create_post")}
         >
           <span className="material-symbols-outlined text-3xl">add</span>
         </button>

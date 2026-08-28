@@ -83,7 +83,7 @@ export default function TipModal({
               style={{ background: "#222a3d", border: `1px solid ${custom ? "var(--nexus-accent)" : "rgba(255,255,255,0.08)"}` }}>
               <input type="number" min="1" max="1000" step="1" inputMode="decimal"
                 value={custom} onChange={(e) => setCustom(e.target.value)}
-                placeholder={t("tipmodal.custom_amount")}}
+                placeholder={t("tipmodal.custom_amount")}
                 className="flex-1 bg-transparent outline-none py-3 text-sm text-white" />
               <span className="text-sm font-bold" style={{ color: "#859397" }}>€</span>
             </div>

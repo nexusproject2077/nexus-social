@@ -271,11 +271,11 @@ export default function SettingsPage({ user, setUser }) {
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <InputField label="Nom d'utilisateur" value={settings?.account?.username} disabled />
-            <InputField label={t("email")}} value={settings?.account?.email} disabled />
-            <InputField label={t("first_name")}} value={profileData.first_name} onChange={e => setProfileData(p => ({ ...p, first_name: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("email")} value={settings?.account?.email} disabled />
+            <InputField label={t("first_name")} value={profileData.first_name} onChange={e => setProfileData(p => ({ ...p, first_name: e.target.value }))} disabled={!editMode} />
             <InputField label="Nom" value={profileData.last_name} onChange={e => setProfileData(p => ({ ...p, last_name: e.target.value }))} disabled={!editMode} />
-            <InputField label={t("phone")}} type="tel" value={profileData.phone} onChange={e => setProfileData(p => ({ ...p, phone: e.target.value }))} disabled={!editMode} />
-            <InputField label={t("birthdate")}} type="date" value={profileData.birthdate} onChange={e => setProfileData(p => ({ ...p, birthdate: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("phone")} type="tel" value={profileData.phone} onChange={e => setProfileData(p => ({ ...p, phone: e.target.value }))} disabled={!editMode} />
+            <InputField label={t("birthdate")} type="date" value={profileData.birthdate} onChange={e => setProfileData(p => ({ ...p, birthdate: e.target.value }))} disabled={!editMode} />
             <InputField label="Localisation" value={profileData.location} onChange={e => setProfileData(p => ({ ...p, location: e.target.value }))} disabled={!editMode} />
             <InputField label="Site web" type="url" value={profileData.website} onChange={e => setProfileData(p => ({ ...p, website: e.target.value }))} disabled={!editMode} />
           </div>
@@ -319,9 +319,9 @@ export default function SettingsPage({ user, setUser }) {
       {/* Account actions */}
       <Card>
         <CardHeader title={t("account_management")} icon="settings" />
-        <RowItem icon="lock" label={t("change_password")}} sublabel={t("update_your_password")} onClick={() => setShowPasswordModal(true)} />
-        <RowItem icon="download" label={t("export_my_data")}} sublabel={t("download_data_gdpr")} onClick={handleDataExport} />
-        <RowItem icon="logout" label={t("logout")}} sublabel={t("end_current_session")} onClick={handleLogout} danger />
+        <RowItem icon="lock" label={t("change_password")} sublabel={t("update_your_password")} onClick={() => setShowPasswordModal(true)} />
+        <RowItem icon="download" label={t("export_my_data")} sublabel={t("download_data_gdpr")} onClick={handleDataExport} />
+        <RowItem icon="logout" label={t("logout")} sublabel={t("end_current_session")} onClick={handleLogout} danger />
       </Card>
     </div>
   );
@@ -384,7 +384,7 @@ export default function SettingsPage({ user, setUser }) {
           <CardHeader title="Analytique" icon="insights" />
           <RowItem
             icon="bar_chart"
-            label={t("analytics_dashboard")}}
+            label={t("analytics_dashboard")}
             sublabel={t("analytics_desc")}
             onClick={() => navigate("/analytics")}
           />
@@ -395,7 +395,7 @@ export default function SettingsPage({ user, setUser }) {
           <CardHeader title={t("monetization")} icon="paid" />
           <ToggleRow
             icon="toll"
-            label={t("enable_monetization")}}
+            label={t("enable_monetization")}
             sublabel={t("monetization_desc")}
             checked={monetization}
             onChange={toggleMonetization}
@@ -407,13 +407,13 @@ export default function SettingsPage({ user, setUser }) {
 
         {/* {t("tips_crypto")} */}
         <Card>
-          <CardHeader title={t("tips_crypto")}} icon="currency_bitcoin" />
+          <CardHeader title={t("tips_crypto")} icon="currency_bitcoin" />
           <div className="p-5 space-y-3">
             <p className="text-sm" style={{ color: C.outline }}>
               Ajoutez votre adresse (Solana, USDT, BTC…) pour recevoir des tips directement, sans intermédiaire ni frais de plateforme.
             </p>
             <InputField
-              label={t("wallet_address")}}
+              label={t("wallet_address")}
               value={profileData.crypto_wallet}
               onChange={(e) => setProfileData((p) => ({ ...p, crypto_wallet: e.target.value }))}
               placeholder="Ex : 7xKX…（Solana / USDT / BTC）"
@@ -453,24 +453,24 @@ export default function SettingsPage({ user, setUser }) {
       {/* Privacy toggles */}
       <Card>
         <CardHeader title={t("account_visibility")} icon="visibility" />
-        <ToggleRow icon="lock" label={t("private_account")}} sublabel={t("private_account_desc")} checked={settings?.privacy?.is_private || false} onChange={v => updatePrivacy("is_private", v)} />
-        <ToggleRow icon="chat" label={t("allow_story_replies")}} sublabel={t("story_replies_desc")} checked={settings?.privacy?.allow_story_replies !== false} onChange={v => updatePrivacy("allow_story_replies", v)} />
-        <ToggleRow icon="alternate_email" label={t("allow_mentions")}} sublabel={t("mentions_desc")} checked={settings?.privacy?.allow_mentions !== false} onChange={v => updatePrivacy("allow_mentions", v)} />
+        <ToggleRow icon="lock" label={t("private_account")} sublabel={t("private_account_desc")} checked={settings?.privacy?.is_private || false} onChange={v => updatePrivacy("is_private", v)} />
+        <ToggleRow icon="chat" label={t("allow_story_replies")} sublabel={t("story_replies_desc")} checked={settings?.privacy?.allow_story_replies !== false} onChange={v => updatePrivacy("allow_story_replies", v)} />
+        <ToggleRow icon="alternate_email" label={t("allow_mentions")} sublabel={t("mentions_desc")} checked={settings?.privacy?.allow_mentions !== false} onChange={v => updatePrivacy("allow_mentions", v)} />
       </Card>
 
       {/* Data controls */}
       <Card>
         <CardHeader title={t("data_control")} icon="database" />
-        <RowItem icon="download" label={t("export_my_data")}} sublabel={t("download_all_personal_data")} onClick={handleDataExport} />
-        <RowItem icon="delete_forever" label={t("request_deletion")}} sublabel={t("permanently_delete_account")} onClick={() => toast.info("Contactez support@nexus-social.com")} danger />
+        <RowItem icon="download" label={t("export_my_data")} sublabel={t("download_all_personal_data")} onClick={handleDataExport} />
+        <RowItem icon="delete_forever" label={t("request_deletion")} sublabel={t("permanently_delete_account")} onClick={() => toast.info("Contactez support@nexus-social.com")} danger />
       </Card>
 
       {/* Ad targeting */}
       <Card>
         <CardHeader title="Ciblage publicitaire (DMA)" icon="target" />
-        <ToggleRow label={t("personalized_ads")}} sublabel={t("based_on_activity")} checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
-        <ToggleRow label={t("third_party_data")}} sublabel={t("partner_info")} checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
-        <ToggleRow label={t("geo_targeting")}} sublabel={t("gps_usage")} checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
+        <ToggleRow label={t("personalized_ads")} sublabel={t("based_on_activity")} checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
+        <ToggleRow label={t("third_party_data")} sublabel={t("partner_info")} checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
+        <ToggleRow label={t("geo_targeting")} sublabel={t("gps_usage")} checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
       </Card>
     </div>
   );
@@ -526,7 +526,7 @@ export default function SettingsPage({ user, setUser }) {
       {/* Password */}
       <Card>
         <CardHeader title={t("password")} icon="key" />
-        <RowItem icon="lock_reset" label={t("change_password")}} sublabel={t("update_password_regularly")} onClick={() => setShowPasswordModal(true)} />
+        <RowItem icon="lock_reset" label={t("change_password")} sublabel={t("update_password_regularly")} onClick={() => setShowPasswordModal(true)} />
       </Card>
     </div>
   );
@@ -540,7 +540,7 @@ export default function SettingsPage({ user, setUser }) {
       <Card>
         <CardHeader title="Filtre de contenu" icon="filter_alt" />
         <ToggleRow label="Contenu sensible" sublabel={t("show_sensitive")} checked={false} onChange={() => toast.info(t("setting_coming_soon"))} />
-        <ToggleRow label={t("autoplay_videos")}} sublabel={t("videos_auto_start")} checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
+        <ToggleRow label={t("autoplay_videos")} sublabel={t("videos_auto_start")} checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
         <ToggleRow label="Suggestion algorithmique" sublabel={t("content_based_interactions")} checked={true} onChange={() => toast.info(t("setting_coming_soon"))} />
       </Card>
       <Card>
@@ -554,9 +554,9 @@ export default function SettingsPage({ user, setUser }) {
         </div>
       </Card>
       <Card>
-        <CardHeader title={t("blocked_and_muted")}} icon="block" />
-        <RowItem icon="block" label={t("blocked_accounts")}} sublabel={t("manage_blocked")} onClick={() => toast.info(t("list_coming_soon"))} />
-        <RowItem icon="volume_off" label={t("muted_keywords")}} sublabel={t("hide_keywords")} onClick={() => toast.info(t("config_coming_soon"))} />
+        <CardHeader title={t("blocked_and_muted")} icon="block" />
+        <RowItem icon="block" label={t("blocked_accounts")} sublabel={t("manage_blocked")} onClick={() => toast.info(t("list_coming_soon"))} />
+        <RowItem icon="volume_off" label={t("muted_keywords")} sublabel={t("hide_keywords")} onClick={() => toast.info(t("config_coming_soon"))} />
       </Card>
     </div>
   );
@@ -569,10 +569,10 @@ export default function SettingsPage({ user, setUser }) {
       </div>
       <Card>
         <CardHeader title={t("theme")} icon="dark_mode" />
-        <ToggleRow icon="dark_mode" label={t("dark_mode")}} sublabel={t("always_on_nexus")} checked={true} onChange={() => {}} disabled />
+        <ToggleRow icon="dark_mode" label={t("dark_mode")} sublabel={t("always_on_nexus")} checked={true} onChange={() => {}} disabled />
       </Card>
       <Card>
-        <CardHeader title={t("accent_color")}} icon="palette" />
+        <CardHeader title={t("accent_color")} icon="palette" />
         <div className="p-5">
           <p className="text-sm mb-4" style={{ color: C.outline }}>{t("choose_main_color")}</p>
           <div className="flex flex-wrap gap-3">

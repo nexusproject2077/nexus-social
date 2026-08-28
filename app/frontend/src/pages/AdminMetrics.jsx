@@ -148,7 +148,7 @@ export default function AdminMetrics({ user, setUser }) {
                 <XAxis dataKey="label" stroke="#94a3b8" style={{ fontSize: 10 }} />
                 <YAxis allowDecimals={false} stroke="#94a3b8" style={{ fontSize: 10 }} />
                 <Tooltip contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155" }} labelStyle={{ color: "#e2e8f0" }} />
-                <Bar dataKey="count" fill="#3b82f6" name={t("adminmetrics.chart_signups")}} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="count" fill="#3b82f6" name={t("adminmetrics.chart_signups")} radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

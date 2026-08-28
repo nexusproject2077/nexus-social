@@ -9,7 +9,7 @@ export default function HowItWorksPage() {
   const { t } = useTranslation();
   return (
     <ContentLayout
-      title={t("how.page_title")}}
+      title={t("how.page_title")}
       description={t("how.page_desc")}
     >
       <style>{proseStyle}</style>
