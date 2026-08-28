@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import MatchRoom from "@/components/MatchRoom";
 import MatchSocialPanel from "@/components/MatchSocialPanel";
 // Match Center — chronologie détaillée d'un match (données ESPN gratuites).
@@ -87,10 +86,6 @@ function eventTexts(ev) {
 const Side = ({ ev, align }) => {
   const { title, sub } = eventTexts(ev);
   return (
-    <>
-    {roomOpen && (
-      <MatchRoom match={match} currentUser={currentUser} onClose={() => setRoomOpen(false)} />
-    )}
     <div className={align === "right" ? "text-right" : "text-left"}>
       <p className="text-[13px] text-white leading-tight" style={{ fontWeight: 600 }}>{title}</p>
       {sub && <p className="text-[11px] leading-tight mt-0.5" style={{ color: "#8b96a8", fontWeight: 300 }}>{sub}</p>}
