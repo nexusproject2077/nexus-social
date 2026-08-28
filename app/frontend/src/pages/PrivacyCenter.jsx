@@ -5,18 +5,8 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
-import {
+import { Shield, Download, Trash2, Lock, CheckCircle, AlertTriangle, Globe, Users, Eye } from "lucide-react";
 import { useTranslation } from "react-i18next";
-  Shield,
-  Download,
-  Trash2,
-  Lock,
-  CheckCircle,
-  AlertTriangle,
-  Globe,
-  Users,
-  Eye,
-} from "lucide-react";
 
 export default function PrivacyCenter({ user, setUser }) {
   const { t } = useTranslation();
@@ -125,19 +115,19 @@ export default function PrivacyCenter({ user, setUser }) {
 
         {/* Tabs */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-          {["privacy", "data", "info"].map((tab) => (
+          {['privacy', 'data', 'info'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 activeTab === tab
-                  ? "bg-cyan-500 text-white"
-                  : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                  ? 'bg-cyan-500 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
             >
-              {tab === "privacy" && t("privacy_lock")}
-              {tab === "data" && t("my_data")}
-              {tab === "info" && "ℹ️ Transparence"}
+              {tab === 'privacy' && t("privacy_lock")}
+              {tab === 'data' && t("my_data")}
+              {tab === 'info' && 'ℹ️ Transparence'}
             </button>
           ))}
         </div>
@@ -181,7 +171,7 @@ export default function PrivacyCenter({ user, setUser }) {
                       onChange={(e) => updatePrivacySettings({ ...privacySettings, show_email: e.target.checked })}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5" />
                   </label>
                 </div>
 
@@ -200,7 +190,7 @@ export default function PrivacyCenter({ user, setUser }) {
                       onChange={(e) => updatePrivacySettings({ ...privacySettings, show_activity: e.target.checked })}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5" />
                   </label>
                 </div>
               </div>
@@ -241,7 +231,7 @@ export default function PrivacyCenter({ user, setUser }) {
                         }}
                         className="sr-only peer"
                       />
-                      <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+                      <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5" />
                     </label>
                   </div>
                 </div>
