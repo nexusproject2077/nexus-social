@@ -8,7 +8,7 @@ import Layout from "../components/Layout";
 import ChangePasswordModal from "../components/ChangePasswordModal";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import AlgorithmTransparencyModal from "../components/AlgorithmTransparencyModal";
-import ReferralCard from "../components/ReferralCard";
+import GrowthHub from "../components/GrowthHub";
 import { ACCENTS, applyAccent, getAccent } from "../lib/accent";
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
@@ -638,9 +638,9 @@ export default function SettingsPage({ user, setUser }) {
           ))}
         </div>
 
-        {/* Parrainage (lien + progression vers 1 mois Premium offert) */}
+        {/* Croissance : parrainage, défis clips, amis proches, notifs utiles */}
         <div className="mb-4">
-          <ReferralCard user={user} />
+          <GrowthHub user={user} />
         </div>
 
         {/* Abonnement Premium */}

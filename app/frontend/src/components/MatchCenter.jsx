@@ -215,6 +215,13 @@ export default function MatchCenter({ match, onClose, currentUser }) {
         </div>
       </div>
     </div>
+    {roomOpen && (
+      <MatchRoom
+        match={h}
+        currentUser={currentUser}
+        onClose={() => setRoomOpen(false)}
+      />
+    )}
       </>
 );
 }

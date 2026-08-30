@@ -7,6 +7,7 @@ import PostCard from "@/components/PostCard";
 import EditProfileModal from "@/components/EditProfileModal";
 import FollowListModal from "@/components/FollowListModal";
 import ReferralCard from "@/components/ReferralCard";
+import CreatorStats from "@/components/CreatorStats";
 import PullToRefresh from "@/components/PullToRefresh";
 import { Lock, Clock, UserPlus, UserMinus, Edit, Share2 } from "lucide-react";
 import { toast } from "sonner";
@@ -685,9 +686,14 @@ export default function ProfilePage({ user, setUser }) {
         })}
       </div>
 
+      {/* ── Stats créateur (clips / vues / J'aime) ───────────────────────── */}
+      <div className="max-w-5xl mx-auto px-4 mt-6">
+        <CreatorStats userId={userId} isOwn={isOwnProfile} />
+      </div>
+
       {/* ── Parrainage (profil personnel) ─────────────────────────────────── */}
       {isOwnProfile && (
-        <div className="max-w-5xl mx-auto px-4 mt-6">
+        <div className="max-w-5xl mx-auto px-4 mt-4">
           <ReferralCard user={user} />
         </div>
       )}
