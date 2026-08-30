@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import i18n from "../i18n";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
@@ -19,7 +20,7 @@ const C = {
 
 const TABS = [
   { key: "top", label: "Top" },
-  { key: "videos", label: t("videos") },
+  { key: "videos", label: i18n.t("videos") },
   { key: "users", label: "Comptes" },
   { key: "posts", label: "Posts" },
   { key: "hashtags", label: "Hashtags" },

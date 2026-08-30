@@ -4,6 +4,7 @@
 // comment l'utilisateur peut les influencer, sans jargon.
 
 import React from "react";
+import i18n from "../i18n";
 import {
   X,
   Sparkles,
@@ -21,10 +22,10 @@ const FACTORS = [
   {
     label: "Comptes que vous suivez",
     weight: 40,
-    desc: t("algo_following_boost"),
+    desc: i18n.t("algo_following_boost"),
   },
-  { label: t("freshness"), weight: 25, desc: t("algo_recency") },
-  { label: "Engagement", weight: 25, desc: t("algo_engagement") },
+  { label: i18n.t("freshness"), weight: 25, desc: i18n.t("algo_recency") },
+  { label: "Engagement", weight: 25, desc: i18n.t("algo_engagement") },
   {
     label: "Vos centres d'intérêt",
     weight: 10,

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import i18n from "../i18n";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
@@ -67,8 +68,8 @@ const dayLabel = (iso, t, lang = "en") => {
   const d = new Date(iso);
   const diff = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86400000);
   const bcp = BCP[(lang || "en").split("-")[0]] || "en-US";
-  if (diff <= 0) return t("today") || "Today";
-  if (diff === 1) return t("yesterday") || "Yesterday";
+  if (diff <= 0) return i18n.t("today") || "Today";
+  if (diff === 1) return i18n.t("yesterday") || "Yesterday";
   if (diff < 7) return d.toLocaleDateString(bcp, { weekday: "long" });
   return d.toLocaleDateString(bcp, { day: "numeric", month: "long" });
 };

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import i18n from "../i18n";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
@@ -38,9 +39,9 @@ const mediaErrorMessage = (err) => {
       return "Accès micro/caméra refusé — autorisez-le (icône 🔒 dans la barre d'adresse) puis réessayez";
     case "NotFoundError":
     case "OverconstrainedError":
-      return t("no_mic_camera");
+      return i18n.t("no_mic_camera");
     case "NotReadableError":
-      return t("mic_camera_in_use");
+      return i18n.t("mic_camera_in_use");
     default:
       return "Impossible d'accéder au micro/caméra";
   }

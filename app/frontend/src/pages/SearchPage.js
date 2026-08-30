@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import i18n from "../i18n";
 import axios from "axios";
 import { API } from "@/App";
 import Layout from "@/components/Layout";
@@ -39,9 +40,9 @@ function ListsPanel({ user }) {
     try {
       await axios.post(`${API}/lists`, { name: name.trim() });
       fetchLists();
-      toast.success(t("list_created"));
+      toast.success(i18n.t("list_created"));
     } catch {
-      toast.error(t("error"));
+      toast.error(i18n.t("error"));
     }
   };
 
@@ -52,19 +53,19 @@ function ListsPanel({ user }) {
       setAdding(false);
       setAddQuery("");
     } catch {
-      toast.error(t("error"));
+      toast.error(i18n.t("error"));
     }
   };
 
   const deleteList = async (id) => {
-    if (!window.confirm(t("delete_list_confirm"))) return;
+    if (!window.confirm(i18n.t("delete_list_confirm"))) return;
     try {
       await axios.delete(`${API}/lists/${id}`);
       setDetail(null);
       fetchLists();
-      toast.success(t("list_deleted"));
+      toast.success(i18n.t("list_deleted"));
     } catch {
-      toast.error(t("error"));
+      toast.error(i18n.t("error"));
     }
   };
 
@@ -77,7 +78,7 @@ function ListsPanel({ user }) {
       }));
       fetchLists();
     } catch {
-      toast.error(t("error"));
+      toast.error(i18n.t("error"));
     }
   };
 
@@ -91,7 +92,7 @@ function ListsPanel({ user }) {
       );
       fetchLists();
     } catch {
-      toast.error(t("error"));
+      toast.error(i18n.t("error"));
     }
   };
 
@@ -228,7 +229,7 @@ function ListsPanel({ user }) {
               </p>
               <button
                 onClick={() => deleteList(detail.id)}
-                title={t("delete_list")}
+                title={i18n.t("delete_list")}
                 style={{ color: "#f87171" }}
               >
                 <span className="material-symbols-outlined">delete</span>
@@ -266,7 +267,7 @@ function ListsPanel({ user }) {
                     autoFocus
                     value={addQuery}
                     onChange={(e) => setAddQuery(e.target.value)}
-                    placeholder={t("search_user")}
+                    placeholder={i18n.t("search_user")}
                     className="flex-1 bg-transparent outline-none text-sm select-text"
                     style={{ color: "#dae2fd" }}
                   />
@@ -317,7 +318,7 @@ function ListsPanel({ user }) {
                           color: already ? "#859397" : "#00363e",
                         }}
                       >
-                        {already ? t("added") : "Ajouter"}
+                        {already ? i18n.t("added") : "Ajouter"}
                       </button>
                     </div>
                   );
@@ -384,11 +385,11 @@ const PAGE = 20;
 
 // Onglets façon X, adaptés à Nexus. `type` = paramètre backend.
 const TABS = [
-  { key: "all", label: t("for_you"), type: "all" },
+  { key: "all", label: i18n.t("for_you"), type: "all" },
   { key: "top", label: "Top", type: "top" },
   { key: "latest", label: "Derniers", type: "latest" },
   { key: "people", label: "Personnes", type: "people" },
-  { key: "media", label: t("media"), type: "media" },
+  { key: "media", label: i18n.t("media"), type: "media" },
   { key: "lists", label: "Listes", type: "lists" },
 ];
 

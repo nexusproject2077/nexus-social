@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import i18n from "../i18n";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
@@ -82,7 +83,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
       setReplyText("");
       setShowReplies(true);
     } catch {
-      toast.error(t("error"));
+      toast.error(i18n.t("error"));
     }
   };
 
@@ -92,7 +93,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
       setReplies((prev) => prev.filter((x) => x.id !== rid));
       setRepCount((n) => Math.max(0, n - 1));
     } catch {
-      toast.error(t("error"));
+      toast.error(i18n.t("error"));
     }
   };
 
@@ -132,7 +133,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
             className="text-[10px] font-semibold"
             style={{ color: C.outline }}
           >
-            {t("answer")}
+            {i18n.t("answer")}
           </button>
           {repCount > 0 && (
             <button
@@ -151,7 +152,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
               className="text-[10px] font-semibold"
               style={{ color: "#f87171" }}
             >
-              {t("delete")}
+              {i18n.t("delete")}
             </button>
           )}
         </div>
@@ -208,7 +209,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
                       className="text-[10px] font-semibold"
                       style={{ color: "#f87171" }}
                     >
-                      {t("delete")}
+                      {i18n.t("delete")}
                     </button>
                   )}
                 </div>
@@ -518,10 +519,10 @@ function ClipCard({
     const url = `${window.location.origin}/nexus-clips/${post.id}`;
     try {
       if (navigator.share)
-        await navigator.share({ title: t("nexus_clips"), url });
+        await navigator.share({ title: i18n.t("nexus_clips"), url });
       else {
         await navigator.clipboard.writeText(url);
-        toast.success(t("link_copied"));
+        toast.success(i18n.t("link_copied"));
       }
     } catch {
       /* annulé */
@@ -535,7 +536,7 @@ function ClipCard({
     try {
       const res = await axios.post(`${API}/posts/${post.id}/save`);
       setSaved(res.data.saved);
-      toast.success(res.data.saved ? t("clip_saved") : t("removed_from_saved"));
+      toast.success(res.data.saved ? i18n.t("clip_saved") : i18n.t("removed_from_saved"));
     } catch {
       setSaved(!next);
       toast.error("Erreur lors de l'enregistrement");
@@ -549,7 +550,7 @@ function ClipCard({
       setIsLiked(res.data.liked);
       setLikes((p) => (res.data.liked ? p + 1 : p - 1));
     } catch {
-      toast.error(t("error"));
+      toast.error(i18n.t("error"));
     }
   };
 
@@ -575,7 +576,7 @@ function ClipCard({
         ]);
       setCommentText("");
     } catch {
-      toast.error(t("error"));
+      toast.error(i18n.t("error"));
     }
   };
 
@@ -585,7 +586,7 @@ function ClipCard({
       setCommentsList((prev) => prev.filter((c) => c.id !== commentId));
       setComments((p) => Math.max(0, p - 1));
     } catch {
-      toast.error(t("error"));
+      toast.error(i18n.t("error"));
     }
   };
 
@@ -808,7 +809,7 @@ function ClipCard({
                 onClick={toggleFullscreen}
                 className="flex items-center justify-center w-9 h-9 rounded-full"
                 style={{ background: "rgba(255,255,255,0.15)" }}
-                title={t("exit_fullscreen")}
+                title={i18n.t("exit_fullscreen")}
               >
                 <span className="material-symbols-outlined text-white text-xl">
                   fullscreen_exit
@@ -943,7 +944,7 @@ function ClipCard({
                 share
               </span>
             </div>
-            <span className="text-white text-xs font-bold">{t("share")}</span>
+            <span className="text-white text-xs font-bold">{i18n.t("share")}</span>
           </button>
 
           {/* Plein écran — uniquement pour les vidéos publiées en 16:9 (paysage) */}
@@ -993,7 +994,7 @@ function ClipCard({
                 onDelete?.(post.id);
               }}
               data-testid="delete-clip"
-              title={t("delete_this_clip")}
+              title={i18n.t("delete_this_clip")}
               className="flex flex-col items-center gap-1"
             >
               <div

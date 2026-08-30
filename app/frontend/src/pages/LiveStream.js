@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import i18n from "../i18n";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
@@ -26,7 +27,7 @@ const FILTERS = [
   { name: "Chaud", css: "sepia(0.35) saturate(1.4)" },
   { name: "Froid", css: "saturate(1.3) hue-rotate(-12deg) brightness(1.05)" },
   { name: "Vif", css: "saturate(1.7) contrast(1.15)" },
-  { name: t("retro"), css: "sepia(0.6) contrast(0.95) brightness(1.1)" },
+  { name: i18n.t("retro"), css: "sepia(0.6) contrast(0.95) brightness(1.1)" },
 ];
 
 const GIFTS = [
