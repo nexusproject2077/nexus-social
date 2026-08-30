@@ -189,6 +189,38 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   // commentaires complet (lecture / réponse / identification), façon X.
   const openThread = () => navigate(`/post/${post.id}`);
 
+  // Traduction du texte du post (MyMemory, gratuit). `translatedContent` porte la
+  // version traduite ; `showOriginal` bascule entre original et traduction.
+  const [translatedContent, setTranslatedContent] = useState(null);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [translating, setTranslating] = useState(false);
+
+  const handleTranslatePost = async () => {
+    // Déjà traduit → on bascule simplement entre traduction et original.
+    if (translatedContent) {
+      setShowOriginal((v) => !v);
+      return;
+    }
+    if (!post.content?.trim() || translating) return;
+    setTranslating(true);
+    try {
+      const out = await translateText(
+        post.content,
+        i18n.resolvedLanguage || i18n.language,
+      );
+      if (out && out !== post.content) {
+        setTranslatedContent(out);
+        setShowOriginal(false);
+      } else {
+        toast.message(t("translate_error") || "Translation unavailable");
+      }
+    } catch {
+      toast.error(t("translate_error") || "Translation unavailable");
+    } finally {
+      setTranslating(false);
+    }
+  };
+
   // Double-tap « like » sur la photo (façon Instagram) : cœur animé + like.
   const lastTapRef = useRef(0);
   const [heartBurst, setHeartBurst] = useState(false);
