@@ -77,7 +77,7 @@ export default function SavedPage({ user, setUser }) {
             className="font-headline font-bold text-xl tracking-tight"
             style={{ color: "#dae2fd" }}
           >
-            {t("saved")}
+            {t("saved.title")}
           </h1>
         </header>
 

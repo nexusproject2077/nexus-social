@@ -248,7 +248,7 @@ export default function ProfilePage({ user, setUser }) {
           <button
             data-testid="saved-shortcut"
             onClick={() => navigate("/enregistres")}
-            title={t("saved")}
+            title={t("saved.title")}
             style={{
               background: C.surfaceHigh,
               color: C.onSurface,
@@ -500,7 +500,7 @@ export default function ProfilePage({ user, setUser }) {
                     >
                       workspace_premium
                     </span>
-                    {t("premium")}
+                    {t("premium.title")}
                   </span>
                 )}
                 {profile.is_private && <Lock size={18} color={C.outline} />}

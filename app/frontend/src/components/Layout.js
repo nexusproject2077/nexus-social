@@ -349,13 +349,13 @@ export default function Layout({
     },
     {
       icon: "bookmark",
-      label: t("saved"),
+      label: t("saved.title"),
       path: "/enregistres",
       testId: "nav-saved",
     },
     {
       icon: "workspace_premium",
-      label: t("premium"),
+      label: t("premium.title"),
       path: "/premium",
       testId: "nav-premium",
     },
