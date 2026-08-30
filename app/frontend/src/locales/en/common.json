@@ -1747,7 +1747,8 @@
   "creator": {
     "clips": "Clips",
     "views": "Views",
-    "likes": "Likes"
+    "likes": "Likes",
+    "badge": "Creator"
   },
   "close_friends": {
     "title": "Close friends",

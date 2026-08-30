@@ -12,6 +12,7 @@ import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
 import { useTranslation } from "react-i18next";
 import ClipPublishScreen from "@/components/ClipPublishScreen";
 import useDraggableSheet from "@/hooks/useDraggableSheet";
+import useKeyboardInset from "@/hooks/useKeyboardInset";
 
 const C = {
   surface: "#0b1326",
@@ -22,7 +23,10 @@ const C = {
     "#22d3ee",
   onPrimary: "#00363e",
   outline: "#859397",
+  outlineVar: "#3c494c",
   onSurface: "#dae2fd",
+  onVariant: "#bbc9cd",
+  rose: "#f472b6", // « rose doux » Nexus pour les J'aime (pas le rouge TikTok)
 };
 
 const fmtNum = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
@@ -38,7 +42,8 @@ const fmtRel = (d, lang) => {
 };
 
 // Un commentaire de clip : like, réponses, et suppression par son auteur.
-function CommentItem({ comment, currentUser, onDeleted }) {
+function CommentItem({ comment, currentUser, clipAuthorId, onDeleted }) {
+  const isCreator = clipAuthorId && comment.author_id === clipAuthorId;
   const [liked, setLiked] = useState(comment.is_liked || false);
   const [likes, setLikes] = useState(comment.likes_count || 0);
   const [repCount, setRepCount] = useState(comment.replies_count || 0);
@@ -122,7 +127,15 @@ function CommentItem({ comment, currentUser, onDeleted }) {
       <Avatar pic={comment.author_profile_pic} name={comment.author_username} />
       <div className="flex-1 min-w-0">
         <p className="text-xs" style={{ color: C.onSurface }}>
-          <span className="font-bold">@{comment.author_username}</span>{" "}
+          <span className="font-bold">@{comment.author_username}</span>
+          {isCreator && (
+            <span
+              className="inline-flex items-center align-middle ml-1.5 px-1.5 py-px rounded-full text-[9px] font-black uppercase tracking-wide"
+              style={{ background: `${C.cyan}22`, color: C.cyan }}
+            >
+              {i18n.t("creator.badge")}
+            </span>
+          )}{" "}
           <span>{comment.content}</span>
         </p>
         <div className="flex items-center gap-4 mt-1">
@@ -227,7 +240,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
         <span
           className="material-symbols-outlined text-base"
           style={{
-            color: liked ? "#f87171" : C.outline,
+            color: liked ? C.rose : C.outline,
             fontVariationSettings: liked ? "'FILL' 1" : "'FILL' 0",
           }}
         >
@@ -287,6 +300,8 @@ function ClipCard({
     snaps: [0.45, 0.92],
     initial: 0.45,
   });
+  // Le clavier iOS/Android fait remonter le sheet au-dessus de lui.
+  const kbInset = useKeyboardInset();
   const tapTimer = useRef(null);
   // Vitesse 2x (appui long) + plein écran 16:9 + seek ±5s.
   const [speeding, setSpeeding] = useState(false); // lecture 2x en cours
@@ -1068,11 +1083,13 @@ function ClipCard({
               }}
             />
             <div
-              className="absolute bottom-0 left-0 right-0 rounded-t-3xl px-4 pb-4 z-[2] flex flex-col"
+              className="absolute left-0 right-0 rounded-t-3xl px-4 z-[2] flex flex-col"
               style={{
-                background: "rgba(11,19,38,0.95)",
+                bottom: kbInset, // remonte au-dessus du clavier (visualViewport)
+                background: "rgba(11,19,38,0.96)",
                 backdropFilter: "blur(20px)",
-                borderTop: "1px solid rgba(255,255,255,0.08)",
+                borderTop: `1px solid ${C.cyan}33`,
+                boxShadow: `0 -1px 0 ${C.cyan}22`,
                 ...commentSheet.sheetStyle,
               }}
               onClick={(e) => e.stopPropagation()}
@@ -1083,13 +1100,30 @@ function ClipCard({
                 className="flex-shrink-0 -mx-4 pt-3 pb-2 flex flex-col items-center"
               >
                 <div
-                  className="w-10 h-1.5 rounded-full mb-3"
-                  style={{ background: C.outline }}
+                  className="w-10 h-1.5 rounded-full"
+                  style={{ background: `${C.cyan}88` }}
                 />
               </div>
-              <h3 className="text-white font-bold text-sm mb-3 flex-shrink-0">
-                {comments} commentaire{comments !== 1 ? "s" : ""}
-              </h3>
+
+              {/* Entête : « X commentaires » + fermer */}
+              <div className="flex items-center justify-between mb-3 flex-shrink-0">
+                <h3
+                  className="font-bold text-sm"
+                  style={{ color: C.onSurface }}
+                >
+                  {comments} commentaire{comments !== 1 ? "s" : ""}
+                </h3>
+                <button
+                  onClick={() => setShowComment(false)}
+                  className="w-7 h-7 -mr-1 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                  style={{ color: C.outline }}
+                  aria-label={i18n.t("cancel")}
+                >
+                  <span className="material-symbols-outlined text-lg">
+                    close
+                  </span>
+                </button>
+              </div>
 
               {/* Liste des commentaires */}
               <div
@@ -1116,13 +1150,22 @@ function ClipCard({
                     key={c.id}
                     comment={c}
                     currentUser={currentUser}
+                    clipAuthorId={post.author_id}
                     onDeleted={handleDeleteComment}
                   />
                 ))
               )}
             </div>
 
-            <div className="flex gap-3 items-center">
+            {/* Composer collé en bas (safe-area iPhone/Android quand pas de clavier) */}
+            <div
+              className="flex gap-3 items-center flex-shrink-0"
+              style={{
+                paddingBottom: kbInset
+                  ? 8
+                  : "max(env(safe-area-inset-bottom), 12px)",
+              }}
+            >
               <input
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
@@ -1131,7 +1174,7 @@ function ClipCard({
                 style={{
                   backgroundColor: C.high,
                   color: C.onSurface,
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  border: `1px solid ${C.outlineVar}`,
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleSendComment();

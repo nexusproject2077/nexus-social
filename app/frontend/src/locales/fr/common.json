@@ -1747,7 +1747,8 @@
   "creator": {
     "clips": "Clips",
     "views": "Vues",
-    "likes": "Likes"
+    "likes": "Likes",
+    "badge": "Créateur"
   },
   "close_friends": {
     "title": "Potes proches",
