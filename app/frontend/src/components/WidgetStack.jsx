@@ -17,6 +17,7 @@ import {
   resolveTeamIdByName,
 } from "@/lib/espnClient";
 import Flag from "@/components/Flags";
+import { useSheetDismiss } from "@/hooks/useDraggableSheet";
 import PremiumModal from "@/components/PremiumModal";
 
 const NEON = "#4ade80";
@@ -642,6 +643,7 @@ function WeatherIcon({ cond, isDay = true, size = 56 }) {
 // ─────────────────────────── Éditeur (bottom sheet) ───────────────────────────
 function StackEditor({ order, smartRotate, onChange, onClose }) {
   const { t } = useTranslation();
+  const dismiss = useSheetDismiss({ onClose });
   const [list, setList] = useState(order);
   const [smart, setSmart] = useState(smartRotate);
   const [drag, setDrag] = useState(null); // { index, hover, dy }
@@ -747,12 +749,18 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
           paddingTop: "calc(env(safe-area-inset-top,0px) + 2rem)",
           paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)",
           animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)",
+          ...dismiss.sheetStyle,
         }}
       >
         <div
-          className="w-10 h-1 rounded-full mx-auto mb-4"
-          style={{ background: "rgba(255,255,255,0.22)" }}
-        />
+          {...dismiss.handleProps}
+          className="-mx-5 -mt-2 pb-3 flex justify-center"
+        >
+          <div
+            className="w-10 h-1.5 rounded-full"
+            style={{ background: "rgba(255,255,255,0.22)" }}
+          />
+        </div>
         <h3 className="text-white font-black text-lg mb-1">
           {t("stack.edit_title")}
         </h3>
@@ -941,6 +949,7 @@ function WidgetConfig({
   onClose,
 }) {
   const { t } = useTranslation();
+  const dismiss = useSheetDismiss({ onClose });
   const [busy, setBusy] = useState(false);
   // Verrou du défilement de l'arrière-plan pendant que la feuille est ouverte.
   useEffect(() => {
@@ -1071,12 +1080,18 @@ function WidgetConfig({
           WebkitOverflowScrolling: "touch",
           paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)",
           animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)",
+          ...dismiss.sheetStyle,
         }}
       >
         <div
-          className="w-10 h-1 rounded-full mx-auto mb-4"
-          style={{ background: "rgba(255,255,255,0.22)" }}
-        />
+          {...dismiss.handleProps}
+          className="-mx-5 -mt-5 pt-3 pb-2 mb-2 flex justify-center"
+        >
+          <div
+            className="w-10 h-1.5 rounded-full"
+            style={{ background: "rgba(255,255,255,0.22)" }}
+          />
+        </div>
         <div className="flex items-center gap-2 mb-4">
           <span
             className="material-symbols-outlined"

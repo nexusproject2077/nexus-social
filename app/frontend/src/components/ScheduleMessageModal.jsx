@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
+import { useSheetDismiss } from "@/hooks/useDraggableSheet";
 
 function atToday(h, m = 0) {
   const d = new Date();
@@ -40,6 +41,7 @@ export default function ScheduleMessageModal({
 }) {
   const { t } = useTranslation();
   const [custom, setCustom] = useState("");
+  const dismiss = useSheetDismiss({ onClose });
   if (!open) return null;
 
   const quick = [
@@ -68,12 +70,19 @@ export default function ScheduleMessageModal({
           border: "1px solid rgba(255,255,255,0.1)",
           paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)",
           animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)",
+          ...dismiss.sheetStyle,
         }}
       >
         <div
-          className="w-10 h-1 rounded-full mx-auto mb-4"
-          style={{ background: "rgba(255,255,255,0.22)" }}
-        />
+          {...dismiss.handleProps}
+          className="-mx-5 -mt-5 pt-3 pb-2 flex justify-center sm:cursor-default"
+        >
+          <div
+            className="w-10 h-1.5 rounded-full"
+            style={{ background: "rgba(255,255,255,0.22)" }}
+          />
+        </div>
+        <div className="mb-2" />
         <div className="flex items-center gap-2 mb-4">
           <span
             className="material-symbols-outlined"

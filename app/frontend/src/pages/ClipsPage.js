@@ -11,6 +11,7 @@ import { getDateFnsLocale } from "@/lib/dateLocale";
 import { isFirebaseConfigured, uploadVideoResumable } from "@/lib/firebase";
 import { useTranslation } from "react-i18next";
 import ClipPublishScreen from "@/components/ClipPublishScreen";
+import useDraggableSheet from "@/hooks/useDraggableSheet";
 
 const C = {
   surface: "#0b1326",
@@ -278,6 +279,14 @@ function ClipCard({
   const [commentText, setCommentText] = useState("");
   const [commentsList, setCommentsList] = useState([]);
   const [loadingComments, setLoadingComments] = useState(false);
+  // Panneau de commentaires glissable : demi-écran (~45 %) ↔ quasi plein (~92 %),
+  // glisser vers le bas pour ranger / fermer.
+  const commentSheet = useDraggableSheet({
+    open: showComment,
+    onClose: () => setShowComment(false),
+    snaps: [0.45, 0.92],
+    initial: 0.45,
+  });
   const tapTimer = useRef(null);
   // Vitesse 2x (appui long) + plein écran 16:9 + seek ±5s.
   const [speeding, setSpeeding] = useState(false); // lecture 2x en cours
@@ -1049,28 +1058,44 @@ function ClipCard({
 
         {/* Comment panel */}
         {showComment && (
-          <div
-            className="absolute bottom-0 left-0 right-0 rounded-t-3xl p-4"
-            style={{
-              background: "rgba(11,19,38,0.95)",
-              backdropFilter: "blur(20px)",
-              borderTop: "1px solid rgba(255,255,255,0.08)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
+          <>
+            {/* Fond : un tap hors du panneau ferme les commentaires. */}
             <div
-              className="w-10 h-1 rounded-full mx-auto mb-4"
-              style={{ background: C.outline }}
+              className="absolute inset-0 z-[1]"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowComment(false);
+              }}
             />
-            <h3 className="text-white font-bold text-sm mb-3">
-              {comments} commentaire{comments !== 1 ? "s" : ""}
-            </h3>
-
-            {/* Liste des commentaires */}
             <div
-              className="max-h-[40vh] overflow-y-auto space-y-3 mb-3"
-              style={{ scrollbarWidth: "none" }}
+              className="absolute bottom-0 left-0 right-0 rounded-t-3xl px-4 pb-4 z-[2] flex flex-col"
+              style={{
+                background: "rgba(11,19,38,0.95)",
+                backdropFilter: "blur(20px)",
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+                ...commentSheet.sheetStyle,
+              }}
+              onClick={(e) => e.stopPropagation()}
             >
+              {/* Poignée glissable (agrandir vers le haut / ranger vers le bas). */}
+              <div
+                {...commentSheet.handleProps}
+                className="flex-shrink-0 -mx-4 pt-3 pb-2 flex flex-col items-center"
+              >
+                <div
+                  className="w-10 h-1.5 rounded-full mb-3"
+                  style={{ background: C.outline }}
+                />
+              </div>
+              <h3 className="text-white font-bold text-sm mb-3 flex-shrink-0">
+                {comments} commentaire{comments !== 1 ? "s" : ""}
+              </h3>
+
+              {/* Liste des commentaires */}
+              <div
+                className="flex-1 min-h-0 overflow-y-auto space-y-3 mb-3"
+                style={{ scrollbarWidth: "none" }}
+              >
               {loadingComments ? (
                 <p
                   className="text-xs text-center py-4"
@@ -1123,7 +1148,8 @@ function ClipCard({
                 <span className="material-symbols-outlined text-sm">send</span>
               </button>
             </div>
-          </div>
+            </div>
+          </>
         )}
       </div>
       {/* /stage */}

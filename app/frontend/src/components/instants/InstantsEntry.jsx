@@ -16,6 +16,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 import i18n from "@/i18n";
+import { useSheetDismiss } from "@/hooks/useDraggableSheet";
 
 const ACCENT =
   (typeof window !== "undefined" &&
@@ -866,6 +867,7 @@ function AudienceSheet({
   const [q, setQ] = useState("");
   const [results, setResults] = useState([]);
   const [saving, setSaving] = useState(false);
+  const dismiss = useSheetDismiss({ onClose });
 
   useEffect(() => {
     if (mode !== "close") return;
@@ -938,13 +940,19 @@ function AudienceSheet({
         style={{
           background: C.surface,
           paddingBottom: "max(env(safe-area-inset-bottom), 20px)",
+          ...dismiss.sheetStyle,
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className="w-10 h-1.5 rounded-full mx-auto mb-4"
-          style={{ background: C.high }}
-        />
+          {...dismiss.handleProps}
+          className="-mx-4 -mt-4 pt-3 pb-2 flex justify-center mb-2"
+        >
+          <div
+            className="w-10 h-1.5 rounded-full"
+            style={{ background: C.high }}
+          />
+        </div>
 
         {!mode ? (
           <>

@@ -17,6 +17,7 @@ import { linkify, extractFirstUrl } from "@/lib/linkify";
 import LinkPreview from "@/components/LinkPreview";
 import { useTranslation } from "react-i18next";
 import { getBcp47 } from "@/lib/dateLocale";
+import { useSheetDismiss } from "@/hooks/useDraggableSheet";
 
 const C = {
   bg: "#020617",
@@ -1520,6 +1521,11 @@ export default function MessagesPage({ user }) {
 
   // ── Transfert d'un message vers une autre conversation ───────────────────────
   const [forwardMsg, setForwardMsg] = useState(null); // message à transférer | null
+  // Poignées glissables (glisser vers le bas pour ranger) des feuilles Messages.
+  const convMenuSheet = useSheetDismiss({ onClose: () => setConvMenu(null) });
+  const msgMenuSheet = useSheetDismiss({ onClose: () => setMsgMenu(null) });
+  const forwardSheet = useSheetDismiss({ onClose: () => setForwardMsg(null) });
+  const detailsSheet = useSheetDismiss({ onClose: () => setShowDetails(false) });
   const forwardTo = async (target) => {
     // target = { kind: "dm", id } | { kind: "group", id }
     const m = forwardMsg;
@@ -3682,13 +3688,17 @@ export default function MessagesPage({ user }) {
               background: C.surface,
               border: `1px solid ${C.outlineVar}`,
               paddingBottom: "env(safe-area-inset-bottom)",
+              ...convMenuSheet.sheetStyle,
             }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Poignée + nom */}
-            <div className="pt-3 pb-2 flex flex-col items-center gap-2">
+            <div
+              {...convMenuSheet.handleProps}
+              className="pt-3 pb-2 flex flex-col items-center gap-2"
+            >
               <div
-                className="w-10 h-1 rounded-full"
+                className="w-10 h-1.5 rounded-full"
                 style={{ background: C.outlineVar }}
               />
               <p
@@ -3790,13 +3800,17 @@ export default function MessagesPage({ user }) {
               background: C.surface,
               border: `1px solid ${C.outlineVar}`,
               paddingBottom: "env(safe-area-inset-bottom)",
+              ...msgMenuSheet.sheetStyle,
             }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Rangée d'emojis rapides (réactions) — pastille sur celle déjà mise */}
-            <div className="pt-3 pb-2 flex flex-col items-center gap-3">
+            <div
+              {...msgMenuSheet.handleProps}
+              className="pt-3 pb-2 flex flex-col items-center gap-3"
+            >
               <div
-                className="w-10 h-1 rounded-full"
+                className="w-10 h-1.5 rounded-full"
                 style={{ background: C.outlineVar }}
               />
               <div className="flex gap-2 px-4">
@@ -3962,12 +3976,16 @@ export default function MessagesPage({ user }) {
               border: `1px solid ${C.outlineVar}`,
               maxHeight: "70vh",
               paddingBottom: "env(safe-area-inset-bottom)",
+              ...forwardSheet.sheetStyle,
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="pt-3 pb-2 flex flex-col items-center gap-2 flex-shrink-0">
+            <div
+              {...forwardSheet.handleProps}
+              className="pt-3 pb-2 flex flex-col items-center gap-2 flex-shrink-0"
+            >
               <div
-                className="w-10 h-1 rounded-full"
+                className="w-10 h-1.5 rounded-full"
                 style={{ background: C.outlineVar }}
               />
               <p className="text-sm font-bold" style={{ color: C.onSurface }}>
@@ -4183,12 +4201,20 @@ export default function MessagesPage({ user }) {
         >
           <div
             className="w-full rounded-t-3xl overflow-hidden"
-            style={{ background: C.surface, maxHeight: "88vh", height: "88vh" }}
+            style={{
+              background: C.surface,
+              maxHeight: "88vh",
+              height: "88vh",
+              ...detailsSheet.sheetStyle,
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-center pt-2">
+            <div
+              {...detailsSheet.handleProps}
+              className="flex justify-center pt-2 pb-1"
+            >
               <div
-                className="w-10 h-1 rounded-full"
+                className="w-10 h-1.5 rounded-full"
                 style={{ background: C.outlineVar }}
               />
             </div>

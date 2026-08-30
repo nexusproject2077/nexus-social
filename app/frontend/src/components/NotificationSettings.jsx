@@ -5,6 +5,7 @@ import { API } from "@/App";
 import { toast } from "sonner";
 import { getPushState, enablePush, disablePush } from "@/lib/push";
 import i18n from "@/i18n";
+import { useSheetDismiss } from "@/hooks/useDraggableSheet";
 
 const ACCENT =
   (typeof window !== "undefined" &&
@@ -64,6 +65,7 @@ function Toggle({ on, onChange }) {
 }
 
 export default function NotificationSettings({ onClose }) {
+  const dismiss = useSheetDismiss({ onClose });
   const [prefs, setPrefs] = useState(null);
   const [saving, setSaving] = useState(false);
   const [push, setPush] = useState(null); // état Web Push (support/permission/abonnement)
@@ -134,13 +136,19 @@ export default function NotificationSettings({ onClose }) {
         style={{
           background: "#0b1326",
           paddingBottom: "max(env(safe-area-inset-bottom), 20px)",
+          ...dismiss.sheetStyle,
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className="w-10 h-1.5 rounded-full mx-auto mb-4 sm:hidden"
-          style={{ background: "#222a3d" }}
-        />
+          {...dismiss.handleProps}
+          className="-mx-4 -mt-4 pt-3 pb-2 flex justify-center mb-2 sm:hidden"
+        >
+          <div
+            className="w-10 h-1.5 rounded-full"
+            style={{ background: "#222a3d" }}
+          />
+        </div>
         <div className="flex items-center justify-between mb-4 px-1">
           <h3 className="font-black text-lg" style={{ color: "#dae2fd" }}>
             {i18n.t("notifsettings.title")}

@@ -15,6 +15,7 @@ import { API } from "../App";
 import { toast } from "sonner";
 import { PreviewAudio } from "@/lib/silentAudio";
 import i18n from "@/i18n";
+import { useSheetDismiss } from "@/hooks/useDraggableSheet";
 
 const ACCENT =
   (typeof window !== "undefined" &&
@@ -259,6 +260,8 @@ export default function StoryComposer({
   const [drawColor, setDrawColor] = useState("#ffffff");
   const [stickerMenu, setStickerMenu] = useState(false);
   const [emojiPicker, setEmojiPicker] = useState(false);
+  const stickerSheet = useSheetDismiss({ onClose: () => setStickerMenu(false) });
+  const emojiSheet = useSheetDismiss({ onClose: () => setEmojiPicker(false) });
   const [gifOpen, setGifOpen] = useState(false);
   const [stickerForm, setStickerForm] = useState(null); // "poll"|"question"|"link"|"location"|"mention"|"hashtag"|"slider"|"countdown"
   const [stage, setStage] = useState({ w: 0, h: 0 });
@@ -2828,13 +2831,19 @@ export default function StoryComposer({
             style={{
               background: C.surface,
               paddingBottom: "max(env(safe-area-inset-bottom), 24px)",
+              ...stickerSheet.sheetStyle,
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div
-              className="w-10 h-1.5 rounded-full mx-auto mb-4"
-              style={{ background: C.high }}
-            />
+              {...stickerSheet.handleProps}
+              className="-mx-4 -mt-4 pt-3 pb-2 mb-2 flex justify-center"
+            >
+              <div
+                className="w-10 h-1.5 rounded-full"
+                style={{ background: C.high }}
+              />
+            </div>
             <div className="grid grid-cols-3 gap-2.5 max-h-[60vh] overflow-y-auto">
               {[
                 {
@@ -2986,13 +2995,19 @@ export default function StoryComposer({
             style={{
               background: C.surface,
               paddingBottom: "max(env(safe-area-inset-bottom), 24px)",
+              ...emojiSheet.sheetStyle,
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div
-              className="w-10 h-1.5 rounded-full mx-auto mb-4"
-              style={{ background: C.high }}
-            />
+              {...emojiSheet.handleProps}
+              className="-mx-4 -mt-4 pt-3 pb-2 mb-2 flex justify-center"
+            >
+              <div
+                className="w-10 h-1.5 rounded-full"
+                style={{ background: C.high }}
+              />
+            </div>
             <div className="grid grid-cols-6 gap-2">
               {EMOJIS.map((e) => (
                 <button
@@ -3085,6 +3100,7 @@ export default function StoryComposer({
 
 // ── Sélecteur de visibilité ─────────────────────────────────────────────────
 function VisibilitySheet({ user, visibility, customList, onClose, onPick }) {
+  const dismiss = useSheetDismiss({ onClose });
   const [mode, setMode] = useState(null);
   const [selected, setSelected] = useState(customList || []);
   const [q, setQ] = useState("");
@@ -3150,13 +3166,19 @@ function VisibilitySheet({ user, visibility, customList, onClose, onPick }) {
         style={{
           background: C.surface,
           paddingBottom: "max(env(safe-area-inset-bottom), 20px)",
+          ...dismiss.sheetStyle,
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className="w-10 h-1.5 rounded-full mx-auto mb-4"
-          style={{ background: C.high }}
-        />
+          {...dismiss.handleProps}
+          className="-mx-4 -mt-4 pt-3 pb-2 mb-2 flex justify-center"
+        >
+          <div
+            className="w-10 h-1.5 rounded-full"
+            style={{ background: C.high }}
+          />
+        </div>
         {!mode ? (
           <>
             <h3
