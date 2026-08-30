@@ -1731,5 +1731,46 @@
   "clip_published": "¡Clip publicado!",
   "clip_file_too_large": "Archivo demasiado grande ({{size}} MB, máx. {{max}} MB).",
   "back": "Atrás",
-  "done": "Listo"
+  "done": "Listo",
+  "match_room": {
+    "title": "Sala del partido",
+    "empty": "Aún no hay mensajes — ¡abre el debate!",
+    "placeholder": "Di algo sobre el partido…",
+    "local_only": "Guardado localmente (API sin conexión)"
+  },
+  "challenge": {
+    "weekly_clip": "Reto de clip semanal",
+    "ucl": "Reto UCL",
+    "skill": "Reto de habilidad",
+    "laugh": "Reto de clip divertido",
+    "ends_sunday": "Termina el domingo · gana el más gustado",
+    "join": "Unirse"
+  },
+  "smart_notif": {
+    "title": "Solo notificaciones útiles",
+    "sub": "Sin spam — solo lo que te ayuda a volver",
+    "match": "Recordatorios de partidos (tus equipos)",
+    "comments": "Respuestas a mis comentarios",
+    "followers": "Nuevos seguidores",
+    "likes_digest": "Resumen diario de me gusta",
+    "marketing": "Consejos y novedades",
+    "saved": "Preferencias guardadas",
+    "local": "Guardado en este dispositivo"
+  },
+  "creator": {
+    "clips": "Clips",
+    "views": "Vistas",
+    "likes": "Me gusta"
+  },
+  "close_friends": {
+    "title": "Amigos cercanos",
+    "sub": "Comparte clips y marcadores con tu círculo primero",
+    "search": "Buscar en seguidos…",
+    "empty": "Sigue a personas para añadirlas aquí",
+    "updated": "Amigos cercanos actualizados",
+    "count": "amigos cercanos"
+  },
+  "growth": {
+    "hub_title": "Crece e interactúa"
+  }
 }

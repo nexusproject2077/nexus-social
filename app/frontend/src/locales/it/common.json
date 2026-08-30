@@ -1731,5 +1731,46 @@
   "clip_published": "Clip pubblicato!",
   "clip_file_too_large": "File troppo grande ({{size}} MB, max {{max}} MB).",
   "back": "Indietro",
-  "done": "Fatto"
+  "done": "Fatto",
+  "match_room": {
+    "title": "Sala della partita",
+    "empty": "Ancora nessun messaggio — apri il dibattito!",
+    "placeholder": "Di' qualcosa sulla partita…",
+    "local_only": "Salvato localmente (API offline)"
+  },
+  "challenge": {
+    "weekly_clip": "Sfida clip settimanale",
+    "ucl": "Sfida UCL",
+    "skill": "Sfida abilità",
+    "laugh": "Sfida clip divertente",
+    "ends_sunday": "Finisce domenica · vince il più piaciuto",
+    "join": "Partecipa"
+  },
+  "smart_notif": {
+    "title": "Solo notifiche utili",
+    "sub": "Niente spam — solo ciò che ti fa tornare",
+    "match": "Promemoria partite (le tue squadre)",
+    "comments": "Risposte ai miei commenti",
+    "followers": "Nuovi follower",
+    "likes_digest": "Riepilogo giornaliero dei like",
+    "marketing": "Consigli e novità",
+    "saved": "Preferenze salvate",
+    "local": "Salvato su questo dispositivo"
+  },
+  "creator": {
+    "clips": "Clip",
+    "views": "Visualizzazioni",
+    "likes": "Like"
+  },
+  "close_friends": {
+    "title": "Amici stretti",
+    "sub": "Condividi clip e risultati prima con la tua cerchia",
+    "search": "Cerca tra i seguiti…",
+    "empty": "Segui persone per aggiungerle qui",
+    "updated": "Amici stretti aggiornati",
+    "count": "amici stretti"
+  },
+  "growth": {
+    "hub_title": "Cresci e interagisci"
+  }
 }

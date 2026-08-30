@@ -1731,5 +1731,46 @@
   "clip_published": "Clip geplaatst!",
   "clip_file_too_large": "Bestand te groot ({{size}} MB, max {{max}} MB).",
   "back": "Terug",
-  "done": "Klaar"
+  "done": "Klaar",
+  "match_room": {
+    "title": "Wedstrijdruimte",
+    "empty": "Nog geen berichten — open het debat!",
+    "placeholder": "Zeg iets over de wedstrijd…",
+    "local_only": "Lokaal opgeslagen (API offline)"
+  },
+  "challenge": {
+    "weekly_clip": "Wekelijkse clipuitdaging",
+    "ucl": "UCL-uitdaging",
+    "skill": "Skill-uitdaging",
+    "laugh": "Grappige clipuitdaging",
+    "ends_sunday": "Eindigt zondag · meeste likes wint",
+    "join": "Meedoen"
+  },
+  "smart_notif": {
+    "title": "Alleen nuttige meldingen",
+    "sub": "Geen spam — alleen wat je terugbrengt",
+    "match": "Wedstrijdherinneringen (jouw teams)",
+    "comments": "Antwoorden op mijn reacties",
+    "followers": "Nieuwe volgers",
+    "likes_digest": "Dagelijks like-overzicht",
+    "marketing": "Tips en productnieuws",
+    "saved": "Voorkeuren opgeslagen",
+    "local": "Opgeslagen op dit apparaat"
+  },
+  "creator": {
+    "clips": "Clips",
+    "views": "Weergaven",
+    "likes": "Vind-ik-leuks"
+  },
+  "close_friends": {
+    "title": "Beste vrienden",
+    "sub": "Deel clips en scores eerst met je kring",
+    "search": "Zoek in gevolgd…",
+    "empty": "Volg mensen om ze hier toe te voegen",
+    "updated": "Beste vrienden bijgewerkt",
+    "count": "beste vrienden"
+  },
+  "growth": {
+    "hub_title": "Groei en betrek"
+  }
 }

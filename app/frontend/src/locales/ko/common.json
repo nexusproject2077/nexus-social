@@ -1731,5 +1731,46 @@
   "clip_published": "클립이 게시되었습니다!",
   "clip_file_too_large": "파일이 너무 큽니다({{size}} MB, 최대 {{max}} MB).",
   "back": "뒤로",
-  "done": "완료"
+  "done": "완료",
+  "match_room": {
+    "title": "경기 룸",
+    "empty": "아직 메시지가 없어요 — 토론을 시작하세요!",
+    "placeholder": "경기에 대해 한마디 하세요…",
+    "local_only": "로컬에 저장됨 (API 오프라인)"
+  },
+  "challenge": {
+    "weekly_clip": "주간 클립 챌린지",
+    "ucl": "UCL 챌린지",
+    "skill": "스킬 챌린지",
+    "laugh": "웃긴 클립 챌린지",
+    "ends_sunday": "일요일 종료 · 좋아요가 가장 많은 사람이 우승",
+    "join": "참여"
+  },
+  "smart_notif": {
+    "title": "유용한 알림만",
+    "sub": "스팸 없이 — 다시 돌아오게 하는 것만",
+    "match": "경기 알림 (내 팀)",
+    "comments": "내 댓글에 대한 답글",
+    "followers": "새 팔로워",
+    "likes_digest": "일일 좋아요 요약",
+    "marketing": "팁 & 제품 소식",
+    "saved": "환경설정 저장됨",
+    "local": "이 기기에 저장됨"
+  },
+  "creator": {
+    "clips": "클립",
+    "views": "조회수",
+    "likes": "좋아요"
+  },
+  "close_friends": {
+    "title": "친한 친구",
+    "sub": "클립과 점수를 먼저 내 그룹과 공유하세요",
+    "search": "팔로잉에서 검색…",
+    "empty": "사람을 팔로우하여 여기에 추가하세요",
+    "updated": "친한 친구 업데이트됨",
+    "count": "명의 친한 친구"
+  },
+  "growth": {
+    "hub_title": "성장 & 소통"
+  }
 }

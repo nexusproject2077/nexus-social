@@ -1731,5 +1731,46 @@
   "clip_published": "Clipe publicado!",
   "clip_file_too_large": "Ficheiro demasiado grande ({{size}} MB, máx. {{max}} MB).",
   "back": "Voltar",
-  "done": "Concluído"
+  "done": "Concluído",
+  "match_room": {
+    "title": "Sala do jogo",
+    "empty": "Ainda sem mensagens — abra o debate!",
+    "placeholder": "Diga algo sobre o jogo…",
+    "local_only": "Salvo localmente (API offline)"
+  },
+  "challenge": {
+    "weekly_clip": "Desafio de clipe semanal",
+    "ucl": "Desafio UCL",
+    "skill": "Desafio de habilidade",
+    "laugh": "Desafio de clipe engraçado",
+    "ends_sunday": "Termina domingo · o mais curtido vence",
+    "join": "Participar"
+  },
+  "smart_notif": {
+    "title": "Apenas notificações úteis",
+    "sub": "Sem spam — só o que ajuda você a voltar",
+    "match": "Lembretes de jogos (seus times)",
+    "comments": "Respostas aos meus comentários",
+    "followers": "Novos seguidores",
+    "likes_digest": "Resumo diário de curtidas",
+    "marketing": "Dicas e novidades",
+    "saved": "Preferências salvas",
+    "local": "Salvo neste dispositivo"
+  },
+  "creator": {
+    "clips": "Clipes",
+    "views": "Visualizações",
+    "likes": "Curtidas"
+  },
+  "close_friends": {
+    "title": "Amigos próximos",
+    "sub": "Compartilhe clipes e placares primeiro com seu círculo",
+    "search": "Buscar em seguindo…",
+    "empty": "Siga pessoas para adicioná-las aqui",
+    "updated": "Amigos próximos atualizados",
+    "count": "amigos próximos"
+  },
+  "growth": {
+    "hub_title": "Cresça e interaja"
+  }
 }

@@ -1731,5 +1731,46 @@
   "clip_published": "片段已发布！",
   "clip_file_too_large": "文件过大（{{size}} MB，最大 {{max}} MB）。",
   "back": "返回",
-  "done": "完成"
+  "done": "完成",
+  "match_room": {
+    "title": "比赛聊天室",
+    "empty": "还没有消息 — 开启讨论吧！",
+    "placeholder": "说说这场比赛…",
+    "local_only": "已本地保存（API 离线)"
+  },
+  "challenge": {
+    "weekly_clip": "每周短片挑战",
+    "ucl": "欧冠挑战",
+    "skill": "技巧挑战",
+    "laugh": "搞笑短片挑战",
+    "ends_sunday": "周日结束 · 点赞最多者获胜",
+    "join": "参加"
+  },
+  "smart_notif": {
+    "title": "仅有用的通知",
+    "sub": "无垃圾信息 — 只推送帮你回来的内容",
+    "match": "比赛提醒（你的球队)",
+    "comments": "对我评论的回复",
+    "followers": "新粉丝",
+    "likes_digest": "每日点赞摘要",
+    "marketing": "技巧与产品资讯",
+    "saved": "偏好已保存",
+    "local": "已保存到此设备"
+  },
+  "creator": {
+    "clips": "短片",
+    "views": "观看量",
+    "likes": "点赞"
+  },
+  "close_friends": {
+    "title": "密友",
+    "sub": "优先与你的圈子分享短片和比分",
+    "search": "在关注中搜索…",
+    "empty": "关注他人以将其添加到此处",
+    "updated": "密友已更新",
+    "count": "位密友"
+  },
+  "growth": {
+    "hub_title": "成长与互动"
+  }
 }

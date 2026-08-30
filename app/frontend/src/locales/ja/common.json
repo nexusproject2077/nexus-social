@@ -1731,5 +1731,46 @@
   "clip_published": "クリップを投稿しました！",
   "clip_file_too_large": "ファイルが大きすぎます（{{size}} MB、上限 {{max}} MB）。",
   "back": "戻る",
-  "done": "完了"
+  "done": "完了",
+  "match_room": {
+    "title": "試合ルーム",
+    "empty": "まだメッセージがありません — 議論を始めましょう!",
+    "placeholder": "試合について一言…",
+    "local_only": "ローカルに保存（APIオフライン)"
+  },
+  "challenge": {
+    "weekly_clip": "週替わりクリップチャレンジ",
+    "ucl": "UCLチャレンジ",
+    "skill": "スキルチャレンジ",
+    "laugh": "面白クリップチャレンジ",
+    "ends_sunday": "日曜終了・最もいいねが多い人が勝ち",
+    "join": "参加"
+  },
+  "smart_notif": {
+    "title": "役立つ通知のみ",
+    "sub": "スパムなし — 戻るのに役立つものだけ",
+    "match": "試合リマインダー（あなたのチーム)",
+    "comments": "自分のコメントへの返信",
+    "followers": "新しいフォロワー",
+    "likes_digest": "1日のいいねまとめ",
+    "marketing": "ヒントと製品ニュース",
+    "saved": "設定を保存しました",
+    "local": "この端末に保存"
+  },
+  "creator": {
+    "clips": "クリップ",
+    "views": "再生数",
+    "likes": "いいね"
+  },
+  "close_friends": {
+    "title": "親しい友達",
+    "sub": "クリップやスコアをまず身内と共有",
+    "search": "フォロー中を検索…",
+    "empty": "人をフォローしてここに追加",
+    "updated": "親しい友達を更新しました",
+    "count": "人の親しい友達"
+  },
+  "growth": {
+    "hub_title": "成長と交流"
+  }
 }

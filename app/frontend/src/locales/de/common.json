@@ -1731,5 +1731,46 @@
   "clip_published": "Clip veröffentlicht!",
   "clip_file_too_large": "Datei zu groß ({{size}} MB, max. {{max}} MB).",
   "back": "Zurück",
-  "done": "Fertig"
+  "done": "Fertig",
+  "match_room": {
+    "title": "Match-Raum",
+    "empty": "Noch keine Nachrichten — eröffne die Debatte!",
+    "placeholder": "Sag etwas zum Spiel…",
+    "local_only": "Lokal gespeichert (API offline)"
+  },
+  "challenge": {
+    "weekly_clip": "Wöchentliche Clip-Challenge",
+    "ucl": "UCL-Challenge",
+    "skill": "Skill-Challenge",
+    "laugh": "Lustige Clip-Challenge",
+    "ends_sunday": "Endet Sonntag · die meisten Likes gewinnen",
+    "join": "Mitmachen"
+  },
+  "smart_notif": {
+    "title": "Nur nützliche Benachrichtigungen",
+    "sub": "Kein Spam — nur was dich zurückholt",
+    "match": "Spielerinnerungen (deine Teams)",
+    "comments": "Antworten auf meine Kommentare",
+    "followers": "Neue Follower",
+    "likes_digest": "Tägliche Like-Übersicht",
+    "marketing": "Tipps & Produktneuheiten",
+    "saved": "Einstellungen gespeichert",
+    "local": "Auf diesem Gerät gespeichert"
+  },
+  "creator": {
+    "clips": "Clips",
+    "views": "Aufrufe",
+    "likes": "Likes"
+  },
+  "close_friends": {
+    "title": "Enge Freunde",
+    "sub": "Teile Clips & Ergebnisse zuerst mit deinem Kreis",
+    "search": "In Gefolgten suchen…",
+    "empty": "Folge Personen, um sie hier hinzuzufügen",
+    "updated": "Enge Freunde aktualisiert",
+    "count": "enge Freunde"
+  },
+  "growth": {
+    "hub_title": "Wachsen & interagieren"
+  }
 }

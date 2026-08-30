@@ -1731,5 +1731,46 @@
   "clip_published": "Klip opublikowany!",
   "clip_file_too_large": "Plik za duży ({{size}} MB, maks. {{max}} MB).",
   "back": "Wstecz",
-  "done": "Gotowe"
+  "done": "Gotowe",
+  "match_room": {
+    "title": "Pokój meczu",
+    "empty": "Jeszcze nie ma wiadomości — otwórz debatę!",
+    "placeholder": "Powiedz coś o meczu…",
+    "local_only": "Zapisano lokalnie (API offline)"
+  },
+  "challenge": {
+    "weekly_clip": "Cotygodniowe wyzwanie klipu",
+    "ucl": "Wyzwanie UCL",
+    "skill": "Wyzwanie umiejętności",
+    "laugh": "Wyzwanie zabawnego klipu",
+    "ends_sunday": "Kończy się w niedzielę · wygrywa najbardziej lubiany",
+    "join": "Dołącz"
+  },
+  "smart_notif": {
+    "title": "Tylko przydatne powiadomienia",
+    "sub": "Bez spamu — tylko to, co pomaga wrócić",
+    "match": "Przypomnienia o meczach (twoje drużyny)",
+    "comments": "Odpowiedzi na moje komentarze",
+    "followers": "Nowi obserwujący",
+    "likes_digest": "Dzienne podsumowanie polubień",
+    "marketing": "Porady i nowości",
+    "saved": "Preferencje zapisane",
+    "local": "Zapisano na tym urządzeniu"
+  },
+  "creator": {
+    "clips": "Klipy",
+    "views": "Wyświetlenia",
+    "likes": "Polubienia"
+  },
+  "close_friends": {
+    "title": "Bliscy znajomi",
+    "sub": "Udostępniaj klipy i wyniki najpierw swojemu kręgowi",
+    "search": "Szukaj wśród obserwowanych…",
+    "empty": "Obserwuj osoby, aby je tu dodać",
+    "updated": "Bliscy znajomi zaktualizowani",
+    "count": "bliscy znajomi"
+  },
+  "growth": {
+    "hub_title": "Rozwijaj się i angażuj"
+  }
 }
