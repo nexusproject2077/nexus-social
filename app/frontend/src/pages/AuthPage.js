@@ -1,8 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { API } from "../App";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+
+// Parrainage : on lit ?ref=<username> dans l'URL et on le mémorise, pour qu'il
+// survive à la navigation (bascule connexion/inscription, rechargement) jusqu'à
+// l'inscription. Repli sur la valeur mémorisée si l'URL ne le porte plus.
+const getReferral = () => {
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get("ref");
+    if (fromUrl) {
+      localStorage.setItem("nexus_ref", fromUrl);
+      return fromUrl;
+    }
+    return localStorage.getItem("nexus_ref") || null;
+  } catch {
+    return null;
+  }
+};
 
 export default function AuthPage({ setUser }) {
   const { t } = useTranslation();
@@ -23,6 +39,12 @@ export default function AuthPage({ setUser }) {
   });
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Mémorise le parrain dès l'ouverture (?ref=<username>), avant toute navigation
+  // qui nettoierait l'URL, pour qu'il soit encore là au moment de l'inscription.
+  useEffect(() => {
+    getReferral();
+  }, []);
 
   const handleChange = (field) => (e) =>
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
@@ -56,11 +78,20 @@ export default function AuthPage({ setUser }) {
             bio: formData.bio,
             location: formData.location,
             phone: formData.phone,
+            ref: getReferral() || undefined,
           };
 
       const response = await axios.post(`${API}${endpoint}`, payload);
       const token = response.data.token;
       localStorage.setItem("token", token);
+      // Parrainage consommé à l'inscription : on l'efface pour ne pas le réutiliser.
+      if (!isLogin) {
+        try {
+          localStorage.removeItem("nexus_ref");
+        } catch {
+          /* stockage indisponible — sans gravité */
+        }
+      }
 
       try {
         const userResponse = await axios.get(`${API}/auth/me`, {

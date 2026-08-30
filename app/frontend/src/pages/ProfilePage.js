@@ -6,6 +6,7 @@ import Layout from "@/components/Layout";
 import PostCard from "@/components/PostCard";
 import EditProfileModal from "@/components/EditProfileModal";
 import FollowListModal from "@/components/FollowListModal";
+import ReferralCard from "@/components/ReferralCard";
 import PullToRefresh from "@/components/PullToRefresh";
 import { Lock, Clock, UserPlus, UserMinus, Edit, Share2 } from "lucide-react";
 import { toast } from "sonner";
@@ -683,6 +684,13 @@ export default function ProfilePage({ user, setUser }) {
           );
         })}
       </div>
+
+      {/* ── Parrainage (profil personnel) ─────────────────────────────────── */}
+      {isOwnProfile && (
+        <div className="max-w-5xl mx-auto px-4 mt-6">
+          <ReferralCard user={user} />
+        </div>
+      )}
 
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
       <div

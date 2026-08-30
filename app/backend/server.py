@@ -1314,6 +1314,7 @@ class UserCreate(BaseModel):
     # Compte privé PAR DÉFAUT (contrôle & vie privée) : seuls les abonnés
     # approuvés voient le contenu. Modifiable ensuite dans les réglages.
     is_private: Optional[bool] = True
+    ref: Optional[str] = None  # code de parrainage (username du parrain) via ?ref=
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -1332,6 +1333,12 @@ class User(BaseModel):
     is_verified: bool = False           # badge « identité vérifiée » (pièce validée)
     is_premium: bool = False            # abonné Nexus Premium (badge + avantages réels)
     premium_until: Optional[str] = None  # fin d'abonnement (ISO) ; None si non abonné
+    # Parrainage (boucle de croissance) : chaque utilisateur partage ?ref=<username>.
+    # `referral_count` = filleuls inscrits via son lien ; `referral_rewards` = mois
+    # Premium déjà offerts (1 mois tous les 3 filleuls) ; `referred_by` = id du parrain.
+    referral_count: int = 0
+    referral_rewards: int = 0
+    referred_by: Optional[str] = None
     is_admin: bool = False
     # Vérification d'identité (RGPD : on n'expose JAMAIS la pièce ni la date de
     # naissance en clair ; seuls des statuts/booléens sont renvoyés au client).
@@ -2089,6 +2096,15 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks, req
     }
     await db.users.insert_one(user_to_insert)
 
+    # Parrainage : rattache le nouvel inscrit à son parrain (?ref=<username>) et
+    # déclenche l'éventuelle récompense Premium. Best-effort (jamais bloquant).
+    if user_data.ref:
+        await _apply_referral(
+            user_id,
+            {"id": user_id, "username": user_data.username, "profile_pic": None},
+            user_data.ref,
+        )
+
     token = create_access_token({"sub": user_id})
 
     # Email de bienvenue + code de confirmation (best-effort, en tâche de fond).
@@ -2456,6 +2472,90 @@ async def _activate_premium(user_id: str, plan: str = None, customer: str = None
         fields["stripe_subscription_id"] = subscription
     await db.users.update_one({"id": user_id}, {"$set": fields})
     return until
+
+
+# ==================== PARRAINAGE (boucle de croissance) ====================
+REFERRAL_PER_REWARD = 3  # nombre de filleuls pour 1 mois Premium offert
+
+
+async def _grant_referral_premium(user_id: str, months: int = 1):
+    """Offre `months` mois de Premium via parrainage. PROLONGE l'abonnement
+    existant (jamais de réduction) et ne touche pas aux champs Stripe."""
+    if not user_id or months <= 0:
+        return None
+    now = datetime.now(timezone.utc)
+    base = now
+    try:
+        u = await db.users.find_one({"id": user_id}, {"premium_until": 1})
+        cur = (u or {}).get("premium_until")
+        if cur:
+            dt = datetime.fromisoformat(str(cur).replace("Z", "+00:00"))
+            if dt > now:
+                base = dt
+    except Exception:
+        base = now
+    until = (base + timedelta(days=31 * months)).isoformat()
+    await db.users.update_one({"id": user_id}, {"$set": {
+        "is_premium": True,
+        "premium_until": until,
+        "premium_source": "referral",
+        "updated_at": now.isoformat(),
+    }})
+    return until
+
+
+async def _apply_referral(new_user_id: str, new_user: dict, ref):
+    """Rattache un nouvel inscrit à son parrain (?ref=<username>) et déclenche la
+    récompense Premium tous les REFERRAL_PER_REWARD filleuls. Best-effort : une
+    erreur ici n'interrompt jamais l'inscription."""
+    try:
+        code = (ref or "").strip().lstrip("@")
+        if not code or len(code) > 40:
+            return
+        referrer = await db.users.find_one(
+            {"username": {"$regex": f"^{re.escape(code)}$", "$options": "i"}},
+            {"id": 1, "username": 1},
+        )
+        # On ne se parraine pas soi-même et le parrain doit exister.
+        if not referrer or referrer["id"] == new_user_id:
+            return
+        await db.users.update_one({"id": new_user_id}, {"$set": {"referred_by": referrer["id"]}})
+        await db.users.update_one({"id": referrer["id"]}, {"$inc": {"referral_count": 1}})
+        fresh = await db.users.find_one(
+            {"id": referrer["id"]}, {"referral_count": 1, "referral_rewards": 1}
+        )
+        count = int((fresh or {}).get("referral_count") or 0)
+        rewards = int((fresh or {}).get("referral_rewards") or 0)
+        eligible = count // REFERRAL_PER_REWARD
+        if eligible > rewards:
+            await _grant_referral_premium(referrer["id"], eligible - rewards)
+            await db.users.update_one(
+                {"id": referrer["id"]}, {"$set": {"referral_rewards": eligible}}
+            )
+        # Notifie le parrain de chaque nouveau filleul (best-effort).
+        try:
+            await create_notification(referrer["id"], "referral", new_user)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+@api_router.get("/users/me/referrals")
+async def my_referrals(current_user: dict = Depends(get_current_user)):
+    """État du parrainage de l'utilisateur : code, compteur, récompenses, palier."""
+    count = int(current_user.get("referral_count") or 0)
+    rewards = int(current_user.get("referral_rewards") or 0)
+    per = REFERRAL_PER_REWARD
+    return {
+        "code": current_user["username"],
+        "count": count,
+        "rewards_granted": rewards,
+        "per_reward": per,
+        "to_next": per - (count % per),  # filleuls restants avant le prochain mois
+        "is_premium": bool(current_user.get("is_premium")),
+        "premium_until": current_user.get("premium_until"),
+    }
 
 
 @api_router.post("/premium/subscribe")

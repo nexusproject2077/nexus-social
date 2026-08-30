@@ -2132,5 +2132,20 @@
   "theme": "Theme",
   "dark_mode": "Dark mode",
   "accent_color": "Accent color",
-  "DELETE_CONFIRM": "DELETE"
+  "DELETE_CONFIRM": "DELETE",
+  "referral": {
+    "title": "Invite your friends",
+    "subtitle": "{{total}} friends signed up = 1 free month of Premium",
+    "share_text": "Join me on Nexus Social — watch the match, react live and post clips.",
+    "copy": "Copy",
+    "copied": "Link copied",
+    "share": "Share",
+    "invited_one": "{{count}} friend invited",
+    "invited_other": "{{count}} friends invited",
+    "to_next": "{{count}}/{{total}} to your next month",
+    "rewards_one": "{{count}} free month earned",
+    "rewards_other": "{{count}} free months earned",
+    "premium_on": "Premium active",
+    "premium_until": "until {{date}}"
+  }
 }
