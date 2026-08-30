@@ -122,7 +122,12 @@ export default function MatchCenter({ match, onClose, currentUser }) {
   const slug = match?.league_slug;
 
   const load = useCallback(() => {
-    if (!eventId || !slug) return;
+    // Événement non-football (ex. WWE : pas de league_slug ESPN) → pas de
+    // chronologie ESPN, on évite le spinner infini en calant un détail vide.
+    if (!eventId || !slug) {
+      setDetail({ header: {}, events: [] });
+      return;
+    }
     // Résumé ESPN récupéré DIRECTEMENT dans le navigateur (l'endpoint summary est
     // aussi bloqué depuis Cloud Run, comme les scoreboards).
     fetchMatchDetailsFromEspn(eventId, slug)

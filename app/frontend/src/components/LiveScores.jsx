@@ -639,68 +639,98 @@ export function MmaCard({ m, compact, flash }) {
 
 // Modale de filtres : cocher les ligues majeures (Toggles).
 
+// Carte WWE — MÊME gabarit que la carte MMA (fond sombre Nexus, 178px, en-tête +
+// pied), mais identité catch : pastille de marque colorée (Raw rouge · NXT or ·
+// SmackDown bleu · PLE violet) et badge LIVE animé pendant les horaires du show.
+// WWE (sport "wwe") reste totalement distinct du MMA (sport "mma").
 export function WweCard({ m, compact, flash, onOpen }) {
   const live = m.state === "in";
-  const upcoming = m.state === "pre";
+  const done = m.state === "post";
+  const upcoming = !live && !done;
   const brandColor = m.brand_color || "#e11d48";
+  const status = live
+    ? m.clock || i18n.t("livescores.in_progress")
+    : done
+      ? m.detail || i18n.t("livescores.finished")
+      : formatKickoff(m.date);
   return (
-    <button
-      type="button"
+    <div
       onClick={() => onOpen?.(m)}
-      className={`flex-shrink-0 text-left rounded-2xl p-3 transition-all active:scale-[0.98] ${compact ? "w-full" : "w-[200px]"}`}
+      role="button"
+      className={`rounded-2xl p-3 flex flex-col justify-between cursor-pointer active:scale-[0.98] transition-transform ${compact ? "" : "flex-shrink-0"}`}
       style={{
-        background: live
-          ? "linear-gradient(145deg,rgba(225,29,72,0.18),rgba(15,20,35,0.95))"
-          : "#0d1424",
-        border: live
-          ? `1px solid ${brandColor}66`
-          : "1px solid rgba(255,255,255,0.06)",
-        boxShadow: flash
-          ? `0 0 20px ${brandColor}44`
-          : live
-            ? `0 0 16px ${brandColor}22`
-            : "none",
+        background: "#111827",
+        border: `1px solid ${live ? brandColor + "55" : "rgba(255,255,255,0.06)"}`,
+        boxShadow: flash ? `0 0 18px ${brandColor}44` : "none",
+        width: compact ? "auto" : 178,
+        minHeight: 98,
       }}
     >
-      <div className="flex items-center justify-between mb-2">
-        <span
-          className="text-[10px] font-black tracking-wider px-1.5 py-0.5 rounded"
-          style={{ background: brandColor, color: "#0b1220" }}
-        >
-          {m.brand || "WWE"}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="flex items-center gap-1 min-w-0 flex-1">
+          <span
+            className="material-symbols-outlined flex-shrink-0"
+            style={{ fontSize: 12, color: brandColor }}
+          >
+            sports_kabaddi
+          </span>
+          <span
+            className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider flex-shrink-0"
+            style={{ background: brandColor, color: "#0b1220" }}
+          >
+            {m.brand || "WWE"}
+          </span>
         </span>
         {live ? (
-          <span
-            className="flex items-center gap-1 text-[10px] font-bold"
-            style={{ color: "#f87171" }}
-          >
+          <span className="flex items-center gap-1 flex-shrink-0">
             <span
               className="w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{ background: "#f87171" }}
+              style={{ background: brandColor, boxShadow: `0 0 6px ${brandColor}` }}
             />
-            LIVE
+            <span
+              className="text-[9px] font-black"
+              style={{ color: brandColor }}
+            >
+              LIVE
+            </span>
           </span>
-        ) : (
-          <span className="text-[10px]" style={{ color: "#859397" }}>
-            {m.clock}
-          </span>
+        ) : upcoming ? (
+          <UpcomingBadge />
+        ) : null}
+      </div>
+      <div className="space-y-1">
+        <p
+          className="text-xs font-bold leading-tight truncate"
+          style={{ color: "#f4f8ff" }}
+        >
+          {m.event}
+        </p>
+        {(m.venue || m.detail) && (
+          <p className="text-[11px] truncate" style={{ color: "#9fb0c8" }}>
+            {m.is_ple ? m.venue || m.detail : m.detail}
+          </p>
         )}
       </div>
-      <p className="text-sm font-bold text-white leading-tight mb-1 truncate">
-        {m.event}
-      </p>
-      <p className="text-[11px] truncate" style={{ color: "#9fb0c8" }}>
-        {m.is_ple ? m.venue || m.detail : live ? m.clock : m.detail}
-      </p>
-      {upcoming && (
-        <p
-          className="text-[10px] mt-1.5 font-semibold"
-          style={{ color: brandColor }}
+      <div
+        className="mt-2 pt-2"
+        style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
+      >
+        <span
+          className={`text-[10px] font-bold flex items-center gap-1 ${flash ? "nexus-score-flash" : ""}`}
+          style={{ color: live ? brandColor : upcoming ? "#9fb0c8" : "#6b7686" }}
         >
-          {m.clock}
-        </p>
-      )}
-    </button>
+          {upcoming && (
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: 12 }}
+            >
+              schedule
+            </span>
+          )}
+          {status}
+        </span>
+      </div>
+    </div>
   );
 }
 
