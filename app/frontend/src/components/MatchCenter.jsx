@@ -41,12 +41,33 @@ const Injury = ({ size = 18 }) => (
     <path d="M12 8.5v7M8.5 12h7" stroke="#fca5a5" strokeWidth="1.8" strokeLinecap="round" />
   </svg>
 );
+// But sur penalty : ballon + point de penalty + pastille « validée » verte.
+const PenGoal = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="10.5" cy="10.5" r="7" stroke={NEON} strokeWidth="1.6" />
+    <path d="M10.5 6.8l2.5 1.8-1 3h-3l-1-3 2.5-1.8z" fill={NEON} />
+    <circle cx="10.5" cy="19.4" r="1.05" fill={NEON} />
+    <circle cx="18.6" cy="6.4" r="4" fill="#0b1220" stroke={NEON} strokeWidth="1.3" />
+    <path d="M16.9 6.5l1.2 1.2 2-2.3" stroke={NEON} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+// Penalty manqué : ballon + point de penalty + pastille « ratée » rouge (croix).
+const PenMissed = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="10.5" cy="10.5" r="7" stroke="#f87171" strokeWidth="1.6" />
+    <path d="M10.5 6.8l2.5 1.8-1 3h-3l-1-3 2.5-1.8z" fill="#f87171" />
+    <circle cx="10.5" cy="19.4" r="1.05" fill="#f87171" />
+    <circle cx="18.6" cy="6.4" r="4" fill="#0b1220" stroke="#f87171" strokeWidth="1.3" />
+    <path d="M17.1 5l3 2.8M20.1 5l-3 2.8" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
 const Dot = () => <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 999, background: "#5b6577" }} />;
 
 function EventIcon({ type }) {
   switch (type) {
     case "goal": return <Ball color={NEON} />;
-    case "penalty_goal": return <Ball color={NEON} />;
+    case "penalty_goal": return <PenGoal />;
+    case "penalty_missed": return <PenMissed />;
     case "own_goal": return <Ball color="#f87171" />;
     case "yellow": return <Card color="#eab308" />;
     case "red": return <Card color="#ef4444" />;
@@ -69,6 +90,7 @@ function eventTexts(ev) {
       const sub = [ev.assist ? i18n.t("matchcenter.assist", { name: ev.assist }) : "", tags].filter(Boolean).join("  ");
       return { title: scorer, sub: sub || i18n.t("matchcenter.goal") };
     }
+    case "penalty_missed": return { title: ev.player || ev.scorer || p[0] || i18n.t("matchcenter.pen_missed"), sub: i18n.t("matchcenter.pen_missed") };
     case "yellow": return { title: ev.player || p[0] || i18n.t("matchcenter.yellow"), sub: i18n.t("matchcenter.yellow") };
     case "red": return { title: ev.player || p[0] || i18n.t("matchcenter.red"), sub: i18n.t("matchcenter.red") };
     case "sub": {

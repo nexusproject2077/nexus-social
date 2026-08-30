@@ -8524,6 +8524,7 @@ async def get_user_level(current_user: dict = Depends(get_current_user)):
 
 ESPN_SOCCER_LEAGUES = [
     ("uefa.champions", "Ligue des Champions"),
+    ("uefa.wchampions", "Women's Champions League"),
     ("uefa.europa", "Ligue Europa"),
     ("eng.1", "Premier League"),
     ("esp.1", "LaLiga"),
@@ -8622,6 +8623,9 @@ def _espn_fetch_league(slug: str, fallback_name: str):
                 "sport": "foot",
                 "league": league_name,
                 "league_slug": slug,
+                # Drapeau Ligue des Champions (H/F) → badge, priorité carrousel,
+                # bandeau matchday et filtres/notifications à venir.
+                "is_ucl": slug in ("uefa.champions", "uefa.wchampions"),
                 "home": (home.get("team") or {}).get("shortDisplayName") or (home.get("team") or {}).get("displayName") or "",
                 "away": (away.get("team") or {}).get("shortDisplayName") or (away.get("team") or {}).get("displayName") or "",
                 "home_id": str((home.get("team") or {}).get("id") or ""),
@@ -8987,10 +8991,22 @@ _match_cache = {}  # "slug:event" -> {"data": ..., "ts": ...}
 
 def _espn_map_event_type(text: str, ev: dict) -> str:
     t = (text or "").lower()
-    if ev.get("ownGoal"):
+    if ev.get("ownGoal") or "own goal" in t:
         return "own_goal"
+    # Penaltys tranchés AVANT les cartons : « Penalty - Scored » contient « red »
+    # (dans sco-RED), ce qui affichait un but sur penalty comme un CARTON ROUGE ;
+    # « Penalty - Missed » n'était pas non plus reconnu.
+    is_pen = bool(ev.get("penaltyKick")) or "penalty" in t or "penalti" in t or "spot kick" in t
+    if is_pen:
+        missed = any(k in t for k in ("miss", "saved", "save", "failed", "no goal", "off target", "hit the"))
+        scored = bool(ev.get("scoringPlay")) or "scored" in t or "converted" in t or ("goal" in t and "no goal" not in t)
+        if scored and not missed:
+            return "penalty_goal"
+        if missed:
+            return "penalty_missed"
+        return "penalty"
     if "goal" in t:
-        return "penalty_goal" if ev.get("penaltyKick") else "goal"
+        return "goal"
     if "yellow" in t:
         return "yellow"
     if "red" in t:
@@ -8999,8 +9015,6 @@ def _espn_map_event_type(text: str, ev: dict) -> str:
         return "sub"
     if "var" in t:
         return "var"
-    if "penalty" in t:
-        return "penalty"
     if "injur" in t:
         return "injury"
     return "other"

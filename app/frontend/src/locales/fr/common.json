@@ -1129,7 +1129,8 @@
     "hide_confirm": "Masquer les scores sportifs ?",
     "hide_body": "Le widget disparaîtra. Tu pourras le réactiver à tout moment dans les Paramètres.",
     "hide": "Masquer",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "ucl_matchday": "Soirée Champions League"
   },
   "algotransparency": {
     "title": "Comment fonctionne l'algorithme",
@@ -1446,7 +1447,8 @@
     "injury": "Blessure",
     "close": "Fermer",
     "in_progress": "En direct",
-    "no_events": "Aucun événement pour le moment."
+    "no_events": "Aucun événement pour le moment.",
+    "pen_missed": "Penalty manqué"
   },
   "aichat": {
     "welcome": "👋 Salut, moi c'est Nexus AI. Pose-moi une question, demande-moi d'écrire une publication ou de te trouver des idées de clips !",

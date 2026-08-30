@@ -14,6 +14,79 @@ import i18n from "@/i18n";
 
 const NEON = "#4ade80"; // vert néon (match en cours)
 const BRIGHT = "#f4f8ff"; // blanc brillant
+const UCL_BLUE = "#5b8def"; // bleu Champions League (badge / bandeau)
+
+// Un match relève-t-il de la Ligue des Champions (masculine OU féminine) ?
+// On s'appuie sur le drapeau is_ucl posé côté ESPN, avec repli sur le slug pour
+// les matchs venant du backend qui ne le portent pas encore.
+export const isUclMatch = (m) =>
+  !!m &&
+  (m.is_ucl === true ||
+    m.league_slug === "uefa.champions" ||
+    m.league_slug === "uefa.wchampions");
+
+// Le coup d'envoi est-il dans les h prochaines heures (match pas encore joué) ?
+const withinHours = (dateStr, h) => {
+  const t = new Date(dateStr).getTime();
+  if (isNaN(t)) return false;
+  const diff = t - Date.now();
+  return diff >= 0 && diff <= h * 3600e3;
+};
+
+// Petit blason UCL (étoile stylisée) — 100 % SVG, glow bleu Champions League.
+const UclBadge = ({ size = 13 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden
+    style={{ filter: `drop-shadow(0 0 4px ${UCL_BLUE}88)`, flexShrink: 0 }}
+  >
+    <path
+      d="M12 2.6l2.6 5.5 6 .8-4.4 4.1 1.1 6L12 16.1 6.7 19l1.1-6L3.4 8.9l6-.8L12 2.6z"
+      fill={UCL_BLUE}
+    />
+  </svg>
+);
+
+// Bandeau « Soirée Champions League » : affiché quand un match UCL est en direct
+// ou démarre dans les 6 h. matches = liste brute normalisée.
+const UclMatchdayBanner = ({ matches }) => {
+  const uclLive = matches.some((m) => isUclMatch(m) && m.state === "in");
+  const uclSoon = matches.some(
+    (m) => isUclMatch(m) && m.state !== "post" && withinHours(m.date, 6),
+  );
+  if (!uclLive && !uclSoon) return null;
+  return (
+    <div
+      className="mb-2 flex items-center gap-2 px-3 py-2 rounded-xl"
+      style={{
+        background: `linear-gradient(90deg, ${UCL_BLUE}26, rgba(11,18,32,0))`,
+        border: `1px solid ${UCL_BLUE}55`,
+      }}
+    >
+      <UclBadge size={16} />
+      <span
+        className="text-[11px] font-black uppercase tracking-wider"
+        style={{ color: "#cfe0ff" }}
+      >
+        {i18n.t("livescores.ucl_matchday")}
+      </span>
+      {uclLive && (
+        <span className="flex items-center gap-1 ml-auto flex-shrink-0">
+          <span
+            className="w-1.5 h-1.5 rounded-full animate-pulse"
+            style={{ background: NEON, boxShadow: `0 0 6px ${NEON}` }}
+          />
+          <span className="text-[9px] font-black" style={{ color: NEON }}>
+            LIVE
+          </span>
+        </span>
+      )}
+    </div>
+  );
+};
 
 // Mode DÉMO (opt-in : ?demo=1 ou localStorage) — affiche des cartes de test
 // étiquetées « DÉMO » quand l'API ne renvoie aucun match. Jamais présenté comme réel.
@@ -137,8 +210,10 @@ export function sortMatches(list, favL, favT) {
 export function displayMatches(list, favL, favT) {
   const isFav = (m) =>
     favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id);
-  const favFirst = (arr) =>
-    [...arr].sort((a, b) => (isFav(a) ? 0 : 1) - (isFav(b) ? 0 : 1));
+  // Priorité : favoris d'abord, puis Ligue des Champions, puis le reste
+  // (tri stable → l'ordre par date est conservé à rang égal).
+  const rank = (m) => (isFav(m) ? 0 : 2) + (isUclMatch(m) ? 0 : 1);
+  const favFirst = (arr) => [...arr].sort((a, b) => rank(a) - rank(b));
   const asc = (a, b) =>
     String(a.date || "").localeCompare(String(b.date || ""));
   const desc = (a, b) =>
@@ -301,6 +376,7 @@ export function MatchCard({
   const done = m.state === "post";
   const upcoming = !live && !done;
   const demo = !!m.demo;
+  const ucl = isUclMatch(m);
   // Match à venir : on affiche l'heure + la date à la place du score.
   const status = live
     ? m.clock || m.detail || i18n.t("livescores.in_progress")
@@ -313,8 +389,10 @@ export function MatchCard({
       role="button"
       className={`rounded-2xl p-3 flex flex-col justify-between cursor-pointer active:scale-[0.98] transition-transform ${compact ? "" : "flex-shrink-0"}`}
       style={{
-        background: "#111827",
-        border: `1px solid ${live ? NEON + "33" : "rgba(255,255,255,0.06)"}`,
+        background: ucl
+          ? `linear-gradient(160deg, ${UCL_BLUE}1f, #111827 55%)`
+          : "#111827",
+        border: `1px solid ${live ? NEON + "33" : ucl ? UCL_BLUE + "55" : "rgba(255,255,255,0.06)"}`,
         width: compact ? "auto" : 178,
         minHeight: 98,
       }}
@@ -326,9 +404,10 @@ export function MatchCard({
             onClick={() => onToggleLeague(m.league_slug)}
             size={13}
           />
+          {ucl && <UclBadge />}
           <span
             className="text-[10px] font-bold uppercase tracking-wider truncate"
-            style={{ color: "#6b7686" }}
+            style={{ color: ucl ? "#a9c4ff" : "#6b7686" }}
           >
             {m.league}
           </span>
@@ -859,6 +938,11 @@ export default function LiveScores({ variant = "mobile", setUser }) {
     }
   }
   if (!arranged.length) arranged = [...footItems, ...mmaItems, ...wweItems];
+  // Les matchs de Ligue des Champions passent EN TÊTE du carrousel (tri stable :
+  // le reste conserve l'ordre d'entrelacement foot / MMA / WWE).
+  arranged = [...arranged].sort(
+    (a, b) => (isUclMatch(a) ? 0 : 1) - (isUclMatch(b) ? 0 : 1),
+  );
   const renderCard = (m, compact) => {
     if (m.sport === "mma")
       return (
@@ -1007,6 +1091,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
         }}
       >
         <div className="mb-3">{header(true)}</div>
+        <UclMatchdayBanner matches={src} />
         <div className="space-y-2">
           {arranged.slice(0, 6).map((m) => renderCard(m, true))}
         </div>
@@ -1028,6 +1113,9 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   return (
     <div className="pt-1 pb-2" style={fadeStyle}>
       <div className="px-4 mb-1.5">{header(false)}</div>
+      <div className="px-4">
+        <UclMatchdayBanner matches={src} />
+      </div>
       <div className="flex gap-3 overflow-x-auto no-scrollbar px-4">
         {arranged.map((m) => renderCard(m, false))}
       </div>
