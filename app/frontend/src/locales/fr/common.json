@@ -1130,7 +1130,9 @@
     "hide_body": "Le widget disparaîtra. Tu pourras le réactiver à tout moment dans les Paramètres.",
     "hide": "Masquer",
     "cancel": "Annuler",
-    "ucl_matchday": "Soirée Champions League"
+    "ucl_matchday": "Soirée Champions League",
+    "ucl_invite": "Invite tes potes pour le match",
+    "ucl_invite_text": "Regarde le match avec moi sur Nexus — réagis en live et poste des clips."
   },
   "algotransparency": {
     "title": "Comment fonctionne l'algorithme",

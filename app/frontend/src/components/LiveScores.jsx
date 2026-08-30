@@ -50,40 +50,89 @@ const UclBadge = ({ size = 13 }) => (
   </svg>
 );
 
+// Nom d'utilisateur courant (pour bâtir le lien de parrainage ?ref=).
+const myUsername = () => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}")?.username || null;
+  } catch {
+    return null;
+  }
+};
+
 // Bandeau « Soirée Champions League » : affiché quand un match UCL est en direct
-// ou démarre dans les 6 h. matches = liste brute normalisée.
+// ou démarre dans les 6 h. Porte un CTA « Invite tes potes pour le match » qui
+// partage le lien de parrainage (boucle de croissance sur les soirs UCL).
 const UclMatchdayBanner = ({ matches }) => {
   const uclLive = matches.some((m) => isUclMatch(m) && m.state === "in");
   const uclSoon = matches.some(
     (m) => isUclMatch(m) && m.state !== "post" && withinHours(m.date, 6),
   );
   if (!uclLive && !uclSoon) return null;
+
+  const inviteFriends = async () => {
+    const u = myUsername();
+    const link = `${window.location.origin}/${u ? `?ref=${encodeURIComponent(u)}` : ""}`;
+    const text = i18n.t("livescores.ucl_invite_text");
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Nexus Social", text, url: link });
+        return;
+      } catch {
+        /* annulé → repli copie */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success(i18n.t("referral.copied"));
+    } catch {
+      toast.error(i18n.t("error_occurred"));
+    }
+  };
+
   return (
     <div
-      className="mb-2 flex items-center gap-2 px-3 py-2 rounded-xl"
+      className="mb-2 px-3 py-2 rounded-xl"
       style={{
         background: `linear-gradient(90deg, ${UCL_BLUE}26, rgba(11,18,32,0))`,
         border: `1px solid ${UCL_BLUE}55`,
       }}
     >
-      <UclBadge size={16} />
-      <span
-        className="text-[11px] font-black uppercase tracking-wider"
-        style={{ color: "#cfe0ff" }}
-      >
-        {i18n.t("livescores.ucl_matchday")}
-      </span>
-      {uclLive && (
-        <span className="flex items-center gap-1 ml-auto flex-shrink-0">
-          <span
-            className="w-1.5 h-1.5 rounded-full animate-pulse"
-            style={{ background: NEON, boxShadow: `0 0 6px ${NEON}` }}
-          />
-          <span className="text-[9px] font-black" style={{ color: NEON }}>
-            LIVE
-          </span>
+      <div className="flex items-center gap-2">
+        <UclBadge size={16} />
+        <span
+          className="text-[11px] font-black uppercase tracking-wider"
+          style={{ color: "#cfe0ff" }}
+        >
+          {i18n.t("livescores.ucl_matchday")}
         </span>
-      )}
+        {uclLive && (
+          <span className="flex items-center gap-1 ml-auto flex-shrink-0">
+            <span
+              className="w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ background: NEON, boxShadow: `0 0 6px ${NEON}` }}
+            />
+            <span className="text-[9px] font-black" style={{ color: NEON }}>
+              LIVE
+            </span>
+          </span>
+        )}
+      </div>
+      <button
+        onClick={inviteFriends}
+        className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-bold active:scale-[0.98] transition-transform"
+        style={{ background: UCL_BLUE, color: "#04122e" }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            d="M16 11c1.66 0 3-1.34 3-3s-1.34-3-3-3M8 11a3 3 0 100-6 3 3 0 000 6zM2 20c0-2.5 2.7-4 6-4s6 1.5 6 4M18 14c2 .4 4 1.6 4 4"
+            stroke="#04122e"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        {i18n.t("livescores.ucl_invite")}
+      </button>
     </div>
   );
 };

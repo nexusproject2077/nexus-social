@@ -2494,7 +2494,7 @@ async def _grant_referral_premium(user_id: str, months: int = 1):
                 base = dt
     except Exception:
         base = now
-    until = (base + timedelta(days=31 * months)).isoformat()
+    until = (base + timedelta(days=30 * months)).isoformat()
     await db.users.update_one({"id": user_id}, {"$set": {
         "is_premium": True,
         "premium_until": until,
@@ -2514,13 +2514,30 @@ async def _apply_referral(new_user_id: str, new_user: dict, ref):
             return
         referrer = await db.users.find_one(
             {"username": {"$regex": f"^{re.escape(code)}$", "$options": "i"}},
-            {"id": 1, "username": 1},
+            {"id": 1, "username": 1, "profile_pic": 1},
         )
         # On ne se parraine pas soi-même et le parrain doit exister.
         if not referrer or referrer["id"] == new_user_id:
             return
         await db.users.update_one({"id": new_user_id}, {"$set": {"referred_by": referrer["id"]}})
         await db.users.update_one({"id": referrer["id"]}, {"$inc": {"referral_count": 1}})
+
+        # Auto-follow MUTUEL parrain ↔ filleul : les deux comptes se suivent
+        # d'emblée (le parrain a partagé son lien, le filleul l'a utilisé →
+        # connexion consentie). Idempotent : on ne recrée pas un lien existant.
+        async def _link(follower, followed_id):
+            try:
+                if follower["id"] == followed_id:
+                    return
+                if await db.follows.find_one(
+                    {"follower_id": follower["id"], "followed_id": followed_id}
+                ):
+                    return
+                await _do_follow(follower, followed_id)
+            except Exception:
+                pass
+        await _link(new_user, referrer["id"])
+        await _link(referrer, new_user_id)
         fresh = await db.users.find_one(
             {"id": referrer["id"]}, {"referral_count": 1, "referral_rewards": 1}
         )

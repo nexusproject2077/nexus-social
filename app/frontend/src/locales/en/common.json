@@ -1130,7 +1130,9 @@
     "hide_body": "The widget will disappear. You can re-enable it anytime in Settings.",
     "hide": "Hide",
     "cancel": "Cancel",
-    "ucl_matchday": "Champions League matchday"
+    "ucl_matchday": "Champions League matchday",
+    "ucl_invite": "Invite your friends for the match",
+    "ucl_invite_text": "Watch the match with me on Nexus — react live and post clips."
   },
   "algotransparency": {
     "title": "How the algorithm works",
