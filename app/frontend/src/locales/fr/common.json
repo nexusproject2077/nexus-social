@@ -686,7 +686,22 @@
     "err_add_reply": "Erreur lors de l'ajout de la réponse",
     "view_replies_one": "▼ {{count}} réponse",
     "view_replies_other": "▼ {{count}} réponses",
-    "confirm_delete": "Supprimer ce commentaire ?"
+    "confirm_delete": "Supprimer ce commentaire ?",
+    "sort_relevant": "Pertinents",
+    "sort_recent": "Récents",
+    "replying_to": "En réponse à @{{user}}",
+    "show_replies_one": "{{count}} réponse",
+    "show_replies_other": "{{count}} réponses",
+    "hide": "Masquer",
+    "share": "Partager",
+    "report": "Signaler",
+    "copy_link": "Copier le lien",
+    "link_copied": "Lien copié",
+    "reported": "Commentaire signalé",
+    "err_report": "Impossible de signaler le commentaire",
+    "delete": "Supprimer",
+    "cancel": "Annuler",
+    "publishing": "Publication…"
   },
   "profilepage": {
     "posts": "Publications",

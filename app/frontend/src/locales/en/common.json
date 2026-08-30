@@ -686,7 +686,22 @@
     "err_add_reply": "Error adding the reply",
     "view_replies_one": "▼ {{count}} reply",
     "view_replies_other": "▼ {{count}} replies",
-    "confirm_delete": "Delete this comment?"
+    "confirm_delete": "Delete this comment?",
+    "sort_relevant": "Relevant",
+    "sort_recent": "Recent",
+    "replying_to": "Replying to @{{user}}",
+    "show_replies_one": "{{count}} reply",
+    "show_replies_other": "{{count}} replies",
+    "hide": "Hide",
+    "share": "Share",
+    "report": "Report",
+    "copy_link": "Copy link",
+    "link_copied": "Link copied",
+    "reported": "Comment reported",
+    "err_report": "Couldn't report the comment",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "publishing": "Posting…"
   },
   "profilepage": {
     "posts": "Posts",
