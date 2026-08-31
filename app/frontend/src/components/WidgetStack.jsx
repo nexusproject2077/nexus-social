@@ -9,7 +9,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
-import { MatchCard, MmaCard, WweCard, displayMatches } from "@/components/LiveScores";
+import { MatchCard, MmaCard, WweCard, displayMatches, isUclMatch } from "@/components/LiveScores";
 import { fetchWweEvents } from "@/lib/wweClient";
 import { getTodayMinutes } from "@/lib/screenTime";
 import { fetchLiveScoresFromEspn, searchTeamsFromEspn, resolveTeamIdByName } from "@/lib/espnClient";
@@ -799,6 +799,10 @@ export default function WidgetStack({ user, setUser }) {
   const isFavOrL1 = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id) || m.league_slug === "fra.1";
   const startsWithin2h = (m) => { const t = new Date(m.date).getTime(); return Number.isFinite(t) && (t - Date.now()) <= 2 * 3600 * 1000 && (t - Date.now()) >= -15 * 60 * 1000; };
   const imminentFavPre = footItems.some((m) => m.state === "pre" && isFavOrL1(m) && startsWithin2h(m));
+  // Soirée Champions League : pastille contextuelle affichée uniquement quand un
+  // match de C1 est en direct ou démarre dans les 6 h (fenêtre « soirée »).
+  const uclSoon = (m) => { const t = new Date(m.date).getTime(); return Number.isFinite(t) && (t - Date.now()) <= 6 * 3600 * 1000 && (t - Date.now()) >= -150 * 60 * 1000; };
+  const uclMatchday = footItems.some((m) => isUclMatch(m) && (m.state === "in" || uclSoon(m)));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
   const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, wwe: showMma && wweItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true,
     // Widgets Premium : toujours affichés (verrouillés = teaser d'abonnement).
@@ -932,13 +936,14 @@ export default function WidgetStack({ user, setUser }) {
     if (CONFIGURABLE[id]) setConfigWidget(id); else setEditing(true);
   };
 
-  const PageHeader = ({ id }) => {
+  const PageHeader = ({ id, badge = null }) => {
     const w = WIDGETS[id];
     return (
       <div className="flex items-center justify-between mb-1.5 px-0.5">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
           <span className="material-symbols-outlined" style={{ color: w.color, fontSize: 15 }}>{w.icon}</span>
           <span className="text-[11px] font-black uppercase tracking-wider" style={{ color: "#8b96a8" }}>{t("widgets." + id)}</span>
+          {badge}
         </div>
         <button onClick={() => openWidgetMenu(id)} aria-label={t("stack.customize_widget")}
           className="flex items-center justify-center -m-1 p-1 rounded-lg active:scale-90 transition-transform">
@@ -951,7 +956,16 @@ export default function WidgetStack({ user, setUser }) {
   const pageNode = (id) => {
     if (id === "football") return (
       <div className="h-full flex flex-col pl-3 py-2.5">
-        <div className="pr-3"><PageHeader id="football" /></div>
+        <div className="pr-3"><PageHeader id="football" badge={uclMatchday ? (
+          <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 flex-shrink-0"
+            style={{ background: "rgba(31,111,235,0.16)", border: "1px solid rgba(88,145,255,0.45)" }}
+            title={t("livescores.ucl_matchday")}>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="#5891ff" aria-hidden="true">
+              <path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l7.1-1.01L12 2z" />
+            </svg>
+            <span className="text-[9px] font-black uppercase tracking-wide" style={{ color: "#a9c4ff" }}>{t("livescores.ucl_matchday")}</span>
+          </span>
+        ) : null} /></div>
         <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar items-center" style={{ scrollSnapType: "x mandatory", paddingRight: 16 }}>
           {footItems.map((m) => (
             <div key={m.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>

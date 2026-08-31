@@ -1094,6 +1094,7 @@
     "auto_saved": "Changes are saved automatically."
   },
   "livescores": {
+    "ucl_matchday": "Champions League matchday",
     "upcoming_badge": "UPCOMING",
     "demo_badge": "DEMO",
     "fav_remove": "Remove from favorites",
