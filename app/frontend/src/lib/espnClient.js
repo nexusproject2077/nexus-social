@@ -15,6 +15,7 @@ const MMA_URL = "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboar
 // Mêmes ligues que ESPN_SOCCER_LEAGUES côté backend.
 const SOCCER_LEAGUES = [
   ["uefa.champions", "Ligue des Champions"],
+  ["uefa.wchampions", "Women's Champions League"],
   ["uefa.europa", "Ligue Europa"],
   ["eng.1", "Premier League"],
   ["esp.1", "LaLiga"],
@@ -54,6 +55,8 @@ function normalizeLeague(data, slug, fallbackName) {
       sport: "foot",
       league: leagueName,
       league_slug: slug,
+      // Drapeau Ligue des Champions (masc. + fém.) → badge + priorité carrousel.
+      is_ucl: slug === "uefa.champions" || slug === "uefa.wchampions",
       home: home.team?.shortDisplayName || home.team?.displayName || "",
       away: away.team?.shortDisplayName || away.team?.displayName || "",
       home_id: String(home.team?.id || ""),
@@ -132,7 +135,7 @@ export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) 
 // Chargé une seule fois puis mis en cache mémoire.
 
 const TEAM_DIR_LEAGUES = [
-  "uefa.champions", "uefa.europa",          // Coupes d'Europe → élite de tous les pays
+  "uefa.champions", "uefa.wchampions", "uefa.europa",  // Coupes d'Europe → élite de tous les pays
   "fifa.world", "uefa.euro",                // Sélections nationales (CdM / Euro)
   "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", // top 5
   "eng.2", "ned.1", "por.1", "tur.1",        // autres championnats européens
@@ -266,13 +269,23 @@ export async function searchTeamsFromEspn(query, limit = 24) {
 
 function mapEventType(text, ev) {
   const t = (text || "").toLowerCase();
-  if (ev.ownGoal) return "own_goal";
-  if (t.includes("goal")) return ev.penaltyKick ? "penalty_goal" : "goal";
+  if (ev.ownGoal || t.includes("own goal")) return "own_goal";
+  // Penaltys AVANT les cartons : « Penalty - Scored » contient « red » (dans
+  // sco-RED) → un but sur penalty s'affichait comme un carton rouge ; « Penalty
+  // - Missed » n'était pas non plus reconnu.
+  const isPen = !!ev.penaltyKick || t.includes("penalty") || t.includes("penalti") || t.includes("spot kick");
+  if (isPen) {
+    const missed = t.includes("miss") || t.includes("saved") || t.includes("save") || t.includes("failed") || t.includes("no goal") || t.includes("off target");
+    const scored = !!ev.scoringPlay || t.includes("scored") || t.includes("converted") || (t.includes("goal") && !t.includes("no goal"));
+    if (scored && !missed) return "penalty_goal";
+    if (missed) return "penalty_missed";
+    return "penalty";
+  }
+  if (t.includes("goal")) return "goal";
   if (t.includes("yellow")) return "yellow";
   if (t.includes("red")) return "red";
   if (t.includes("substitution") || t.includes("sub ") || t === "sub") return "sub";
   if (t.includes("var")) return "var";
-  if (t.includes("penalty")) return "penalty";
   if (t.includes("injur")) return "injury";
   return "other";
 }

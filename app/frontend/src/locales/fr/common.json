@@ -1432,7 +1432,8 @@
     "injury": "Blessure",
     "close": "Fermer",
     "in_progress": "En direct",
-    "no_events": "Aucun événement pour le moment."
+    "no_events": "Aucun événement pour le moment.",
+    "pen_missed": "Penalty manqué"
   },
   "aichat": {
     "welcome": "👋 Salut, moi c'est Nexus AI. Pose-moi une question, demande-moi d'écrire une publication ou de te trouver des idées de clips !",

@@ -8635,6 +8635,7 @@ async def get_user_level(current_user: dict = Depends(get_current_user)):
 
 ESPN_SOCCER_LEAGUES = [
     ("uefa.champions", "Ligue des Champions"),
+    ("uefa.wchampions", "Women's Champions League"),
     ("uefa.europa", "Ligue Europa"),
     ("eng.1", "Premier League"),
     ("esp.1", "LaLiga"),
@@ -8733,6 +8734,7 @@ def _espn_fetch_league(slug: str, fallback_name: str):
                 "sport": "foot",
                 "league": league_name,
                 "league_slug": slug,
+                "is_ucl": slug in ("uefa.champions", "uefa.wchampions"),
                 "home": (home.get("team") or {}).get("shortDisplayName") or (home.get("team") or {}).get("displayName") or "",
                 "away": (away.get("team") or {}).get("shortDisplayName") or (away.get("team") or {}).get("displayName") or "",
                 "home_id": str((home.get("team") or {}).get("id") or ""),

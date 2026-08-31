@@ -1432,7 +1432,8 @@
     "injury": "Injury",
     "close": "Close",
     "in_progress": "Live",
-    "no_events": "No events yet."
+    "no_events": "No events yet.",
+    "pen_missed": "Penalty missed"
   },
   "aichat": {
     "welcome": "👋 Hi, I'm Nexus AI. Ask me a question, ask me to write a post or find you clip ideas!",

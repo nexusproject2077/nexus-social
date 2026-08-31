@@ -13,6 +13,19 @@ import i18n from "@/i18n";
 
 const NEON = "#4ade80";      // vert néon (match en cours)
 const BRIGHT = "#f4f8ff";    // blanc brillant
+const UCL_BLUE = "#5b8def";   // bleu Champions League (badge / liseré)
+
+// Un match relève-t-il de la Ligue des Champions (masculine OU féminine) ?
+export const isUclMatch = (m) =>
+  !!m && (m.is_ucl === true || m.league_slug === "uefa.champions" || m.league_slug === "uefa.wchampions");
+
+// Petit blason UCL (étoile) — 100 % SVG, glow bleu Champions League.
+const UclBadge = ({ size = 13 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden
+    style={{ filter: `drop-shadow(0 0 4px ${UCL_BLUE}88)`, flexShrink: 0 }}>
+    <path d="M12 2.6l2.6 5.5 6 .8-4.4 4.1 1.1 6L12 16.1 6.7 19l1.1-6L3.4 8.9l6-.8L12 2.6z" fill={UCL_BLUE} />
+  </svg>
+);
 
 // Mode DÉMO (opt-in : ?demo=1 ou localStorage) — affiche des cartes de test
 // étiquetées « DÉMO » quand l'API ne renvoie aucun match. Jamais présenté comme réel.
@@ -58,7 +71,10 @@ export function sortMatches(list, favL, favT) {
 // final (plus récents d'abord, ~24 h). Favoris remontés dans chaque groupe.
 export function displayMatches(list, favL, favT) {
   const isFav = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id);
-  const favFirst = (arr) => [...arr].sort((a, b) => (isFav(a) ? 0 : 1) - (isFav(b) ? 0 : 1));
+  // Priorité : favoris d'abord, puis Ligue des Champions, puis le reste
+  // (tri stable → l'ordre par date est conservé à rang égal).
+  const rank = (m) => (isFav(m) ? 0 : 2) + (isUclMatch(m) ? 0 : 1);
+  const favFirst = (arr) => [...arr].sort((a, b) => rank(a) - rank(b));
   const asc = (a, b) => String(a.date || "").localeCompare(String(b.date || ""));
   const desc = (a, b) => String(b.date || "").localeCompare(String(a.date || ""));
   const live = favFirst(list.filter((m) => m.state === "in"));
@@ -145,6 +161,7 @@ export function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onTog
   const done = m.state === "post";
   const upcoming = !live && !done;
   const demo = !!m.demo;
+  const ucl = isUclMatch(m);
   // Match à venir : on affiche l'heure + la date à la place du score.
   const status = live ? (m.clock || m.detail || i18n.t("livescores.in_progress"))
     : done ? (m.detail || i18n.t("livescores.finished"))
@@ -155,15 +172,16 @@ export function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onTog
       role="button"
       className={`rounded-2xl p-3 flex flex-col justify-between cursor-pointer active:scale-[0.98] transition-transform ${compact ? "" : "flex-shrink-0"}`}
       style={{
-        background: "#111827",
-        border: `1px solid ${live ? NEON + "33" : "rgba(255,255,255,0.06)"}`,
+        background: ucl ? `linear-gradient(160deg, ${UCL_BLUE}1f, #111827 55%)` : "#111827",
+        border: `1px solid ${live ? NEON + "33" : ucl ? UCL_BLUE + "55" : "rgba(255,255,255,0.06)"}`,
         width: compact ? "auto" : 178, minHeight: 98,
       }}
     >
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-1 min-w-0 flex-1">
           <StarBtn active={favL.has(m.league_slug)} onClick={() => onToggleLeague(m.league_slug)} size={13} />
-          <span className="text-[10px] font-bold uppercase tracking-wider truncate" style={{ color: "#6b7686" }}>{m.league}</span>
+          {ucl && <UclBadge />}
+          <span className="text-[10px] font-bold uppercase tracking-wider truncate" style={{ color: ucl ? "#a9c4ff" : "#6b7686" }}>{m.league}</span>
         </div>
         {demo ? <DemoBadge /> : live ? <LiveBadge /> : upcoming ? <UpcomingBadge /> : null}
       </div>
