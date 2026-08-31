@@ -142,9 +142,25 @@ export default function AuthPage({ setUser }) {
             location: formData.location,
             phone: formData.phone,
             is_private: privateAccount,
+            ref:
+              (() => {
+                try {
+                  return (
+                    new URLSearchParams(window.location.search).get("ref") ||
+                    localStorage.getItem("nexus_ref") ||
+                    undefined
+                  );
+                } catch {
+                  return undefined;
+                }
+              })(),
           };
 
       const response = await axios.post(`${API}${endpoint}`, payload);
+      // Parrainage consommé à l'inscription : on l'efface pour ne pas le réutiliser.
+      if (!isLogin) {
+        try { localStorage.removeItem("nexus_ref"); } catch { /* ignore */ }
+      }
 
       // Inscription → on force l'affichage du guide de bienvenue à l'arrivée sur
       // le fil (même si le drapeau « déjà vu » existe sur cet appareil).

@@ -48,6 +48,15 @@ export const API = `${BACKEND_URL}/api`;
 // /clip/:id et /post/:id (pages publiques Open Graph servies côté serveur).
 export const PUBLIC_BASE = API.replace(/\/api\/?$/, "");
 
+// Parrainage : on capture ?ref=<username> DÈS le chargement, avant les
+// redirections react-router qui effacent la query. Consommé par AuthPage.
+try {
+  const _ref = new URLSearchParams(window.location.search).get("ref");
+  if (_ref) window.localStorage.setItem("nexus_ref", _ref.slice(0, 40));
+} catch {
+  /* stockage/URL indisponible — sans gravité */
+}
+
 // Lien public partagé (post/clip) ouvert par un visiteur NON connecté : on ne
 // le renvoie JAMAIS vers /auth. On charge la page miroir PUBLIQUE servie par le
 // backend (Open Graph + lecture seule + CTA « Ouvrir dans Nexus »).

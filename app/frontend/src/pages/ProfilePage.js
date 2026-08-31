@@ -9,6 +9,7 @@ import EditProfileModal from "@/components/EditProfileModal";
 import FollowListModal from "@/components/FollowListModal";
 import TipModal from "@/components/TipModal";
 import PullToRefresh from "@/components/PullToRefresh";
+import ReferralCard from "@/components/ReferralCard";
 import { Lock, Clock, UserPlus, UserMinus, Edit, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -527,6 +528,13 @@ export default function ProfilePage({ user, setUser }) {
           );
         })}
       </div>
+
+      {/* ── Parrainage (profil personnel) ─────────────────────────────────── */}
+      {isOwnProfile && (
+        <div className="px-4 mt-5">
+          <ReferralCard user={user} />
+        </div>
+      )}
 
       {/* ── Tabs — épinglés en haut au scroll (position: fixed piloté en JS,
              car sticky CSS non fiable ici sur iOS). L'anchor reste dans le flux
