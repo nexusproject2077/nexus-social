@@ -43,6 +43,7 @@ const fmtRel = (d, lang) => {
 
 // Un commentaire de clip : like, réponses, et suppression par son auteur.
 function CommentItem({ comment, currentUser, clipAuthorId, onDeleted }) {
+  const _relLang = i18n.resolvedLanguage || i18n.language;
   const isCreator = clipAuthorId && comment.author_id === clipAuthorId;
   const [liked, setLiked] = useState(comment.is_liked || false);
   const [likes, setLikes] = useState(comment.likes_count || 0);
@@ -265,6 +266,7 @@ function ClipCard({
   onDelete,
 }) {
   const navigate = useNavigate();
+  const _relLang = i18n.resolvedLanguage || i18n.language;
   const videoRef = useRef(null);
   const sceneRef = useRef(null);
   const [isLiked, setIsLiked] = useState(post.is_liked || false);
