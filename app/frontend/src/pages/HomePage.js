@@ -5,6 +5,7 @@ import Layout from "../components/Layout";
 import PostCard from "../components/PostCard";
 import CreatePostModal from "../components/CreatePostModal";
 import StoriesFeed from "../components/StoriesFeed";
+import WidgetStack from "../components/WidgetStack";
 import AdSense from "../components/AdSense";
 import { Skeleton } from "../components/ui/skeleton";
 import PullToRefresh from "../components/PullToRefresh";
@@ -102,6 +103,9 @@ export default function HomePage({ user, setUser }) {
 
         {/* Stories */}
         <StoriesFeed />
+
+        {/* Pile de widgets « Smart Stack » (scores foot / MMA / WWE, tendances…) */}
+        <WidgetStack user={user} setUser={setUser} />
 
         {/* Switch Feed (PC uniquement) — sur mobile ces onglets sont dans le header.
             La box de création « Quoi de neuf ? » a été retirée : on publie via le

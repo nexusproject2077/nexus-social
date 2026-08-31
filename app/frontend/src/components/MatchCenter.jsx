@@ -147,6 +147,7 @@ export default function MatchCenter({ match, onClose, currentUser }) {
   const ordered = [...events].reverse(); // le plus récent en haut
 
   return (
+    <>
     <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center sm:p-4"
       style={{ background: "rgba(2,6,20,0.82)", fontFamily: INTER }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
