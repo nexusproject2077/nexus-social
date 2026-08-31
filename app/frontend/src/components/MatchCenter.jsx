@@ -3,6 +3,7 @@
 // Événements domicile à GAUCHE de l'axe, extérieur à DROITE. Rafraîchi 60 s.
 import { useState, useEffect, useCallback } from "react";
 import { fetchMatchDetailsFromEspn } from "@/lib/espnClient";
+import MatchRoom from "@/components/MatchRoom";
 import i18n from "@/i18n";
 
 const NEON = "#4ade80";
@@ -113,8 +114,9 @@ const Side = ({ ev, align }) => {
   );
 };
 
-export default function MatchCenter({ match, onClose }) {
+export default function MatchCenter({ match, onClose, currentUser }) {
   const [detail, setDetail] = useState(null);
+  const [roomOpen, setRoomOpen] = useState(false);
   const eventId = match?.id;
   const slug = match?.league_slug;
 
@@ -139,6 +141,7 @@ export default function MatchCenter({ match, onClose }) {
   const ordered = [...events].reverse(); // le plus récent en haut
 
   return (
+    <>
     <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center sm:p-4"
       style={{ background: "rgba(2,6,20,0.82)", fontFamily: INTER }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -203,7 +206,21 @@ export default function MatchCenter({ match, onClose }) {
             </div>
           )}
         </div>
+
+        {/* Salle du match — chat léger dédié à la rencontre */}
+        <div className="px-4 pb-4 pt-1 flex-shrink-0">
+          <button type="button" onClick={() => setRoomOpen(true)}
+            className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+            style={{ background: "linear-gradient(90deg,rgba(34,211,238,0.15),rgba(59,130,246,0.15))", border: "1px solid rgba(34,211,238,0.35)", color: "#67e8f9" }}>
+            <span className="material-symbols-outlined text-base">forum</span>
+            {i18n.t("match_room.open")}
+          </button>
+        </div>
       </div>
     </div>
+    {roomOpen && (
+      <MatchRoom match={h} currentUser={currentUser} onClose={() => setRoomOpen(false)} />
+    )}
+    </>
   );
 }

@@ -10,6 +10,7 @@ import LanguageSwitcher from '../components/LanguageSwitcher';
 import AlgorithmTransparencyModal from '../components/AlgorithmTransparencyModal';
 import { ACCENTS, PREMIUM_ACCENTS, applyAccent, getAccent } from '../lib/accent';
 import PremiumModal from '@/components/PremiumModal';
+import GrowthHub from '@/components/GrowthHub';
 import { enablePush, disablePush, isPushEnabled, pushReasonLabel } from '@/lib/push';
 import { isPrivacyStrict, setPrivacyStrict } from '@/lib/privacyStrict';
 
@@ -546,6 +547,9 @@ export default function SettingsPage({ user, setUser }) {
             )}
           </div>
         </Card>
+
+        {/* Croissance : parrainage, défis clips, amis proches, notifs utiles */}
+        <GrowthHub user={user} />
 
         {/* Analytique */}
         <Card>

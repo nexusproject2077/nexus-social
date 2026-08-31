@@ -1,4 +1,46 @@
 {
+  "challenge": {
+    "weekly_clip": "Clip de la semaine",
+    "ucl": "Clips Champions League",
+    "skill": "Geste technique de la semaine",
+    "laugh": "Fais-les rire",
+    "ends_sunday": "Se termine dimanche",
+    "join": "Participer"
+  },
+  "close_friends": {
+    "title": "Amis proches",
+    "sub": "Choisis qui voit ton contenu « amis proches ».",
+    "search": "Rechercher un pseudo…",
+    "empty": "Personne à afficher pour le moment.",
+    "count": "amis proches",
+    "updated": "Amis proches mis à jour"
+  },
+  "creator": {
+    "clips": "Clips",
+    "views": "Vues",
+    "likes": "J'aime"
+  },
+  "growth": {
+    "hub_title": "Développe-toi sur Nexus"
+  },
+  "smart_notif": {
+    "title": "Notifications utiles",
+    "sub": "Seulement l'essentiel — aucun spam.",
+    "match": "Rappels de match",
+    "comments": "Réponses à mes commentaires",
+    "followers": "Nouveaux abonnés",
+    "likes_digest": "Récap' hebdo des J'aime",
+    "marketing": "Actus & astuces",
+    "saved": "Préférences enregistrées",
+    "local": "Enregistré sur cet appareil"
+  },
+  "match_room": {
+    "open": "Salle du match",
+    "title": "Salle du match",
+    "empty": "Sois le premier à réagir à ce match.",
+    "placeholder": "Écris quelque chose…",
+    "local_only": "Envoyé (hors ligne)"
+  },
   "welcome": "Bienvenue sur Nexus",
   "login": "Se connecter",
   "register": "S'inscrire",

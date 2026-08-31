@@ -10,6 +10,7 @@ import FollowListModal from "@/components/FollowListModal";
 import TipModal from "@/components/TipModal";
 import PullToRefresh from "@/components/PullToRefresh";
 import ReferralCard from "@/components/ReferralCard";
+import CreatorStats from "@/components/CreatorStats";
 import { Lock, Clock, UserPlus, UserMinus, Edit, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -529,9 +530,14 @@ export default function ProfilePage({ user, setUser }) {
         })}
       </div>
 
+      {/* ── Stats créateur (clips / vues / J'aime) ───────────────────────── */}
+      <div className="mt-5">
+        <CreatorStats userId={userId || user?.id} isOwn={isOwnProfile} />
+      </div>
+
       {/* ── Parrainage (profil personnel) ─────────────────────────────────── */}
       {isOwnProfile && (
-        <div className="px-4 mt-5">
+        <div className="px-4 mt-4">
           <ReferralCard user={user} />
         </div>
       )}

@@ -1285,7 +1285,7 @@ export default function WidgetStack({ user, setUser }) {
           </div>
         )}
       </div>
-      {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
+      {openMatch && <MatchCenter match={openMatch} currentUser={user} onClose={() => setOpenMatch(null)} />}
       {editing && (
         <StackEditor order={configOrder} smartRotate={smartRotate} onChange={applyConfig} onClose={() => setEditing(false)} />
       )}

@@ -1,4 +1,46 @@
 {
+  "challenge": {
+    "weekly_clip": "Clip of the week",
+    "ucl": "Champions League clips",
+    "skill": "Skill of the week",
+    "laugh": "Make them laugh",
+    "ends_sunday": "Ends Sunday",
+    "join": "Join"
+  },
+  "close_friends": {
+    "title": "Close friends",
+    "sub": "Pick who sees your close-friends content.",
+    "search": "Search a username…",
+    "empty": "No one to show yet.",
+    "count": "close friends",
+    "updated": "Close friends updated"
+  },
+  "creator": {
+    "clips": "Clips",
+    "views": "Views",
+    "likes": "Likes"
+  },
+  "growth": {
+    "hub_title": "Grow on Nexus"
+  },
+  "smart_notif": {
+    "title": "Useful notifications",
+    "sub": "Only what matters — no spam.",
+    "match": "Match reminders",
+    "comments": "Replies to my comments",
+    "followers": "New followers",
+    "likes_digest": "Weekly likes digest",
+    "marketing": "News & tips",
+    "saved": "Preferences saved",
+    "local": "Saved on this device"
+  },
+  "match_room": {
+    "open": "Match room",
+    "title": "Match room",
+    "empty": "Be the first to react to this match.",
+    "placeholder": "Say something…",
+    "local_only": "Sent (offline)"
+  },
   "welcome": "Welcome to Nexus",
   "login": "Log in",
   "register": "Register",
