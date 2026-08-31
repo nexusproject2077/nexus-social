@@ -9,7 +9,8 @@ import axios from "axios";
 import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
-import { MatchCard, MmaCard, displayMatches } from "@/components/LiveScores";
+import { MatchCard, MmaCard, WweCard, displayMatches } from "@/components/LiveScores";
+import { fetchWweEvents } from "@/lib/wweClient";
 import { getTodayMinutes } from "@/lib/screenTime";
 import { fetchLiveScoresFromEspn, searchTeamsFromEspn, resolveTeamIdByName } from "@/lib/espnClient";
 import Flag from "@/components/Flags";
@@ -21,6 +22,7 @@ const ROW_H = 54;
 const WIDGETS = {
   football: { label: "Football", icon: "sports_soccer", color: NEON },
   mma: { label: "MMA / UFC", icon: "sports_mma", color: "#ef4444" },
+  wwe: { label: "WWE", icon: "sports_kabaddi", color: "#e11d48" },
   trends: { label: "Tendances", icon: "trending_up", color: "#22d3ee" },
   weather: { label: "Météo", icon: "partly_cloudy_day", color: "#fbbf24" },
   finance: { label: "Finance", icon: "monitoring", color: "#a78bfa" },
@@ -30,7 +32,7 @@ const WIDGETS = {
   ai_analytics: { label: "AI Analytics", icon: "auto_graph", color: "#22d3ee", premium: true },
   astro_lifestyle: { label: "Astro Néon", icon: "auto_awesome", color: "#a78bfa", premium: true },
 };
-const DEFAULT_ORDER = ["trends", "screentime", "weather", "finance", "football", "mma",
+const DEFAULT_ORDER = ["trends", "screentime", "weather", "finance", "football", "mma", "wwe",
   "profile_views", "ai_analytics", "astro_lifestyle"];
 
 // Signes astro (widget Astro Néon).
@@ -650,9 +652,12 @@ export default function WidgetStack({ user, setUser }) {
     // Favoris : backend (/livescores renvoie aussi les favoris de l'utilisateur).
     const favP = axios.get(`${API}/livescores`).then((r) => r.data || {}).catch(() => ({}));
     const espnP = fetchLiveScoresFromEspn({ foot: showFoot, mma: showMma }).catch(() => []);
-    Promise.all([favP, espnP]).then(([d, espn]) => {
+    // WWE via TheSportsDB (gratuit) — sport "wwe", distinct du MMA.
+    const wweP = showMma ? fetchWweEvents().catch(() => []) : Promise.resolve([]);
+    Promise.all([favP, espnP, wweP]).then(([d, espn, wwe]) => {
       const backendItems = Array.isArray(d.matches) ? d.matches : [];
-      const items = espn.length ? espn : backendItems; // ESPN direct prioritaire
+      const base = espn.length ? espn : backendItems; // ESPN direct prioritaire
+      const items = [...base, ...(Array.isArray(wwe) ? wwe : [])];
       const changed = [];
       for (const m of items) {
         const key = `${m.sport}-${m.id}`;
@@ -783,17 +788,19 @@ export default function WidgetStack({ user, setUser }) {
 
   // Repli DÉMO (opt-in) quand le sport réel est vide → permet de tester le widget.
   const demoOn = demoScoresOn();
-  const footBase = displayMatches(matches.filter((m) => m.sport !== "mma"), favL, favT);
+  const footBase = displayMatches(matches.filter((m) => m.sport !== "mma" && m.sport !== "wwe"), favL, favT);
   const footItems = footBase.length ? footBase : (demoOn ? DEMO_FOOT : []);
   const mmaBase = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
   const mmaItems = mmaBase.length ? mmaBase : (demoOn ? DEMO_MMA : []);
+  // WWE : direct d'abord, puis à venir, puis terminés (le tri vient déjà du client).
+  const wweItems = matches.filter((m) => m.sport === "wwe");
   const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id));
   // Pré-match « à surveiller » : favori OU Ligue 1, qui débute dans moins de 2 h.
   const isFavOrL1 = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id) || m.league_slug === "fra.1";
   const startsWithin2h = (m) => { const t = new Date(m.date).getTime(); return Number.isFinite(t) && (t - Date.now()) <= 2 * 3600 * 1000 && (t - Date.now()) >= -15 * 60 * 1000; };
   const imminentFavPre = footItems.some((m) => m.state === "pre" && isFavOrL1(m) && startsWithin2h(m));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
-  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true,
+  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, wwe: showMma && wweItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true,
     // Widgets Premium : toujours affichés (verrouillés = teaser d'abonnement).
     profile_views: true, ai_analytics: true, astro_lifestyle: true };
   const pages = configOrder.filter((id) => avail[id]);
@@ -961,6 +968,18 @@ export default function WidgetStack({ user, setUser }) {
           {mmaItems.map((m) => (
             <div key={m.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
               <MmaCard m={m} flash={!!flashing[`mma-${m.id}`]} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+    if (id === "wwe") return (
+      <div className="h-full flex flex-col pl-3 py-2.5">
+        <div className="pr-3"><PageHeader id="wwe" /></div>
+        <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar items-center" style={{ scrollSnapType: "x mandatory", paddingRight: 16 }}>
+          {wweItems.map((m) => (
+            <div key={m.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
+              <WweCard m={m} flash={!!flashing[`wwe-${m.id}`]} />
             </div>
           ))}
         </div>

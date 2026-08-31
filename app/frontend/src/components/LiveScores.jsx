@@ -234,6 +234,49 @@ export function MmaCard({ m, compact, flash }) {
   );
 }
 
+// Carte WWE — MÊME gabarit que la carte MMA (fond sombre Nexus, 178px, en-tête +
+// pied), avec l'identité catch : pastille de marque colorée (Raw rouge · NXT or ·
+// SmackDown bleu · PLE violet) et badge LIVE animé pendant le show. WWE reste
+// distinct du MMA (sport "wwe" vs "mma").
+export function WweCard({ m, compact, flash }) {
+  const live = m.state === "in";
+  const done = m.state === "post";
+  const upcoming = !live && !done;
+  const brandColor = m.brand_color || "#e11d48";
+  const status = live ? (m.clock || i18n.t("livescores.in_progress"))
+    : done ? (m.detail || i18n.t("livescores.finished"))
+    : formatKickoff(m.date);
+  return (
+    <div className={`rounded-2xl p-3 flex flex-col justify-between ${compact ? "" : "flex-shrink-0"}`}
+      style={{ background: "#111827", border: `1px solid ${live ? brandColor + "55" : "rgba(255,255,255,0.06)"}`, boxShadow: flash ? `0 0 18px ${brandColor}44` : "none", width: compact ? "auto" : 178, minHeight: 98 }}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="flex items-center gap-1 min-w-0 flex-1">
+          <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 12, color: brandColor }}>sports_kabaddi</span>
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider flex-shrink-0" style={{ background: brandColor, color: "#0b1220" }}>{m.brand || "WWE"}</span>
+        </span>
+        {live ? (
+          <span className="flex items-center gap-1 flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: brandColor, boxShadow: `0 0 6px ${brandColor}` }} />
+            <span className="text-[9px] font-black" style={{ color: brandColor }}>LIVE</span>
+          </span>
+        ) : upcoming ? <UpcomingBadge /> : null}
+      </div>
+      <div className="space-y-1">
+        <p className="text-xs font-bold leading-tight truncate" style={{ color: "#f4f8ff" }}>{m.event}</p>
+        {(m.venue || m.detail) && (
+          <p className="text-[11px] truncate" style={{ color: "#9fb0c8" }}>{m.is_ple ? (m.venue || m.detail) : m.detail}</p>
+        )}
+      </div>
+      <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <span className={`text-[10px] font-bold flex items-center gap-1 ${flash ? "nexus-score-flash" : ""}`} style={{ color: live ? brandColor : upcoming ? "#9fb0c8" : "#6b7686" }}>
+          {upcoming && <span className="material-symbols-outlined" style={{ fontSize: 12 }}>schedule</span>}
+          {status}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // Modale de filtres : cocher les ligues majeures (Toggles).
 function FilterModal({ favL, onSave, onClose }) {
   const [sel, setSel] = useState(new Set(favL));
