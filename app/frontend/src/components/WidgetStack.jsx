@@ -11,7 +11,7 @@ import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
 import { MatchCard, MmaCard, WweCard, displayMatches, isUclMatch } from "@/components/LiveScores";
 import { fetchWweEvents } from "@/lib/wweClient";
-import { getTodayMinutes } from "@/lib/screenTime";
+import { getTodayMinutes, syncScreenTime } from "@/lib/screenTime";
 import { fetchLiveScoresFromEspn, searchTeamsFromEspn, resolveTeamIdByName } from "@/lib/espnClient";
 import Flag from "@/components/Flags";
 import PremiumModal from "@/components/PremiumModal";
@@ -726,10 +726,15 @@ export default function WidgetStack({ user, setUser }) {
     return () => { alive = false; clearInterval(iv); };
   }, [wantFinance, financeKey]);
 
-  // Temps d'écran : rafraîchit le compteur local (bien-être) toutes les 30 s.
+  // Temps d'écran : agrégat multi-appareils. Pull immédiat pour afficher tout
+  // de suite le total du jour (téléphone + PC), puis rafraîchit toutes les 30 s.
   useEffect(() => {
-    const iv = setInterval(() => setScreenMin(getTodayMinutes()), 30000);
-    return () => clearInterval(iv);
+    let alive = true;
+    syncScreenTime(API).then(() => { if (alive) setScreenMin(getTodayMinutes()); });
+    const iv = setInterval(() => {
+      syncScreenTime(API).then(() => { if (alive) setScreenMin(getTodayMinutes()); });
+    }, 30000);
+    return () => { alive = false; clearInterval(iv); };
   }, []);
 
   // Visites du profil (widget Premium) : nombre + visiteurs (avatars réservés aux abonnés).

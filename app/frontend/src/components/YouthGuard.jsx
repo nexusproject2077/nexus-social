@@ -8,7 +8,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/App";
-import { addSeconds, getTodayMinutes } from "@/lib/screenTime";
+import { addSeconds, getTodayMinutes, syncScreenTime } from "@/lib/screenTime";
 import i18n from "@/i18n";
 
 const TICK_MS = 20000; // granularité du compteur (20 s)
@@ -31,6 +31,29 @@ export default function YouthGuard({ user, setUser }) {
     }, TICK_MS);
     return () => clearInterval(iv);
   }, []);
+
+  // Synchronisation multi-appareils : pousse le delta local au serveur et
+  // récupère l'agrégat (téléphone + PC + …). Pull immédiat au montage pour
+  // qu'un nouvel appareil affiche tout de suite le total du jour.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const sync = () =>
+      syncScreenTime(API).then(() => {
+        if (!cancelled) setMinutes(getTodayMinutes());
+      });
+    sync();
+    const iv = setInterval(sync, 60000);
+    const onVis = () => {
+      if (document.visibilityState === "hidden") sync(); // flush avant de quitter
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [user]);
 
   if (!user || !isFeedRoute(location.pathname)) return null;
 

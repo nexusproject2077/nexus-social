@@ -2337,6 +2337,52 @@ async def update_time_limit(data: dict = Body(...), current_user: dict = Depends
     }
 
 
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _screen_day(raw) -> str:
+    """Jour au format YYYY-MM-DD : celui fourni par le client s'il est valide
+    (pour que « aujourd'hui » soit le même sur tous ses appareils), sinon UTC."""
+    if isinstance(raw, str) and _DAY_RE.match(raw):
+        return raw
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+@api_router.get("/users/me/screen-time")
+async def get_screen_time(day: str = "", current_user: dict = Depends(get_current_user)):
+    """Total agrégé (tous appareils) du temps d'écran du jour, en secondes."""
+    d = _screen_day(day)
+    row = await db.screen_time.find_one(
+        {"user_id": current_user["id"], "day": d}, {"_id": 0, "seconds": 1}
+    )
+    return {"day": d, "seconds": int((row or {}).get("seconds") or 0)}
+
+
+@api_router.post("/users/me/screen-time")
+async def add_screen_time(data: dict = Body(...), current_user: dict = Depends(get_current_user)):
+    """Ajoute le delta de secondes compté par un appareil et renvoie l'agrégat
+    du jour. Le delta est borné (anti-abus / horloge déréglée)."""
+    d = _screen_day(data.get("day"))
+    try:
+        delta = int(float(data.get("delta_seconds") or 0))
+    except (TypeError, ValueError):
+        delta = 0
+    delta = max(0, min(delta, 3600))  # au plus 1 h par appel
+    if delta:
+        await db.screen_time.update_one(
+            {"user_id": current_user["id"], "day": d},
+            {
+                "$inc": {"seconds": delta},
+                "$setOnInsert": {"user_id": current_user["id"], "day": d},
+            },
+            upsert=True,
+        )
+    row = await db.screen_time.find_one(
+        {"user_id": current_user["id"], "day": d}, {"_id": 0, "seconds": 1}
+    )
+    return {"day": d, "seconds": int((row or {}).get("seconds") or 0)}
+
+
 @api_router.put("/users/me/appearance")
 async def update_appearance(
     appearance: dict,
