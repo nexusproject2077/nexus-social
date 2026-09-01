@@ -496,7 +496,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {(!hideMobileChrome || bottomNav) && (
       <>
       <nav
-        className="lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 select-none"
+        className="mobile-bottom-nav lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 select-none"
         style={{
           // Hauteur = 4rem de contenu + zone sûre iOS (indicateur d'accueil) :
           // les icônes ne tombent plus dans la zone de geste du bas. Sur les

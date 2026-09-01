@@ -264,3 +264,14 @@ code {
     }
 }
 
+
+/* Barre de navigation mobile : glisse hors de l'écran quand une feuille plein
+   écran l'exige (ex. commentaires Nexus Clips) pour ne pas cacher le champ de
+   saisie. Le corps porte alors la classe `nexus-hide-bottomnav`. */
+.mobile-bottom-nav {
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+body.nexus-hide-bottomnav .mobile-bottom-nav {
+    transform: translateY(130%);
+    pointer-events: none;
+}

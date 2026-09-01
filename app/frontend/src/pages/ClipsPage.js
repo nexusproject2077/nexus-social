@@ -186,7 +186,7 @@ function CommentItem({ comment, currentUser, clipAuthorId, onDeleted }) {
   );
 }
 
-function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete }) {
+function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete, onCommentsOpenChange }) {
   const { t } = useTranslation();
   const navigate  = useNavigate();
   const videoRef  = useRef(null);
@@ -231,6 +231,12 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   });
   // Le clavier iOS/Android fait remonter le sheet au-dessus de lui.
   const kbInset = useKeyboardInset();
+  // Remonte l'état d'ouverture des commentaires à la page (coupe le
+  // pull-to-refresh + masque la barre du bas). Nettoyage au démontage du clip.
+  useEffect(() => {
+    onCommentsOpenChange?.(showComment);
+  }, [showComment, onCommentsOpenChange]);
+  useEffect(() => () => onCommentsOpenChange?.(false), [onCommentsOpenChange]);
   const tapTimer = useRef(null);
   // Vitesse 2x (appui long) + plein écran 16:9 + seek ±5s.
   const [speeding, setSpeeding]     = useState(false);   // lecture 2x en cours
@@ -973,6 +979,14 @@ export default function ClipsPage({ user, setUser }) {
   const [view, setView] = useState("immersive"); // "immersive" | "grid"
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Vrai quand la feuille de commentaires d'un clip est ouverte : on coupe le
+  // pull-to-refresh (sinon glisser la poignée rafraîchit la page) et on masque
+  // la barre de navigation du bas (sinon elle cache le champ « commenter »).
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  useEffect(() => {
+    document.body.classList.toggle("nexus-hide-bottomnav", commentsOpen);
+    return () => document.body.classList.remove("nexus-hide-bottomnav");
+  }, [commentsOpen]);
   const containerRef = useRef(null);
   const observerRef  = useRef(null);
   const fileInputRef = useRef(null);
@@ -1342,7 +1356,7 @@ export default function ClipsPage({ user, setUser }) {
       <PullToRefresh
         onRefresh={() => fetchClips(true)}
         getScrollTop={() => containerRef.current?.scrollTop || 0}
-        enabled={view === "immersive"}
+        enabled={view === "immersive" && !commentsOpen}
       />
       {view === "immersive" ? (
         /* Full-screen vertical scroll snapping */
@@ -1365,7 +1379,8 @@ export default function ClipsPage({ user, setUser }) {
           {clips.map((clip, idx) => (
             <div key={clip.id} data-index={idx} className="w-full" style={{ height: "100dvh" }}>
               <ClipCard post={clip} currentUser={user} isActive={idx === activeIndex && !showComposer}
-                index={idx} registerVideo={registerVideo} onDelete={handleDeleteClip} />
+                index={idx} registerVideo={registerVideo} onDelete={handleDeleteClip}
+                onCommentsOpenChange={setCommentsOpen} />
             </div>
           ))}
           {loadingMore && (

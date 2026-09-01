@@ -9407,7 +9407,7 @@ async def finance(ids: str = "", current_user: dict = Depends(get_current_user))
     return {"assets": data, "catalog": FINANCE_ASSETS}
 
 
-WIDGET_STACK_IDS = ["trends", "screentime", "weather", "finance", "football", "mma",
+WIDGET_STACK_IDS = ["trends", "screentime", "weather", "finance", "football", "mma", "wwe",
                     "profile_views", "ai_analytics", "astro_lifestyle"]
 
 

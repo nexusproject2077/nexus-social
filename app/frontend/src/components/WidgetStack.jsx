@@ -9,6 +9,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
+import { useSheetDismiss } from "@/hooks/useDraggableSheet";
 import { MatchCard, MmaCard, WweCard, displayMatches, isUclMatch } from "@/components/LiveScores";
 import { fetchWweEvents } from "@/lib/wweClient";
 import { getTodayMinutes, syncScreenTime } from "@/lib/screenTime";
@@ -202,6 +203,8 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
   const [drag, setDrag] = useState(null);        // { index, hover, dy }
   const [swiped, setSwiped] = useState(null);    // id dont la suppression est révélée
   const dragRef = useRef(null);
+  // Poignée manipulable : glisser la feuille vers le bas pour la refermer.
+  const dismiss = useSheetDismiss({ onClose });
   const removed = Object.keys(WIDGETS).filter((id) => !list.includes(id));
 
   // Verrou du défilement de l'arrière-plan tant que la modale est ouverte
@@ -268,8 +271,11 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full sm:max-w-md rounded-t-3xl px-5 overflow-y-auto overscroll-contain no-scrollbar"
         onTouchMove={(e) => e.stopPropagation()}
-        style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "85vh", WebkitOverflowScrolling: "touch", paddingTop: "calc(env(safe-area-inset-top,0px) + 2rem)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)" }}>
-        <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.22)" }} />
+        style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "85vh", WebkitOverflowScrolling: "touch", paddingTop: "calc(env(safe-area-inset-top,0px) + 2rem)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)", ...dismiss.sheetStyle }}>
+        {/* Poignée manipulable (glisser vers le bas pour fermer) */}
+        <div {...dismiss.handleProps} className="-mt-2 -mx-5 pt-2 pb-3 flex justify-center">
+          <div className="w-10 h-1.5 rounded-full" style={{ background: `${NEON}88` }} />
+        </div>
         <h3 className="text-white font-black text-lg mb-1">{t("stack.edit_title")}</h3>
         <p className="text-xs mb-4" style={{ color: "#859397" }}>{t("stack.edit_hint")}</p>
 
