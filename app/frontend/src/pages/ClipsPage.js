@@ -907,11 +907,11 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete,
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder={t("clips.add_comment")}
-              className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500 py-2 px-3 rounded-xl"
+              className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500 py-2 px-4 rounded-full"
               style={{ backgroundColor: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
               onKeyDown={(e) => { if (e.key === "Enter") handleSendComment(); }}
             />
-            <button onClick={handleSendComment} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
+            <button onClick={handleSendComment} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
               <span className="material-symbols-outlined text-sm">send</span>
             </button>
           </div>

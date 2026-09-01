@@ -368,9 +368,12 @@ export default function CommentsSection({
       className="pt-3"
       style={{ borderTop: `1px solid rgba(255,255,255,0.06)` }}
     >
-      {/* ── Onglets de tri ─────────────────────────────────────────────── */}
+      {/* ── Onglets de tri — contrôle segmenté 50/50, coins arrondis ─────── */}
       {comments.length > 0 && (
-        <div className="flex items-center gap-6 mb-3 px-1">
+        <div
+          className="flex items-center gap-1 mb-3 p-1 rounded-full"
+          style={{ backgroundColor: C.container, border: `1px solid ${C.outlineVar}` }}
+        >
           {[
             { id: "relevant", label: t("comments.sort_relevant") },
             { id: "recent", label: t("comments.sort_recent") },
@@ -380,16 +383,13 @@ export default function CommentsSection({
               <button
                 key={tab.id}
                 onClick={() => setSort(tab.id)}
-                className="relative pb-1.5 text-xs font-bold transition-colors"
-                style={{ color: active ? C.onSurface : C.outline }}
+                className="flex-1 py-1.5 text-xs font-bold rounded-full text-center transition-all active:scale-[0.98]"
+                style={{
+                  background: active ? C.cyan : "transparent",
+                  color: active ? C.onPrimary : C.outline,
+                }}
               >
                 {tab.label}
-                {active && (
-                  <span
-                    className="absolute left-0 right-0 -bottom-px h-0.5 rounded-full"
-                    style={{ backgroundColor: C.cyan }}
-                  />
-                )}
               </button>
             );
           })}
@@ -422,7 +422,7 @@ export default function CommentsSection({
             <button
               onClick={handleSubmitComment}
               disabled={submitting || !newComment.trim()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-40"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 disabled:opacity-40"
               style={{
                 background: newComment.trim()
                   ? "linear-gradient(135deg,#22d3ee,#3b82f6)"
@@ -531,7 +531,7 @@ export default function CommentsSection({
                               onClick={() => setMenuId(null)}
                             />
                             <div
-                              className="absolute right-0 top-7 z-20 w-44 rounded-xl overflow-hidden shadow-xl"
+                              className="absolute right-0 top-7 z-20 w-44 rounded-2xl overflow-hidden shadow-xl"
                               style={{
                                 backgroundColor: C.container,
                                 border: `1px solid ${C.outlineVar}`,
@@ -647,7 +647,7 @@ export default function CommentsSection({
                     {replyingTo === comment.id && (
                       <div className="mt-2">
                         <div
-                          className="flex items-center justify-between px-2.5 py-1 mb-1.5 rounded-lg text-[11px]"
+                          className="flex items-center justify-between px-3 py-1 mb-1.5 rounded-full text-[11px]"
                           style={{
                             backgroundColor: `${C.cyan}14`,
                             color: C.cyan,
@@ -690,7 +690,7 @@ export default function CommentsSection({
                               <button
                                 onClick={() => handleReply(comment.id)}
                                 disabled={!replyText.trim()}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 disabled:opacity-40"
+                                className="flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold transition-all active:scale-95 disabled:opacity-40"
                                 style={{
                                   background: replyText.trim()
                                     ? "linear-gradient(135deg,#22d3ee,#3b82f6)"
