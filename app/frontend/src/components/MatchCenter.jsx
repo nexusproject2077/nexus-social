@@ -210,7 +210,7 @@ export default function MatchCenter({ match, onClose, currentUser }) {
         {/* Salle du match — chat léger dédié à la rencontre */}
         <div className="px-4 pb-4 pt-1 flex-shrink-0">
           <button type="button" onClick={() => setRoomOpen(true)}
-            className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+            className="w-full py-2.5 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
             style={{ background: "linear-gradient(90deg,rgba(34,211,238,0.15),rgba(59,130,246,0.15))", border: "1px solid rgba(34,211,238,0.35)", color: "#67e8f9" }}>
             <span className="material-symbols-outlined text-base">forum</span>
             {i18n.t("match_room.open")}

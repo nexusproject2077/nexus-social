@@ -17,7 +17,7 @@ export default function ChallengeBanner({ onUseTag }) {
       }}
     >
       <div
-        className="w-11 h-11 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+        className="w-11 h-11 rounded-2xl flex items-center justify-center text-lg flex-shrink-0"
         style={{ background: "rgba(34,211,238,0.2)" }}
       >
         #

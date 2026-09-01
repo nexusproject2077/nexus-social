@@ -57,7 +57,7 @@ export default function CreatorStats({ userId, isOwn }) {
       ].map((x) => (
         <div
           key={x.label}
-          className="rounded-xl py-2.5 text-center"
+          className="rounded-2xl py-2.5 text-center"
           style={{
             background: "#131b2e",
             border: "1px solid rgba(34,211,238,0.1)",

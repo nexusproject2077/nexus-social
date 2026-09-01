@@ -629,6 +629,9 @@ export default function WidgetStack({ user, setUser }) {
   const cfg = user?.widget_stack_config || {};
   const smartRotate = cfg.smart_rotate !== false;
   const configOrder = (Array.isArray(cfg.order) && cfg.order.length) ? cfg.order : DEFAULT_ORDER;
+  // WWE est un sport à part : dès qu'il est dans la pile, on le charge même si
+  // le sport MMA/combat est masqué (sinon le widget « disparaît »).
+  const wantWwe = configOrder.includes("wwe");
   const financeAssets = (Array.isArray(cfg.finance_assets) && cfg.finance_assets.length) ? cfg.finance_assets : DEFAULT_FINANCE_ASSETS;
   const weatherCity = (cfg.weather_city && typeof cfg.weather_city === "object") ? cfg.weather_city : null;
 
@@ -659,7 +662,7 @@ export default function WidgetStack({ user, setUser }) {
     const favP = axios.get(`${API}/livescores`).then((r) => r.data || {}).catch(() => ({}));
     const espnP = fetchLiveScoresFromEspn({ foot: showFoot, mma: showMma }).catch(() => []);
     // WWE via TheSportsDB (gratuit) — sport "wwe", distinct du MMA.
-    const wweP = showMma ? fetchWweEvents().catch(() => []) : Promise.resolve([]);
+    const wweP = (showMma || wantWwe) ? fetchWweEvents().catch(() => []) : Promise.resolve([]);
     Promise.all([favP, espnP, wweP]).then(([d, espn, wwe]) => {
       const backendItems = Array.isArray(d.matches) ? d.matches : [];
       const base = espn.length ? espn : backendItems; // ESPN direct prioritaire
@@ -679,7 +682,7 @@ export default function WidgetStack({ user, setUser }) {
         changed.forEach((k) => setTimeout(() => setFlashing((f) => { const n = { ...f }; delete n[k]; return n; }), 3000));
       }
     });
-  }, [showFoot, showMma]);
+  }, [showFoot, showMma, wantWwe]);
 
   useEffect(() => {
     axios.get(`${API}/trending/hashtags?limit=6`).then((r) => setTrends(Array.isArray(r.data?.trending) ? r.data.trending : [])).catch(() => {});
@@ -815,7 +818,7 @@ export default function WidgetStack({ user, setUser }) {
   const uclSoon = (m) => { const t = new Date(m.date).getTime(); return Number.isFinite(t) && (t - Date.now()) <= 6 * 3600 * 1000 && (t - Date.now()) >= -150 * 60 * 1000; };
   const uclMatchday = footItems.some((m) => isUclMatch(m) && (m.state === "in" || uclSoon(m)));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
-  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, wwe: showMma && wweItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true,
+  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, wwe: wweItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true,
     // Widgets Premium : toujours affichés (verrouillés = teaser d'abonnement).
     profile_views: true, ai_analytics: true, astro_lifestyle: true };
   const pages = configOrder.filter((id) => avail[id]);

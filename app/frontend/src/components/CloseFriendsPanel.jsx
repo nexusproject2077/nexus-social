@@ -66,7 +66,7 @@ export default function CloseFriendsPanel() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={t("close_friends.search")}
-        className="w-full mb-3 rounded-xl px-3 py-2 text-sm outline-none text-white"
+        className="w-full mb-3 rounded-full px-4 py-2 text-sm outline-none text-white"
         style={{
           background: "#0b1326",
           border: "1px solid rgba(255,255,255,0.08)",
@@ -85,7 +85,7 @@ export default function CloseFriendsPanel() {
               key={u.id}
               type="button"
               onClick={() => toggle(u.id)}
-              className="w-full flex items-center gap-3 py-2 px-2 rounded-xl"
+              className="w-full flex items-center gap-3 py-2 px-2 rounded-2xl"
               style={{
                 background: on ? "rgba(34,211,238,0.1)" : "transparent",
               }}

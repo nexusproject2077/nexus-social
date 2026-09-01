@@ -71,7 +71,7 @@ export default function SmartNotifCard({ user }) {
             type="button"
             disabled={saving}
             onClick={() => toggle(r.key)}
-            className="w-full flex items-center justify-between py-2.5 px-2 rounded-xl"
+            className="w-full flex items-center justify-between py-2.5 px-3 rounded-2xl"
             style={{ background: "rgba(255,255,255,0.03)" }}
           >
             <span className="text-[13px] text-white text-left">{r.label}</span>

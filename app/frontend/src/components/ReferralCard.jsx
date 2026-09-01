@@ -93,7 +93,7 @@ export default function ReferralCard({ user }) {
       {/* En-tête */}
       <div className="flex items-center gap-3 mb-3">
         <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+          className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
           style={{ background: `${C.cyan}1f`, color: C.cyan }}
         >
           <Gift className="w-[18px] h-[18px]" />
@@ -115,7 +115,7 @@ export default function ReferralCard({ user }) {
       <div className="flex items-center gap-2">
         <button
           onClick={copy}
-          className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5 rounded-xl text-left transition-colors"
+          className="flex-1 min-w-0 flex items-center gap-2 px-4 py-2.5 rounded-full text-left transition-colors"
           style={{ background: C.high, border: `1px solid ${C.line}` }}
         >
           <span
@@ -136,7 +136,7 @@ export default function ReferralCard({ user }) {
         </button>
         <button
           onClick={share}
-          className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl active:scale-95 transition-transform"
+          className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-full active:scale-95 transition-transform"
           style={{
             background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
             color: "#04233a",

@@ -270,7 +270,7 @@ export function WweCard({ m, compact, flash }) {
       <div className="flex items-center justify-between gap-2 mb-2">
         <span className="flex items-center gap-1 min-w-0 flex-1">
           <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 12, color: brandColor }}>sports_kabaddi</span>
-          <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider flex-shrink-0" style={{ background: brandColor, color: "#0b1220" }}>{m.brand || "WWE"}</span>
+          <span className="px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider flex-shrink-0" style={{ background: brandColor, color: "#0b1220" }}>{m.brand || "WWE"}</span>
         </span>
         {live ? (
           <span className="flex items-center gap-1 flex-shrink-0">
