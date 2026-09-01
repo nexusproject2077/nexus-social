@@ -874,8 +874,13 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete,
             </button>
           </div>
 
-          {/* Liste des commentaires */}
-          <div className="flex-1 overflow-y-auto space-y-3 mb-3" style={{ scrollbarWidth: "none" }}>
+          {/* Liste des commentaires — le défilement reste confiné à la liste
+              (ne « chaîne » pas vers le clip derrière). */}
+          <div
+            className="flex-1 overflow-y-auto space-y-3 mb-3"
+            style={{ scrollbarWidth: "none", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
+            onTouchMove={(e) => e.stopPropagation()}
+          >
             {loadingComments ? (
               <p className="text-xs text-center py-4" style={{ color: C.outline }}>{t("clips.loading")}</p>
             ) : commentsList.length === 0 ? (
@@ -1364,7 +1369,11 @@ export default function ClipsPage({ user, setUser }) {
           ref={containerRef}
           className="h-[100dvh] overflow-y-scroll select-none"
           style={{
-            scrollSnapType: "y mandatory",
+            // Commentaires ouverts → on fige le défilement/snap du fil de clips
+            // pour que SEULE la liste de commentaires défile.
+            scrollSnapType: commentsOpen ? "none" : "y mandatory",
+            overflowY: commentsOpen ? "hidden" : "scroll",
+            touchAction: commentsOpen ? "none" : undefined,
             scrollBehavior: "smooth",
             WebkitOverflowScrolling: "touch",
             marginTop: 0,
