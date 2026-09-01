@@ -1,4 +1,8 @@
 {
+  "error_comments_log": "Erreur au chargement des commentaires",
+  "error_deleting": "Erreur lors de la suppression",
+  "error_occurred": "Une erreur est survenue",
+  "error_replies": "Erreur au chargement des réponses",
   "challenge": {
     "weekly_clip": "Clip de la semaine",
     "ucl": "Clips Champions League",
@@ -16,6 +20,7 @@
     "updated": "Amis proches mis à jour"
   },
   "creator": {
+    "badge": "Créateur",
     "clips": "Clips",
     "views": "Vues",
     "likes": "J'aime"
@@ -719,6 +724,18 @@
     "now_following": "Vous suivez @{{user}}"
   },
   "comments": {
+    "sort_relevant": "Pertinents",
+    "sort_recent": "Récents",
+    "copy_link": "Copier le lien",
+    "delete": "Supprimer",
+    "err_report": "Échec du signalement",
+    "hide": "Masquer",
+    "link_copied": "Lien copié",
+    "publishing": "Publication…",
+    "replying_to": "En réponse à @{{user}}",
+    "report": "Signaler",
+    "reported": "Signalé",
+    "show_replies": "Voir les {{count}} réponses",
     "add_comment": "Ajouter un commentaire...",
     "empty": "Aucun commentaire — soyez le premier !",
     "reply": "Répondre",

@@ -1,4 +1,8 @@
 {
+  "error_comments_log": "Error loading comments",
+  "error_deleting": "Error deleting",
+  "error_occurred": "An error occurred",
+  "error_replies": "Error loading replies",
   "challenge": {
     "weekly_clip": "Clip of the week",
     "ucl": "Champions League clips",
@@ -16,6 +20,7 @@
     "updated": "Close friends updated"
   },
   "creator": {
+    "badge": "Creator",
     "clips": "Clips",
     "views": "Views",
     "likes": "Likes"
@@ -719,6 +724,18 @@
     "now_following": "You now follow @{{user}}"
   },
   "comments": {
+    "sort_relevant": "Relevant",
+    "sort_recent": "Recent",
+    "copy_link": "Copy link",
+    "delete": "Delete",
+    "err_report": "Couldn't report",
+    "hide": "Hide",
+    "link_copied": "Link copied",
+    "publishing": "Publishing…",
+    "replying_to": "Replying to @{{user}}",
+    "report": "Report",
+    "reported": "Reported",
+    "show_replies": "Show {{count}} replies",
     "add_comment": "Add a comment...",
     "empty": "No comments — be the first!",
     "reply": "Reply",

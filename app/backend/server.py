@@ -1339,6 +1339,10 @@ class User(BaseModel):
     referral_count: int = 0
     referral_rewards: int = 0
     referred_by: Optional[str] = None
+    # Croissance : préférences de notifications utiles + liste d'amis proches
+    # (renvoyées dans /auth/me pour que les réglages survivent au rechargement).
+    smart_notif_prefs: Dict[str, bool] = {}
+    close_friends: List[str] = []
     is_admin: bool = False
     # Vérification d'identité (RGPD : on n'expose JAMAIS la pièce ni la date de
     # naissance en clair ; seuls des statuts/booléens sont renvoyés au client).
@@ -12186,6 +12190,11 @@ async def _startup_warmup():
         await db.push_subscriptions.create_index("user_id", name="by_user")
     except Exception as e:
         logger.warning(f"Index push_subscriptions non créé (peut déjà exister): {e}")
+    try:
+        # Temps d'écran : 1 total par (utilisateur, jour) — lecture/écriture ciblée.
+        await db.screen_time.create_index([("user_id", 1), ("day", 1)], unique=True, name="uniq_user_day")
+    except Exception as e:
+        logger.warning(f"Index screen_time non créé (peut déjà exister): {e}")
     try:
         # Vérification d'identité : 1 code OTP par (user, canal) ; revue par statut.
         await db.verification_codes.create_index([("user_id", 1), ("kind", 1)], unique=True)

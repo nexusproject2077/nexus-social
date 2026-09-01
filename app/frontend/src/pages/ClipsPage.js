@@ -13,6 +13,8 @@ import { buildMutedMatcher } from "@/lib/mutedWords";
 import { SURFACE, TEXT, ACCENT } from "@/lib/theme";
 import StoryComposer from "@/components/StoryComposer";
 import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
+import useDraggableSheet from "@/hooks/useDraggableSheet";
+import useKeyboardInset from "@/hooks/useKeyboardInset";
 
 // Le son d'un clip peut être routé par la Web Audio API pour ne PAS réclamer la
 // session « Now Playing » iOS (indicateur son dans la barre d'état). On ne le
@@ -30,15 +32,18 @@ const C = {
   cyan:      ACCENT,
   onPrimary: TEXT.onAccent,
   outline:   TEXT.muted,
+  outlineVar: "#3c494c",
   onSurface: TEXT.primary,
+  rose:      "#f472b6", // « rose doux » Nexus pour les J'aime (pas le rouge TikTok)
 };
 
 const fmtNum = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
 const fmtRel = (d) => { try { return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr }); } catch { return ""; } };
 
 // Un commentaire de clip : like, réponses, et suppression par son auteur.
-function CommentItem({ comment, currentUser, onDeleted }) {
+function CommentItem({ comment, currentUser, clipAuthorId, onDeleted }) {
   const { t } = useTranslation();
+  const isCreator = clipAuthorId && comment.author_id === clipAuthorId;
   const [liked, setLiked]   = useState(comment.is_liked || false);
   const [likes, setLikes]   = useState(comment.likes_count || 0);
   const [repCount, setRepCount] = useState(comment.replies_count || 0);
@@ -105,7 +110,15 @@ function CommentItem({ comment, currentUser, onDeleted }) {
       <Avatar pic={comment.author_profile_pic} name={comment.author_username} />
       <div className="flex-1 min-w-0">
         <p className="text-xs" style={{ color: C.onSurface }}>
-          <span className="font-bold">@{comment.author_username}</span>{" "}
+          <span className="font-bold">@{comment.author_username}</span>
+          {isCreator && (
+            <span
+              className="inline-flex items-center align-middle ml-1.5 px-1.5 py-px rounded-full text-[9px] font-black uppercase tracking-wide"
+              style={{ background: `${C.cyan}22`, color: C.cyan }}
+            >
+              {t("creator.badge")}
+            </span>
+          )}{" "}
           <span>{comment.content}</span>
         </p>
         <div className="flex items-center gap-4 mt-1">
@@ -164,7 +177,7 @@ function CommentItem({ comment, currentUser, onDeleted }) {
 
       {/* Like du commentaire */}
       <button onClick={toggleLike} className="flex flex-col items-center gap-0.5 flex-shrink-0">
-        <span className="material-symbols-outlined text-base" style={{ color: liked ? "#f87171" : C.outline, fontVariationSettings: liked ? "'FILL' 1" : "'FILL' 0" }}>
+        <span className="material-symbols-outlined text-base" style={{ color: liked ? C.rose : C.outline, fontVariationSettings: liked ? "'FILL' 1" : "'FILL' 0" }}>
           favorite
         </span>
         {likes > 0 && <span className="text-[10px]" style={{ color: C.outline }}>{fmtNum(likes)}</span>}
@@ -208,6 +221,16 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
   const [commentText, setCommentText] = useState("");
   const [commentsList, setCommentsList] = useState([]);
   const [loadingComments, setLoadingComments] = useState(false);
+  // Poignée manipulable : glisser vers le haut = plein écran (~92 %), vers le
+  // bas = réduire / fermer ; relâcher = calage (fermé / demi ~45 % / plein).
+  const commentSheet = useDraggableSheet({
+    open: showComment,
+    onClose: () => setShowComment(false),
+    snaps: [0.45, 0.92],
+    initial: 0.45,
+  });
+  // Le clavier iOS/Android fait remonter le sheet au-dessus de lui.
+  const kbInset = useKeyboardInset();
   const tapTimer = useRef(null);
   // Vitesse 2x (appui long) + plein écran 16:9 + seek ±5s.
   const [speeding, setSpeeding]     = useState(false);   // lecture 2x en cours
@@ -811,15 +834,42 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
       {/* Comment panel */}
       {showComment && (
         <div
-          className="absolute bottom-0 left-0 right-0 rounded-t-3xl p-4"
-          style={{ background: "rgba(11,19,38,0.95)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.08)" }}
+          className="absolute left-0 right-0 rounded-t-3xl px-4 z-[2] flex flex-col"
+          style={{
+            bottom: kbInset, // remonte au-dessus du clavier (visualViewport)
+            background: "rgba(11,19,38,0.96)",
+            backdropFilter: "blur(20px)",
+            borderTop: `1px solid ${C.cyan}33`,
+            boxShadow: `0 -1px 0 ${C.cyan}22`,
+            ...commentSheet.sheetStyle,
+          }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: C.outline }} />
-          <h3 className="text-white font-bold text-sm mb-3">{comments} commentaire{comments !== 1 ? "s" : ""}</h3>
+          {/* Poignée manipulable (glisser haut = agrandir, bas = réduire/fermer) */}
+          <div
+            {...commentSheet.handleProps}
+            className="flex-shrink-0 -mx-4 pt-3 pb-2 flex flex-col items-center"
+          >
+            <div className="w-10 h-1.5 rounded-full" style={{ background: `${C.cyan}88` }} />
+          </div>
+
+          {/* Entête : « X commentaires » + fermer */}
+          <div className="flex items-center justify-between mb-3 flex-shrink-0">
+            <h3 className="font-bold text-sm" style={{ color: C.onSurface }}>
+              {comments} commentaire{comments !== 1 ? "s" : ""}
+            </h3>
+            <button
+              onClick={() => setShowComment(false)}
+              className="w-7 h-7 -mr-1 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+              style={{ color: C.outline }}
+              aria-label={t("cancel")}
+            >
+              <span className="material-symbols-outlined text-lg">close</span>
+            </button>
+          </div>
 
           {/* Liste des commentaires */}
-          <div className="max-h-[40vh] overflow-y-auto space-y-3 mb-3" style={{ scrollbarWidth: "none" }}>
+          <div className="flex-1 overflow-y-auto space-y-3 mb-3" style={{ scrollbarWidth: "none" }}>
             {loadingComments ? (
               <p className="text-xs text-center py-4" style={{ color: C.outline }}>{t("clips.loading")}</p>
             ) : commentsList.length === 0 ? (
@@ -830,19 +880,24 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete 
                   key={c.id}
                   comment={c}
                   currentUser={currentUser}
+                  clipAuthorId={post.author_id}
                   onDeleted={handleDeleteComment}
                 />
               ))
             )}
           </div>
 
-          <div className="flex gap-3 items-center">
+          {/* Composer collé en bas (safe-area iPhone/Android sans clavier) */}
+          <div
+            className="flex gap-3 items-center flex-shrink-0"
+            style={{ paddingBottom: kbInset ? 8 : "max(env(safe-area-inset-bottom), 12px)" }}
+          >
             <input
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder={t("clips.add_comment")}
               className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-slate-500 py-2 px-3 rounded-xl"
-              style={{ backgroundColor: C.high, color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}
+              style={{ backgroundColor: C.high, color: C.onSurface, border: `1px solid ${C.outlineVar}` }}
               onKeyDown={(e) => { if (e.key === "Enter") handleSendComment(); }}
             />
             <button onClick={handleSendComment} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)", color: C.onPrimary }}>
