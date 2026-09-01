@@ -396,16 +396,13 @@ export default function CommentsSection({
         </div>
       )}
 
-      {/* ── Compositeur principal ──────────────────────────────────────── */}
-      <div className="flex gap-3 items-start mb-4">
+      {/* ── Compositeur principal — plat, façon X ──────────────────────── */}
+      <div
+        className="flex gap-3 items-start pb-3 mb-1"
+        style={{ borderBottom: `1px solid ${C.outlineVar}55` }}
+      >
         <Avatar user={currentUser} size={36} />
-        <div
-          className="flex-1 flex flex-col gap-2 px-3 py-2 rounded-2xl transition-all focus-within:ring-1"
-          style={{
-            backgroundColor: C.high,
-            border: `1px solid ${C.outlineVar}`,
-          }}
-        >
+        <div className="flex-1 flex flex-col gap-1 pt-1.5">
           <AutoTextarea
             value={newComment}
             onChange={setNewComment}
@@ -422,7 +419,7 @@ export default function CommentsSection({
             <button
               onClick={handleSubmitComment}
               disabled={submitting || !newComment.trim()}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 disabled:opacity-40"
+              className="px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 disabled:opacity-40"
               style={{
                 background: newComment.trim()
                   ? "linear-gradient(135deg,#22d3ee,#3b82f6)"
@@ -430,7 +427,6 @@ export default function CommentsSection({
                 color: newComment.trim() ? C.onPrimary : C.outline,
               }}
             >
-              <Send className="w-3.5 h-3.5" />
               {submitting ? t("comments.publishing") : t("comments.reply")}
             </button>
           </div>
@@ -451,7 +447,7 @@ export default function CommentsSection({
         </p>
       ) : (
         <div
-          className="space-y-1 max-h-[28rem] overflow-y-auto pr-1"
+          className="max-h-[28rem] overflow-y-auto pr-1"
           style={{
             scrollbarWidth: "thin",
             scrollbarColor: `${C.high} transparent`,
@@ -465,7 +461,8 @@ export default function CommentsSection({
               <div
                 key={comment.id}
                 id={`comment-${comment.id}`}
-                className="relative pt-2"
+                className="relative pt-3 pb-2"
+                style={{ borderBottom: `1px solid ${C.outlineVar}40` }}
               >
                 {/* Trait de fil vertical sous l'avatar quand le thread est ouvert */}
                 {threadOpen && (
@@ -581,43 +578,37 @@ export default function CommentsSection({
                       {comment.content}
                     </p>
 
-                    {/* Actions : Répondre · Like · Afficher/Masquer · Partager */}
-                    <div className="flex items-center gap-4 mt-1.5">
+                    {/* Barre d'actions étalée sur la largeur, façon X :
+                        réponse · afficher réponses · j'aime · partager */}
+                    <div
+                      className="flex items-center justify-between mt-2 max-w-[19rem]"
+                      style={{ color: C.outline }}
+                    >
                       <button
                         onClick={() =>
                           setReplyingTo(
                             replyingTo === comment.id ? null : comment.id,
                           )
                         }
-                        className="flex items-center gap-1 text-[11px] font-bold transition-colors hover:text-cyan-400"
+                        className="group flex items-center gap-1.5 text-[11px] transition-colors"
                         style={{
                           color:
                             replyingTo === comment.id ? C.cyan : C.outline,
                         }}
                       >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        {t("comments.reply")}
+                        <span className="p-1.5 -m-1.5 rounded-full transition-colors group-hover:bg-cyan-400/10">
+                          <MessageCircle className="w-4 h-4" />
+                        </span>
+                        <span className="group-hover:text-cyan-400 tabular-nums">
+                          {comment.repliesCount > 0 ? comment.repliesCount : ""}
+                        </span>
                       </button>
 
-                      <button
-                        onClick={() => handleLikeComment(comment.id)}
-                        className="flex items-center gap-1 text-[11px] font-bold transition-colors"
-                        style={{ color: comment.isLiked ? C.rose : C.outline }}
-                      >
-                        <Heart
-                          className="w-3.5 h-3.5"
-                          fill={comment.isLiked ? C.rose : "none"}
-                        />
-                        {comment.likesCount > 0 && (
-                          <span>{comment.likesCount}</span>
-                        )}
-                      </button>
-
-                      {comment.repliesCount > 0 && (
+                      {comment.repliesCount > 0 ? (
                         <button
                           onClick={() => toggleReplies(comment.id)}
-                          className="flex items-center gap-1 text-[11px] font-bold transition-colors hover:text-cyan-400"
-                          style={{ color: C.outline }}
+                          className="flex items-center gap-1 text-[11px] font-semibold transition-colors hover:text-cyan-400"
+                          style={{ color: C.cyan }}
                         >
                           {comment.showReplies ? (
                             <ChevronUp className="w-3.5 h-3.5" />
@@ -630,16 +621,44 @@ export default function CommentsSection({
                                 count: comment.repliesCount,
                               })}
                         </button>
+                      ) : (
+                        <span />
                       )}
+
+                      <button
+                        onClick={() => handleLikeComment(comment.id)}
+                        className="group flex items-center gap-1.5 text-[11px] transition-colors"
+                        style={{ color: comment.isLiked ? C.rose : C.outline }}
+                      >
+                        <span
+                          className="p-1.5 -m-1.5 rounded-full transition-colors"
+                          style={{
+                            background: "transparent",
+                          }}
+                        >
+                          <Heart
+                            className="w-4 h-4"
+                            fill={comment.isLiked ? C.rose : "none"}
+                          />
+                        </span>
+                        <span
+                          className="tabular-nums"
+                          style={{ color: comment.isLiked ? C.rose : C.outline }}
+                        >
+                          {comment.likesCount > 0 ? comment.likesCount : ""}
+                        </span>
+                      </button>
 
                       <button
                         onClick={() =>
                           handleShare(comment.id, comment.author_username)
                         }
-                        className="flex items-center gap-1 text-[11px] font-bold transition-colors hover:text-cyan-400"
+                        className="group flex items-center transition-colors"
                         style={{ color: C.outline }}
                       >
-                        <Share2 className="w-3.5 h-3.5" />
+                        <span className="p-1.5 -m-1.5 rounded-full transition-colors group-hover:bg-cyan-400/10 group-hover:text-cyan-400">
+                          <Share2 className="w-4 h-4" />
+                        </span>
                       </button>
                     </div>
 
@@ -671,10 +690,10 @@ export default function CommentsSection({
                         <div className="flex gap-2 items-start">
                           <Avatar user={currentUser} size={28} />
                           <div
-                            className="flex-1 flex flex-col gap-1.5 px-3 py-1.5 rounded-2xl"
+                            className="flex-1 flex flex-col gap-1.5 pt-1"
                             style={{
-                              backgroundColor: C.high,
-                              border: `1px solid ${C.outlineVar}`,
+                              borderBottom: `1px solid ${C.outlineVar}55`,
+                              paddingBottom: 6,
                             }}
                           >
                             <AutoTextarea
