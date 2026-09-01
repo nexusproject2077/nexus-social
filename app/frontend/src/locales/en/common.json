@@ -570,6 +570,7 @@
     }
   },
   "stack": {
+    "wwe_empty": "WWE events coming soon",
     "edit_title": "Edit the stack",
     "edit_hint": "Reorder (drag the handle), remove (swipe left) or add a widget.",
     "smart_rotate": "Smart rotation",

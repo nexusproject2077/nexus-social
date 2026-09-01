@@ -818,7 +818,7 @@ export default function WidgetStack({ user, setUser }) {
   const uclSoon = (m) => { const t = new Date(m.date).getTime(); return Number.isFinite(t) && (t - Date.now()) <= 6 * 3600 * 1000 && (t - Date.now()) >= -150 * 60 * 1000; };
   const uclMatchday = footItems.some((m) => isUclMatch(m) && (m.state === "in" || uclSoon(m)));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
-  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, wwe: wweItems.length > 0, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true,
+  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, wwe: wantWwe, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true,
     // Widgets Premium : toujours affichés (verrouillés = teaser d'abonnement).
     profile_views: true, ai_analytics: true, astro_lifestyle: true };
   const pages = configOrder.filter((id) => avail[id]);
@@ -1005,11 +1005,16 @@ export default function WidgetStack({ user, setUser }) {
       <div className="h-full flex flex-col pl-3 py-2.5">
         <div className="pr-3"><PageHeader id="wwe" /></div>
         <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar items-center" style={{ scrollSnapType: "x mandatory", paddingRight: 16 }}>
-          {wweItems.map((m) => (
+          {wweItems.length ? wweItems.map((m) => (
             <div key={m.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
               <WweCard m={m} flash={!!flashing[`wwe-${m.id}`]} />
             </div>
-          ))}
+          )) : (
+            <div className="flex-1 flex items-center gap-2 pr-4" style={{ color: "#6b7686" }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18, color: WIDGETS.wwe.color }}>sports_kabaddi</span>
+              <span className="text-[11px] font-semibold">{t("stack.wwe_empty")}</span>
+            </div>
+          )}
         </div>
       </div>
     );

@@ -8,6 +8,10 @@
 }
 
 .material-symbols-outlined {
+    /* Toutes les icônes utilisent la variante « Rounded » (coins arrondis),
+       tout en gardant la classe existante (aucune icône à renommer).
+       !important pour gagner sur la feuille Google quel que soit l'ordre. */
+    font-family: 'Material Symbols Rounded' !important;
     font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
 }
 

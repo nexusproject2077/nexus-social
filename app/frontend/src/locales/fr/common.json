@@ -570,6 +570,7 @@
     }
   },
   "stack": {
+    "wwe_empty": "Prochains évènements WWE bientôt",
     "edit_title": "Modifier la pile",
     "edit_hint": "Réordonne (glisse la poignée), retire (balaye vers la gauche) ou ajoute un widget.",
     "smart_rotate": "Rotation intelligente",
