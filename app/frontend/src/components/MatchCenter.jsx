@@ -114,11 +114,78 @@ const Side = ({ ev, align }) => {
   );
 };
 
+const HOME_C = "#3b82f6"; // domicile = bleu
+const AWAY_C = "#ef4444"; // extérieur = rouge
+
+// Une ligne de stat : valeur domicile · libellé · valeur extérieur + barre
+// à deux segments proportionnels (façon capture X).
+function StatBar({ label, home, away }) {
+  const num = (v) => {
+    const n = parseFloat(String(v).replace(/[^0-9.]/g, ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const hv = num(home), av = num(away);
+  const total = hv + av;
+  const hp = total > 0 ? (hv / total) * 100 : 50;
+  return (
+    <div className="mb-4">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-sm font-black tabular-nums" style={{ color: "#f4f8ff" }}>{home}</span>
+        <span className="text-[12px]" style={{ color: "#8b96a8" }}>{label}</span>
+        <span className="text-sm font-black tabular-nums" style={{ color: "#f4f8ff" }}>{away}</span>
+      </div>
+      <div className="flex h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+        <div style={{ width: `${hp}%`, background: HOME_C }} />
+        <div style={{ width: `${100 - hp}%`, background: AWAY_C }} />
+      </div>
+    </div>
+  );
+}
+
+// Une colonne de composition (titulaires puis remplaçants).
+function LineupColumn({ players, accent, align }) {
+  const starters = players.filter((p) => p.starter);
+  const subs = players.filter((p) => !p.starter);
+  const right = align === "right";
+  const Row = (p, i) => (
+    <div key={i} className={`flex items-center gap-2 py-1 ${right ? "flex-row-reverse text-right" : ""}`}>
+      <span className="flex-shrink-0 flex items-center justify-center text-[10px] font-black tabular-nums rounded-md"
+        style={{ width: 20, height: 20, background: `${accent}22`, color: accent }}>{p.number || "·"}</span>
+      <div className="min-w-0">
+        <p className="text-[12px] leading-tight truncate" style={{ color: "#e6ecf7", fontWeight: 500 }}>{p.name}</p>
+        {p.position && <p className="text-[10px] leading-tight" style={{ color: "#6b7686" }}>{p.position}</p>}
+      </div>
+    </div>
+  );
+  return (
+    <div className="flex-1 min-w-0">
+      {starters.map(Row)}
+      {subs.length > 0 && (
+        <>
+          <p className={`text-[10px] font-bold uppercase tracking-wider mt-2 mb-1 ${right ? "text-right" : ""}`} style={{ color: "#5b6577" }}>
+            {i18n.t("matchcenter.subs")}
+          </p>
+          {subs.map(Row)}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function MatchCenter({ match, onClose, currentUser }) {
   const [detail, setDetail] = useState(null);
   const [roomOpen, setRoomOpen] = useState(false);
+  const [tab, setTab] = useState("events"); // events | stats | lineup
   const eventId = match?.id;
   const slug = match?.league_slug;
+
+  // Verrouille le défilement de l'arrière-plan tant que la feuille est ouverte
+  // (sinon le fil d'accueil derrière défile en même temps que le contenu).
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev || ""; };
+  }, []);
 
   const load = useCallback(() => {
     if (!eventId || !slug) return;
@@ -139,6 +206,14 @@ export default function MatchCenter({ match, onClose, currentUser }) {
   const live = h.state === "in";
   const events = detail?.events || [];
   const ordered = [...events].reverse(); // le plus récent en haut
+  const stats = detail?.stats || [];
+  const lineups = detail?.lineups || null;
+
+  const TABS = [
+    { id: "events", label: i18n.t("matchcenter.tab_events") },
+    { id: "stats", label: i18n.t("matchcenter.tab_stats") },
+    { id: "lineup", label: i18n.t("matchcenter.tab_lineup") },
+  ];
 
   return (
     <>
@@ -179,31 +254,69 @@ export default function MatchCenter({ match, onClose, currentUser }) {
           </div>
         </div>
 
-        {/* Chronologie verticale */}
-        <div className="relative overflow-y-auto no-scrollbar px-4 py-5" style={{ flex: 1 }}>
+        {/* Onglets soulignés (sans fond) : Événements · Statistiques · Composition */}
+        <div className="flex items-center px-2 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          {TABS.map((tb) => {
+            const active = tab === tb.id;
+            return (
+              <button key={tb.id} onClick={() => setTab(tb.id)}
+                className="relative flex-1 py-3 text-[12px] font-bold transition-colors"
+                style={{ color: active ? "#f4f8ff" : "#6b7686" }}>
+                {tb.label}
+                {active && <span className="absolute left-1/2 -translate-x-1/2 bottom-0 h-0.5 rounded-full" style={{ width: 26, background: "#22d3ee" }} />}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Contenu de l'onglet — seule cette zone défile (scroll confiné). */}
+        <div className="relative overflow-y-auto no-scrollbar px-4 py-5"
+          style={{ flex: 1, overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}
+          onTouchMove={(e) => e.stopPropagation()}>
           {detail === null ? (
             <div className="flex justify-center py-10"><span className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: `${NEON}44`, borderTopColor: NEON }} /></div>
-          ) : ordered.length === 0 ? (
-            <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_events")}</p>
-          ) : (
-            <div className="relative">
-              {/* Axe vertical central */}
-              <div className="absolute top-0 bottom-0" style={{ left: "50%", width: 1.5, transform: "translateX(-50%)", background: "rgba(255,255,255,0.08)" }} />
-              <div className="space-y-4 relative">
-                {ordered.map((ev, i) => (
-                  <div key={i} className="flex items-center">
-                    <div className="flex-1 pr-3">{ev.side === "home" && <Side ev={ev} align="right" />}</div>
-                    <div className="flex flex-col items-center flex-shrink-0" style={{ width: 46 }}>
-                      <span className="text-[10px] font-black tabular-nums mb-1 px-1.5 rounded-full" style={{ color: "#0b1220", background: "#c7d0e0" }}>{ev.minute || "·"}</span>
-                      <span className="flex items-center justify-center rounded-full" style={{ width: 30, height: 30, background: "#111a2e", border: "1px solid rgba(255,255,255,0.08)" }}>
-                        <EventIcon type={ev.type} />
-                      </span>
+          ) : tab === "events" ? (
+            ordered.length === 0 ? (
+              <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_events")}</p>
+            ) : (
+              <div className="relative">
+                {/* Axe vertical central */}
+                <div className="absolute top-0 bottom-0" style={{ left: "50%", width: 1.5, transform: "translateX(-50%)", background: "rgba(255,255,255,0.08)" }} />
+                <div className="space-y-4 relative">
+                  {ordered.map((ev, i) => (
+                    <div key={i} className="flex items-center">
+                      <div className="flex-1 pr-3">{ev.side === "home" && <Side ev={ev} align="right" />}</div>
+                      <div className="flex flex-col items-center flex-shrink-0" style={{ width: 46 }}>
+                        <span className="text-[10px] font-black tabular-nums mb-1 px-1.5 rounded-full" style={{ color: "#0b1220", background: "#c7d0e0" }}>{ev.minute || "·"}</span>
+                        <span className="flex items-center justify-center rounded-full" style={{ width: 30, height: 30, background: "#111a2e", border: "1px solid rgba(255,255,255,0.08)" }}>
+                          <EventIcon type={ev.type} />
+                        </span>
+                      </div>
+                      <div className="flex-1 pl-3">{ev.side === "away" && <Side ev={ev} align="left" />}</div>
                     </div>
-                    <div className="flex-1 pl-3">{ev.side === "away" && <Side ev={ev} align="left" />}</div>
-                  </div>
+                  ))}
+                </div>
+              </div>
+            )
+          ) : tab === "stats" ? (
+            stats.length === 0 ? (
+              <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_stats")}</p>
+            ) : (
+              <div className="pt-1">
+                {stats.map((s) => (
+                  <StatBar key={s.key} label={i18n.t("matchcenter.stat_" + s.key)} home={s.home} away={s.away} />
                 ))}
               </div>
-            </div>
+            )
+          ) : (
+            !lineups ? (
+              <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_lineup")}</p>
+            ) : (
+              <div className="flex gap-4">
+                <LineupColumn players={lineups.home} accent={HOME_C} />
+                <LineupColumn players={lineups.away} accent={AWAY_C} align="right" />
+              </div>
+            )
           )}
         </div>
 

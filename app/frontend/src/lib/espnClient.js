@@ -292,8 +292,75 @@ function mapEventType(text, ev) {
 
 // Récupère et normalise le résumé ESPN (header + keyEvents) d'un match de foot.
 // slug = league_slug (ex : "fra.1"), eventId = id du match.
+// Statistiques d'équipe (boxscore ESPN). Retourne une liste ordonnée
+// [{ key, home, away }] avec des libellés FR/EN gérés côté UI. On ne garde que
+// les stats réellement fournies par ESPN (pas de valeurs inventées).
+function parseTeamStats(data, sideMap) {
+  const teams = data?.boxscore?.teams || [];
+  if (teams.length < 2) return [];
+  const indexByName = (t) => {
+    const m = {};
+    for (const s of t?.statistics || []) {
+      if (s?.name) m[String(s.name).toLowerCase()] = s.displayValue;
+    }
+    return m;
+  };
+  const id0 = String(teams[0]?.team?.id || "");
+  const homeFirst = sideMap[id0] === "home";
+  const homeStats = indexByName(homeFirst ? teams[0] : teams[1]);
+  const awayStats = indexByName(homeFirst ? teams[1] : teams[0]);
+  // [clé UI, noms ESPN possibles] — le 1er nom présent gagne.
+  const WANT = [
+    ["possession", ["possessionpct"]],
+    ["shots", ["totalshots"]],
+    ["shots_on", ["shotsontarget", "ontargetshots"]],
+    ["shots_off", ["shotsoffgoal", "offtargetshots"]],
+    ["saves", ["saves", "goalkeepersaves"]],
+    ["fouls", ["foulscommitted"]],
+    ["offsides", ["offsides"]],
+    ["corners", ["woncorners", "cornerkicks"]],
+    ["yellow", ["yellowcards"]],
+    ["red", ["redcards"]],
+    ["passes", ["totalpasses", "accuratepasses"]],
+    ["pass_pct", ["passpct", "accuratepassespercentage"]],
+  ];
+  const pick = (m, names) => {
+    for (const n of names) if (m[n] != null) return m[n];
+    return null;
+  };
+  const out = [];
+  for (const [key, names] of WANT) {
+    const h = pick(homeStats, names);
+    const a = pick(awayStats, names);
+    if (h == null && a == null) continue;
+    out.push({ key, home: h ?? "0", away: a ?? "0" });
+  }
+  return out;
+}
+
+// Compositions (rosters ESPN) → { home:[...], away:[...] }, chaque joueur
+// { name, number, position, starter }. null si indisponible.
+function parseLineups(data) {
+  const rosters = data?.rosters || [];
+  const side = (s) => {
+    const r = rosters.find((x) => x.homeAway === s);
+    return (r?.roster || [])
+      .map((p) => ({
+        name: p.athlete?.shortName || p.athlete?.displayName || "",
+        number: String(p.jersey ?? p.athlete?.jersey ?? "").trim(),
+        position: p.position?.abbreviation || p.position?.name || "",
+        starter: !!p.starter,
+      }))
+      .filter((p) => p.name);
+  };
+  const home = side("home");
+  const away = side("away");
+  if (!home.length && !away.length) return null;
+  return { home, away };
+}
+
 export async function fetchMatchDetailsFromEspn(eventId, slug) {
-  const empty = { header: {}, events: [] };
+  const empty = { header: {}, events: [], stats: [], lineups: null };
   const id = String(eventId || "").trim();
   const lg = String(slug || "").trim().toLowerCase();
   // Validation stricte (ces valeurs entrent dans l'URL ESPN → anti-injection).
@@ -382,5 +449,9 @@ export async function fetchMatchDetailsFromEspn(eventId, slug) {
       own_goal: !!ev.ownGoal,
     });
   }
-  return { header, events };
+  let stats = [];
+  let lineups = null;
+  try { stats = parseTeamStats(data, sideMap); } catch { /* stats optionnelles */ }
+  try { lineups = parseLineups(data); } catch { /* compos optionnelles */ }
+  return { header, events, stats, lineups };
 }
