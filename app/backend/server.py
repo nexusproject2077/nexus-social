@@ -103,49 +103,21 @@ except ImportError:
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# ==================== MONGODB CONNECTION AVEC VALIDATION ====================
-mongo_url = os.environ.get('MONGODB_URI') or os.environ.get('MONGO_URL') or os.environ.get('DATABASE_URL')
-
-# Validation de l'URL MongoDB
-if not mongo_url:
-    raise ValueError(
-        "❌ MongoDB URL not configured! "
-        "Please set MONGODB_URI, MONGO_URL, or DATABASE_URL environment variable"
-    )
-
-# Vérification du schéma de l'URL
-if not (mongo_url.startswith('mongodb://') or mongo_url.startswith('mongodb+srv://')):
-    print(f"❌ ERREUR CRITIQUE: MongoDB URL doesn't start with 'mongodb://' or 'mongodb+srv://'")
-    print(f"❌ URL actuelle: {mongo_url[:30]}...")
-    print(f"")
-    print(f"✅ Exemples d'URL valides:")
-    print(f"   mongodb+srv://user:pass@cluster.mongodb.net/dbname")
-    print(f"   mongodb://user:pass@host:27017/dbname")
-    print(f"")
-    raise InvalidURI(
-        f"Invalid MongoDB URI scheme. "
-        f"URI must begin with 'mongodb://' or 'mongodb+srv://'. "
-        f"Current URI starts with: {mongo_url[:20]}"
-    )
-
-# Création du client MongoDB
+# ==================== MONGODB CONNECTION ====================
+# Refactor progressif : la connexion Mongo et la config vivent désormais dans
+# le paquet `core/`. On réexpose ici `client`, `db`, `mongo_url`, `SECRET_KEY`
+# et `ALGORITHM` pour que tout le code existant continue de fonctionner
+# à l'identique le temps de la migration.
 try:
-    client = AsyncIOMotorClient(mongo_url)
-    db = client[os.environ.get('DB_NAME', 'nexus_social')]
-    print("✅ MongoDB client initialized successfully")
-    print(f"✅ Database: {os.environ.get('DB_NAME', 'nexus_social')}")
-except InvalidURI as e:
-    print(f"❌ Invalid MongoDB URI: {e}")
-    raise
-except Exception as e:
-    print(f"❌ Error initializing MongoDB client: {e}")
-    raise
+    from backend.core.config import MONGO_URL as mongo_url, SECRET_KEY, ALGORITHM
+    from backend.core.database import client, db
+except ImportError:
+    from core.config import MONGO_URL as mongo_url, SECRET_KEY, ALGORITHM
+    from core.database import client, db
 
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
-SECRET_KEY = os.environ.get('SECRET_KEY', '76f267dbc69c6b4e639a50a7ccdd3783')
-ALGORITHM = "HS256"
 
 # Create the main app
 app = FastAPI(title="Nexus Social API", version="1.0.0")
