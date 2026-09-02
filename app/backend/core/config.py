@@ -27,3 +27,11 @@ DB_NAME = os.environ.get("DB_NAME", "nexus_social")
 # --- Sécurité / JWT ---
 SECRET_KEY = os.environ.get("SECRET_KEY", "76f267dbc69c6b4e639a50a7ccdd3783")
 ALGORITHM = "HS256"
+
+# Comptes administrateurs (emails séparés par des virgules), exposés via
+# `is_admin` sur /auth/me. Optionnel.
+ADMIN_EMAILS = {
+    e.strip().lower()
+    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+    if e.strip()
+}

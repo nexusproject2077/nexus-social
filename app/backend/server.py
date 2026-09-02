@@ -103,21 +103,30 @@ except ImportError:
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# ==================== MONGODB CONNECTION ====================
-# Refactor progressif : la connexion Mongo et la config vivent désormais dans
-# le paquet `core/`. On réexpose ici `client`, `db`, `mongo_url`, `SECRET_KEY`
-# et `ALGORITHM` pour que tout le code existant continue de fonctionner
-# à l'identique le temps de la migration.
+# ==================== CORE (config · DB · sérialisation · sécurité) =========
+# Refactor progressif : la config, la connexion Mongo, la sérialisation Mongo
+# et l'authentification vivent dans le paquet `core/`. On réexpose les symboles
+# ici pour que tout le code existant continue de fonctionner à l'identique.
 try:
-    from backend.core.config import MONGO_URL as mongo_url, SECRET_KEY, ALGORITHM
+    from backend.core.config import (
+        MONGO_URL as mongo_url, SECRET_KEY, ALGORITHM, ADMIN_EMAILS,
+    )
     from backend.core.database import client, db
+    from backend.core.serialization import convert_mongo_doc_to_dict
+    from backend.core.security import (
+        pwd_context, security, create_access_token,
+        get_current_user, is_admin_user, require_admin,
+    )
 except ImportError:
-    from core.config import MONGO_URL as mongo_url, SECRET_KEY, ALGORITHM
+    from core.config import (
+        MONGO_URL as mongo_url, SECRET_KEY, ALGORITHM, ADMIN_EMAILS,
+    )
     from core.database import client, db
-
-# Security
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-security = HTTPBearer()
+    from core.serialization import convert_mongo_doc_to_dict
+    from core.security import (
+        pwd_context, security, create_access_token,
+        get_current_user, is_admin_user, require_admin,
+    )
 
 # Create the main app
 app = FastAPI(title="Nexus Social API", version="1.0.0")
@@ -675,15 +684,8 @@ async def _paypal_call(method: str, path: str, json_body=None, extra_headers=Non
     return await asyncio.to_thread(_paypal_call_sync, method, path, json_body, extra_headers)
 
 # ==================== ADMINISTRATION ====================
-# ADMIN_EMAILS (emails séparés par des virgules) identifie les comptes
-# administrateurs, exposés via is_admin sur /auth/me. Optionnel : réservé à
-# d'éventuelles fonctions d'administration. Le tableau de bord Analytics, lui,
-# est personnel (chaque utilisateur voit ses propres statistiques).
-ADMIN_EMAILS = {
-    e.strip().lower()
-    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
-    if e.strip()
-}
+# ADMIN_EMAILS est désormais défini dans core/config.py et importé plus haut.
+# `is_admin_user` / `require_admin` viennent de core/security.
 if ADMIN_EMAILS:
     print(f"✅ Administrateurs configurés ({len(ADMIN_EMAILS)})")
 
@@ -985,36 +987,8 @@ async def root():
 
 
 # --- FONCTION UTILITAIRE POUR CONVERTIR LES OBJECTID EN STR ---
-def convert_mongo_doc_to_dict(doc: dict) -> dict:
-    """Convertit un document MongoDB en dictionnaire Python avec ObjectId → str
-    
-    IMPORTANT: Si le document a déjà un champ 'id' (UUID), on le garde !
-    On supprime juste le '_id' MongoDB pour éviter les conflits.
-    """
-    if doc is None:
-        return None
-    new_doc = doc.copy()
-    
-    # ✅ CORRECTION: Ne pas écraser 'id' s'il existe déjà (UUID)
-    if "_id" in new_doc:
-        # Si le document n'a pas de champ 'id', on utilise _id
-        if "id" not in new_doc:
-            new_doc["id"] = str(new_doc["_id"])
-        # Supprime toujours _id pour éviter les conflits
-        del new_doc["_id"]
-
-    for key, value in new_doc.items():
-        if isinstance(value, ObjectId):
-            new_doc[key] = str(value)
-        elif isinstance(value, dict):
-            new_doc[key] = convert_mongo_doc_to_dict(value)
-        elif isinstance(value, list):
-            new_doc[key] = [
-                convert_mongo_doc_to_dict(item) if isinstance(item, dict) 
-                else (str(item) if isinstance(item, ObjectId) else item) 
-                for item in value
-            ]
-    return new_doc
+# convert_mongo_doc_to_dict est désormais dans core/serialization.py (importé
+# plus haut) — même comportement, partagé avec core/security.
 
 
 # ==================== PROXY MÉDIA (anti-OOM base64) ====================
@@ -1542,57 +1516,8 @@ class StoryGroup(BaseModel):
     last_story_time: str
 
 # ==================== AUTH HELPERS ====================
-def create_access_token(data: dict):
-    """Crée un token JWT avec expiration de 7 jours"""
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(days=7)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Récupère l'utilisateur actuel depuis le token JWT"""
-    try:
-        token = credentials.credentials
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        # Essaie d'abord avec le champ "id" personnalisé (nouveau format)
-        user = await db.users.find_one({"id": user_id})
-        
-        # Si pas trouvé, essaie avec _id (pour les anciens tokens)
-        if not user:
-            try:
-                # Convertit l'ID en ObjectId si c'est un ancien token MongoDB
-                user = await db.users.find_one({"_id": ObjectId(user_id)})
-            except:
-                pass
-
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-
-        return convert_mongo_doc_to_dict(user)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Authentication error: {str(e)}")
-
-
-def is_admin_user(user: dict) -> bool:
-    """Vrai si l'utilisateur fait partie des administrateurs (ADMIN_EMAILS)."""
-    email = (user.get("email") or "").strip().lower()
-    return bool(email) and email in ADMIN_EMAILS
-
-
-async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
-    """Dépendance : n'autorise que les administrateurs (ADMIN_EMAILS)."""
-    if not is_admin_user(current_user):
-        raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
-    return current_user
+# create_access_token · get_current_user · is_admin_user · require_admin sont
+# désormais dans core/security.py (importés plus haut) — comportement inchangé.
 
 
 # ==================== MODÉRATION AUTOMATIQUE ====================
