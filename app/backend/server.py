@@ -1251,269 +1251,29 @@ async def check_is_following(follower_id: str, followed_id: str) -> bool:
 api_router = APIRouter(prefix="/api")
 
 # ==================== MODELS ====================
-class UserCreate(BaseModel):
-    username: str
-    email: EmailStr
-    password: str
-    bio: Optional[str] = ""
-    birthdate: Optional[str] = None  # AAAA-MM-JJ — requis (loi FR : >= 15 ans)
-    # Compte privé PAR DÉFAUT (contrôle & vie privée) : seuls les abonnés
-    # approuvés voient le contenu. Modifiable ensuite dans les réglages.
-    is_private: Optional[bool] = True
-    ref: Optional[str] = None  # code de parrainage (username du parrain) via ?ref=
+# ==================== SCHÉMAS PYDANTIC ====================
+# Les modèles de domaine (User, Post, Comment, Message, Story, Notification,
+# Poll…) sont désormais dans le paquet models/ — importés ici et réutilisés
+# à l'identique dans toutes les routes.
+try:
+    from backend.models import (
+        UserCreate, UserLogin, User, UserProfile,
+        PollOption, Poll, PollVote, PostCreate, Post,
+        CommentCreate, Comment,
+        MessageCreate, Message, Conversation,
+        Notification,
+        StoryCreate, Story, StoryGroup,
+    )
+except ImportError:
+    from models import (
+        UserCreate, UserLogin, User, UserProfile,
+        PollOption, Poll, PollVote, PostCreate, Post,
+        CommentCreate, Comment,
+        MessageCreate, Message, Conversation,
+        Notification,
+        StoryCreate, Story, StoryGroup,
+    )
 
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-class User(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    username: str
-    email: str
-    bio: str = ""
-    profile_pic: Optional[str] = None
-    cover_pic: Optional[str] = None     # bannière de couverture (façon X)
-    followers_count: int = 0
-    following_count: int = 0
-    is_verified: bool = False           # badge « identité vérifiée » (pièce validée)
-    is_premium: bool = False            # abonné Nexus Premium (badge + avantages réels)
-    premium_until: Optional[str] = None  # fin d'abonnement (ISO) ; None si non abonné
-    # Parrainage : chaque membre partage ?ref=<username>. referral_count = filleuls
-    # inscrits ; referral_rewards = mois Premium déjà offerts (1 tous les 3) ;
-    # referred_by = id du parrain.
-    referral_count: int = 0
-    referral_rewards: int = 0
-    referred_by: Optional[str] = None
-    # Croissance : préférences de notifications utiles + liste d'amis proches
-    # (renvoyées dans /auth/me pour que les réglages survivent au rechargement).
-    smart_notif_prefs: Dict[str, bool] = {}
-    close_friends: List[str] = []
-    is_admin: bool = False
-    # Vérification d'identité (RGPD : on n'expose JAMAIS la pièce ni la date de
-    # naissance en clair ; seuls des statuts/booléens sont renvoyés au client).
-    verification_status: str = "unverified"  # unverified | pending | verified | rejected
-    age_verified: bool = False          # >= 15 ans confirmé à l'inscription (loi FR)
-    email_verified: bool = False
-    phone_verified: bool = False
-    twofa_enabled: bool = False         # double authentification (code email à la connexion)
-    is_private: bool = False            # compte privé (abonnés approuvés uniquement)
-    # Protection des mineurs (loi FR / éthique produit). `is_minor` est calculé à
-    # partir de la date de naissance (< 18 ans). Il active : compte privé forcé,
-    # filtrage des DM d'adultes, barrière anti-scroll (30 min), couvre-feu de nuit
-    # et masquage des mots vulgaires. Les adultes gardent l'expérience complète.
-    is_minor: bool = False
-    # Limite de temps quotidienne configurable (minutes) — bien-être numérique.
-    # None = pas de limite. `time_limit_enabled` permet de désactiver l'option.
-    daily_time_limit: Optional[int] = None
-    time_limit_enabled: bool = True
-    show_sports: bool = True            # widget scores de foot en direct (désactivable)
-    show_mma: bool = True               # cartes de combat MMA/UFC (désactivable)
-    # Confidentialité messagerie (façon Instagram).
-    show_active_status: bool = True     # affiche le point de présence + « dernière connexion » aux autres
-    read_receipts: bool = True          # confirmation de lecture (« Vu ») ; si False, réciproque coupée
-    hide_political: bool = False        # exclut les contenus politiques du fil (bien-être)
-    widget_stack_config: Optional[dict] = None  # pile de widgets : {smart_rotate, order}
-    privacy_strict: bool = False        # Mode Confidentialité stricte : coupe les
-                                        # analytics non essentiels + les pubs ciblées
-    muted_words: List[str] = []         # mots/phrases masqués (filtrés du fil + notifs)
-    accent_color: Optional[str] = None
-    theme: Optional[str] = None
-    created_at: str
-
-class UserProfile(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    username: str
-    bio: str = ""
-    profile_pic: Optional[str] = None
-    cover_pic: Optional[str] = None     # bannière de couverture (façon X)
-    followers_count: int = 0
-    following_count: int = 0
-    is_following: bool = False
-    is_verified: bool = False
-    is_premium: bool = False  # membre Nexus Premium (badge + avantages)
-    can_receive_tips: bool = False  # a un compte Stripe Connect → pourboire par carte
-    paypal_receivable: bool = False  # PayPal Commerce activé → pourboire PayPal avec commission
-    paypal_link: Optional[str] = None  # lien PayPal.me (repli sans commission)
-    crypto_wallet: Optional[str] = None  # adresse de tips crypto (Solana/USDT…)
-    created_at: str
-
-class PollOption(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    text: str
-    votes: int = 0
-
-class Poll(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    options: List[PollOption]
-    total_votes: int = 0
-
-class PollVote(BaseModel):
-    option_id: str
-
-class PostCreate(BaseModel):
-    content: str
-    media_type: Optional[str] = None
-    media_url: Optional[str] = None
-    poll_options: Optional[List[str]] = None  # >= 2 options => sondage attaché au post
-    affiliate_link: Optional[str] = None  # lien affilié optionnel (http/https)
-
-class Post(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _tolerate_nulls(cls, data):
-        """Empêche qu'une publication ancienne/incomplète (champ requis à null,
-        ex. content=None) ne fasse échouer TOUTE une liste de publications."""
-        if isinstance(data, dict):
-            for k in ("id", "author_id", "author_username", "content", "created_at"):
-                if data.get(k) is None:
-                    data[k] = ""
-        return data
-
-    id: str
-    author_id: str
-    author_username: str
-    author_profile_pic: Optional[str] = None
-    author_is_verified: bool = False
-    author_is_premium: bool = False  # badge Premium sur la publication (avantage réel)
-    author_can_receive_tips: bool = False  # auteur a un compte Stripe → bouton Pourboire
-    author_is_following: bool = False  # l'utilisateur courant suit-il déjà l'auteur ? (bouton « + » Clips)
-    is_pinned: bool = False          # post épinglé en haut du profil (créateur Premium)
-    content: str
-    media_type: Optional[str] = None
-    media_url: Optional[str] = None
-    likes_count: int = 0
-    comments_count: int = 0
-    shares_count: int = 0
-    is_liked: bool = False
-    is_saved: bool = False  # l'utilisateur courant a-t-il enregistré ce post/clip ?
-    views: int = 0
-    eu_blocked: bool = False  # clip restreint dans l'UE (geo-block Nexus Clips)
-    affiliate_link: Optional[str] = None
-    affiliate_clicks: int = 0
-    poll: Optional[Poll] = None
-    poll_user_vote: Optional[str] = None  # id de l'option votée par l'utilisateur courant
-    # Republication : si repost_of est défini, ce post est un repartage.
-    # author_* = la personne qui a reposté ; original_author_* = l'auteur d'origine.
-    repost_of: Optional[str] = None
-    original_author_id: Optional[str] = None
-    original_author_username: Optional[str] = None
-    original_author_profile_pic: Optional[str] = None
-    original_author_is_verified: bool = False
-    is_reposted: bool = False  # l'utilisateur courant a-t-il reposté ce post ?
-    mentioned_user_ids: Optional[List[str]] = None
-    created_at: str
-
-class CommentCreate(BaseModel):
-    content: str
-
-class Comment(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    post_id: str
-    author_id: str
-    author_username: str
-    author_profile_pic: Optional[str] = None
-    author_is_verified: bool = False
-    author_is_premium: bool = False     # commentaire d'un abonné Premium (remonté en tête)
-    content: str
-    likes_count: int = 0
-    replies_count: int = 0
-    is_liked: bool = False
-    parent_comment_id: Optional[str] = None
-    created_at: str
-
-class MessageCreate(BaseModel):
-    recipient_id: str
-    content: str = ""
-    media_url: Optional[str] = None   # image compressée (data URL) éventuelle
-    media_type: Optional[str] = None  # "image" pour l'instant
-    reply_to_id: Optional[str] = None
-
-class Message(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    sender_id: str
-    sender_username: str
-    sender_profile_pic: Optional[str] = None
-    recipient_id: str
-    recipient_username: str
-    content: str = ""
-    media_url: Optional[str] = None
-    media_type: Optional[str] = None
-    reply_to_id: Optional[str] = None
-    read: bool = False
-    reactions: List[dict] = []  # [{user_id, emoji, ...}] — sinon perdues au rechargement
-    created_at: str
-    expires_at: Optional[str] = None  # message éphémère : date d'auto-suppression
-
-class Conversation(BaseModel):
-    user_id: str
-    username: str
-    profile_pic: Optional[str] = None
-    last_message: str
-    last_message_time: str
-    unread_count: int = 0
-    # Préférences personnelles (épingler / sourdine / marqué non lu) — façon Instagram.
-    pinned: bool = False
-    muted: bool = False
-    marked_unread: bool = False
-    is_online: bool = False             # présence de l'interlocuteur (si son statut est visible)
-
-class Notification(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    user_id: str
-    type: str
-    # Optionnels : certaines notifications système (vérification d'identité, etc.)
-    # n'ont pas d'expéditeur utilisateur — un défaut évite de casser TOUTE la
-    # liste des notifications à cause d'une seule entrée sans from_user_id.
-    from_user_id: str = ""
-    from_username: str = "Nexus Social"
-    from_profile_pic: Optional[str] = None
-    post_id: Optional[str] = None
-    comment_content: Optional[str] = None
-    content: Optional[str] = None
-    reason: Optional[str] = None
-    url: Optional[str] = None
-    read: bool = False
-    created_at: str
-
-class StoryCreate(BaseModel):
-    media_type: str
-    media_url: str
-
-class Story(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    author_id: str
-    author_username: str
-    author_profile_pic: Optional[str] = None
-    media_type: str
-    media_url: str
-    text: Optional[str] = None            # légende / texte incrusté
-    audience: str = "everyone"           # everyone | close_friends | custom
-    music_url: Optional[str] = None       # extrait audio (preview iTunes, 30 s)
-    music_title: Optional[str] = None
-    music_artist: Optional[str] = None
-    music_start: float = 0.0              # passage de départ (secondes)
-    mirror: bool = False                  # vidéo frontale à remettre « à l'endroit »
-    views_count: int = 0
-    created_at: str
-    expires_at: str
-    has_viewed: bool = False
-    is_mine: bool = False                 # story de l'utilisateur courant (autorité serveur)
-
-class StoryGroup(BaseModel):
-    user_id: str
-    username: str
-    profile_pic: Optional[str] = None
-    stories: List[Story]
-    last_story_time: str
 
 # ==================== AUTH HELPERS ====================
 # create_access_token · get_current_user · is_admin_user · require_admin sont
