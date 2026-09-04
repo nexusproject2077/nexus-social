@@ -188,67 +188,23 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
 #   - soit CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET
 # Si Cloudinary n'est pas configuré, store_media() renvoie le média inchangé
 # (base64 conservé) → AUCUNE régression, juste pas d'allègement.
-_CLOUDINARY_READY = False
+# Service média (upload Cloudinary) → services/media.py. On réexpose les noms
+# historiques (_CLOUDINARY_READY, _cloudinary, _cloudinary_uploader) car le
+# proxy média, les endpoints d'upload et la migration les utilisent encore.
 try:
-    import cloudinary as _cloudinary
-    import cloudinary.uploader as _cloudinary_uploader
-    if os.environ.get("CLOUDINARY_URL"):
-        _cloudinary.config(secure=True)  # lit CLOUDINARY_URL
-        _CLOUDINARY_READY = True
-    elif os.environ.get("CLOUDINARY_CLOUD_NAME"):
-        _cloudinary.config(
-            cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
-            api_key=os.environ.get("CLOUDINARY_API_KEY"),
-            api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
-            secure=True,
-        )
-        _CLOUDINARY_READY = True
-    if _CLOUDINARY_READY:
-        print("✅ Cloudinary configuré (médias hors base)")
-    else:
-        print("ℹ️ Cloudinary non configuré — médias conservés en base (base64)")
-except Exception as _e:
-    print(f"ℹ️ Cloudinary indisponible ({_e}) — médias en base64")
-
-
-async def store_media(media, folder="nexus"):
-    """Décharge un média base64 vers Cloudinary et renvoie son URL (légère).
-
-    - Si `media` est None/vide → renvoyé tel quel.
-    - Si c'est déjà une URL http(s) (média externe déjà hébergé) → inchangé.
-    - Si c'est une data URL base64 ET Cloudinary configuré → upload puis URL.
-    - Sinon (pas de Cloudinary, ou échec upload) → renvoyé tel quel (base64
-      conservé) : best-effort, jamais bloquant, aucune régression.
-    """
-    if not media or not isinstance(media, str):
-        return media
-    if not media.startswith("data:"):
-        return media  # déjà une URL externe → rien à faire
-    if not _CLOUDINARY_READY:
-        return media  # pas de Cloudinary → on garde le base64
-    resource_type = "video" if media.startswith("data:video") else "image"
-
-    def _upload():
-        return _cloudinary_uploader.upload(
-            media, folder=folder, resource_type=resource_type,
-            unique_filename=True, overwrite=False,
-        )
-    try:
-        res = await asyncio.to_thread(_upload)
-        return res.get("secure_url") or media
-    except Exception as e:
-        logger.warning(f"Upload Cloudinary échoué (média conservé en base64): {e}")
-        return media
-
-
-async def store_media_list(items, folder="nexus"):
-    """store_media appliqué à une liste (messages de groupe : media_urls)."""
-    if not items:
-        return items
-    out = []
-    for it in items:
-        out.append(await store_media(it, folder=folder))
-    return out
+    from backend.services.media import (
+        store_media, store_media_list,
+        CLOUDINARY_READY as _CLOUDINARY_READY,
+        cloudinary as _cloudinary,
+        cloudinary_uploader as _cloudinary_uploader,
+    )
+except ImportError:
+    from services.media import (
+        store_media, store_media_list,
+        CLOUDINARY_READY as _CLOUDINARY_READY,
+        cloudinary as _cloudinary,
+        cloudinary_uploader as _cloudinary_uploader,
+    )
 
 
 # --- Migration paresseuse : convertit les anciens médias base64 en URL Cloudinary
