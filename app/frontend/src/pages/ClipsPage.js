@@ -15,6 +15,7 @@ import StoryComposer from "@/components/StoryComposer";
 import { attachSilent, clearNowPlaying } from "@/lib/silentAudio";
 import useDraggableSheet from "@/hooks/useDraggableSheet";
 import useKeyboardInset from "@/hooks/useKeyboardInset";
+import ClipPublishScreen from "@/components/ClipPublishScreen";
 
 // Le son d'un clip peut être routé par la Web Audio API pour ne PAS réclamer la
 // session « Now Playing » iOS (indicateur son dans la barre d'état). On ne le
@@ -981,6 +982,9 @@ export default function ClipsPage({ user, setUser }) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showComposer, setShowComposer] = useState(false); // caméra plein écran (création clip)
+  // Écran de publication façon TikTok : on choisit le fichier, on prépare
+  // l'aperçu, PUIS on publie (légende + audience) — pas d'upload immédiat.
+  const [pendingClip, setPendingClip] = useState(null);     // { file, previewUrl }
   const [view, setView] = useState("immersive"); // "immersive" | "grid"
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1173,7 +1177,9 @@ export default function ClipsPage({ user, setUser }) {
     }
   };
 
-  const uploadClip = async (e) => {
+  // Étape 1 — choix du fichier : on VALIDE puis on ouvre l'écran de publication
+  // (aperçu + légende + audience). On N'UPLOADE PAS ici (façon TikTok).
+  const uploadClip = (e) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // permet de re-sélectionner le même fichier
     if (!file) return;
@@ -1185,14 +1191,25 @@ export default function ClipsPage({ user, setUser }) {
     // impose des vidéos courtes/légères. Avec Firebase, on autorise le long.
     const BACKEND_MAX_MB = 50;
     if (!isFirebaseConfigured && file.size > BACKEND_MAX_MB * 1024 * 1024) {
-      toast.error(`Vidéo trop lourde (max ${BACKEND_MAX_MB} Mo)`);
+      toast.error(t("clips.file_too_large", { max: BACKEND_MAX_MB }));
       return;
     }
+    setPendingClip({ file, previewUrl: URL.createObjectURL(file) });
+  };
 
-    const caption = window.prompt(t("clips.clip_caption_prompt")) || "";
-    const euBlocked = window.confirm(
-      "Restreindre ce clip dans l'Union européenne ?\n\nOK = masqué aux visiteurs de l'UE • Annuler = visible partout"
-    );
+  // Ferme l'écran de publication et libère l'aperçu.
+  const closePublish = () => {
+    setPendingClip((p) => {
+      if (p?.previewUrl) { try { URL.revokeObjectURL(p.previewUrl); } catch { /* ignore */ } }
+      return null;
+    });
+  };
+
+  // Étape 2 — publication : réutilise EXACTEMENT le pipeline existant (Firebase
+  // resumable ou multipart backend), avec légende + audience + restriction UE.
+  const publishClip = async ({ caption, visibility, euBlocked }) => {
+    const file = pendingClip?.file;
+    if (!file) return;
     setUploading(true);
     setUploadProgress(0);
     try {
@@ -1215,6 +1232,7 @@ export default function ClipsPage({ user, setUser }) {
           media_url: url,
           caption,
           eu_blocked: euBlocked,
+          visibility,
           duration,
         });
       } else {
@@ -1222,6 +1240,7 @@ export default function ClipsPage({ user, setUser }) {
         form.append("file", file);
         form.append("caption", caption);
         form.append("eu_blocked", euBlocked ? "true" : "false");
+        form.append("visibility", visibility);
         await axios.post(`${API}/clips`, form, {
           headers: { "Content-Type": "multipart/form-data" },
           onUploadProgress: (evt) => {
@@ -1230,12 +1249,13 @@ export default function ClipsPage({ user, setUser }) {
         });
       }
       toast.success(t("clips.published"));
+      closePublish();
       setActiveIndex(0);
       skipRef.current = 0;
       await fetchClips(true);
     } catch (err) {
       console.error("Erreur upload clip:", err);
-      toast.error(err.response?.data?.detail || "Erreur lors de la publication du clip");
+      toast.error(err.response?.data?.detail || t("clips.err_publish"));
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -1280,6 +1300,15 @@ export default function ClipsPage({ user, setUser }) {
           user={user}
           onClose={() => setShowComposer(false)}
           onPublished={() => { setShowComposer(false); fetchClips(true); }}
+        />
+      )}
+      {pendingClip && (
+        <ClipPublishScreen
+          previewUrl={pendingClip.previewUrl}
+          uploading={uploading}
+          progress={uploadProgress}
+          onClose={closePublish}
+          onPublish={publishClip}
         />
       )}
     </>

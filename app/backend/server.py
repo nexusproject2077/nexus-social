@@ -10009,6 +10009,7 @@ async def create_clip(
     file: UploadFile = File(...),
     caption: str = Form(""),
     eu_blocked: bool = Form(False),
+    visibility: str = Form("public"),
     current_user: dict = Depends(get_current_user),
     _geo: bool = Depends(enforce_write_allowed),
 ):
@@ -10072,6 +10073,7 @@ async def create_clip(
         "shares_count": 0,
         "views": 0,
         "eu_blocked": bool(eu_blocked),
+        "visibility": _clean_clip_visibility(visibility),
         "created_at": now.isoformat(),
     }
     await db.posts.insert_one(clip_to_insert)
@@ -10090,6 +10092,16 @@ class ExternalClip(BaseModel):
     caption: str = ""
     eu_blocked: bool = False
     duration: Optional[float] = None  # durée en secondes (indicatif)
+    visibility: str = "public"     # public | friends | private (audience du clip)
+
+
+# Audience valide d'un clip (public par défaut si valeur inconnue).
+_CLIP_VISIBILITY = {"public", "friends", "private"}
+
+
+def _clean_clip_visibility(v) -> str:
+    v = (str(v or "public")).strip().lower()
+    return v if v in _CLIP_VISIBILITY else "public"
 
 
 # Hôtes de stockage autorisés pour un clip « externe » (upload direct navigateur).
@@ -10152,6 +10164,7 @@ async def create_clip_from_url(data: ExternalClip, current_user: dict = Depends(
         "shares_count": 0,
         "views": 0,
         "eu_blocked": bool(data.eu_blocked),
+        "visibility": _clean_clip_visibility(data.visibility),
         "created_at": now.isoformat(),
     }
     await db.posts.insert_one(clip_to_insert)
