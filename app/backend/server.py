@@ -9854,7 +9854,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
         # chronologique (clips plus anciens non inclus dans le pool). Projection
         # {id} : on ne charge PAS le base64 juste pour récupérer des ids (anti-OOM).
         if len(clips) < limit and skip >= len(ids):
-            base = {"media_type": "video", "media_url": {"$ne": None}, "repost_of": None}
+            base = {"media_type": "video", "media_url": {"$ne": None}, "repost_of": None, "is_draft": {"$ne": True}}
             if eu:
                 base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
             extra_skip = skip - len(ids)
@@ -10010,6 +10010,14 @@ async def create_clip(
     caption: str = Form(""),
     eu_blocked: bool = Form(False),
     visibility: str = Form("public"),
+    location: str = Form(""),
+    link: str = Form(""),
+    cover_url: str = Form(""),
+    allow_comments: bool = Form(True),
+    allow_remix: bool = Form(False),
+    mature: bool = Form(False),
+    ai_generated: bool = Form(False),
+    is_draft: bool = Form(False),
     current_user: dict = Depends(get_current_user),
     _geo: bool = Depends(enforce_write_allowed),
 ):
@@ -10074,6 +10082,11 @@ async def create_clip(
         "views": 0,
         "eu_blocked": bool(eu_blocked),
         "visibility": _clean_clip_visibility(visibility),
+        **_clip_publish_extra(
+            location=location, link=link, cover_url=cover_url,
+            allow_comments=allow_comments, allow_remix=allow_remix,
+            mature=mature, ai_generated=ai_generated, is_draft=is_draft,
+        ),
         "created_at": now.isoformat(),
     }
     await db.posts.insert_one(clip_to_insert)
@@ -10093,6 +10106,14 @@ class ExternalClip(BaseModel):
     eu_blocked: bool = False
     duration: Optional[float] = None  # durée en secondes (indicatif)
     visibility: str = "public"     # public | friends | private (audience du clip)
+    location: Optional[str] = None    # lieu (texte libre)
+    link: Optional[str] = None        # lien ajouté (http/https)
+    cover_url: Optional[str] = None   # image de couverture (frame choisie), best-effort
+    allow_comments: bool = True       # autoriser les commentaires
+    allow_remix: bool = False         # autoriser la réutilisation (stitch/collage/story)
+    mature: bool = False              # contrôle du public : réservé aux 18+
+    ai_generated: bool = False        # étiquette « contenu généré par IA »
+    is_draft: bool = False            # enregistré en brouillon (masqué du fil)
 
 
 # Audience valide d'un clip (public par défaut si valeur inconnue).
@@ -10102,6 +10123,23 @@ _CLIP_VISIBILITY = {"public", "friends", "private"}
 def _clean_clip_visibility(v) -> str:
     v = (str(v or "public")).strip().lower()
     return v if v in _CLIP_VISIBILITY else "public"
+
+
+def _clip_publish_extra(*, location=None, link=None, cover_url=None,
+                        allow_comments=True, allow_remix=False, mature=False,
+                        ai_generated=False, is_draft=False) -> dict:
+    """Champs de publication communs aux deux endpoints de création de clip
+    (upload direct + externe). Tous optionnels, additifs, jamais bloquants."""
+    return {
+        "location": (str(location).strip()[:120] or None) if location else None,
+        "link": safe_http_url(link),
+        "cover_url": (cover_url if isinstance(cover_url, str) and len(cover_url) < 2_000_000 else None),
+        "allow_comments": bool(allow_comments),
+        "allow_remix": bool(allow_remix),
+        "mature": bool(mature),
+        "ai_generated": bool(ai_generated),
+        "is_draft": bool(is_draft),
+    }
 
 
 # Hôtes de stockage autorisés pour un clip « externe » (upload direct navigateur).
@@ -10165,6 +10203,11 @@ async def create_clip_from_url(data: ExternalClip, current_user: dict = Depends(
         "views": 0,
         "eu_blocked": bool(data.eu_blocked),
         "visibility": _clean_clip_visibility(data.visibility),
+        **_clip_publish_extra(
+            location=data.location, link=data.link, cover_url=data.cover_url,
+            allow_comments=data.allow_comments, allow_remix=data.allow_remix,
+            mature=data.mature, ai_generated=data.ai_generated, is_draft=data.is_draft,
+        ),
         "created_at": now.isoformat(),
     }
     await db.posts.insert_one(clip_to_insert)

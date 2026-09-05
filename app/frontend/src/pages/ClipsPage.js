@@ -1207,9 +1207,15 @@ export default function ClipsPage({ user, setUser }) {
 
   // Étape 2 — publication : réutilise EXACTEMENT le pipeline existant (Firebase
   // resumable ou multipart backend), avec légende + audience + restriction UE.
-  const publishClip = async ({ caption, visibility, euBlocked }) => {
+  const publishClip = async (d) => {
     const file = pendingClip?.file;
     if (!file) return;
+    const {
+      caption = "", visibility = "public", euBlocked = false,
+      location = "", link = "", cover = null,
+      allowComments = true, allowRemix = false, mature = false,
+      aiGenerated = false, isDraft = false,
+    } = d || {};
     setUploading(true);
     setUploadProgress(0);
     try {
@@ -1233,6 +1239,9 @@ export default function ClipsPage({ user, setUser }) {
           caption,
           eu_blocked: euBlocked,
           visibility,
+          location, link, cover_url: cover,
+          allow_comments: allowComments, allow_remix: allowRemix,
+          mature, ai_generated: aiGenerated, is_draft: isDraft,
           duration,
         });
       } else {
@@ -1241,6 +1250,14 @@ export default function ClipsPage({ user, setUser }) {
         form.append("caption", caption);
         form.append("eu_blocked", euBlocked ? "true" : "false");
         form.append("visibility", visibility);
+        form.append("location", location);
+        form.append("link", link);
+        if (cover) form.append("cover_url", cover);
+        form.append("allow_comments", allowComments ? "true" : "false");
+        form.append("allow_remix", allowRemix ? "true" : "false");
+        form.append("mature", mature ? "true" : "false");
+        form.append("ai_generated", aiGenerated ? "true" : "false");
+        form.append("is_draft", isDraft ? "true" : "false");
         await axios.post(`${API}/clips`, form, {
           headers: { "Content-Type": "multipart/form-data" },
           onUploadProgress: (evt) => {
@@ -1248,7 +1265,7 @@ export default function ClipsPage({ user, setUser }) {
           },
         });
       }
-      toast.success(t("clips.published"));
+      toast.success(isDraft ? t("clips.draft_saved") : t("clips.published"));
       closePublish();
       setActiveIndex(0);
       skipRef.current = 0;
