@@ -31,7 +31,7 @@ const AUDIO_CONSTRAINTS = {
 };
 
 // Message clair selon la raison de l'échec d'accès au micro/caméra.
-const mediaErrorMessage = (err) => {
+const mediaErrorMessage = (err, t = (k) => k) => {
   switch (err?.name) {
     case "NotAllowedError":
     case "SecurityError":
@@ -224,7 +224,7 @@ export default function CallManager({ user }) {
           video: gotVideo,
         });
       } catch (err) {
-        toast.error(mediaErrorMessage(err));
+        toast.error(mediaErrorMessage(err, t));
         cleanup();
       }
     },
@@ -258,7 +258,7 @@ export default function CallManager({ user }) {
       });
       setPhase("connected");
     } catch (err) {
-      toast.error(mediaErrorMessage(err));
+      toast.error(mediaErrorMessage(err, t));
       sendSignal(peer.id, { kind: "hangup", call_id: callIdRef.current });
       cleanup();
     }

@@ -189,6 +189,35 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   // commentaires complet (lecture / réponse / identification), façon X.
   const openThread = () => navigate(`/post/${post.id}`);
 
+  // Traduction du post à la demande (bouton « Traduire »). Ces états étaient
+  // référencés par le JSX mais jamais déclarés → ReferenceError au rendu.
+  const [translatedContent, setTranslatedContent] = useState(null);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const handleTranslatePost = async () => {
+    // Déjà traduit : on bascule simplement original ↔ traduction.
+    if (translatedContent) {
+      setShowOriginal((v) => !v);
+      return;
+    }
+    if (!post.content) return;
+    setTranslating(true);
+    try {
+      const target = (i18n.resolvedLanguage || i18n.language || "en").split(
+        "-",
+      )[0];
+      const out = await translateText(post.content, target);
+      if (out) {
+        setTranslatedContent(out);
+        setShowOriginal(false);
+      }
+    } catch (e) {
+      /* on garde le contenu original en cas d'échec */
+    } finally {
+      setTranslating(false);
+    }
+  };
+
   // Double-tap « like » sur la photo (façon Instagram) : cœur animé + like.
   const lastTapRef = useRef(0);
   const [heartBurst, setHeartBurst] = useState(false);

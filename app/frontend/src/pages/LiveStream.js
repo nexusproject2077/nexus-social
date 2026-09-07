@@ -20,15 +20,6 @@ const C = {
 };
 
 // Filtres façon TikTok (appliqués via canvas → transmis aux spectateurs).
-const FILTERS = [
-  { name: "Normal", css: "none" },
-  { name: "N&B", css: "grayscale(1) contrast(1.05)" },
-  { name: "Chaud", css: "sepia(0.35) saturate(1.4)" },
-  { name: "Froid", css: "saturate(1.3) hue-rotate(-12deg) brightness(1.05)" },
-  { name: "Vif", css: "saturate(1.7) contrast(1.15)" },
-  { name: t("retro"), css: "sepia(0.6) contrast(0.95) brightness(1.1)" },
-];
-
 const GIFTS = [
   { emoji: "🌹", name: "Rose", cents: 99 },
   { emoji: "❤️", name: "Cœur", cents: 199 },
@@ -54,6 +45,14 @@ function drawCover(ctx, video, cw, ch) {
 
 export default function LiveStream({ user }) {
   const { t } = useTranslation();
+  const FILTERS = [
+    { name: "Normal", css: "none" },
+    { name: "N&B", css: "grayscale(1) contrast(1.05)" },
+    { name: "Chaud", css: "sepia(0.35) saturate(1.4)" },
+    { name: "Froid", css: "saturate(1.3) hue-rotate(-12deg) brightness(1.05)" },
+    { name: "Vif", css: "saturate(1.7) contrast(1.15)" },
+    { name: t("retro"), css: "sepia(0.6) contrast(0.95) brightness(1.1)" },
+  ];
   const { roomId: paramRoom } = useParams();
   const navigate = useNavigate();
   const isHost = !paramRoom;

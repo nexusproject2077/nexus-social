@@ -16,7 +16,7 @@ export default function Layout({
   hideMobileHeader,
   bottomNav,
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [suggestedUsers, setSuggestedUsers] = useState([]);
