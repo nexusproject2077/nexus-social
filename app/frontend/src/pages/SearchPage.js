@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 
 // ── Panneau « Listes » : créer / consulter / gérer des listes d'utilisateurs ──
 function ListsPanel({ user }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
