@@ -103,49 +103,30 @@ except ImportError:
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# ==================== MONGODB CONNECTION AVEC VALIDATION ====================
-mongo_url = os.environ.get('MONGODB_URI') or os.environ.get('MONGO_URL') or os.environ.get('DATABASE_URL')
-
-# Validation de l'URL MongoDB
-if not mongo_url:
-    raise ValueError(
-        "❌ MongoDB URL not configured! "
-        "Please set MONGODB_URI, MONGO_URL, or DATABASE_URL environment variable"
-    )
-
-# Vérification du schéma de l'URL
-if not (mongo_url.startswith('mongodb://') or mongo_url.startswith('mongodb+srv://')):
-    print(f"❌ ERREUR CRITIQUE: MongoDB URL doesn't start with 'mongodb://' or 'mongodb+srv://'")
-    print(f"❌ URL actuelle: {mongo_url[:30]}...")
-    print(f"")
-    print(f"✅ Exemples d'URL valides:")
-    print(f"   mongodb+srv://user:pass@cluster.mongodb.net/dbname")
-    print(f"   mongodb://user:pass@host:27017/dbname")
-    print(f"")
-    raise InvalidURI(
-        f"Invalid MongoDB URI scheme. "
-        f"URI must begin with 'mongodb://' or 'mongodb+srv://'. "
-        f"Current URI starts with: {mongo_url[:20]}"
-    )
-
-# Création du client MongoDB
+# ==================== CORE (config · DB · sérialisation · sécurité) =========
+# Refactor progressif : la config, la connexion Mongo, la sérialisation Mongo
+# et l'authentification vivent dans le paquet `core/`. On réexpose les symboles
+# ici pour que tout le code existant continue de fonctionner à l'identique.
 try:
-    client = AsyncIOMotorClient(mongo_url)
-    db = client[os.environ.get('DB_NAME', 'nexus_social')]
-    print("✅ MongoDB client initialized successfully")
-    print(f"✅ Database: {os.environ.get('DB_NAME', 'nexus_social')}")
-except InvalidURI as e:
-    print(f"❌ Invalid MongoDB URI: {e}")
-    raise
-except Exception as e:
-    print(f"❌ Error initializing MongoDB client: {e}")
-    raise
-
-# Security
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-security = HTTPBearer()
-SECRET_KEY = os.environ.get('SECRET_KEY', '76f267dbc69c6b4e639a50a7ccdd3783')
-ALGORITHM = "HS256"
+    from backend.core.config import (
+        MONGO_URL as mongo_url, SECRET_KEY, ALGORITHM, ADMIN_EMAILS,
+    )
+    from backend.core.database import client, db
+    from backend.core.serialization import convert_mongo_doc_to_dict
+    from backend.core.security import (
+        pwd_context, security, create_access_token,
+        get_current_user, is_admin_user, require_admin,
+    )
+except ImportError:
+    from core.config import (
+        MONGO_URL as mongo_url, SECRET_KEY, ALGORITHM, ADMIN_EMAILS,
+    )
+    from core.database import client, db
+    from core.serialization import convert_mongo_doc_to_dict
+    from core.security import (
+        pwd_context, security, create_access_token,
+        get_current_user, is_admin_user, require_admin,
+    )
 
 # Create the main app
 app = FastAPI(title="Nexus Social API", version="1.0.0")
@@ -207,67 +188,23 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
 #   - soit CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET
 # Si Cloudinary n'est pas configuré, store_media() renvoie le média inchangé
 # (base64 conservé) → AUCUNE régression, juste pas d'allègement.
-_CLOUDINARY_READY = False
+# Service média (upload Cloudinary) → services/media.py. On réexpose les noms
+# historiques (_CLOUDINARY_READY, _cloudinary, _cloudinary_uploader) car le
+# proxy média, les endpoints d'upload et la migration les utilisent encore.
 try:
-    import cloudinary as _cloudinary
-    import cloudinary.uploader as _cloudinary_uploader
-    if os.environ.get("CLOUDINARY_URL"):
-        _cloudinary.config(secure=True)  # lit CLOUDINARY_URL
-        _CLOUDINARY_READY = True
-    elif os.environ.get("CLOUDINARY_CLOUD_NAME"):
-        _cloudinary.config(
-            cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
-            api_key=os.environ.get("CLOUDINARY_API_KEY"),
-            api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
-            secure=True,
-        )
-        _CLOUDINARY_READY = True
-    if _CLOUDINARY_READY:
-        print("✅ Cloudinary configuré (médias hors base)")
-    else:
-        print("ℹ️ Cloudinary non configuré — médias conservés en base (base64)")
-except Exception as _e:
-    print(f"ℹ️ Cloudinary indisponible ({_e}) — médias en base64")
-
-
-async def store_media(media, folder="nexus"):
-    """Décharge un média base64 vers Cloudinary et renvoie son URL (légère).
-
-    - Si `media` est None/vide → renvoyé tel quel.
-    - Si c'est déjà une URL http(s) (média externe déjà hébergé) → inchangé.
-    - Si c'est une data URL base64 ET Cloudinary configuré → upload puis URL.
-    - Sinon (pas de Cloudinary, ou échec upload) → renvoyé tel quel (base64
-      conservé) : best-effort, jamais bloquant, aucune régression.
-    """
-    if not media or not isinstance(media, str):
-        return media
-    if not media.startswith("data:"):
-        return media  # déjà une URL externe → rien à faire
-    if not _CLOUDINARY_READY:
-        return media  # pas de Cloudinary → on garde le base64
-    resource_type = "video" if media.startswith("data:video") else "image"
-
-    def _upload():
-        return _cloudinary_uploader.upload(
-            media, folder=folder, resource_type=resource_type,
-            unique_filename=True, overwrite=False,
-        )
-    try:
-        res = await asyncio.to_thread(_upload)
-        return res.get("secure_url") or media
-    except Exception as e:
-        logger.warning(f"Upload Cloudinary échoué (média conservé en base64): {e}")
-        return media
-
-
-async def store_media_list(items, folder="nexus"):
-    """store_media appliqué à une liste (messages de groupe : media_urls)."""
-    if not items:
-        return items
-    out = []
-    for it in items:
-        out.append(await store_media(it, folder=folder))
-    return out
+    from backend.services.media import (
+        store_media, store_media_list,
+        CLOUDINARY_READY as _CLOUDINARY_READY,
+        cloudinary as _cloudinary,
+        cloudinary_uploader as _cloudinary_uploader,
+    )
+except ImportError:
+    from services.media import (
+        store_media, store_media_list,
+        CLOUDINARY_READY as _CLOUDINARY_READY,
+        cloudinary as _cloudinary,
+        cloudinary_uploader as _cloudinary_uploader,
+    )
 
 
 # --- Migration paresseuse : convertit les anciens médias base64 en URL Cloudinary
@@ -703,15 +640,8 @@ async def _paypal_call(method: str, path: str, json_body=None, extra_headers=Non
     return await asyncio.to_thread(_paypal_call_sync, method, path, json_body, extra_headers)
 
 # ==================== ADMINISTRATION ====================
-# ADMIN_EMAILS (emails séparés par des virgules) identifie les comptes
-# administrateurs, exposés via is_admin sur /auth/me. Optionnel : réservé à
-# d'éventuelles fonctions d'administration. Le tableau de bord Analytics, lui,
-# est personnel (chaque utilisateur voit ses propres statistiques).
-ADMIN_EMAILS = {
-    e.strip().lower()
-    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
-    if e.strip()
-}
+# ADMIN_EMAILS est désormais défini dans core/config.py et importé plus haut.
+# `is_admin_user` / `require_admin` viennent de core/security.
 if ADMIN_EMAILS:
     print(f"✅ Administrateurs configurés ({len(ADMIN_EMAILS)})")
 
@@ -745,187 +675,22 @@ if ws_manager is not None:
             ws_manager.disconnect(websocket, user_id)
 
 
-async def push_realtime(user_id: str, payload: dict):
-    """Envoi temps réel best-effort : n'interrompt jamais la requête REST."""
-    if ws_manager is None:
-        return
-    try:
-        await ws_manager.send_personal_message(payload, user_id)
-    except Exception:
-        pass
-
-
-# ==================== WEB PUSH (notifications app fermée) ====================
-# Clés VAPID lues dans l'environnement (à définir sur Render pour la prod).
-# En leur absence, l'envoi push est un no-op propre : l'in-app + le temps réel
-# WebSocket continuent de fonctionner normalement.
-VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "").strip()
-VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
-VAPID_SUBJECT     = os.environ.get("VAPID_SUBJECT", "mailto:contact@nexus-social.app").strip()
-
+# ── Service notifications → services/notifications.py ───────────────────────
+# Temps réel (WebSocket), Web Push (VAPID) et création/persistance des
+# notifications. On réexpose les noms utilisés ailleurs dans server.py.
 try:
-    from pywebpush import webpush, WebPushException  # type: ignore
-    _WEBPUSH_LIB = True
-except Exception:
-    _WEBPUSH_LIB = False
+    from backend.services.notifications import (
+        push_realtime, send_web_push, create_notification,
+        _push_content_for, _notif_allowed, _web_push_enabled,
+        NOTIF_TYPES, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT,
+    )
+except ImportError:
+    from services.notifications import (
+        push_realtime, send_web_push, create_notification,
+        _push_content_for, _notif_allowed, _web_push_enabled,
+        NOTIF_TYPES, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT,
+    )
 
-def _web_push_enabled() -> bool:
-    return _WEBPUSH_LIB and bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
-
-
-def _push_content_for(notif_type, from_user, post_id=None, comment_content=None):
-    """Titre / corps / URL cliquable d'une notification push, par type."""
-    u = from_user.get("username", "Quelqu'un")
-    uid = from_user.get("id", "")
-    body = {
-        "follow":          f"@{u} vous suit maintenant",
-        "follow_request":  f"@{u} souhaite vous suivre",
-        "follow_accepted": f"@{u} a accepté votre demande d'abonnement",
-        "like":            f"@{u} a aimé votre publication",
-        "like_clip":       f"@{u} a aimé votre clip",
-        "like_story":      f"@{u} a aimé votre story",
-        "comment":         f"@{u} a commenté" + (f" : {comment_content}" if comment_content else ""),
-        "comment_reply":   f"@{u} a répondu à votre commentaire",
-        "mention":         f"@{u} vous a mentionné",
-        "tag":             f"@{u} vous a identifié",
-        "live":            f"@{u} est en direct 🔴",
-        "clip":            f"@{u} a publié un nouveau clip",
-        "story":           f"@{u} a publié une nouvelle story",
-        "story_reply":     f"@{u} a répondu à votre story",
-        "story_reaction":  f"@{u} a réagi à votre story",
-        "message":         f"Nouveau message de @{u}",
-        "group_message":   f"@{u} a écrit dans un groupe",
-        "message_request": f"@{u} veut vous envoyer un message",
-        "trending":        "Votre publication est dans les tendances 🔥",
-        "security":        "Connexion inhabituelle détectée sur votre compte",
-    }.get(notif_type, f"@{u}")
-
-    if notif_type in ("like", "like_clip", "like_story", "comment", "comment_reply",
-                      "mention", "tag", "trending") and post_id:
-        url = f"/post/{post_id}"
-    elif notif_type == "clip":
-        url = f"/nexus-clips/{post_id}" if post_id else "/nexus-clips"
-    elif notif_type == "live":
-        url = f"/live/{post_id}" if post_id else "/live"
-    elif notif_type == "group_message":
-        url = f"/messages/group/{post_id}" if post_id else "/messages"
-    elif notif_type in ("message", "message_request"):
-        url = f"/messages/{uid}" if uid else "/messages"
-    elif notif_type in ("story", "story_reply", "story_reaction"):
-        url = "/notifications"
-    elif notif_type in ("follow", "follow_request", "follow_accepted"):
-        url = f"/profil/{uid}" if uid else "/notifications"
-    elif notif_type == "security":
-        url = "/settings"
-    else:
-        url = "/notifications"
-    return ("Nexus Social", body, url)
-
-
-async def send_web_push(user_id: str, title: str, body: str, url: str = "/", tag: str = "nexus"):
-    """Envoie une notification push (même app fermée) à tous les abonnements de
-    l'utilisateur. Best-effort ; no-op si VAPID non configuré. Supprime les
-    abonnements expirés (404/410)."""
-    if not _web_push_enabled() or not user_id:
-        return
-    try:
-        subs = await db.push_subscriptions.find({"user_id": user_id}).to_list(length=50)
-    except Exception:
-        return
-    if not subs:
-        return
-    payload = json.dumps({"title": title, "body": (body or "")[:180], "url": url, "tag": tag})
-    for s in subs:
-        sub_info = s.get("subscription")
-        if not sub_info:
-            continue
-        try:
-            # pywebpush est synchrone : on l'exécute hors de la boucle asyncio.
-            await asyncio.to_thread(
-                webpush,
-                subscription_info=sub_info,
-                data=payload,
-                vapid_private_key=VAPID_PRIVATE_KEY,
-                vapid_claims={"sub": VAPID_SUBJECT},
-            )
-        except WebPushException as e:
-            status = getattr(getattr(e, "response", None), "status_code", None)
-            if status in (404, 410):
-                try:
-                    await db.push_subscriptions.delete_one({"_id": s["_id"]})
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-
-# Types de notification connus (pour l'UI des réglages).
-NOTIF_TYPES = [
-    "like", "comment", "comment_reply", "mention", "tag",
-    "follow", "follow_request", "follow_accepted", "live",
-    "message", "group_message", "story_reply", "story_reaction",
-    "instant", "instant_reaction", "trending", "security",
-]
-
-
-async def _notif_allowed(user_id, notif_type, from_user_id=None):
-    """False si l'utilisateur a désactivé ce type de notification, ou coupé les
-    notifications de cet expéditeur. Best-effort (autorise en cas d'erreur)."""
-    if not user_id:
-        return False
-    try:
-        pref = await db.notification_prefs.find_one({"user_id": user_id})
-    except Exception:
-        return True
-    if not pref:
-        return True
-    if notif_type in (pref.get("disabled_types") or []):
-        return False
-    if from_user_id and from_user_id in (pref.get("muted_accounts") or []):
-        return False
-    return True
-
-
-async def create_notification(user_id, notif_type, from_user, post_id=None,
-                              comment_content=None):
-    """Crée une notification (et la pousse en temps réel). Best-effort.
-
-    N'auto-notifie jamais : si l'émetteur est le destinataire, on ignore.
-    Respecte les préférences de l'utilisateur (type désactivé / compte coupé).
-    """
-    if not user_id or user_id == from_user.get("id"):
-        return
-    # Préférences par type (activé par défaut). On respecte les DEUX systèmes
-    # (rétro-compat) : le profil par-type (users.notif_prefs, modale
-    # NotificationSettings) ET la collection notification_prefs (page Réglages).
-    try:
-        _u = await db.users.find_one({"id": user_id}, {"notif_prefs": 1})
-        if ((_u or {}).get("notif_prefs") or {}).get(notif_type) is False:
-            return
-    except Exception:
-        pass
-    if not await _notif_allowed(user_id, notif_type, from_user.get("id")):
-        return
-    doc = {
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "type": notif_type,
-        "from_user_id": from_user.get("id"),
-        "from_username": from_user.get("username", ""),
-        "from_profile_pic": from_user.get("profile_pic"),
-        "post_id": post_id,
-        "comment_content": comment_content,
-        "read": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    try:
-        await db.notifications.insert_one(dict(doc))
-        await push_realtime(user_id, {"type": "notification", "data": doc})
-        # Push navigateur (app fermée) — best-effort, no-op si VAPID absent.
-        title, body, url = _push_content_for(notif_type, from_user, post_id, comment_content)
-        await send_web_push(user_id, title, body, url, tag=notif_type)
-    except Exception:
-        pass
 
 # ==================== LIVE (WebRTC signaling) ====================
 # Relais de signaling minimal pour un direct 1:1 (offre/réponse/ICE).
@@ -1013,36 +778,8 @@ async def root():
 
 
 # --- FONCTION UTILITAIRE POUR CONVERTIR LES OBJECTID EN STR ---
-def convert_mongo_doc_to_dict(doc: dict) -> dict:
-    """Convertit un document MongoDB en dictionnaire Python avec ObjectId → str
-    
-    IMPORTANT: Si le document a déjà un champ 'id' (UUID), on le garde !
-    On supprime juste le '_id' MongoDB pour éviter les conflits.
-    """
-    if doc is None:
-        return None
-    new_doc = doc.copy()
-    
-    # ✅ CORRECTION: Ne pas écraser 'id' s'il existe déjà (UUID)
-    if "_id" in new_doc:
-        # Si le document n'a pas de champ 'id', on utilise _id
-        if "id" not in new_doc:
-            new_doc["id"] = str(new_doc["_id"])
-        # Supprime toujours _id pour éviter les conflits
-        del new_doc["_id"]
-
-    for key, value in new_doc.items():
-        if isinstance(value, ObjectId):
-            new_doc[key] = str(value)
-        elif isinstance(value, dict):
-            new_doc[key] = convert_mongo_doc_to_dict(value)
-        elif isinstance(value, list):
-            new_doc[key] = [
-                convert_mongo_doc_to_dict(item) if isinstance(item, dict) 
-                else (str(item) if isinstance(item, ObjectId) else item) 
-                for item in value
-            ]
-    return new_doc
+# convert_mongo_doc_to_dict est désormais dans core/serialization.py (importé
+# plus haut) — même comportement, partagé avec core/security.
 
 
 # ==================== PROXY MÉDIA (anti-OOM base64) ====================
@@ -1246,34 +983,11 @@ def normalize_paypal(value: Optional[str]) -> Optional[str]:
     return f"https://paypal.me/{handle}"
 
 
-def safe_http_url(url: Optional[str]) -> Optional[str]:
-    """N'accepte qu'une URL http(s) (évite javascript: et autres schémas dangereux)."""
-    if isinstance(url, str):
-        u = url.strip()
-        if u.startswith("http://") or u.startswith("https://"):
-            return u[:2000]
-    return None
-
-
-def build_poll(poll_options: Optional[List[str]]) -> Optional[dict]:
-    """Construit un sondage à partir d'une liste de textes d'options.
-    Renvoie None si moins de 2 options valides (non vides)."""
-    if not poll_options:
-        return None
-    cleaned = [o.strip() for o in poll_options if o and o.strip()]
-    if len(cleaned) < 2:
-        return None
-    # Dédoublonne en gardant l'ordre, limite à 6 options
-    seen, options = set(), []
-    for text in cleaned:
-        if text not in seen:
-            seen.add(text)
-            options.append({"id": str(uuid.uuid4()), "text": text, "votes": 0})
-        if len(options) >= 6:
-            break
-    if len(options) < 2:
-        return None
-    return {"options": options, "total_votes": 0, "voters": {}}
+# ── Service contenu → services/content.py ───────────────────────────────────
+try:
+    from backend.services.content import safe_http_url, build_poll, resolve_mentions
+except ImportError:
+    from services.content import safe_http_url, build_poll, resolve_mentions
 
 
 def enrich_post_poll(post: dict, user_id: str) -> dict:
@@ -1305,311 +1019,33 @@ async def check_is_following(follower_id: str, followed_id: str) -> bool:
 api_router = APIRouter(prefix="/api")
 
 # ==================== MODELS ====================
-class UserCreate(BaseModel):
-    username: str
-    email: EmailStr
-    password: str
-    bio: Optional[str] = ""
-    birthdate: Optional[str] = None  # AAAA-MM-JJ — requis (loi FR : >= 15 ans)
-    # Compte privé PAR DÉFAUT (contrôle & vie privée) : seuls les abonnés
-    # approuvés voient le contenu. Modifiable ensuite dans les réglages.
-    is_private: Optional[bool] = True
+# ==================== SCHÉMAS PYDANTIC ====================
+# Les modèles de domaine (User, Post, Comment, Message, Story, Notification,
+# Poll…) sont désormais dans le paquet models/ — importés ici et réutilisés
+# à l'identique dans toutes les routes.
+try:
+    from backend.models import (
+        UserCreate, UserLogin, User, UserProfile,
+        PollOption, Poll, PollVote, PostCreate, Post,
+        CommentCreate, Comment,
+        MessageCreate, Message, Conversation,
+        Notification,
+        StoryCreate, Story, StoryGroup,
+    )
+except ImportError:
+    from models import (
+        UserCreate, UserLogin, User, UserProfile,
+        PollOption, Poll, PollVote, PostCreate, Post,
+        CommentCreate, Comment,
+        MessageCreate, Message, Conversation,
+        Notification,
+        StoryCreate, Story, StoryGroup,
+    )
 
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-class User(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    username: str
-    email: str
-    bio: str = ""
-    profile_pic: Optional[str] = None
-    cover_pic: Optional[str] = None     # bannière de couverture (façon X)
-    followers_count: int = 0
-    following_count: int = 0
-    is_verified: bool = False           # badge « identité vérifiée » (pièce validée)
-    is_premium: bool = False            # abonné Nexus Premium (badge + avantages réels)
-    premium_until: Optional[str] = None  # fin d'abonnement (ISO) ; None si non abonné
-    is_admin: bool = False
-    # Vérification d'identité (RGPD : on n'expose JAMAIS la pièce ni la date de
-    # naissance en clair ; seuls des statuts/booléens sont renvoyés au client).
-    verification_status: str = "unverified"  # unverified | pending | verified | rejected
-    age_verified: bool = False          # >= 15 ans confirmé à l'inscription (loi FR)
-    email_verified: bool = False
-    phone_verified: bool = False
-    twofa_enabled: bool = False         # double authentification (code email à la connexion)
-    is_private: bool = False            # compte privé (abonnés approuvés uniquement)
-    # Protection des mineurs (loi FR / éthique produit). `is_minor` est calculé à
-    # partir de la date de naissance (< 18 ans). Il active : compte privé forcé,
-    # filtrage des DM d'adultes, barrière anti-scroll (30 min), couvre-feu de nuit
-    # et masquage des mots vulgaires. Les adultes gardent l'expérience complète.
-    is_minor: bool = False
-    # Limite de temps quotidienne configurable (minutes) — bien-être numérique.
-    # None = pas de limite. `time_limit_enabled` permet de désactiver l'option.
-    daily_time_limit: Optional[int] = None
-    time_limit_enabled: bool = True
-    show_sports: bool = True            # widget scores de foot en direct (désactivable)
-    show_mma: bool = True               # cartes de combat MMA/UFC (désactivable)
-    # Confidentialité messagerie (façon Instagram).
-    show_active_status: bool = True     # affiche le point de présence + « dernière connexion » aux autres
-    read_receipts: bool = True          # confirmation de lecture (« Vu ») ; si False, réciproque coupée
-    hide_political: bool = False        # exclut les contenus politiques du fil (bien-être)
-    widget_stack_config: Optional[dict] = None  # pile de widgets : {smart_rotate, order}
-    privacy_strict: bool = False        # Mode Confidentialité stricte : coupe les
-                                        # analytics non essentiels + les pubs ciblées
-    muted_words: List[str] = []         # mots/phrases masqués (filtrés du fil + notifs)
-    accent_color: Optional[str] = None
-    theme: Optional[str] = None
-    created_at: str
-
-class UserProfile(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    username: str
-    bio: str = ""
-    profile_pic: Optional[str] = None
-    cover_pic: Optional[str] = None     # bannière de couverture (façon X)
-    followers_count: int = 0
-    following_count: int = 0
-    is_following: bool = False
-    is_verified: bool = False
-    is_premium: bool = False  # membre Nexus Premium (badge + avantages)
-    can_receive_tips: bool = False  # a un compte Stripe Connect → pourboire par carte
-    paypal_receivable: bool = False  # PayPal Commerce activé → pourboire PayPal avec commission
-    paypal_link: Optional[str] = None  # lien PayPal.me (repli sans commission)
-    crypto_wallet: Optional[str] = None  # adresse de tips crypto (Solana/USDT…)
-    created_at: str
-
-class PollOption(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    text: str
-    votes: int = 0
-
-class Poll(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    options: List[PollOption]
-    total_votes: int = 0
-
-class PollVote(BaseModel):
-    option_id: str
-
-class PostCreate(BaseModel):
-    content: str
-    media_type: Optional[str] = None
-    media_url: Optional[str] = None
-    poll_options: Optional[List[str]] = None  # >= 2 options => sondage attaché au post
-    affiliate_link: Optional[str] = None  # lien affilié optionnel (http/https)
-
-class Post(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _tolerate_nulls(cls, data):
-        """Empêche qu'une publication ancienne/incomplète (champ requis à null,
-        ex. content=None) ne fasse échouer TOUTE une liste de publications."""
-        if isinstance(data, dict):
-            for k in ("id", "author_id", "author_username", "content", "created_at"):
-                if data.get(k) is None:
-                    data[k] = ""
-        return data
-
-    id: str
-    author_id: str
-    author_username: str
-    author_profile_pic: Optional[str] = None
-    author_is_verified: bool = False
-    author_is_premium: bool = False  # badge Premium sur la publication (avantage réel)
-    author_can_receive_tips: bool = False  # auteur a un compte Stripe → bouton Pourboire
-    author_is_following: bool = False  # l'utilisateur courant suit-il déjà l'auteur ? (bouton « + » Clips)
-    is_pinned: bool = False          # post épinglé en haut du profil (créateur Premium)
-    content: str
-    media_type: Optional[str] = None
-    media_url: Optional[str] = None
-    likes_count: int = 0
-    comments_count: int = 0
-    shares_count: int = 0
-    is_liked: bool = False
-    is_saved: bool = False  # l'utilisateur courant a-t-il enregistré ce post/clip ?
-    views: int = 0
-    eu_blocked: bool = False  # clip restreint dans l'UE (geo-block Nexus Clips)
-    affiliate_link: Optional[str] = None
-    affiliate_clicks: int = 0
-    poll: Optional[Poll] = None
-    poll_user_vote: Optional[str] = None  # id de l'option votée par l'utilisateur courant
-    # Republication : si repost_of est défini, ce post est un repartage.
-    # author_* = la personne qui a reposté ; original_author_* = l'auteur d'origine.
-    repost_of: Optional[str] = None
-    original_author_id: Optional[str] = None
-    original_author_username: Optional[str] = None
-    original_author_profile_pic: Optional[str] = None
-    original_author_is_verified: bool = False
-    is_reposted: bool = False  # l'utilisateur courant a-t-il reposté ce post ?
-    mentioned_user_ids: Optional[List[str]] = None
-    created_at: str
-
-class CommentCreate(BaseModel):
-    content: str
-
-class Comment(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    post_id: str
-    author_id: str
-    author_username: str
-    author_profile_pic: Optional[str] = None
-    author_is_verified: bool = False
-    author_is_premium: bool = False     # commentaire d'un abonné Premium (remonté en tête)
-    content: str
-    likes_count: int = 0
-    replies_count: int = 0
-    is_liked: bool = False
-    parent_comment_id: Optional[str] = None
-    created_at: str
-
-class MessageCreate(BaseModel):
-    recipient_id: str
-    content: str = ""
-    media_url: Optional[str] = None   # image compressée (data URL) éventuelle
-    media_type: Optional[str] = None  # "image" pour l'instant
-    reply_to_id: Optional[str] = None
-
-class Message(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    sender_id: str
-    sender_username: str
-    sender_profile_pic: Optional[str] = None
-    recipient_id: str
-    recipient_username: str
-    content: str = ""
-    media_url: Optional[str] = None
-    media_type: Optional[str] = None
-    reply_to_id: Optional[str] = None
-    read: bool = False
-    reactions: List[dict] = []  # [{user_id, emoji, ...}] — sinon perdues au rechargement
-    created_at: str
-    expires_at: Optional[str] = None  # message éphémère : date d'auto-suppression
-
-class Conversation(BaseModel):
-    user_id: str
-    username: str
-    profile_pic: Optional[str] = None
-    last_message: str
-    last_message_time: str
-    unread_count: int = 0
-    # Préférences personnelles (épingler / sourdine / marqué non lu) — façon Instagram.
-    pinned: bool = False
-    muted: bool = False
-    marked_unread: bool = False
-    is_online: bool = False             # présence de l'interlocuteur (si son statut est visible)
-
-class Notification(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    user_id: str
-    type: str
-    # Optionnels : certaines notifications système (vérification d'identité, etc.)
-    # n'ont pas d'expéditeur utilisateur — un défaut évite de casser TOUTE la
-    # liste des notifications à cause d'une seule entrée sans from_user_id.
-    from_user_id: str = ""
-    from_username: str = "Nexus Social"
-    from_profile_pic: Optional[str] = None
-    post_id: Optional[str] = None
-    comment_content: Optional[str] = None
-    content: Optional[str] = None
-    reason: Optional[str] = None
-    url: Optional[str] = None
-    read: bool = False
-    created_at: str
-
-class StoryCreate(BaseModel):
-    media_type: str
-    media_url: str
-
-class Story(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    author_id: str
-    author_username: str
-    author_profile_pic: Optional[str] = None
-    media_type: str
-    media_url: str
-    text: Optional[str] = None            # légende / texte incrusté
-    audience: str = "everyone"           # everyone | close_friends | custom
-    music_url: Optional[str] = None       # extrait audio (preview iTunes, 30 s)
-    music_title: Optional[str] = None
-    music_artist: Optional[str] = None
-    music_start: float = 0.0              # passage de départ (secondes)
-    mirror: bool = False                  # vidéo frontale à remettre « à l'endroit »
-    views_count: int = 0
-    created_at: str
-    expires_at: str
-    has_viewed: bool = False
-    is_mine: bool = False                 # story de l'utilisateur courant (autorité serveur)
-
-class StoryGroup(BaseModel):
-    user_id: str
-    username: str
-    profile_pic: Optional[str] = None
-    stories: List[Story]
-    last_story_time: str
 
 # ==================== AUTH HELPERS ====================
-def create_access_token(data: dict):
-    """Crée un token JWT avec expiration de 7 jours"""
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(days=7)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Récupère l'utilisateur actuel depuis le token JWT"""
-    try:
-        token = credentials.credentials
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        # Essaie d'abord avec le champ "id" personnalisé (nouveau format)
-        user = await db.users.find_one({"id": user_id})
-        
-        # Si pas trouvé, essaie avec _id (pour les anciens tokens)
-        if not user:
-            try:
-                # Convertit l'ID en ObjectId si c'est un ancien token MongoDB
-                user = await db.users.find_one({"_id": ObjectId(user_id)})
-            except:
-                pass
-
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-
-        return convert_mongo_doc_to_dict(user)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Authentication error: {str(e)}")
-
-
-def is_admin_user(user: dict) -> bool:
-    """Vrai si l'utilisateur fait partie des administrateurs (ADMIN_EMAILS)."""
-    email = (user.get("email") or "").strip().lower()
-    return bool(email) and email in ADMIN_EMAILS
-
-
-async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
-    """Dépendance : n'autorise que les administrateurs (ADMIN_EMAILS)."""
-    if not is_admin_user(current_user):
-        raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
-    return current_user
+# create_access_token · get_current_user · is_admin_user · require_admin sont
+# désormais dans core/security.py (importés plus haut) — comportement inchangé.
 
 
 # ==================== MODÉRATION AUTOMATIQUE ====================
@@ -1620,78 +1056,16 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
 #                        (db.moderation_queue) pour une revue humaine.
 # Fail-open : si moderation est indisponible, on n'applique aucun filtre.
 
-async def flag_for_review(kind: str, ref_id: str, author_id: str, text, verdict: dict, media_kind=None):
-    """Ajoute un contenu signalé à la file de modération humaine."""
-    await db.moderation_queue.insert_one({
-        "id": str(uuid.uuid4()),
-        "kind": kind,               # "post" | "comment" | "clip"
-        "ref_id": ref_id,
-        "author_id": author_id,
-        "text": ((text or "")[:500]),
-        "category": verdict.get("category"),
-        "label": verdict.get("label"),
-        "score": verdict.get("score"),
-        "media_kind": media_kind,
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
+# ── Service modération → services/moderation.py ─────────────────────────────
+try:
+    from backend.services.moderation import (
+        flag_for_review, evaluate_content, screen_content, notify_content_removed,
+    )
+except ImportError:
+    from services.moderation import (
+        flag_for_review, evaluate_content, screen_content, notify_content_removed,
+    )
 
-
-async def evaluate_content(text=None, media_url=None):
-    """Analyse texte + média et renvoie le verdict le plus sévère (ou None si la
-    modération est indisponible). NE lève JAMAIS — utilisé aussi pour scanner des
-    contenus déjà publiés."""
-    if moderation is None:
-        return None
-    verdicts = []
-    if text and text.strip():
-        verdicts.append(moderation.moderate_text(text))
-    if media_url:
-        verdicts.append(moderation.moderate_media(media_url))
-    if not verdicts:
-        return None
-    return moderation.worst_verdict(*verdicts)
-
-
-async def screen_content(text=None, media_url=None):
-    """Comme evaluate_content, mais lève HTTP 400 si le contenu doit être bloqué.
-
-    À appeler AVANT d'enregistrer le contenu ; si le verdict renvoyé vaut "flag",
-    l'appelant enregistre le contenu puis appelle flag_for_review()."""
-    worst = await evaluate_content(text=text, media_url=media_url)
-    if worst and worst["action"] == "block":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Contenu refusé par la modération ({worst['category']}: {worst['label']})",
-        )
-    return worst
-
-
-async def notify_content_removed(author_id: str, kind_label: str, verdict: dict):
-    """Avertit l'auteur (notification) que son contenu a été retiré par la modération."""
-    if not author_id:
-        return
-    cat = (verdict or {}).get("category", "nsfw")
-    reason = ("contenu à caractère sexuel ou explicite" if cat == "nsfw"
-              else "propos haineux ou toxiques" if cat == "toxicity"
-              else "non-respect de nos règles")
-    message = f"Votre {kind_label} a été supprimé(e) automatiquement : {reason}."
-    try:
-        await db.notifications.insert_one({
-            "id": str(uuid.uuid4()),
-            "user_id": author_id,
-            "type": "moderation",
-            "from_user_id": author_id,          # système ; requis par le modèle
-            "from_username": "Modération Nexus",
-            "from_profile_pic": None,
-            "comment_content": message,
-            "read": False,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-    except Exception:
-        pass
-    # Notification temps réel (pastille + toast).
-    await push_realtime(author_id, {"type": "notification", "data": {"message": message}})
 
 # ==================== RATE LIMITING (anti brute-force) ====================
 # Limiteur en mémoire (cohérent car Render tourne en 1 worker). Fenêtre
@@ -2089,6 +1463,15 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks, req
     }
     await db.users.insert_one(user_to_insert)
 
+    # Parrainage : rattache le nouvel inscrit à son parrain (?ref=<username>) et
+    # déclenche l'éventuelle récompense Premium. Best-effort (jamais bloquant).
+    if user_data.ref:
+        await _apply_referral(
+            user_id,
+            {"id": user_id, "username": user_data.username, "profile_pic": None},
+            user_data.ref,
+        )
+
     token = create_access_token({"sub": user_id})
 
     # Email de bienvenue + code de confirmation (best-effort, en tâche de fond).
@@ -2321,6 +1704,9 @@ async def update_time_limit(data: dict = Body(...), current_user: dict = Depends
     }
 
 
+# Les routes /users/me/screen-time sont désormais dans routers/growth.py.
+
+
 @api_router.put("/users/me/appearance")
 async def update_appearance(
     appearance: dict,
@@ -2456,6 +1842,105 @@ async def _activate_premium(user_id: str, plan: str = None, customer: str = None
         fields["stripe_subscription_id"] = subscription
     await db.users.update_one({"id": user_id}, {"$set": fields})
     return until
+
+
+# ==================== PARRAINAGE (boucle de croissance) ====================
+REFERRAL_PER_REWARD = 3  # nombre de filleuls pour 1 mois Premium offert
+
+
+async def _grant_referral_premium(user_id: str, months: int = 1):
+    """Offre `months` mois de Premium via parrainage. PROLONGE l'abonnement
+    existant (jamais de réduction) et ne touche pas aux champs Stripe."""
+    if not user_id or months <= 0:
+        return None
+    now = datetime.now(timezone.utc)
+    base = now
+    try:
+        u = await db.users.find_one({"id": user_id}, {"premium_until": 1})
+        cur = (u or {}).get("premium_until")
+        if cur:
+            dt = datetime.fromisoformat(str(cur).replace("Z", "+00:00"))
+            if dt > now:
+                base = dt
+    except Exception:
+        base = now
+    until = (base + timedelta(days=30 * months)).isoformat()
+    await db.users.update_one({"id": user_id}, {"$set": {
+        "is_premium": True,
+        "premium_until": until,
+        "premium_source": "referral",
+        "updated_at": now.isoformat(),
+    }})
+    return until
+
+
+async def _apply_referral(new_user_id: str, new_user: dict, ref):
+    """Rattache un nouvel inscrit à son parrain (?ref=<username>), les fait se
+    suivre mutuellement, et offre 1 mois Premium au parrain tous les
+    REFERRAL_PER_REWARD filleuls. Best-effort : n'interrompt jamais l'inscription."""
+    try:
+        code = (ref or "").strip().lstrip("@")
+        if not code or len(code) > 40:
+            return
+        referrer = await db.users.find_one(
+            {"username": {"$regex": f"^{re.escape(code)}$", "$options": "i"}},
+            {"id": 1, "username": 1, "profile_pic": 1},
+        )
+        if not referrer or referrer["id"] == new_user_id:
+            return
+        await db.users.update_one({"id": new_user_id}, {"$set": {"referred_by": referrer["id"]}})
+        await db.users.update_one({"id": referrer["id"]}, {"$inc": {"referral_count": 1}})
+
+        # Auto-follow mutuel parrain ↔ filleul (connexion consentie).
+        async def _link(follower, followed_id):
+            try:
+                if follower["id"] == followed_id:
+                    return
+                if await db.follows.find_one(
+                    {"follower_id": follower["id"], "followed_id": followed_id}
+                ):
+                    return
+                await _do_follow(follower, followed_id)
+            except Exception:
+                pass
+        await _link(new_user, referrer["id"])
+        await _link(referrer, new_user_id)
+
+        # Récompense : 1 mois Premium par palier de REFERRAL_PER_REWARD filleuls.
+        fresh = await db.users.find_one(
+            {"id": referrer["id"]}, {"referral_count": 1, "referral_rewards": 1}
+        )
+        count = int((fresh or {}).get("referral_count") or 0)
+        rewards = int((fresh or {}).get("referral_rewards") or 0)
+        eligible = count // REFERRAL_PER_REWARD
+        if eligible > rewards:
+            await _grant_referral_premium(referrer["id"], eligible - rewards)
+            await db.users.update_one(
+                {"id": referrer["id"]}, {"$set": {"referral_rewards": eligible}}
+            )
+    except Exception:
+        pass
+
+
+@api_router.get("/users/me/referrals")
+async def my_referrals(current_user: dict = Depends(get_current_user)):
+    """État du parrainage : code, compteur, récompenses, palier restant."""
+    count = int(current_user.get("referral_count") or 0)
+    rewards = int(current_user.get("referral_rewards") or 0)
+    per = REFERRAL_PER_REWARD
+    return {
+        "code": current_user["username"],
+        "count": count,
+        "rewards_granted": rewards,
+        "per_reward": per,
+        "to_next": per - (count % per),
+        "is_premium": bool(current_user.get("is_premium")),
+        "premium_until": current_user.get("premium_until"),
+    }
+
+
+# Les routes growth (salles de match, stats créateur, amis proches, notifs
+# utiles) sont désormais dans routers/growth.py.
 
 
 @api_router.post("/premium/subscribe")
@@ -3482,22 +2967,7 @@ async def end_user_session(
         raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
 # ==================== POSTS ROUTES ====================
-async def resolve_mentions(content: str, exclude_id: str = None):
-    """Extrait les @mentions du contenu et renvoie la liste des user_ids
-    correspondant à des comptes existants (hors exclude_id)."""
-    if not content:
-        return []
-    usernames = {u.lower() for u in re.findall(r'@(\w+)', content)}
-    if not usernames:
-        return []
-    ids = []
-    async for u in db.users.find(
-        {"username": {"$in": list(usernames)}}, {"id": 1, "username": 1}
-    ):
-        # match insensible à la casse
-        if u.get("username", "").lower() in usernames and u.get("id") != exclude_id:
-            ids.append(u["id"])
-    return ids
+# resolve_mentions → services/content.py (importé en tête).
 
 
 @api_router.post("/posts", response_model=Post)
@@ -8524,6 +7994,7 @@ async def get_user_level(current_user: dict = Depends(get_current_user)):
 
 ESPN_SOCCER_LEAGUES = [
     ("uefa.champions", "Ligue des Champions"),
+    ("uefa.wchampions", "Women's Champions League"),
     ("uefa.europa", "Ligue Europa"),
     ("eng.1", "Premier League"),
     ("esp.1", "LaLiga"),
@@ -8622,6 +8093,7 @@ def _espn_fetch_league(slug: str, fallback_name: str):
                 "sport": "foot",
                 "league": league_name,
                 "league_slug": slug,
+                "is_ucl": slug in ("uefa.champions", "uefa.wchampions"),
                 "home": (home.get("team") or {}).get("shortDisplayName") or (home.get("team") or {}).get("displayName") or "",
                 "away": (away.get("team") or {}).get("shortDisplayName") or (away.get("team") or {}).get("displayName") or "",
                 "home_id": str((home.get("team") or {}).get("id") or ""),
@@ -9178,7 +8650,7 @@ async def finance(ids: str = "", current_user: dict = Depends(get_current_user))
     return {"assets": data, "catalog": FINANCE_ASSETS}
 
 
-WIDGET_STACK_IDS = ["trends", "screentime", "weather", "finance", "football", "mma",
+WIDGET_STACK_IDS = ["trends", "screentime", "weather", "finance", "football", "mma", "wwe",
                     "profile_views", "ai_analytics", "astro_lifestyle"]
 
 
@@ -10382,7 +9854,7 @@ async def get_clips_feed(request: Request, skip: int = 0, limit: int = 20, curre
         # chronologique (clips plus anciens non inclus dans le pool). Projection
         # {id} : on ne charge PAS le base64 juste pour récupérer des ids (anti-OOM).
         if len(clips) < limit and skip >= len(ids):
-            base = {"media_type": "video", "media_url": {"$ne": None}, "repost_of": None}
+            base = {"media_type": "video", "media_url": {"$ne": None}, "repost_of": None, "is_draft": {"$ne": True}}
             if eu:
                 base["$or"] = [{"eu_blocked": {"$ne": True}}, {"author_id": current_user["id"]}]
             extra_skip = skip - len(ids)
@@ -10537,6 +10009,15 @@ async def create_clip(
     file: UploadFile = File(...),
     caption: str = Form(""),
     eu_blocked: bool = Form(False),
+    visibility: str = Form("public"),
+    location: str = Form(""),
+    link: str = Form(""),
+    cover_url: str = Form(""),
+    allow_comments: bool = Form(True),
+    allow_remix: bool = Form(False),
+    mature: bool = Form(False),
+    ai_generated: bool = Form(False),
+    is_draft: bool = Form(False),
     current_user: dict = Depends(get_current_user),
     _geo: bool = Depends(enforce_write_allowed),
 ):
@@ -10600,6 +10081,12 @@ async def create_clip(
         "shares_count": 0,
         "views": 0,
         "eu_blocked": bool(eu_blocked),
+        "visibility": _clean_clip_visibility(visibility),
+        **_clip_publish_extra(
+            location=location, link=link, cover_url=cover_url,
+            allow_comments=allow_comments, allow_remix=allow_remix,
+            mature=mature, ai_generated=ai_generated, is_draft=is_draft,
+        ),
         "created_at": now.isoformat(),
     }
     await db.posts.insert_one(clip_to_insert)
@@ -10618,6 +10105,41 @@ class ExternalClip(BaseModel):
     caption: str = ""
     eu_blocked: bool = False
     duration: Optional[float] = None  # durée en secondes (indicatif)
+    visibility: str = "public"     # public | friends | private (audience du clip)
+    location: Optional[str] = None    # lieu (texte libre)
+    link: Optional[str] = None        # lien ajouté (http/https)
+    cover_url: Optional[str] = None   # image de couverture (frame choisie), best-effort
+    allow_comments: bool = True       # autoriser les commentaires
+    allow_remix: bool = False         # autoriser la réutilisation (stitch/collage/story)
+    mature: bool = False              # contrôle du public : réservé aux 18+
+    ai_generated: bool = False        # étiquette « contenu généré par IA »
+    is_draft: bool = False            # enregistré en brouillon (masqué du fil)
+
+
+# Audience valide d'un clip (public par défaut si valeur inconnue).
+_CLIP_VISIBILITY = {"public", "friends", "private"}
+
+
+def _clean_clip_visibility(v) -> str:
+    v = (str(v or "public")).strip().lower()
+    return v if v in _CLIP_VISIBILITY else "public"
+
+
+def _clip_publish_extra(*, location=None, link=None, cover_url=None,
+                        allow_comments=True, allow_remix=False, mature=False,
+                        ai_generated=False, is_draft=False) -> dict:
+    """Champs de publication communs aux deux endpoints de création de clip
+    (upload direct + externe). Tous optionnels, additifs, jamais bloquants."""
+    return {
+        "location": (str(location).strip()[:120] or None) if location else None,
+        "link": safe_http_url(link),
+        "cover_url": (cover_url if isinstance(cover_url, str) and len(cover_url) < 2_000_000 else None),
+        "allow_comments": bool(allow_comments),
+        "allow_remix": bool(allow_remix),
+        "mature": bool(mature),
+        "ai_generated": bool(ai_generated),
+        "is_draft": bool(is_draft),
+    }
 
 
 # Hôtes de stockage autorisés pour un clip « externe » (upload direct navigateur).
@@ -10680,6 +10202,12 @@ async def create_clip_from_url(data: ExternalClip, current_user: dict = Depends(
         "shares_count": 0,
         "views": 0,
         "eu_blocked": bool(data.eu_blocked),
+        "visibility": _clean_clip_visibility(data.visibility),
+        **_clip_publish_extra(
+            location=data.location, link=data.link, cover_url=data.cover_url,
+            allow_comments=data.allow_comments, allow_remix=data.allow_remix,
+            mature=data.mature, ai_generated=data.ai_generated, is_draft=data.is_draft,
+        ),
         "created_at": now.isoformat(),
     }
     await db.posts.insert_one(clip_to_insert)
@@ -11853,6 +11381,17 @@ if follow_router is not None:
 # Inclure le routeur principal
 app.include_router(api_router)
 
+# Routeurs extraits par domaine (refactor progressif — voir routers/).
+try:
+    try:
+        from backend.routers.growth import router as growth_router
+    except ImportError:
+        from routers.growth import router as growth_router
+    app.include_router(growth_router)
+    print("✅ Growth router registered")
+except Exception as e:
+    print(f"⚠️ Growth router non enregistré : {e}")
+
 # Exemple d'intégration Stripe Connect (API V2) — monté sous /connect-sample.
 # Autonome : si le SDK/clé manquent, les pages affichent une erreur claire.
 try:
@@ -11961,6 +11500,11 @@ async def _startup_warmup():
         await db.push_subscriptions.create_index("user_id", name="by_user")
     except Exception as e:
         logger.warning(f"Index push_subscriptions non créé (peut déjà exister): {e}")
+    try:
+        # Temps d'écran : 1 total par (utilisateur, jour) — lecture/écriture ciblée.
+        await db.screen_time.create_index([("user_id", 1), ("day", 1)], unique=True, name="uniq_user_day")
+    except Exception as e:
+        logger.warning(f"Index screen_time non créé (peut déjà exister): {e}")
     try:
         # Vérification d'identité : 1 code OTP par (user, canal) ; revue par statut.
         await db.verification_codes.create_index([("user_id", 1), ("kind", 1)], unique=True)
