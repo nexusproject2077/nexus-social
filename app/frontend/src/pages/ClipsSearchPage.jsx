@@ -17,15 +17,6 @@ const C = {
   outline: "#859397",
 };
 
-const TABS = [
-  { key: "top", label: "Top" },
-  { key: "videos", label: t("videos") },
-  { key: "users", label: "Comptes" },
-  { key: "posts", label: "Posts" },
-  { key: "hashtags", label: "Hashtags" },
-  { key: "live", label: "LIVE" },
-];
-
 const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n || 0);
 
 /**
@@ -35,6 +26,14 @@ const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n || 0);
  */
 export default function ClipsSearchPage({ user, setUser }) {
   const { t } = useTranslation();
+  const TABS = [
+    { key: "top", label: "Top" },
+    { key: "videos", label: t("videos") },
+    { key: "users", label: "Comptes" },
+    { key: "posts", label: "Posts" },
+    { key: "hashtags", label: "Hashtags" },
+    { key: "live", label: "LIVE" },
+  ];
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState(params.get("q") || "");

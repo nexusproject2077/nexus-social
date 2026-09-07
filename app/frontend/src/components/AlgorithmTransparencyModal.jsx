@@ -17,21 +17,6 @@ import { useTranslation } from "react-i18next";
 const ACCENT = "var(--nexus-accent)";
 
 // Facteurs du fil « Pour toi », avec leur importance relative indicative.
-const FACTORS = [
-  {
-    label: "Comptes que vous suivez",
-    weight: 40,
-    desc: t("algo_following_boost"),
-  },
-  { label: t("freshness"), weight: 25, desc: t("algo_recency") },
-  { label: "Engagement", weight: 25, desc: t("algo_engagement") },
-  {
-    label: "Vos centres d'intérêt",
-    weight: 10,
-    desc: "Les hashtags et sujets avec lesquels vous interagissez orientent les suggestions.",
-  },
-];
-
 function Section({ icon: Icon, title, children }) {
   return (
     <div className="flex gap-3">
@@ -53,6 +38,20 @@ function Section({ icon: Icon, title, children }) {
 
 export default function AlgorithmTransparencyModal({ onClose }) {
   const { t } = useTranslation();
+  const FACTORS = [
+    {
+      label: "Comptes que vous suivez",
+      weight: 40,
+      desc: t("algo_following_boost"),
+    },
+    { label: t("freshness"), weight: 25, desc: t("algo_recency") },
+    { label: "Engagement", weight: 25, desc: t("algo_engagement") },
+    {
+      label: "Vos centres d'intérêt",
+      weight: 10,
+      desc: "Les hashtags et sujets avec lesquels vous interagissez orientent les suggestions.",
+    },
+  ];
   return (
     <div
       className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"

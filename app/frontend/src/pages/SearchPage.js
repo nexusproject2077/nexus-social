@@ -382,20 +382,19 @@ function ListsPanel({ user }) {
 const CY = "var(--nexus-accent)";
 const PAGE = 20;
 
-// Onglets façon X, adaptés à Nexus. `type` = paramètre backend.
-const TABS = [
-  { key: "all", label: t("for_you"), type: "all" },
-  { key: "top", label: "Top", type: "top" },
-  { key: "latest", label: "Derniers", type: "latest" },
-  { key: "people", label: "Personnes", type: "people" },
-  { key: "media", label: t("media"), type: "media" },
-  { key: "lists", label: "Listes", type: "lists" },
-];
-
 const escapeRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export default function SearchPage({ user }) {
   const { t } = useTranslation();
+  // Onglets façon X, adaptés à Nexus. `type` = paramètre backend.
+  const TABS = [
+    { key: "all", label: t("for_you"), type: "all" },
+    { key: "top", label: "Top", type: "top" },
+    { key: "latest", label: "Derniers", type: "latest" },
+    { key: "people", label: "Personnes", type: "people" },
+    { key: "media", label: t("media"), type: "media" },
+    { key: "lists", label: "Listes", type: "lists" },
+  ];
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") || "");
