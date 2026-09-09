@@ -537,7 +537,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
               {/* Pas de libellé sur mobile (façon X / Threads) : icônes plus grandes,
                   traits épais (wght). Actif = le TRAIT se colore (FILL 0), pas le
                   remplissage ; l'icône active est juste un peu plus grasse. */}
-              <span className="relative material-symbols-outlined" style={{ fontSize: 32, fontVariationSettings: active ? "'FILL' 0, 'wght' 700, 'opsz' 40" : "'FILL' 0, 'wght' 500, 'opsz' 40" }}>
+              <span className="relative material-symbols-outlined" style={{ fontSize: 26, fontVariationSettings: active ? "'FILL' 0, 'wght' 600, 'opsz' 24" : "'FILL' 0, 'wght' 500, 'opsz' 24" }}>
                 {item.icon}
                 {badgeFor(item.path) > 0 && (
                   <span className="absolute -top-2 -right-2.5"><CountBadge count={badgeFor(item.path)} /></span>
