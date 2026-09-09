@@ -532,14 +532,17 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             <button key={item.path} data-testid={item.testId}
               onClick={() => { if (isSearch && searchLpFired.current) { searchLpFired.current = false; return; } navigate(item.path); }}
               {...lpProps}
-              className="flex flex-col items-center gap-0.5 select-none" style={{ color: active ? "var(--nexus-accent)" : "#859397", touchAction: "manipulation" }}>
-              <span className="relative material-symbols-outlined" style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>
+              aria-label={item.label}
+              className="flex items-center justify-center flex-1 h-full select-none" style={{ color: active ? "var(--nexus-accent)" : "#8b96a8", touchAction: "manipulation" }}>
+              {/* Pas de libellé sur mobile (façon X / Threads) : icônes plus grandes,
+                  traits épais (wght). Actif = le TRAIT se colore (FILL 0), pas le
+                  remplissage ; l'icône active est juste un peu plus grasse. */}
+              <span className="relative material-symbols-outlined" style={{ fontSize: 32, fontVariationSettings: active ? "'FILL' 0, 'wght' 700, 'opsz' 40" : "'FILL' 0, 'wght' 500, 'opsz' 40" }}>
                 {item.icon}
                 {badgeFor(item.path) > 0 && (
                   <span className="absolute -top-2 -right-2.5"><CountBadge count={badgeFor(item.path)} /></span>
                 )}
               </span>
-              <span className={`text-[9px] ${active ? "font-bold" : ""}`}>{item.label}</span>
             </button>
           );
         })}
