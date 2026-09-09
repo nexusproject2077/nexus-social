@@ -78,10 +78,11 @@ export function displayMatches(list, favL, favT) {
   const asc = (a, b) => String(a.date || "").localeCompare(String(b.date || ""));
   const desc = (a, b) => String(b.date || "").localeCompare(String(a.date || ""));
   const live = favFirst(list.filter((m) => m.state === "in"));
-  const pre = favFirst(list.filter((m) => m.state === "pre").sort(asc)).slice(0, 3);
-  const post = favFirst(list.filter((m) => m.state === "post").sort(desc)).slice(0, 2); // derniers scores finals
+  // Aucune limite : on montre TOUS les matchs (en cours, à venir, terminés).
+  const pre = favFirst(list.filter((m) => m.state === "pre").sort(asc));
+  const post = favFirst(list.filter((m) => m.state === "post").sort(desc)); // tous les scores finals récents
   const out = [...live, ...pre, ...post];
-  return out.length ? out : list.slice(0, 3);
+  return out.length ? out : list;
 }
 
 // Heure + jour du coup d'envoi, format ultra-court (ex : « Dim. 15:00 »,
@@ -505,8 +506,8 @@ export default function LiveScores({ variant = "mobile", setUser }) {
     return (
       <section className="rounded-2xl p-4" style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.05)", ...fadeStyle }}>
         <div className="mb-3">{header(true)}</div>
-        <div className="space-y-2">
-          {arranged.slice(0, 6).map((m) => renderCard(m, true))}
+        <div className="space-y-2 max-h-[70vh] overflow-y-auto no-scrollbar">
+          {arranged.map((m) => renderCard(m, true))}
         </div>
         {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
