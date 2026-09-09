@@ -533,11 +533,12 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
               onClick={() => { if (isSearch && searchLpFired.current) { searchLpFired.current = false; return; } navigate(item.path); }}
               {...lpProps}
               aria-label={item.label}
-              className="flex items-center justify-center flex-1 h-full select-none" style={{ color: active ? "var(--nexus-accent)" : "#8b96a8", touchAction: "manipulation" }}>
-              {/* Pas de libellé sur mobile (façon X / Threads) : icônes plus grandes,
-                  traits épais (wght). Actif = le TRAIT se colore (FILL 0), pas le
-                  remplissage ; l'icône active est juste un peu plus grasse. */}
-              <span className="relative material-symbols-outlined" style={{ fontSize: 26, fontVariationSettings: active ? "'FILL' 0, 'wght' 600, 'opsz' 24" : "'FILL' 0, 'wght' 500, 'opsz' 24" }}>
+              className="flex items-center justify-center flex-1 h-full select-none" style={{ color: active ? "var(--nexus-accent-solid)" : "#8b96a8", touchAction: "manipulation" }}>
+              {/* Pas de libellé sur mobile (façon X / Threads). Actif = le TRAIT
+                  se colore en cyan (FILL 0 → contour, jamais rempli) ; on utilise
+                  --nexus-accent-solid car le dégradé premium n'est pas valide en
+                  `color` (sinon repli blanc). */}
+              <span className="relative material-symbols-outlined" style={{ fontSize: 24, fontVariationSettings: active ? "'FILL' 0, 'wght' 600, 'opsz' 24" : "'FILL' 0, 'wght' 500, 'opsz' 24" }}>
                 {item.icon}
                 {badgeFor(item.path) > 0 && (
                   <span className="absolute -top-2 -right-2.5"><CountBadge count={badgeFor(item.path)} /></span>

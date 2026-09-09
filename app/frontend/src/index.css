@@ -5,6 +5,9 @@
 /* Couleur d'accentuation globale (surchargée par les paramètres). */
 :root {
     --nexus-accent: #22d3ee;
+    /* Repli UNI pour les usages en `color`/`border` (le dégradé premium ne
+       peut pas servir de couleur de texte → sinon repli blanc). */
+    --nexus-accent-solid: #22d3ee;
 }
 
 .material-symbols-outlined {
