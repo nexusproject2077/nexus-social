@@ -533,12 +533,11 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
               onClick={() => { if (isSearch && searchLpFired.current) { searchLpFired.current = false; return; } navigate(item.path); }}
               {...lpProps}
               aria-label={item.label}
-              className="flex items-center justify-center flex-1 h-full select-none" style={{ color: active ? "var(--nexus-accent-solid)" : "#8b96a8", touchAction: "manipulation" }}>
-              {/* Pas de libellé sur mobile (façon X / Threads). Actif = le TRAIT
-                  se colore en cyan (FILL 0 → contour, jamais rempli) ; on utilise
-                  --nexus-accent-solid car le dégradé premium n'est pas valide en
-                  `color` (sinon repli blanc). */}
-              <span className="relative material-symbols-outlined" style={{ fontSize: 24, fontVariationSettings: active ? "'FILL' 0, 'wght' 600, 'opsz' 24" : "'FILL' 0, 'wght' 500, 'opsz' 24" }}>
+              className="flex items-center justify-center flex-1 h-full select-none" style={{ color: active ? "#f4f8ff" : "#71767b", touchAction: "manipulation" }}>
+              {/* Barre façon X : monochrome, sans libellé. Actif = icône PLEINE
+                  (FILL 1) en blanc ; inactif = contour fin gris (FILL 0). Traits
+                  fins (wght 400), petites icônes — minimaliste. */}
+              <span className="relative material-symbols-outlined" style={{ fontSize: 26, fontVariationSettings: active ? "'FILL' 1, 'wght' 400, 'opsz' 24" : "'FILL' 0, 'wght' 400, 'opsz' 24" }}>
                 {item.icon}
                 {badgeFor(item.path) > 0 && (
                   <span className="absolute -top-2 -right-2.5"><CountBadge count={badgeFor(item.path)} /></span>
