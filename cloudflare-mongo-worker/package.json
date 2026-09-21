@@ -2,13 +2,10 @@
   "name": "nexus-social-mongo-worker",
   "private": true,
   "type": "module",
-  "scripts": {
-    "deploy": "wrangler deploy"
-  },
+  "scripts": { "deploy": "wrangler deploy" },
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "mongodb": "^6.20.0"
   },
-  "devDependencies": {
-    "wrangler": "^4.136.0"
-  }
+  "devDependencies": { "wrangler": "^4.136.0" }
 }
