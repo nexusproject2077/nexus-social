@@ -3,5 +3,11 @@
   "name": "nexus-social-api",
   "main": "src/main.py",
   "compatibility_date": "2026-09-21",
-  "compatibility_flags": ["python_workers"]
+  "compatibility_flags": ["python_workers"],
+  "services": [
+    {
+      "binding": "MONGO_SERVICE",
+      "service": "nexus-social-mongo"
+    }
+  ]
 }
