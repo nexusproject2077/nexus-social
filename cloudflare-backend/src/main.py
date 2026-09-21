@@ -72,8 +72,15 @@ async def mongo_post(path: str, payload: dict):
         dict_converter=Object.fromEntries,
     )
     request = Request.new("https://nexus-social-mongo.internal" + path, init)
+    # Yield immediately while the bound JS Worker performs MongoDB I/O.
+    # Using the binding's fetch directly through Pyodide can burn Python Worker
+    # CPU while several feed requests are in flight.
     response = await service.fetch(request)
-    data = await response.json()
+    try:
+        body = await response.text()
+        data = json.loads(body) if body else {}
+    except Exception:
+        data = {}
     return int(response.status), data
 
 
