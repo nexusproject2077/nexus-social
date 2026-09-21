@@ -7,7 +7,7 @@ import jwt
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from js import Object, Request
+from js import Object, Request, fetch
 from pyodide.ffi import to_js
 from workers import asgi, env
 
@@ -47,7 +47,7 @@ async def send_brevo_email(to_email: str, subject: str, html_content: str) -> No
         "headers": {"Content-Type": "application/json", "api-key": str(api_key), "accept": "application/json"},
         "body": json.dumps({"sender": {"email": sender_email, "name": sender_name}, "to": [{"email": to_email}], "subject": subject, "htmlContent": html_content}),
     }, dict_converter=Object.fromEntries)
-    response = await env.fetch("https://api.brevo.com/v3/smtp/email", init)
+    response = await fetch("https://api.brevo.com/v3/smtp/email", init)
     if int(response.status) >= 400:
         raise HTTPException(status_code=503, detail="Unable to send authentication email")
 
