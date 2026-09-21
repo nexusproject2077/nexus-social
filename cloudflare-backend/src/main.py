@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Request
-from workers import asgi
+from fastapi import FastAPI
+from workers import asgi, env
 
 app = FastAPI(title="Nexus Social API", version="0.1.0")
 
@@ -10,18 +10,17 @@ async def health():
 
 
 @app.get("/health/mongodb")
-async def mongodb_health(request: Request):
-    # PyMongo must be imported after Worker startup because BSON initializes
-    # ObjectId entropy during import. Cloudflare bindings are exposed through
-    # the ASGI request scope, not Python's os.environ.
+async def mongodb_health():
+    # Import PyMongo only after Worker startup: BSON initializes ObjectId
+    # entropy during import, which Cloudflare disallows at startup.
     from pymongo import MongoClient
 
-    env = request.scope["env"]
+    # Python Workers expose variables/secrets as bindings on workers.env.
     mongo_url = getattr(env, "MONGO_URL", None)
     db_name = getattr(env, "DB_NAME", "nexus_db")
 
     if not mongo_url:
-        return {"status": "error", "database": db_name, "detail": "MONGO_URL binding is not configured"}
+        return {"status": "error", "database": str(db_name), "detail": "MONGO_URL binding is not configured"}
 
     client = None
     try:
