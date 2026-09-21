@@ -228,6 +228,24 @@ async def badges(authorization: str | None = Header(default=None)):
 
 
 
+@app.get("/api/users/{user_id}")
+async def user_profile(user_id: str, authorization: str | None = Header(default=None)):
+    viewer_id = current_user_id(authorization)
+    return await mongo_data("/internal/users/profile", {"user_id": user_id, "viewer_id": viewer_id})
+
+
+@app.get("/api/users/{user_id}/stats")
+async def user_stats(user_id: str, authorization: str | None = Header(default=None)):
+    current_user_id(authorization)
+    return await mongo_data("/internal/users/stats", {"user_id": user_id})
+
+
+@app.get("/api/users/{user_id}/posts")
+async def user_posts(user_id: str, authorization: str | None = Header(default=None)):
+    viewer_id = current_user_id(authorization)
+    return await mongo_data("/internal/users/posts", {"user_id": user_id, "viewer_id": viewer_id})
+
+
 @app.get("/api/geo/language")
 async def geo_language():
     return {"country": None, "language": "en", "supported": ["ar","de","en","es","fr","it","ja","ko","pt","ru","tr","zh"]}
