@@ -11,7 +11,7 @@ from js import Object, Request, fetch
 from pyodide.ffi import to_js
 from workers import asgi, env
 
-app = FastAPI(title="Nexus Social API", version="0.3.0")
+app = FastAPI(title="Nexus Social API", version="0.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -169,6 +169,55 @@ async def me(authorization: str | None = Header(default=None)):
     if status >= 400 or not data.get("found"):
         raise HTTPException(status_code=503, detail="Authentication service unavailable")
     return data["user"]
+
+
+def current_user_id(authorization: str | None) -> str:
+    token = bearer_token(authorization)
+    try:
+        payload = jwt.decode(token, jwt_secret(), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return str(user_id)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+async def mongo_data(path: str, payload: dict):
+    status, data = await mongo_post(path, payload)
+    if status == 401:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if status >= 400:
+        raise HTTPException(status_code=503, detail="Database service unavailable")
+    return data
+
+
+@app.get("/api/feed/foryou")
+async def feed_foryou(skip: int = 0, limit: int = 10, mode: str = "reco", authorization: str | None = Header(default=None)):
+    user_id = current_user_id(authorization)
+    return await mongo_data("/internal/feed/foryou", {"user_id": user_id, "skip": skip, "limit": limit, "mode": mode})
+
+
+@app.get("/api/posts/feed")
+async def posts_feed(skip: int = 0, limit: int = 10, authorization: str | None = Header(default=None)):
+    user_id = current_user_id(authorization)
+    return await mongo_data("/internal/feed/following", {"user_id": user_id, "skip": skip, "limit": limit})
+
+
+@app.get("/api/stories/feed")
+async def stories_feed(authorization: str | None = Header(default=None)):
+    user_id = current_user_id(authorization)
+    return await mongo_data("/internal/stories/feed", {"user_id": user_id})
+
+
+@app.get("/api/badges")
+async def badges(authorization: str | None = Header(default=None)):
+    user_id = current_user_id(authorization)
+    return await mongo_data("/internal/badges", {"user_id": user_id})
 
 
 @app.get("/")
