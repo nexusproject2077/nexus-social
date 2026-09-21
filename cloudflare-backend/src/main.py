@@ -49,7 +49,13 @@ async def send_brevo_email(to_email: str, subject: str, html_content: str) -> No
     }, dict_converter=Object.fromEntries)
     response = await fetch("https://api.brevo.com/v3/smtp/email", init)
     if int(response.status) >= 400:
+        try:
+            error_body = await response.text()
+        except Exception:
+            error_body = ""
+        print(f"Brevo rejected email: status={int(response.status)} body={error_body[:1000]}")
         raise HTTPException(status_code=503, detail="Unable to send authentication email")
+    print(f"Brevo accepted authentication email: status={int(response.status)}")
 
 
 async def mongo_post(path: str, payload: dict):
