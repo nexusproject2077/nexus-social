@@ -1,4 +1,5 @@
 import { MongoClient } from "mongodb";
+import bcrypt from "bcryptjs";
 
 interface Env {
   MONGO_URL: string;
@@ -6,10 +7,7 @@ interface Env {
 }
 
 function json(data: unknown, status = 200): Response {
-  return Response.json(data, {
-    status,
-    headers: { "Cache-Control": "no-store" },
-  });
+  return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 }
 
 function publicUser(user: Record<string, any>) {
@@ -51,7 +49,7 @@ export default {
     }
 
     if (!env.MONGO_URL) {
-      return json({ status: "error", detail: "MONGO_URL secret is not configured" }, 503);
+      return json({ status: "error", detail: "Database is not configured" }, 503);
     }
 
     const dbName = env.DB_NAME || "nexus_db";
@@ -67,38 +65,38 @@ export default {
       if (url.pathname === "/health/mongodb") {
         await client.db("admin").command({ ping: 1 });
         const collections = await db.listCollections({}, { nameOnly: true }).toArray();
-        return json({
-          status: "ok",
-          connected: true,
-          database: dbName,
-          collection_count: collections.length,
-        });
+        return json({ status: "ok", connected: true, database: dbName, collection_count: collections.length });
       }
 
-      // Migration probe used by nexus-social-api. This endpoint deliberately
-      // returns only the fields needed for authentication; it never exposes the
-      // password hash or MongoDB _id.
-      if (url.pathname === "/internal/auth/user-by-email" && request.method === "POST") {
+      if (url.pathname === "/internal/auth/verify" && request.method === "POST") {
         let body: any;
-        try {
-          body = await request.json();
-        } catch {
-          return json({ detail: "Invalid JSON" }, 400);
-        }
+        try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
 
         const email = String(body?.email || "").trim().toLowerCase();
-        if (!email) return json({ detail: "Email is required" }, 400);
+        const password = String(body?.password || "");
+        if (!email || !password) return json({ detail: "Email and password are required" }, 400);
+
+        const user = await db.collection("users").findOne({ email });
+        const hash = typeof user?.password === "string" ? user.password : "";
+        const valid = hash ? await bcrypt.compare(password, hash) : false;
+
+        if (!user || !valid) return json({ authenticated: false }, 401);
+        if (user.age_blocked) return json({ authenticated: false, age_blocked: true }, 403);
+
+        return json({ authenticated: true, user: publicUser(user as Record<string, any>) });
+      }
+
+      if (url.pathname === "/internal/auth/user-by-id" && request.method === "POST") {
+        let body: any;
+        try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
+
+        const id = String(body?.id || "").trim();
+        if (!id) return json({ detail: "User id is required" }, 400);
 
         const user = await db.collection("users").findOne(
-          { email },
-          {
-            projection: {
-              _id: 0,
-              password: 0,
-            },
-          },
+          { id },
+          { projection: { _id: 0, password: 0 } },
         );
-
         if (!user) return json({ found: false }, 404);
         return json({ found: true, user: publicUser(user as Record<string, any>) });
       }
@@ -110,7 +108,7 @@ export default {
         connected: false,
         database: dbName,
         error_type: error instanceof Error ? error.name : "UnknownError",
-        detail: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+        detail: error instanceof Error ? error.message.slice(0, 500) : "Unexpected database error",
       }, 503);
     } finally {
       await client.close().catch(() => undefined);
