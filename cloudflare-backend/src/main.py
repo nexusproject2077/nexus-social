@@ -1,22 +1,7 @@
-import asyncio
-import os
-
-# PyMongo initializes BSON ObjectId process randomness while importing. Cloudflare
-# does not allow entropy during Worker startup, so use a startup-only seed for
-# that internal process value, then immediately restore os.urandom. Nexus Social
-# does not create ObjectIds in this health check.
-_real_urandom = os.urandom
-os.urandom = lambda n: b"\x00" * n
-try:
-    from pymongo import MongoClient
-finally:
-    os.urandom = _real_urandom
-
 from fastapi import FastAPI
 from workers import asgi, env
 
 app = FastAPI(title="Nexus Social API", version="0.1.0")
-mongo_lock = asyncio.Lock()
 
 
 @app.get("/health")
@@ -40,37 +25,17 @@ async def mongodb_health():
     if not mongo_url:
         return {"status": "error", "database": db_name, "detail": "MONGO_URL binding is not configured"}
 
-    client = None
-    try:
-        # Python Workers expose synchronous socket APIs over Cloudflare's
-        # asynchronous TCP implementation. Serialize this read-only probe.
-        async with mongo_lock:
-            client = MongoClient(
-                str(mongo_url),
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=5000,
-                socketTimeoutMS=5000,
-            )
-            client.admin.command("ping")
-            collections = client[db_name].list_collection_names()
-
-        return {
-            "status": "ok",
-            "database": db_name,
-            "connected": True,
-            "collection_count": len(collections),
-        }
-    except Exception as exc:
-        return {
-            "status": "error",
-            "database": db_name,
-            "connected": False,
-            "error_type": type(exc).__name__,
-            "detail": str(exc)[:500],
-        }
-    finally:
-        if client is not None:
-            client.close()
+    # PyMongo cannot currently be imported at Worker startup because BSON
+    # initializes secure randomness, which Cloudflare forbids during snapshot
+    # creation. Importing it from this async ASGI handler also triggers a
+    # Pyodide nested-promising-task failure, so keep production deployable while
+    # the database adapter is replaced/tested separately.
+    return {
+        "status": "blocked",
+        "database": db_name,
+        "connected": False,
+        "detail": "PyMongo is not compatible with this Python Worker execution path",
+    }
 
 
 @app.get("/")
