@@ -11,7 +11,7 @@ from js import Object, Request, fetch
 from pyodide.ffi import to_js
 from workers import asgi, env
 
-app = FastAPI(title="Nexus Social API", version="0.4.0")
+app = FastAPI(title="Nexus Social API", version="0.5.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -218,6 +218,68 @@ async def stories_feed(authorization: str | None = Header(default=None)):
 async def badges(authorization: str | None = Header(default=None)):
     user_id = current_user_id(authorization)
     return await mongo_data("/internal/badges", {"user_id": user_id})
+
+
+
+@app.get("/api/geo/language")
+async def geo_language():
+    return {"country": None, "language": "en", "supported": ["ar","de","en","es","fr","it","ja","ko","pt","ru","tr","zh"]}
+
+
+@app.get("/api/geo/status")
+async def geo_status():
+    return {"profile": "GLOBAL_STANDARD", "country": None, "eu": False, "restricted": False, "read_only": False, "read_only_message": None, "min_age": 13, "consent_style": "standard", "suggested_language": "en"}
+
+
+@app.get("/api/users/search")
+async def users_search(q: str = "", authorization: str | None = Header(default=None)):
+    uid=current_user_id(authorization)
+    return await mongo_data("/internal/users/search", {"user_id":uid,"q":q})
+
+
+@app.get("/api/users/me/profile-views")
+async def profile_views(authorization: str | None = Header(default=None)):
+    uid=current_user_id(authorization)
+    return await mongo_data("/internal/users/profile-views", {"user_id":uid})
+
+
+@app.get("/api/trending/hashtags")
+async def trending_hashtags(limit: int = 10, authorization: str | None = Header(default=None)):
+    current_user_id(authorization)
+    return await mongo_data("/internal/trending/hashtags", {"limit":limit})
+
+
+@app.post("/api/users/me/sessions/start")
+async def session_start(authorization: str | None = Header(default=None)):
+    uid=current_user_id(authorization)
+    return await mongo_data("/internal/sessions/start", {"user_id":uid})
+
+
+@app.post("/api/users/me/sessions/{session_id}/ping")
+async def session_ping(session_id: str, authorization: str | None = Header(default=None)):
+    uid=current_user_id(authorization)
+    return await mongo_data("/internal/sessions/ping", {"user_id":uid,"session_id":session_id})
+
+
+class SessionEnd(BaseModel):
+    duration: float = 0
+
+
+@app.post("/api/users/me/sessions/{session_id}/end")
+async def session_end(session_id: str, data: SessionEnd, authorization: str | None = Header(default=None)):
+    uid=current_user_id(authorization)
+    return await mongo_data("/internal/sessions/end", {"user_id":uid,"session_id":session_id,"duration":data.duration})
+
+
+class ScreenTimeAdd(BaseModel):
+    day: str | None = None
+    delta_seconds: float = 0
+
+
+@app.post("/api/users/me/screen-time")
+async def screen_time_add(data: ScreenTimeAdd, authorization: str | None = Header(default=None)):
+    uid=current_user_id(authorization)
+    return await mongo_data("/internal/screen-time/add", {"user_id":uid,"day":data.day,"delta_seconds":data.delta_seconds})
 
 
 @app.get("/")
