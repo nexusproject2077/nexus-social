@@ -130,6 +130,90 @@ export default {
         return json({ valid: true, user: publicUser(user as Record<string, any>) });
       }
 
+      if (url.pathname === "/internal/feed/foryou" && request.method === "POST") {
+        let body: any;
+        try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
+        const userId = String(body?.user_id || "").trim();
+        const skip = Math.max(0, Number(body?.skip || 0));
+        const limit = Math.max(1, Math.min(30, Number(body?.limit || 10)));
+        if (!userId) return json({ detail: "User id is required" }, 400);
+        const viewer = await db.collection("users").findOne({ id: userId });
+        if (!viewer) return json({ detail: "User not found" }, 404);
+        const query: any = {};
+        if (viewer.hide_political === true) query.is_political = { $ne: true };
+        const posts = await db.collection("posts").find(query, { projection: { _id: 0 } })
+          .sort({ created_at: -1 }).skip(skip).limit(limit).toArray();
+        const ids = posts.map((p: any) => p.id).filter(Boolean);
+        const liked = ids.length ? await db.collection("likes").find({ user_id: userId, post_id: { $in: ids } }, { projection: { _id: 0, post_id: 1 } }).toArray() : [];
+        const saved = ids.length ? await db.collection("saved_posts").find({ user_id: userId, post_id: { $in: ids } }, { projection: { _id: 0, post_id: 1 } }).toArray() : [];
+        const likedSet = new Set(liked.map((x: any) => x.post_id));
+        const savedSet = new Set(saved.map((x: any) => x.post_id));
+        return json(posts.map((p: any) => ({ ...p, is_liked: likedSet.has(p.id), is_saved: savedSet.has(p.id) })));
+      }
+
+      if (url.pathname === "/internal/feed/following" && request.method === "POST") {
+        let body: any;
+        try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
+        const userId = String(body?.user_id || "").trim();
+        const skip = Math.max(0, Number(body?.skip || 0));
+        const limit = Math.max(1, Math.min(30, Number(body?.limit || 10)));
+        if (!userId) return json({ detail: "User id is required" }, 400);
+        const follows = await db.collection("follows").find({ follower_id: userId, status: "following" }, { projection: { _id: 0, followed_id: 1, following_id: 1 } }).toArray();
+        const authorIds = follows.map((x: any) => x.followed_id || x.following_id).filter(Boolean);
+        authorIds.push(userId);
+        const posts = await db.collection("posts").find({ author_id: { $in: authorIds } }, { projection: { _id: 0 } })
+          .sort({ created_at: -1 }).skip(skip).limit(limit).toArray();
+        const ids = posts.map((p: any) => p.id).filter(Boolean);
+        const liked = ids.length ? await db.collection("likes").find({ user_id: userId, post_id: { $in: ids } }, { projection: { _id: 0, post_id: 1 } }).toArray() : [];
+        const saved = ids.length ? await db.collection("saved_posts").find({ user_id: userId, post_id: { $in: ids } }, { projection: { _id: 0, post_id: 1 } }).toArray() : [];
+        const likedSet = new Set(liked.map((x: any) => x.post_id));
+        const savedSet = new Set(saved.map((x: any) => x.post_id));
+        return json(posts.map((p: any) => ({ ...p, is_liked: likedSet.has(p.id), is_saved: savedSet.has(p.id) })));
+      }
+
+      if (url.pathname === "/internal/stories/feed" && request.method === "POST") {
+        let body: any;
+        try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
+        const userId = String(body?.user_id || "").trim();
+        if (!userId) return json({ detail: "User id is required" }, 400);
+        const follows = await db.collection("follows").find({ follower_id: userId }, { projection: { _id: 0, followed_id: 1, following_id: 1 } }).toArray();
+        const authorIds = follows.map((x: any) => x.followed_id || x.following_id).filter(Boolean);
+        authorIds.push(userId);
+        const now = new Date().toISOString();
+        const stories = await db.collection("stories").find({ author_id: { $in: authorIds }, expires_at: { $gt: now } }, { projection: { _id: 0 } }).sort({ created_at: -1 }).limit(1000).toArray();
+        const ids = stories.map((s: any) => s.id).filter(Boolean);
+        const views = ids.length ? await db.collection("story_views").find({ user_id: userId, story_id: { $in: ids } }, { projection: { _id: 0, story_id: 1 } }).toArray() : [];
+        const viewed = new Set(views.map((v: any) => v.story_id));
+        const groups = new Map<string, any>();
+        for (const s of stories) {
+          const aud = s.audience || "everyone";
+          if (s.author_id !== userId && aud === "custom" && !(s.recipient_ids || []).includes(userId)) continue;
+          if (s.author_id !== userId && aud === "close_friends") {
+            const author = await db.collection("users").findOne({ id: s.author_id }, { projection: { close_friends: 1 } });
+            if (!(author?.close_friends || []).includes(userId)) continue;
+          }
+          const item = { ...s, has_viewed: viewed.has(s.id), is_mine: s.author_id === userId };
+          if (!groups.has(s.author_id)) groups.set(s.author_id, { user_id: s.author_id, username: s.author_username, profile_pic: s.author_profile_pic ?? null, stories: [], last_story_time: s.created_at });
+          groups.get(s.author_id).stories.push(item);
+        }
+        const out = Array.from(groups.values());
+        for (const g of out) g.stories.sort((a: any,b: any) => String(a.created_at).localeCompare(String(b.created_at)));
+        out.sort((a: any,b: any) => (a.user_id === userId ? -1 : b.user_id === userId ? 1 : String(b.last_story_time).localeCompare(String(a.last_story_time))));
+        return json(out);
+      }
+
+      if (url.pathname === "/internal/badges" && request.method === "POST") {
+        let body: any;
+        try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
+        const userId = String(body?.user_id || "").trim();
+        if (!userId) return json({ detail: "User id is required" }, 400);
+        const [messages, notifications] = await Promise.all([
+          db.collection("messages").countDocuments({ recipient_id: userId, read: false }),
+          db.collection("notifications").countDocuments({ user_id: userId, read: false }),
+        ]);
+        return json({ messages, notifications });
+      }
+
       if (url.pathname === "/internal/auth/user-by-id" && request.method === "POST") {
         let body: any;
         try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
