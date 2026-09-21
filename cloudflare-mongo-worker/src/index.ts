@@ -214,6 +214,59 @@ export default {
         return json({ messages, notifications });
       }
 
+      if (url.pathname === "/internal/users/search" && request.method === "POST") {
+        let body: any; try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
+        const userId = String(body?.user_id || "").trim(), q = String(body?.q || "").trim();
+        if (!q) return json([]);
+        const users = await db.collection("users").find({ $or: [{ username: { $regex: q, $options: "i" } }, { bio: { $regex: q, $options: "i" } }] }, { projection: { _id: 0, password: 0 } }).limit(20).toArray();
+        const ids = users.map((u: any) => u.id).filter(Boolean);
+        const follows = ids.length ? await db.collection("follows").find({ follower_id: userId, followed_id: { $in: ids } }, { projection: { _id: 0, followed_id: 1 } }).toArray() : [];
+        const following = new Set(follows.map((x: any) => x.followed_id));
+        return json(users.map((u: any) => ({ id:u.id, username:u.username, bio:u.bio||"", profile_pic:u.profile_pic||null, followers_count:u.followers_count||0, following_count:u.following_count||0, is_following:following.has(u.id), created_at:u.created_at, is_verified:Boolean(u.is_verified), is_premium:Boolean(u.is_premium) })));
+      }
+
+      if (url.pathname === "/internal/users/profile-views" && request.method === "POST") {
+        let body: any; try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
+        const userId = String(body?.user_id || "").trim();
+        const user = await db.collection("users").findOne({ id: userId }, { projection: { _id:0, is_premium:1 } });
+        if (!user) return json({ detail:"User not found" },404);
+        const since = new Date(Date.now()-30*86400000).toISOString();
+        const rows = await db.collection("profile_views").find({ profile_id:userId, ts:{ $gte:since } }, { projection:{ _id:0, viewer_id:1, ts:1 } }).sort({ts:-1}).limit(500).toArray();
+        const ordered:string[]=[]; const seen=new Set<string>();
+        for(const x of rows) if(x.viewer_id&&!seen.has(x.viewer_id)){seen.add(x.viewer_id);ordered.push(x.viewer_id);}
+        let visitors:any[]=[]; const premium=Boolean(user.is_premium);
+        if(premium&&ordered.length){const top=ordered.slice(0,12);const us=await db.collection("users").find({id:{$in:top}},{projection:{_id:0,id:1,username:1,profile_pic:1,is_verified:1,is_premium:1}}).toArray();const m=new Map(us.map((u:any)=>[u.id,u]));visitors=top.map(id=>m.get(id)).filter(Boolean);}
+        return json({count:ordered.length,is_premium:premium,visitors});
+      }
+
+      if (url.pathname === "/internal/trending/hashtags" && request.method === "POST") {
+        let body:any; try{body=await request.json();}catch{return json({detail:"Invalid JSON"},400);}
+        const limit=Math.max(1,Math.min(50,Number(body?.limit||10))), since=new Date(Date.now()-86400000).toISOString();
+        const posts=await db.collection("posts").find({created_at:{$gte:since},media_type:{$ne:"video"}},{projection:{_id:0,content:1,likes_count:1}}).sort({created_at:-1}).limit(3000).toArray();
+        const stats=new Map<string,any>();
+        for(const p of posts){const seen=new Set<string>();for(const m of String(p.content||"").matchAll(/#(\w+)/gu)){const display=m[1],key=display.toLowerCase();if(seen.has(key))continue;seen.add(key);const e=stats.get(key)||{display,count:0,likes:0};e.count++;e.likes+=Number(p.likes_count||0);stats.set(key,e);}}
+        const trending=Array.from(stats.entries()).map(([key,e]:any)=>({tag:"#"+e.display,normalized:key,post_count:e.count,posts_24h:e.count,likes:e.likes,score:Math.round((e.count*3+e.likes*.1)*100)/100})).sort((a:any,b:any)=>b.score-a.score).slice(0,limit);
+        return json({success:true,trending});
+      }
+
+      if (url.pathname === "/internal/sessions/start" && request.method === "POST") {
+        let body:any;try{body=await request.json();}catch{return json({detail:"Invalid JSON"},400);} const userId=String(body?.user_id||"").trim();
+        const user=await db.collection("users").findOne({id:userId},{projection:{_id:0,privacy_strict:1}});if(!user)return json({detail:"User not found"},404);
+        const now=new Date().toISOString();if(user.privacy_strict)return json({success:true,session_id:"",started_at:now,privacy_strict:true});
+        const sessionId=crypto.randomUUID();await db.collection("users").updateOne({id:userId},{$set:{last_active:now,last_session_start:now}});await db.collection("sessions").insertOne({id:sessionId,user_id:userId,started_at:now,last_activity:now,is_active:true});
+        return json({success:true,session_id:sessionId,started_at:now});
+      }
+      if (url.pathname === "/internal/sessions/ping" && request.method === "POST") {
+        let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400);}const now=new Date().toISOString();await db.collection("users").updateOne({id:b.user_id},{$set:{last_active:now}});await db.collection("sessions").updateOne({id:b.session_id,user_id:b.user_id},{$set:{last_activity:now}});return json({success:true,session_id:b.session_id});
+      }
+      if (url.pathname === "/internal/sessions/end" && request.method === "POST") {
+        let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400);}await db.collection("sessions").updateOne({id:b.session_id,user_id:b.user_id},{$set:{is_active:false,ended_at:new Date().toISOString(),duration:Math.max(0,Number(b.duration||0))}});return json({success:true,session_id:b.session_id});
+      }
+      if (url.pathname === "/internal/screen-time/add" && request.method === "POST") {
+        let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400);}const userId=String(b?.user_id||"").trim(),day=/^\d{4}-\d{2}-\d{2}$/.test(String(b?.day||""))?String(b.day):new Date().toISOString().slice(0,10),delta=Math.max(0,Math.min(3600,Math.floor(Number(b?.delta_seconds||0))));
+        if(delta)await db.collection("screen_time").updateOne({user_id:userId,day},{$inc:{seconds:delta},$setOnInsert:{user_id:userId,day}},{upsert:true});const row=await db.collection("screen_time").findOne({user_id:userId,day},{projection:{_id:0,seconds:1}});return json({day,seconds:Number(row?.seconds||0)});
+      }
+
       if (url.pathname === "/internal/auth/user-by-id" && request.method === "POST") {
         let body: any;
         try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
