@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+import secrets
 
 import jwt
 from fastapi import FastAPI, Header, HTTPException
@@ -7,12 +10,37 @@ from js import Object, Request
 from pyodide.ffi import to_js
 from workers import asgi, env
 
-app = FastAPI(title="Nexus Social API", version="0.2.2")
+app = FastAPI(title="Nexus Social API", version="0.3.0")
 
 
 class LoginIn(BaseModel):
     email: str
     password: str
+
+
+class TwoFAIn(BaseModel):
+    email: str
+    code: str
+
+
+def otp_hash(code: str) -> str:
+    return hashlib.sha256(("nexus-otp:" + str(code)).encode()).hexdigest()
+
+
+async def send_brevo_email(to_email: str, subject: str, html_content: str) -> None:
+    api_key = getattr(env, "BREVO_API_KEY", None)
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Email service is not configured")
+    sender_email = str(getattr(env, "BREVO_SENDER_EMAIL", "noreply@nexussocial.com"))
+    sender_name = str(getattr(env, "BREVO_SENDER_NAME", "Nexus Social"))
+    init = to_js({
+        "method": "POST",
+        "headers": {"Content-Type": "application/json", "api-key": str(api_key), "accept": "application/json"},
+        "body": json.dumps({"sender": {"email": sender_email, "name": sender_name}, "to": [{"email": to_email}], "subject": subject, "htmlContent": html_content}),
+    }, dict_converter=Object.fromEntries)
+    response = await env.fetch("https://api.brevo.com/v3/smtp/email", init)
+    if int(response.status) >= 400:
+        raise HTTPException(status_code=503, detail="Unable to send authentication email")
 
 
 async def mongo_post(path: str, payload: dict):
@@ -78,11 +106,30 @@ async def login(credentials: LoginIn):
     if status == 403 and data.get("age_blocked"):
         raise HTTPException(status_code=403, detail="Ce compte n'est pas eligible.")
     if status == 428 and data.get("twofa_required"):
-        return {"twofa_required": True, "email": data.get("email")}
+        email = str(data.get("email") or credentials.email).strip().lower()
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        expires = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        otp_status, _ = await mongo_post("/internal/auth/otp/issue", {"email": email, "kind": "2fa", "code_hash": otp_hash(code), "expires_at": expires})
+        if otp_status >= 400:
+            raise HTTPException(status_code=503, detail="Unable to create authentication code")
+        await send_brevo_email(email, "Ton code de connexion Nexus Social", f"<p>Voici ton code de connexion :</p><p style=\'font-size:26px;font-weight:bold;letter-spacing:4px\'>{code}</p><p>Ce code expire dans 10 minutes. Si ce n\'est pas toi, change ton mot de passe.</p>")
+        return {"twofa_required": True, "email": email}
     if status >= 400 or not data.get("authenticated"):
         raise HTTPException(status_code=503, detail="Authentication service unavailable")
 
     user = data["user"]
+    return {"token": issue_token(str(user["id"])), "user": user}
+
+
+@app.post("/api/auth/login/2fa")
+async def login_2fa(data: TwoFAIn):
+    code = (data.code or "").strip()
+    if len(code) != 6 or not code.isdigit():
+        raise HTTPException(status_code=400, detail="Code invalide ou expire.")
+    status, result = await mongo_post("/internal/auth/otp/verify", {"email": data.email.strip().lower(), "kind": "2fa", "code_hash": otp_hash(code)})
+    if status >= 400 or not result.get("valid"):
+        raise HTTPException(status_code=400, detail="Code invalide ou expire.")
+    user = result["user"]
     return {"token": issue_token(str(user["id"])), "user": user}
 
 
