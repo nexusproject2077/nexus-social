@@ -8,9 +8,9 @@ import os
 from datetime import datetime, timedelta, timezone
 
 # Config
-MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://nexus_api_user:JU0wu9t542tK9Av@nexussocial.a8wimcp.mongodb.net/nexus_db?retryWrites=true&w=majority&appName=nexussocial")
-SECRET_KEY = os.getenv("SECRET_KEY", "76f267dbc69c6b4e639a50a7ccdd3783")
-ALGORITHM = "HS256"
+MONGO_URL = os.getenv("MONGO_URL")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not MONGO_URL or not SECRET_KEY:\n    raise RuntimeError("MONGO_URL and SECRET_KEY must be provided via environment variables")\n\nALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 jour
 
 client = AsyncIOMotorClient(MONGO_URL)
