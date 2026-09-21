@@ -1,41 +1,103 @@
-from fastapi import FastAPI
+from datetime import datetime, timedelta, timezone
+
+import jwt
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
 from workers import asgi, env
 
-app = FastAPI(title="Nexus Social API", version="0.1.0")
+app = FastAPI(title="Nexus Social API", version="0.2.0")
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+async def mongo_post(path: str, payload: dict):
+    service = getattr(env, "MONGO_SERVICE", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Database service is not configured")
+    response = await service.fetch(
+        "https://nexus-social-mongo.internal" + path,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        body=__import__("json").dumps(payload),
+    )
+    data = await response.json()
+    return response.status, data
+
+
+def jwt_secret() -> str:
+    secret = getattr(env, "SECRET_KEY", None)
+    if not secret:
+        raise HTTPException(status_code=503, detail="Authentication secret is not configured")
+    return str(secret)
+
+
+def issue_token(user_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {"sub": user_id, "iat": now, "exp": now + timedelta(days=7)},
+        jwt_secret(),
+        algorithm="HS256",
+    )
+
+
+def bearer_token(authorization: str | None) -> str:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return authorization.split(" ", 1)[1].strip()
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "nexus-social-api", "runtime": "cloudflare-workers"}
-
-
-@app.get("/health/bindings")
-async def bindings_health():
     return {
-        "mongo_url_configured": bool(getattr(env, "MONGO_URL", None)),
-        "db_name": str(getattr(env, "DB_NAME", "nexus_db")),
+        "status": "ok",
+        "service": "nexus-social-api",
+        "runtime": "cloudflare-workers",
+        "mongo_service_configured": bool(getattr(env, "MONGO_SERVICE", None)),
+        "secret_key_configured": bool(getattr(env, "SECRET_KEY", None)),
     }
 
 
-@app.get("/health/mongodb")
-async def mongodb_health():
-    mongo_url = getattr(env, "MONGO_URL", None)
-    db_name = str(getattr(env, "DB_NAME", "nexus_db"))
+@app.post("/api/auth/login")
+async def login(credentials: LoginIn):
+    status, data = await mongo_post(
+        "/internal/auth/verify",
+        {"email": credentials.email.strip().lower(), "password": credentials.password},
+    )
+    if status == 401:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if status == 403 and data.get("age_blocked"):
+        raise HTTPException(status_code=403, detail="Ce compte n'est pas éligible.")
+    if status >= 400 or not data.get("authenticated"):
+        raise HTTPException(status_code=503, detail="Authentication service unavailable")
 
-    if not mongo_url:
-        return {"status": "error", "database": db_name, "detail": "MONGO_URL binding is not configured"}
+    user = data["user"]
+    return {"token": issue_token(str(user["id"])), "user": user}
 
-    # PyMongo cannot currently be imported at Worker startup because BSON
-    # initializes secure randomness, which Cloudflare forbids during snapshot
-    # creation. Importing it from this async ASGI handler also triggers a
-    # Pyodide nested-promising-task failure, so keep production deployable while
-    # the database adapter is replaced/tested separately.
-    return {
-        "status": "blocked",
-        "database": db_name,
-        "connected": False,
-        "detail": "PyMongo is not compatible with this Python Worker execution path",
-    }
+
+@app.get("/api/auth/me")
+async def me(authorization: str | None = Header(default=None)):
+    token = bearer_token(authorization)
+    try:
+        payload = jwt.decode(token, jwt_secret(), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    status, data = await mongo_post("/internal/auth/user-by-id", {"id": user_id})
+    if status == 404:
+        raise HTTPException(status_code=401, detail="User not found")
+    if status >= 400 or not data.get("found"):
+        raise HTTPException(status_code=503, detail="Authentication service unavailable")
+    return data["user"]
 
 
 @app.get("/")
