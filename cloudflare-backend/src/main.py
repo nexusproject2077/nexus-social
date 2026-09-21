@@ -9,40 +9,31 @@ async def health():
     return {"status": "ok", "service": "nexus-social-api", "runtime": "cloudflare-workers"}
 
 
+@app.get("/health/bindings")
+async def bindings_health():
+    return {
+        "mongo_url_configured": bool(getattr(env, "MONGO_URL", None)),
+        "db_name": str(getattr(env, "DB_NAME", "nexus_db")),
+    }
+
+
 @app.get("/health/mongodb")
 async def mongodb_health():
-    # Import PyMongo only after Worker startup: BSON initializes ObjectId
-    # entropy during import, which Cloudflare disallows at startup.
-    from pymongo import MongoClient
-
-    # Python Workers expose variables/secrets as bindings on workers.env.
     mongo_url = getattr(env, "MONGO_URL", None)
     db_name = getattr(env, "DB_NAME", "nexus_db")
 
     if not mongo_url:
         return {"status": "error", "database": str(db_name), "detail": "MONGO_URL binding is not configured"}
 
-    client = None
-    try:
-        client = MongoClient(str(mongo_url), serverSelectionTimeoutMS=5000, connectTimeoutMS=5000)
-        client.admin.command("ping")
-        collections = client[str(db_name)].list_collection_names()
-        return {
-            "status": "ok",
-            "database": str(db_name),
-            "connected": True,
-            "collections_count": len(collections),
-        }
-    except Exception as exc:
-        return {
-            "status": "error",
-            "database": str(db_name),
-            "connected": False,
-            "error_type": type(exc).__name__,
-        }
-    finally:
-        if client is not None:
-            client.close()
+    # PyMongo currently triggers a nested Pyodide promising-task failure when
+    # imported/executed inside the FastAPI ASGI request. Keep this endpoint
+    # explicit while we validate bindings separately.
+    return {
+        "status": "blocked",
+        "database": str(db_name),
+        "connected": False,
+        "detail": "MongoDB driver compatibility test pending",
+    }
 
 
 @app.get("/")
