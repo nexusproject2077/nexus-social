@@ -5,12 +5,21 @@ import secrets
 
 import jwt
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from js import Object, Request
 from pyodide.ffi import to_js
 from workers import asgi, env
 
 app = FastAPI(title="Nexus Social API", version="0.3.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://nexus-social.merickoken54.workers.dev"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class LoginIn(BaseModel):
