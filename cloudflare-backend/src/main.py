@@ -1,7 +1,6 @@
 import os
 
 from fastapi import FastAPI
-from pymongo import MongoClient
 from workers import asgi
 
 app = FastAPI(title="Nexus Social API", version="0.1.0")
@@ -14,6 +13,11 @@ async def health():
 
 @app.get("/health/mongodb")
 async def mongodb_health():
+    # Cloudflare Python Workers forbids entropy during Worker startup.
+    # PyMongo/BSON initializes ObjectId randomness when imported, so import it
+    # inside the request handler instead of at module startup.
+    from pymongo import MongoClient
+
     mongo_url = os.environ.get("MONGO_URL")
     db_name = os.environ.get("DB_NAME", "nexus_db")
 
