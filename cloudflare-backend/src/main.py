@@ -3,10 +3,11 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
-from js import Request
+from js import Object, Request
+from pyodide.ffi import to_js
 from workers import asgi, env
 
-app = FastAPI(title="Nexus Social API", version="0.2.1")
+app = FastAPI(title="Nexus Social API", version="0.2.2")
 
 
 class LoginIn(BaseModel):
@@ -19,12 +20,15 @@ async def mongo_post(path: str, payload: dict):
     if service is None:
         raise HTTPException(status_code=503, detail="Database service is not configured")
 
-    request = Request.new(
-        "https://nexus-social-mongo.internal" + path,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-        body=__import__("json").dumps(payload),
+    init = to_js(
+        {
+            "method": "POST",
+            "headers": {"Content-Type": "application/json"},
+            "body": __import__("json").dumps(payload),
+        },
+        dict_converter=Object.fromEntries,
     )
+    request = Request.new("https://nexus-social-mongo.internal" + path, init)
     response = await service.fetch(request)
     data = await response.json()
     return int(response.status), data
