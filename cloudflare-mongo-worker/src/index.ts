@@ -4,10 +4,43 @@ import bcrypt from "bcryptjs";
 interface Env {
   MONGO_URL: string;
   DB_NAME?: string;
+  SECRET_KEY?: string;
 }
 
-function json(data: unknown, status = 200): Response {
-  return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+function corsHeaders(request?: Request): Record<string,string> {
+  const origin = request?.headers.get("Origin") || "";
+  const allowed = origin === "https://nexus-social.merickoken54.workers.dev" ? origin : "";
+  return {
+    "Cache-Control": "no-store",
+    ...(allowed ? { "Access-Control-Allow-Origin": allowed, "Access-Control-Allow-Credentials": "true" } : {}),
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "Vary": "Origin",
+  };
+}
+function json(data: unknown, status = 200, request?: Request): Response {
+  return Response.json(data, { status, headers: corsHeaders(request) });
+}
+function b64url(input: Uint8Array|string): string {
+  const bytes = typeof input === "string" ? new TextEncoder().encode(input) : input;
+  let binary=""; for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+async function hmac(secret:string, data:string): Promise<string> {
+  const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+  return b64url(new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(data))));
+}
+async function issueToken(secret:string,userId:string):Promise<string>{
+  const now=Math.floor(Date.now()/1000), head=b64url(JSON.stringify({alg:"HS256",typ:"JWT"})), body=b64url(JSON.stringify({sub:userId,iat:now,exp:now+7*86400}));
+  return head+"."+body+"."+await hmac(secret,head+"."+body);
+}
+async function authUser(request:Request, secret:string, db:any):Promise<any|null>{
+  const raw=request.headers.get("Authorization")||""; if(!raw.toLowerCase().startsWith("bearer ")) return null;
+  const token=raw.slice(7).trim(), parts=token.split("."); if(parts.length!==3) return null;
+  if(await hmac(secret,parts[0]+"."+parts[1])!==parts[2]) return null;
+  try { const p=JSON.parse(atob(parts[1].replace(/-/g,"+").replace(/_/g,"/"))); if(!p.sub||Number(p.exp||0)<Math.floor(Date.now()/1000)) return null;
+    return await db.collection("users").findOne({id:String(p.sub)});
+  } catch { return null; }
 }
 
 function publicUser(user: Record<string, any>) {
@@ -38,6 +71,7 @@ function publicUser(user: Record<string, any>) {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request)});
 
     if (url.pathname === "/health") {
       return json({
@@ -61,6 +95,45 @@ export default {
     try {
       await client.connect();
       const db = client.db(dbName);
+
+      if (url.pathname === "/api/health") return json({status:"ok",service:"nexus-social-api-ts",database:dbName},200,request);
+
+      if (url.pathname === "/api/auth/login" && request.method === "POST") {
+        if(!env.SECRET_KEY) return json({detail:"Authentication secret is not configured"},503,request);
+        let body:any; try{body=await request.json();}catch{return json({detail:"Invalid JSON"},400,request);}
+        const email=String(body?.email||"").trim().toLowerCase(), password=String(body?.password||"");
+        const user=await db.collection("users").findOne({email}); const hash=typeof user?.password==="string"?user.password:"";
+        if(!user||!hash||!(await bcrypt.compare(password,hash))) return json({detail:"Invalid email or password"},401,request);
+        if(user.age_blocked) return json({detail:"Ce compte n'est pas eligible."},403,request);
+        if(user.twofa_enabled) return json({twofa_required:true,email:user.email},428,request);
+        return json({token:await issueToken(env.SECRET_KEY,String(user.id)),user:publicUser(user)},200,request);
+      }
+      if (url.pathname === "/api/auth/me" && request.method === "GET") {
+        if(!env.SECRET_KEY) return json({detail:"Authentication secret is not configured"},503,request);
+        const user=await authUser(request,env.SECRET_KEY,db); if(!user)return json({detail:"Not authenticated"},401,request);
+        return json(publicUser(user),200,request);
+      }
+
+      const user = url.pathname.startsWith("/api/") && env.SECRET_KEY ? await authUser(request,env.SECRET_KEY,db) : null;
+      if (url.pathname.startsWith("/api/") && !user) return json({detail:"Not authenticated"},401,request);
+      const uid=String(user?.id||"");
+      if (url.pathname === "/api/feed/foryou" && request.method === "GET") {
+        const skip=Math.max(0,Number(url.searchParams.get("skip")||0)),limit=Math.max(1,Math.min(30,Number(url.searchParams.get("limit")||10)));
+        const query:any={}; if(user.hide_political===true)query.is_political={$ne:true};
+        const posts=await db.collection("posts").find(query,{projection:{_id:0}}).sort({created_at:-1}).skip(skip).limit(limit).toArray();
+        const ids=posts.map((p:any)=>p.id).filter(Boolean);
+        const [liked,saved]=ids.length?await Promise.all([db.collection("likes").find({user_id:uid,post_id:{$in:ids}},{projection:{_id:0,post_id:1}}).toArray(),db.collection("saved_posts").find({user_id:uid,post_id:{$in:ids}},{projection:{_id:0,post_id:1}}).toArray()]):[[],[]];
+        const ls=new Set(liked.map((x:any)=>x.post_id)),ss=new Set(saved.map((x:any)=>x.post_id));
+        return json(posts.map((p:any)=>({...p,is_liked:ls.has(p.id),is_saved:ss.has(p.id)})),200,request);
+      }
+      if (url.pathname === "/api/badges" && request.method === "GET") {
+        const [messages,notifications]=await Promise.all([db.collection("messages").countDocuments({recipient_id:uid,read:false}),db.collection("notifications").countDocuments({user_id:uid,read:false})]);
+        return json({messages,notifications},200,request);
+      }
+      if (url.pathname === "/api/live/active" && request.method === "GET") {
+        const f=await db.collection("follows").find({follower_id:uid},{projection:{_id:0,followed_id:1}}).toArray(),allowed=[uid,...f.map((x:any)=>x.followed_id)],cutoff=new Date(Date.now()-12*3600000).toISOString();
+        return json(await db.collection("live_sessions").find({active:true,host_id:{$in:allowed},started_at:{$gte:cutoff}},{projection:{_id:0}}).toArray(),200,request);
+      }
 
       if (url.pathname === "/health/mongodb") {
         await client.db("admin").command({ ping: 1 });
