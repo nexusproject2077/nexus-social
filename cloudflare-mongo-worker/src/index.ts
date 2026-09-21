@@ -214,6 +214,50 @@ export default {
         return json({ messages, notifications });
       }
 
+      if (url.pathname === "/internal/users/profile" && request.method === "POST") {
+        let b:any; try { b = await request.json(); } catch { return json({detail:"Invalid JSON"},400); }
+        const userId=String(b?.user_id||"").trim(), viewerId=String(b?.viewer_id||"").trim();
+        const user=await db.collection("users").findOne({id:userId},{projection:{_id:0,password:0}});
+        if(!user)return json({detail:"User not found"},404);
+        if(viewerId && viewerId!==userId) {
+          await db.collection("profile_views").insertOne({profile_id:userId,viewer_id:viewerId,ts:new Date().toISOString()}).catch(()=>undefined);
+        }
+        return json(publicUser(user as Record<string,any>));
+      }
+
+      if (url.pathname === "/internal/users/stats" && request.method === "POST") {
+        let b:any; try { b = await request.json(); } catch { return json({detail:"Invalid JSON"},400); }
+        const userId=String(b?.user_id||"").trim();
+        const user=await db.collection("users").findOne({id:userId},{projection:{_id:0,id:1}});
+        if(!user)return json({detail:"User not found"},404);
+        const [followers,following,posts]=await Promise.all([
+          db.collection("follows").countDocuments({followed_id:userId}),
+          db.collection("follows").countDocuments({follower_id:userId}),
+          db.collection("posts").countDocuments({author_id:userId})
+        ]);
+        return json({followers,following,posts});
+      }
+
+      if (url.pathname === "/internal/users/posts" && request.method === "POST") {
+        let b:any; try { b = await request.json(); } catch { return json({detail:"Invalid JSON"},400); }
+        const userId=String(b?.user_id||"").trim(), viewerId=String(b?.viewer_id||"").trim();
+        const user=await db.collection("users").findOne({id:userId},{projection:{_id:0,is_private:1}});
+        if(!user)return json({detail:"User not found"},404);
+        if(user.is_private && viewerId!==userId) {
+          const follow=await db.collection("follows").findOne({follower_id:viewerId,followed_id:userId,status:"following"});
+          if(!follow)return json({detail:"Private profile"},403);
+        }
+        const posts=await db.collection("posts").find({author_id:userId},{projection:{_id:0}}).sort({created_at:-1}).limit(200).toArray();
+        const ids=posts.map((p:any)=>p.id).filter(Boolean);
+        const [liked,saved]=ids.length ? await Promise.all([
+          db.collection("likes").find({user_id:viewerId,post_id:{$in:ids}},{projection:{_id:0,post_id:1}}).toArray(),
+          db.collection("saved_posts").find({user_id:viewerId,post_id:{$in:ids}},{projection:{_id:0,post_id:1}}).toArray()
+        ]) : [[],[]];
+        const ls=new Set(liked.map((x:any)=>x.post_id)), ss=new Set(saved.map((x:any)=>x.post_id));
+        return json(posts.map((p:any)=>({...p,is_liked:ls.has(p.id),is_saved:ss.has(p.id)})));
+      }
+
+
       if (url.pathname === "/internal/users/search" && request.method === "POST") {
         let body: any; try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
         const userId = String(body?.user_id || "").trim(), q = String(body?.q || "").trim();
