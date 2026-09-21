@@ -3,7 +3,8 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
-from js import Request\nfrom workers import asgi, env
+from js import Request
+from workers import asgi, env
 
 app = FastAPI(title="Nexus Social API", version="0.2.1")
 
