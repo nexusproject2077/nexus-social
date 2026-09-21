@@ -282,6 +282,81 @@ async def screen_time_add(data: ScreenTimeAdd, authorization: str | None = Heade
     return await mongo_data("/internal/screen-time/add", {"user_id":uid,"day":data.day,"delta_seconds":data.delta_seconds})
 
 
+
+@app.get("/api/analytics/me/stats")
+async def analytics_stats(authorization: str | None = Header(default=None)):
+    return await mongo_data("/internal/analytics/stats", {"user_id": current_user_id(authorization)})
+
+
+@app.get("/api/analytics/me/trends")
+async def analytics_trends(days: int = 30, authorization: str | None = Header(default=None)):
+    return await mongo_data("/internal/analytics/trends", {"user_id": current_user_id(authorization), "days": max(1,min(365,days))})
+
+
+@app.get("/api/live/active")
+async def live_active(authorization: str | None = Header(default=None)):
+    return await mongo_data("/internal/live/active", {"user_id": current_user_id(authorization)})
+
+
+@app.get("/api/weather")
+async def weather(lat: float, lon: float, authorization: str | None = Header(default=None)):
+    current_user_id(authorization)
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise HTTPException(status_code=400, detail="Coordonnées invalides")
+    import json
+    from js import fetch
+    u = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto"
+    try:
+        r = await fetch(u)
+        return {"weather": json.loads(await r.text()) if r.ok else None}
+    except Exception:
+        return {"weather": None}
+
+
+FINANCE_CATALOG = {
+    "bitcoin":{"symbol":"BTC","name":"Bitcoin"},"ethereum":{"symbol":"ETH","name":"Ethereum"},
+    "solana":{"symbol":"SOL","name":"Solana"},"cardano":{"symbol":"ADA","name":"Cardano"},
+    "dogecoin":{"symbol":"DOGE","name":"Dogecoin"}
+}
+
+
+@app.get("/api/finance")
+async def finance(ids: str = "bitcoin,ethereum,solana", authorization: str | None = Header(default=None)):
+    current_user_id(authorization)
+    import json
+    from js import fetch
+    want=[x.strip() for x in ids.split(",") if x.strip()][:10]
+    try:
+        u="https://api.coingecko.com/api/v3/simple/price?ids="+",".join(want)+"&vs_currencies=eur&include_24hr_change=true"
+        r=await fetch(u); raw=json.loads(await r.text()) if r.ok else {}
+        assets=[{"id":x,**FINANCE_CATALOG.get(x,{"symbol":x.upper(),"name":x}),"price":raw.get(x,{}).get("eur"),"change_24h":raw.get(x,{}).get("eur_24h_change")} for x in want]
+    except Exception:
+        assets=[]
+    return {"assets":assets,"catalog":FINANCE_CATALOG}
+
+
+@app.get("/api/livescores")
+async def livescores(authorization: str | None = Header(default=None)):
+    current_user_id(authorization)
+    import json
+    from js import fetch
+    matches=[]
+    leagues=["eng.1","esp.1","ger.1","ita.1","fra.1","tur.1","uefa.champions"]
+    try:
+        for league in leagues:
+            r=await fetch(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/scoreboard")
+            if not r.ok: continue
+            data=json.loads(await r.text())
+            for ev in data.get("events",[]):
+                comp=(ev.get("competitions") or [{}])[0]; teams=comp.get("competitors") or []
+                h=next((x for x in teams if x.get("homeAway")=="home"),{}); a=next((x for x in teams if x.get("homeAway")=="away"),{})
+                st=ev.get("status") or {}; typ=st.get("type") or {}
+                matches.append({"id":ev.get("id"),"league_slug":league,"home":(h.get("team") or {}).get("displayName"),"away":(a.get("team") or {}).get("displayName"),"home_id":(h.get("team") or {}).get("id"),"away_id":(a.get("team") or {}).get("id"),"home_score":h.get("score"),"away_score":a.get("score"),"state":typ.get("state"),"clock":st.get("displayClock") or "","date":ev.get("date")})
+    except Exception:
+        pass
+    return {"matches":matches[:50],"updated_at":0,"favorites":{"leagues":[],"teams":[]}}
+
+
 @app.get("/")
 async def root():
     return {"service": "Nexus Social API", "status": "migration-in-progress"}
