@@ -77,6 +77,8 @@ async def login(credentials: LoginIn):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if status == 403 and data.get("age_blocked"):
         raise HTTPException(status_code=403, detail="Ce compte n'est pas eligible.")
+    if status == 428 and data.get("twofa_required"):
+        return {"twofa_required": True, "email": data.get("email")}
     if status >= 400 or not data.get("authenticated"):
         raise HTTPException(status_code=503, detail="Authentication service unavailable")
 
