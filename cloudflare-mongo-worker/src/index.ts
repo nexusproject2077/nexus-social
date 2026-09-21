@@ -267,6 +267,24 @@ export default {
         if(delta)await db.collection("screen_time").updateOne({user_id:userId,day},{$inc:{seconds:delta},$setOnInsert:{user_id:userId,day}},{upsert:true});const row=await db.collection("screen_time").findOne({user_id:userId,day},{projection:{_id:0,seconds:1}});return json({day,seconds:Number(row?.seconds||0)});
       }
 
+      if (url.pathname === "/internal/analytics/stats" && request.method === "POST") {
+        let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400);}const uid=String(b?.user_id||""),today=new Date().toISOString().slice(0,10);
+        const posts=await db.collection("posts").find({author_id:uid},{projection:{_id:0,likes_count:1,comments_count:1,views:1,created_at:1}}).toArray();
+        const followers=await db.collection("follows").countDocuments({followed_id:uid}),following=await db.collection("follows").countDocuments({follower_id:uid}),newFollowers=await db.collection("follows").countDocuments({followed_id:uid,created_at:{$gte:today}});
+        const likes=posts.reduce((s:number,p:any)=>s+Number(p.likes_count||0),0),comments=posts.reduce((s:number,p:any)=>s+Number(p.comments_count||0),0),views=posts.reduce((s:number,p:any)=>s+Number(p.views||0),0);
+        return json({total_posts:posts.length,posts_today:posts.filter((p:any)=>String(p.created_at||"")>=today).length,total_likes:likes,total_comments:comments,total_views:views,followers_count:followers,following_count:following,new_followers_today:newFollowers,engagement_rate:posts.length?Math.round(((likes+comments)/posts.length)*10)/10:0});
+      }
+      if (url.pathname === "/internal/analytics/trends" && request.method === "POST") {
+        let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400);}const uid=String(b?.user_id||""),days=Math.max(1,Math.min(365,Number(b?.days||30))),since=new Date(Date.now()-days*86400000).toISOString(),start=since.slice(0,10);
+        const posts=await db.collection("posts").find({author_id:uid,created_at:{$gte:since}},{projection:{_id:0,id:1,created_at:1}}).toArray(),ids=posts.map((p:any)=>p.id);
+        const likes=ids.length?await db.collection("likes").find({post_id:{$in:ids},created_at:{$gte:since}},{projection:{_id:0,created_at:1}}).toArray():[],comments=ids.length?await db.collection("comments").find({post_id:{$in:ids},created_at:{$gte:since}},{projection:{_id:0,created_at:1}}).toArray():[],followers=await db.collection("follows").find({followed_id:uid,created_at:{$gte:since}},{projection:{_id:0,created_at:1}}).toArray();
+        const count=(arr:any[])=>{const m:any={};for(const x of arr){const d=String(x.created_at||"").slice(0,10);m[d]=(m[d]||0)+1;}return m},pc=count(posts),lc=count(likes),cc=count(comments),fc=count(followers),out:any[]=[];
+        for(let i=days-1;i>=0;i--){const d=new Date(Date.now()-i*86400000).toISOString().slice(0,10);out.push({date:d.slice(5),posts:pc[d]||0,likes:lc[d]||0,comments:cc[d]||0,followers:fc[d]||0});}return json(out);
+      }
+      if (url.pathname === "/internal/live/active" && request.method === "POST") {
+        let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400);}const uid=String(b?.user_id||""),f=await db.collection("follows").find({follower_id:uid},{projection:{_id:0,followed_id:1}}).toArray(),allowed=[uid,...f.map((x:any)=>x.followed_id)],cutoff=new Date(Date.now()-12*3600000).toISOString();
+        const rows=await db.collection("live_sessions").find({active:true,host_id:{$in:allowed},started_at:{$gte:cutoff}},{projection:{_id:0,host_id:1,host_username:1,host_profile_pic:1,room_id:1,started_at:1}}).toArray();return json(rows);
+      }
       if (url.pathname === "/internal/auth/user-by-id" && request.method === "POST") {
         let body: any;
         try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
