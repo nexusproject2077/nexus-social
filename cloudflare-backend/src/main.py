@@ -3,9 +3,9 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
-from workers import asgi, env
+from workers import Request, asgi, env
 
-app = FastAPI(title="Nexus Social API", version="0.2.0")
+app = FastAPI(title="Nexus Social API", version="0.2.1")
 
 
 class LoginIn(BaseModel):
@@ -17,14 +17,16 @@ async def mongo_post(path: str, payload: dict):
     service = getattr(env, "MONGO_SERVICE", None)
     if service is None:
         raise HTTPException(status_code=503, detail="Database service is not configured")
-    response = await service.fetch(
+
+    request = Request.new(
         "https://nexus-social-mongo.internal" + path,
         method="POST",
         headers={"Content-Type": "application/json"},
         body=__import__("json").dumps(payload),
     )
+    response = await service.fetch(request)
     data = await response.json()
-    return response.status, data
+    return int(response.status), data
 
 
 def jwt_secret() -> str:
@@ -69,7 +71,7 @@ async def login(credentials: LoginIn):
     if status == 401:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if status == 403 and data.get("age_blocked"):
-        raise HTTPException(status_code=403, detail="Ce compte n'est pas éligible.")
+        raise HTTPException(status_code=403, detail="Ce compte n'est pas eligible.")
     if status >= 400 or not data.get("authenticated"):
         raise HTTPException(status_code=503, detail="Authentication service unavailable")
 
