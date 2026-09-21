@@ -3,11 +3,7 @@ name = "nexus-social-cloudflare-api"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "fastapi==0.110.1",
-]
-
-[dependency-groups]
-dev = [
+    "fastapi",
     "workers-py",
     "workers-runtime-sdk",
 ]
