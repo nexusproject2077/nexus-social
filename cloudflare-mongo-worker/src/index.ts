@@ -88,6 +88,48 @@ export default {
         return json({ authenticated: true, user: publicUser(user as Record<string, any>) });
       }
 
+      if (url.pathname === "/internal/auth/otp/issue" && request.method === "POST") {
+        let body: any;
+        try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
+        const email = String(body?.email || "").trim().toLowerCase();
+        const kind = String(body?.kind || "");
+        const codeHash = String(body?.code_hash || "");
+        const expiresAt = String(body?.expires_at || "");
+        if (!email || !["2fa", "reset", "email"].includes(kind) || !codeHash || !expiresAt) {
+          return json({ detail: "Invalid OTP request" }, 400);
+        }
+        const user = await db.collection("users").findOne({ email }, { projection: { _id: 0, id: 1, email: 1, twofa_enabled: 1, age_blocked: 1 } });
+        if (!user) return json({ found: false }, 404);
+        if (kind === "2fa" && !user.twofa_enabled) return json({ detail: "2FA is not enabled" }, 409);
+        if (user.age_blocked) return json({ detail: "Account blocked" }, 403);
+        await db.collection("verification_codes").updateOne(
+          { user_id: user.id, kind },
+          { $set: { code_hash: codeHash, expires_at: expiresAt, attempts: 0 } },
+          { upsert: true },
+        );
+        return json({ issued: true, user_id: user.id, email: user.email });
+      }
+
+      if (url.pathname === "/internal/auth/otp/verify" && request.method === "POST") {
+        let body: any;
+        try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
+        const email = String(body?.email || "").trim().toLowerCase();
+        const kind = String(body?.kind || "");
+        const codeHash = String(body?.code_hash || "");
+        if (!email || !["2fa", "reset", "email"].includes(kind) || !codeHash) return json({ detail: "Invalid OTP request" }, 400);
+        const user = await db.collection("users").findOne({ email });
+        if (!user) return json({ valid: false }, 400);
+        const rec = await db.collection("verification_codes").findOne({ user_id: user.id, kind });
+        const now = new Date().toISOString();
+        if (!rec || String(rec.expires_at || "") < now || Number(rec.attempts || 0) >= 5) return json({ valid: false }, 400);
+        if (String(rec.code_hash || "") !== codeHash) {
+          await db.collection("verification_codes").updateOne({ user_id: user.id, kind }, { $inc: { attempts: 1 } });
+          return json({ valid: false }, 400);
+        }
+        await db.collection("verification_codes").deleteOne({ user_id: user.id, kind });
+        return json({ valid: true, user: publicUser(user as Record<string, any>) });
+      }
+
       if (url.pathname === "/internal/auth/user-by-id" && request.method === "POST") {
         let body: any;
         try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
