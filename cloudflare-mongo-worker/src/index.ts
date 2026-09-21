@@ -82,6 +82,8 @@ export default {
 
         if (!user || !valid) return json({ authenticated: false }, 401);
         if (user.age_blocked) return json({ authenticated: false, age_blocked: true }, 403);
+        // Never bypass an existing second factor during the migration.
+        if (user.twofa_enabled) return json({ authenticated: false, twofa_required: true, email: user.email }, 428);
 
         return json({ authenticated: true, user: publicUser(user as Record<string, any>) });
       }
