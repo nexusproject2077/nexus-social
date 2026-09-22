@@ -177,6 +177,104 @@ export default {
       const user = url.pathname.startsWith("/api/") && env.SECRET_KEY ? await authUser(request,env.SECRET_KEY,db) : null;
       if (url.pathname.startsWith("/api/") && !user) return json({detail:"Not authenticated"},401,request);
       const uid=String(user?.id||"");
+      const userRoute = url.pathname.match(/^\/api\/users\/([^/]+)(?:\/(stats|posts|follow-status|reposts|mentions|follow))?$/);
+      if (userRoute) {
+        const targetId = decodeURIComponent(userRoute[1]);
+        const action = userRoute[2] || "profile";
+        const target = await db.collection("users").findOne({ id: targetId }, { projection: { _id: 0, password: 0 } });
+        if (!target) return json({ detail: "User not found" }, 404, request);
+
+        const canViewTarget = async () => {
+          if (targetId === uid || !target.is_private) return true;
+          return Boolean(await db.collection("follows").findOne({ follower_id: uid, followed_id: targetId, status: "following" }));
+        };
+
+        if (action === "profile" && request.method === "GET") {
+          if (targetId !== uid) {
+            await db.collection("profile_views").insertOne({ profile_id: targetId, viewer_id: uid, ts: new Date().toISOString() }).catch(() => undefined);
+          }
+          return json(publicUser(target as Record<string, any>), 200, request);
+        }
+        if (action === "stats" && request.method === "GET") {
+          const [followers, following, posts] = await Promise.all([
+            db.collection("follows").countDocuments({ followed_id: targetId, status: "following" }),
+            db.collection("follows").countDocuments({ follower_id: targetId, status: "following" }),
+            db.collection("posts").countDocuments({ author_id: targetId }),
+          ]);
+          return json({ followers, following, posts }, 200, request);
+        }
+        if (action === "follow-status" && request.method === "GET") {
+          if (targetId === uid) return json({ status: "self" }, 200, request);
+          const followed = await db.collection("follows").findOne({ follower_id: uid, followed_id: targetId, status: "following" });
+          if (followed) return json({ status: "following" }, 200, request);
+          const pending = await db.collection("follow_requests").findOne({ requester_id: uid, target_id: targetId });
+          return json({ status: pending ? "pending" : "not_following" }, 200, request);
+        }
+        if (action === "posts" && request.method === "GET") {
+          if (!(await canViewTarget())) return json({ detail: "Private profile" }, 403, request);
+          const posts = await db.collection("posts").find({ author_id: targetId }, { projection: { _id: 0 } }).sort({ created_at: -1 }).limit(200).toArray();
+          const ids = posts.map((p:any) => p.id).filter(Boolean);
+          const [liked, saved] = ids.length ? await Promise.all([
+            db.collection("likes").find({ user_id: uid, post_id: { $in: ids } }, { projection: { _id: 0, post_id: 1 } }).toArray(),
+            db.collection("saved_posts").find({ user_id: uid, post_id: { $in: ids } }, { projection: { _id: 0, post_id: 1 } }).toArray(),
+          ]) : [[], []];
+          const likedSet = new Set(liked.map((x:any) => x.post_id)), savedSet = new Set(saved.map((x:any) => x.post_id));
+          return json(posts.map((p:any) => ({ ...p, is_liked: likedSet.has(p.id), is_saved: savedSet.has(p.id) })), 200, request);
+        }
+        if ((action === "reposts" || action === "mentions") && request.method === "GET") {
+          if (!(await canViewTarget())) return json({ detail: "Private profile" }, 403, request);
+          const query:any = action === "reposts"
+            ? { author_id: targetId, repost_of: { $ne: null } }
+            : { mentioned_user_ids: targetId, repost_of: null };
+          const posts = await db.collection("posts").find(query, { projection: { _id: 0 } }).sort({ created_at: -1 }).limit(50).toArray();
+          const ids = posts.map((p:any) => p.id).filter(Boolean);
+          const liked = ids.length ? await db.collection("likes").find({ user_id: uid, post_id: { $in: ids } }, { projection: { _id: 0, post_id: 1 } }).toArray() : [];
+          const likedSet = new Set(liked.map((x:any) => x.post_id));
+          return json(posts.map((p:any) => ({ ...p, is_liked: likedSet.has(p.id), is_reposted: action === "reposts" && targetId === uid })), 200, request);
+        }
+        if (action === "follow" && request.method === "POST") {
+          if (targetId === uid) return json({ detail: "Cannot follow yourself" }, 400, request);
+          const existing = await db.collection("follows").findOne({ follower_id: uid, followed_id: targetId });
+          if (existing) {
+            await db.collection("follows").deleteOne({ _id: existing._id });
+            await Promise.all([
+              db.collection("users").updateOne({ id: uid }, { $inc: { following_count: -1 } }),
+              db.collection("users").updateOne({ id: targetId }, { $inc: { followers_count: -1 } }),
+            ]);
+            return json({ following: false, status: "not_following" }, 200, request);
+          }
+          if (target.is_private) {
+            const pending = await db.collection("follow_requests").findOne({ requester_id: uid, target_id: targetId });
+            if (pending) {
+              await db.collection("follow_requests").deleteOne({ _id: pending._id });
+              return json({ following: false, status: "not_following" }, 200, request);
+            }
+            await db.collection("follow_requests").insertOne({ id: crypto.randomUUID(), requester_id: uid, target_id: targetId, created_at: new Date().toISOString() });
+            return json({ following: false, status: "pending" }, 200, request);
+          }
+          await db.collection("follows").insertOne({ id: crypto.randomUUID(), follower_id: uid, followed_id: targetId, status: "following", created_at: new Date().toISOString() });
+          await Promise.all([
+            db.collection("users").updateOne({ id: uid }, { $inc: { following_count: 1 } }),
+            db.collection("users").updateOne({ id: targetId }, { $inc: { followers_count: 1 } }),
+          ]);
+          return json({ following: true, status: "following" }, 200, request);
+        }
+        if (action === "follow" && request.method === "DELETE") {
+          const result = await db.collection("follows").deleteOne({ follower_id: uid, followed_id: targetId });
+          if (result.deletedCount) {
+            await Promise.all([
+              db.collection("users").updateOne({ id: uid }, { $inc: { following_count: -1 } }),
+              db.collection("users").updateOne({ id: targetId }, { $inc: { followers_count: -1 } }),
+            ]);
+          }
+          await Promise.all([
+            db.collection("follow_requests").deleteMany({ requester_id: uid, target_id: targetId }),
+            db.collection("notifications").deleteMany({ type: "follow_request", from_user_id: uid, user_id: targetId }),
+          ]);
+          return json({ following: false, status: "not_following" }, 200, request);
+        }
+      }
+
       if (url.pathname === "/api/feed/foryou" && request.method === "GET") {
         const skip=Math.max(0,Number(url.searchParams.get("skip")||0)),limit=Math.max(1,Math.min(30,Number(url.searchParams.get("limit")||10)));
         const query:any={}; if(user.hide_political===true)query.is_political={$ne:true};
