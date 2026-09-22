@@ -5,6 +5,9 @@ interface Env {
   MONGO_URL: string;
   DB_NAME?: string;
   SECRET_KEY?: string;
+  BREVO_API_KEY?: string;
+  BREVO_SENDER_EMAIL?: string;
+  BREVO_SENDER_NAME?: string;
 }
 
 function corsHeaders(request?: Request): Record<string,string> {
@@ -34,11 +37,35 @@ async function issueToken(secret:string,userId:string):Promise<string>{
   const now=Math.floor(Date.now()/1000), head=b64url(JSON.stringify({alg:"HS256",typ:"JWT"})), body=b64url(JSON.stringify({sub:userId,iat:now,exp:now+7*86400}));
   return head+"."+body+"."+await hmac(secret,head+"."+body);
 }
+
+function b64urlDecode(input:string):string {
+  const normalized=input.replace(/-/g,"+").replace(/_/g,"/");
+  const padded=normalized+"=".repeat((4-normalized.length%4)%4);
+  return atob(padded);
+}
+async function otpHash(code:string):Promise<string>{
+  const bytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("nexus-otp:"+code));
+  return Array.from(new Uint8Array(bytes)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+async function sendBrevoEmail(env:Env,to:string,code:string):Promise<void>{
+  if(!env.BREVO_API_KEY) throw new Error("Email service is not configured");
+  const response=await fetch("https://api.brevo.com/v3/smtp/email",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","api-key":env.BREVO_API_KEY,"accept":"application/json"},
+    body:JSON.stringify({
+      sender:{email:env.BREVO_SENDER_EMAIL||"noreply@nexussocial.com",name:env.BREVO_SENDER_NAME||"Nexus Social"},
+      to:[{email:to}],
+      subject:"Ton code de connexion Nexus Social",
+      htmlContent:`<p>Voici ton code de connexion :</p><p style="font-size:26px;font-weight:bold;letter-spacing:4px">${code}</p><p>Ce code expire dans 10 minutes. Si ce n'est pas toi, change ton mot de passe.</p>`
+    })
+  });
+  if(!response.ok) throw new Error("Unable to send authentication email");
+}
 async function authUser(request:Request, secret:string, db:any):Promise<any|null>{
   const raw=request.headers.get("Authorization")||""; if(!raw.toLowerCase().startsWith("bearer ")) return null;
   const token=raw.slice(7).trim(), parts=token.split("."); if(parts.length!==3) return null;
   if(await hmac(secret,parts[0]+"."+parts[1])!==parts[2]) return null;
-  try { const p=JSON.parse(atob(parts[1].replace(/-/g,"+").replace(/_/g,"/"))); if(!p.sub||Number(p.exp||0)<Math.floor(Date.now()/1000)) return null;
+  try { const p=JSON.parse(b64urlDecode(parts[1])); if(!p.sub||Number(p.exp||0)<Math.floor(Date.now()/1000)) return null;
     return await db.collection("users").findOne({id:String(p.sub)});
   } catch { return null; }
 }
@@ -110,7 +137,35 @@ export default {
         const user=await db.collection("users").findOne({email}); const hash=typeof user?.password==="string"?user.password:"";
         if(!user||!hash||!(await bcrypt.compare(password,hash))) return json({detail:"Invalid email or password"},401,request);
         if(user.age_blocked) return json({detail:"Ce compte n'est pas eligible."},403,request);
-        if(user.twofa_enabled) return json({twofa_required:true,email:user.email},428,request);
+        if(user.twofa_enabled) {
+          const code=String(crypto.getRandomValues(new Uint32Array(1))[0]%1000000).padStart(6,"0");
+          const codeHash=await otpHash(code);
+          const expiresAt=new Date(Date.now()+10*60*1000).toISOString();
+          await db.collection("verification_codes").updateOne(
+            {user_id:user.id,kind:"2fa"},
+            {$set:{code_hash:codeHash,expires_at:expiresAt,attempts:0}},
+            {upsert:true}
+          );
+          try { await sendBrevoEmail(env,String(user.email),code); }
+          catch { return json({detail:"Unable to send authentication email"},503,request); }
+          return json({twofa_required:true,email:user.email},200,request);
+        }
+        return json({token:await issueToken(env.SECRET_KEY,String(user.id)),user:publicUser(user)},200,request);
+      }
+      if (url.pathname === "/api/auth/login/2fa" && request.method === "POST") {
+        if(!env.SECRET_KEY) return json({detail:"Authentication secret is not configured"},503,request);
+        let body:any; try{body=await request.json();}catch{return json({detail:"Invalid JSON"},400,request);}
+        const email=String(body?.email||"").trim().toLowerCase(), code=String(body?.code||"").trim();
+        if(!/^\\d{6}$/.test(code)) return json({detail:"Code invalide ou expire."},400,request);
+        const user=await db.collection("users").findOne({email});
+        if(!user) return json({detail:"Code invalide ou expire."},400,request);
+        const rec=await db.collection("verification_codes").findOne({user_id:user.id,kind:"2fa"});
+        if(!rec||String(rec.expires_at||"")<new Date().toISOString()||Number(rec.attempts||0)>=5) return json({detail:"Code invalide ou expire."},400,request);
+        if(String(rec.code_hash||"")!==await otpHash(code)){
+          await db.collection("verification_codes").updateOne({user_id:user.id,kind:"2fa"},{$inc:{attempts:1}});
+          return json({detail:"Code invalide ou expire."},400,request);
+        }
+        await db.collection("verification_codes").deleteOne({user_id:user.id,kind:"2fa"});
         return json({token:await issueToken(env.SECRET_KEY,String(user.id)),user:publicUser(user)},200,request);
       }
       if (url.pathname === "/api/auth/me" && request.method === "GET") {
