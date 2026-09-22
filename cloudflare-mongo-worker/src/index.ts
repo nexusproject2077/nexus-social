@@ -96,7 +96,7 @@ export default {
       await client.connect();
       const db = client.db(dbName);
 
-      if (url.pathname === "/api/health") return json({status:"ok",service:"nexus-social-api-ts",database:dbName},200,request);
+      if (url.pathname === "/api/health") return json({status:"ok",service:"nexus-social-api-ts",database:dbName},200,request);\n      if (url.pathname === "/api/health/mongodb" && request.method === "GET") {\n        await client.db("admin").command({ ping: 1 });\n        const collections = await db.listCollections({}, { nameOnly: true }).toArray();\n        return json({ status: "ok", connected: true, database: dbName, collection_count: collections.length }, 200, request);\n      }
 
       if (url.pathname === "/api/auth/login" && request.method === "POST") {
         if(!env.SECRET_KEY) return json({detail:"Authentication secret is not configured"},503,request);
