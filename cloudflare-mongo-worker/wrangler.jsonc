@@ -22,11 +22,5 @@
         "RealtimeHub"
       ]
     }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "MEDIA",
-      "bucket_name": "nexus-social-media"
-    }
   ]
 }
