@@ -7,7 +7,7 @@ export interface Env {\n  REALTIME?: DurableObjectNamespace;
   SECRET_KEY?: string;
   BREVO_API_KEY?: string;
   BREVO_SENDER_EMAIL?: string;
-  BREVO_SENDER_NAME?: string;
+  BREVO_SENDER_NAME?: string;\n  MEDIA?: R2Bucket;
 }
 
 function corsHeaders(request?: Request): Record<string,string> {
@@ -150,6 +150,21 @@ export default {
         await client.db("admin").command({ ping: 1 });
         const collections = await db.listCollections({}, { nameOnly: true }).toArray();
         return json({ status: "ok", connected: true, database: dbName, collection_count: collections.length }, 200, request);
+      }
+
+      if(url.pathname==="/api/media/upload"&&request.method==="POST"){
+        if(!env.MEDIA)return json({detail:"Media storage is not configured"},503,request);
+        const user=env.SECRET_KEY?await authUser(request,env.SECRET_KEY,db):null;if(!user)return json({detail:"Not authenticated"},401,request);
+        const form=await request.formData(),file=form.get("file");if(!(file instanceof File))return json({detail:"File required"},400,request);
+        if(file.size>100*1024*1024)return json({detail:"File too large"},413,request);
+        const ext=(file.name.split(".").pop()||"bin").replace(/[^a-zA-Z0-9]/g,"").slice(0,8)||"bin",key="media/"+user.id+"/"+Date.now()+"-"+crypto.randomUUID()+"."+ext;
+        await env.MEDIA.put(key,file.stream(),{httpMetadata:{contentType:file.type||"application/octet-stream"}});
+        return json({success:true,key,url:"/api/media/"+encodeURIComponent(key)},200,request);
+      }
+      if(url.pathname.startsWith("/api/media/")&&request.method==="GET"){
+        if(!env.MEDIA)return json({detail:"Media storage is not configured"},503,request);
+        const key=decodeURIComponent(url.pathname.slice("/api/media/".length)),obj=await env.MEDIA.get(key);if(!obj)return json({detail:"Media not found"},404,request);
+        return new Response(obj.body,{headers:{"Content-Type":obj.httpMetadata?.contentType||"application/octet-stream","Cache-Control":"public, max-age=31536000, immutable","Access-Control-Allow-Origin":"https://nexus-social.merickoken54.workers.dev"}});
       }
 
       if (url.pathname === "/api/auth/login" && request.method === "POST") {
