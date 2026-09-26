@@ -61,7 +61,7 @@ async function sendBrevoEmail(env:Env,to:string,code:string):Promise<void>{
   });
   if(!response.ok) throw new Error("Unable to send authentication email");
 }
-async function authUser(request:Request, secret:string, db:any):Promise<any|null>{
+async function realtimeSend(env:Env,userId:string,payload:any):Promise<void>{if(!env.REALTIME)return;try{const id=env.REALTIME.idFromName(userId);await env.REALTIME.get(id).fetch("https://realtime.internal/publish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});}catch{}}\nasync function authUser(request:Request, secret:string, db:any):Promise<any|null>{
   const raw=request.headers.get("Authorization")||""; if(!raw.toLowerCase().startsWith("bearer ")) return null;
   const token=raw.slice(7).trim(), parts=token.split("."); if(parts.length!==3) return null;
   if(await hmac(secret,parts[0]+"."+parts[1])!==parts[2]) return null;
@@ -100,7 +100,7 @@ export class RealtimeHub {
   sockets: Set<WebSocket>;
   constructor(state: DurableObjectState) { this.state=state; this.sockets=new Set(); }
   async fetch(request: Request): Promise<Response> {
-    if ((request.headers.get("Upgrade")||"").toLowerCase() !== "websocket") return new Response("Expected WebSocket",{status:426});
+    const u=new URL(request.url); if(u.pathname==="/publish"&&request.method==="POST"){const payload=await request.text();for(const ws of this.sockets){try{ws.send(payload);}catch{this.sockets.delete(ws);}}return new Response(null,{status:204});}\n    if ((request.headers.get("Upgrade")||"").toLowerCase() !== "websocket") return new Response("Expected WebSocket",{status:426});
     const pair=new WebSocketPair(); const client=pair[0],server=pair[1];
     server.accept(); this.sockets.add(server);
     server.addEventListener("message",(event:any)=>{ if(event.data==="ping"){try{server.send(JSON.stringify({type:"pong"}));}catch{}} });
@@ -115,9 +115,11 @@ export default {
     if (request.method === "OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request)});
     const wsMatch=url.pathname.match(/^\/ws\/([^/]+)$/);
     if(wsMatch && (request.headers.get("Upgrade")||"").toLowerCase()==="websocket"){
-      if(!env.REALTIME) return new Response("Realtime unavailable",{status:503});
-      const id=env.REALTIME.idFromName(decodeURIComponent(wsMatch[1]));
-      return env.REALTIME.get(id).fetch(request);
+      if(!env.REALTIME||!env.SECRET_KEY) return new Response("Realtime unavailable",{status:503});
+      const userId=decodeURIComponent(wsMatch[1]),raw=url.searchParams.get("token")||"",parts=raw.split(".");
+      if(parts.length!==3||await hmac(env.SECRET_KEY,parts[0]+"."+parts[1])!==parts[2])return new Response("Unauthorized",{status:401});
+      try{const p=JSON.parse(b64urlDecode(parts[1]));if(String(p.sub)!==userId||Number(p.exp||0)<Math.floor(Date.now()/1000))return new Response("Unauthorized",{status:401});}catch{return new Response("Unauthorized",{status:401});}
+      return env.REALTIME.get(env.REALTIME.idFromName(userId)).fetch(request);
     }
 
     if (url.pathname === "/health") {
@@ -396,7 +398,7 @@ export default {
 
       const dmRoute=url.pathname.match(/^\/api\/messages\/([^/]+)$/);
       if(dmRoute&&request.method==="GET"){const peer=decodeURIComponent(dmRoute[1]),now=new Date().toISOString();await db.collection("messages").deleteMany({expires_at:{$ne:null,$lte:now},$or:[{sender_id:uid,recipient_id:peer},{sender_id:peer,recipient_id:uid}]});const clear=await db.collection("conversation_clears").findOne({user_id:uid,peer_id:peer}),q:any={deleted_by:{$ne:uid},$or:[{sender_id:uid,recipient_id:peer},{sender_id:peer,recipient_id:uid}],$and:[{$or:[{expires_at:null},{expires_at:{$gt:now}}]}]};if(clear?.cleared_at)q.created_at={$gt:clear.cleared_at};const msgs=await db.collection("messages").find(q,{projection:{_id:0}}).sort({created_at:-1}).limit(60).toArray();msgs.reverse();const reveal=user.read_receipts!==false,update:any=reveal?{read:true,status:"read",read_at:now}:{read:true};await db.collection("messages").updateMany({sender_id:peer,recipient_id:uid,read:false},{$set:update});return json(msgs,200,request);}
-      if(url.pathname==="/api/messages"&&request.method==="POST"){let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400,request);}const recipientId=String(b?.recipient_id||""),recipient=await db.collection("users").findOne({id:recipientId},{projection:{_id:0,password:0}});if(!recipient)return json({detail:"Recipient not found"},404,request);const content=String(b?.content||"").trim();if(!content&&!b?.media_url)return json({detail:"Message vide"},400,request);if(recipient.is_minor&&!user.is_minor){const mutual=await Promise.all([db.collection("follows").findOne({follower_id:uid,followed_id:recipientId,status:"following"}),db.collection("follows").findOne({follower_id:recipientId,followed_id:uid,status:"following"})]);if(!mutual[0]||!mutual[1])return json({detail:"Pour protéger les mineurs, un abonnement mutuel est requis pour envoyer un message à ce compte."},403,request);}const key=[uid,recipientId].sort().join(":"),settings=await db.collection("conversation_settings").findOne({pair_key:key}),ttl=Number(settings?.ephemeral_ttl||0),now=new Date(),msg={id:crypto.randomUUID(),sender_id:uid,sender_username:user.username,sender_profile_pic:user.profile_pic||null,recipient_id:recipientId,recipient_username:recipient.username,content:content.slice(0,10000),media_url:b?.media_url||null,media_type:b?.media_type||null,reply_to_id:b?.reply_to_id||null,expires_at:ttl>0?new Date(now.getTime()+ttl*1000).toISOString():null,read:false,created_at:now.toISOString()};await db.collection("messages").insertOne(msg);return json(msg,200,request);}
+      if(url.pathname==="/api/messages"&&request.method==="POST"){let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400,request);}const recipientId=String(b?.recipient_id||""),recipient=await db.collection("users").findOne({id:recipientId},{projection:{_id:0,password:0}});if(!recipient)return json({detail:"Recipient not found"},404,request);const content=String(b?.content||"").trim();if(!content&&!b?.media_url)return json({detail:"Message vide"},400,request);if(recipient.is_minor&&!user.is_minor){const mutual=await Promise.all([db.collection("follows").findOne({follower_id:uid,followed_id:recipientId,status:"following"}),db.collection("follows").findOne({follower_id:recipientId,followed_id:uid,status:"following"})]);if(!mutual[0]||!mutual[1])return json({detail:"Pour protéger les mineurs, un abonnement mutuel est requis pour envoyer un message à ce compte."},403,request);}const key=[uid,recipientId].sort().join(":"),settings=await db.collection("conversation_settings").findOne({pair_key:key}),ttl=Number(settings?.ephemeral_ttl||0),now=new Date(),msg={id:crypto.randomUUID(),sender_id:uid,sender_username:user.username,sender_profile_pic:user.profile_pic||null,recipient_id:recipientId,recipient_username:recipient.username,content:content.slice(0,10000),media_url:b?.media_url||null,media_type:b?.media_type||null,reply_to_id:b?.reply_to_id||null,expires_at:ttl>0?new Date(now.getTime()+ttl*1000).toISOString():null,read:false,created_at:now.toISOString()};await db.collection("messages").insertOne(msg);await realtimeSend(env,recipientId,{type:"new_message",data:msg});return json(msg,200,request);}
       const markRead=url.pathname.match(/^\/api\/messages\/mark-as-read\/([^/]+)$/);
       if(markRead&&request.method==="PUT"){const peer=decodeURIComponent(markRead[1]),now=new Date().toISOString(),reveal=user.read_receipts!==false,res=await db.collection("messages").updateMany({sender_id:peer,recipient_id:uid,read:false},{$set:reveal?{status:"read",read:true,read_at:now,updated_at:now}:{read:true,updated_at:now}});await db.collection("conversation_prefs").updateOne({user_id:uid,target_id:peer},{$set:{marked_unread:false}},{upsert:true});return json({success:true,marked_count:res.modifiedCount},200,request);}
       const eph=url.pathname.match(/^\/api\/messages\/conversations\/([^/]+)\/ephemeral$/);
