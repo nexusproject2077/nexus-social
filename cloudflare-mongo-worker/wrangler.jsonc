@@ -4,5 +4,23 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-21",
   "workers_dev": true,
-  "observability": { "enabled": true }
+  "observability": {
+    "enabled": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "REALTIME",
+        "class_name": "RealtimeHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-realtime",
+      "new_sqlite_classes": [
+        "RealtimeHub"
+      ]
+    }
+  ]
 }
