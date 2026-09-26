@@ -1,7 +1,7 @@
 import { MongoClient } from "mongodb";
 import bcrypt from "bcryptjs";
 
-interface Env {
+export interface Env {\n  REALTIME?: DurableObjectNamespace;
   MONGO_URL: string;
   DB_NAME?: string;
   SECRET_KEY?: string;
@@ -95,10 +95,30 @@ function publicUser(user: Record<string, any>) {
   };
 }
 
+export class RealtimeHub {
+  state: DurableObjectState;
+  sockets: Set<WebSocket>;
+  constructor(state: DurableObjectState) { this.state=state; this.sockets=new Set(); }
+  async fetch(request: Request): Promise<Response> {
+    if ((request.headers.get("Upgrade")||"").toLowerCase() !== "websocket") return new Response("Expected WebSocket",{status:426});
+    const pair=new WebSocketPair(); const client=pair[0],server=pair[1];
+    server.accept(); this.sockets.add(server);
+    server.addEventListener("message",(event:any)=>{ if(event.data==="ping"){try{server.send(JSON.stringify({type:"pong"}));}catch{}} });
+    const drop=()=>this.sockets.delete(server); server.addEventListener("close",drop); server.addEventListener("error",drop);
+    return new Response(null,{status:101,webSocket:client});
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request)});
+    const wsMatch=url.pathname.match(/^\/ws\/([^/]+)$/);
+    if(wsMatch && (request.headers.get("Upgrade")||"").toLowerCase()==="websocket"){
+      if(!env.REALTIME) return new Response("Realtime unavailable",{status:503});
+      const id=env.REALTIME.idFromName(decodeURIComponent(wsMatch[1]));
+      return env.REALTIME.get(id).fetch(request);
+    }
 
     if (url.pathname === "/health") {
       return json({
