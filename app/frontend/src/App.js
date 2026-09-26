@@ -41,7 +41,7 @@ import FaqPage from './pages/content/FaqPage';
 // L'URL WebSocket (temps réel + lives) est dérivée de API → suit automatiquement.
 // URL du backend FORCÉE sur Cloud Run (on ignore volontairement toute variable
 // de build qui pourrait pointer ailleurs, pour garantir la cible).
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "https://nexus-social-api-ts.merickoken54.workers.dev";
+const BACKEND_URL = "https://nexus-social-api-ts.merickoken54.workers.dev";
 export const API = `${BACKEND_URL}/api`;
 
 // Base publique du backend (sans /api) — sert à construire les liens miroir
