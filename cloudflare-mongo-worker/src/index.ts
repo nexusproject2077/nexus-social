@@ -483,7 +483,7 @@ export default {
         return json({ status: "ok", connected: true, database: dbName, collection_count: collections.length });
       }
 
-      if (url.pathname === "/internal/auth/verify" && request.method === "POST") {
+      if (url.pathname.startsWith("/internal/")) return json({detail:"Not found"},404,request);\n\n      if (url.pathname === "/internal/auth/verify" && request.method === "POST") {
         let body: any;
         try { body = await request.json(); } catch { return json({ detail: "Invalid JSON" }, 400); }
 
