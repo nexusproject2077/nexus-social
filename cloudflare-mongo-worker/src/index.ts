@@ -7,7 +7,7 @@ export interface Env {\n  REALTIME?: DurableObjectNamespace;
   SECRET_KEY?: string;
   BREVO_API_KEY?: string;
   BREVO_SENDER_EMAIL?: string;
-  BREVO_SENDER_NAME?: string;\n  MEDIA?: R2Bucket;
+  BREVO_SENDER_NAME?: string;\n  CLOUDINARY_API_KEY?: string;\n  CLOUDINARY_API_SECRET?: string;\n  CLOUDINARY_CLOUD_NAME?: string;
 }
 
 function corsHeaders(request?: Request): Record<string,string> {
@@ -152,19 +152,14 @@ export default {
         return json({ status: "ok", connected: true, database: dbName, collection_count: collections.length }, 200, request);
       }
 
-      if(url.pathname==="/api/media/upload"&&request.method==="POST"){
-        if(!env.MEDIA)return json({detail:"Media storage is not configured"},503,request);
+      if(url.pathname==="/api/media/sign"&&request.method==="POST"){
         const user=env.SECRET_KEY?await authUser(request,env.SECRET_KEY,db):null;if(!user)return json({detail:"Not authenticated"},401,request);
-        const form=await request.formData(),file=form.get("file");if(!(file instanceof File))return json({detail:"File required"},400,request);
-        if(file.size>100*1024*1024)return json({detail:"File too large"},413,request);
-        const ext=(file.name.split(".").pop()||"bin").replace(/[^a-zA-Z0-9]/g,"").slice(0,8)||"bin",key="media/"+user.id+"/"+Date.now()+"-"+crypto.randomUUID()+"."+ext;
-        await env.MEDIA.put(key,file.stream(),{httpMetadata:{contentType:file.type||"application/octet-stream"}});
-        return json({success:true,key,url:"/api/media/"+encodeURIComponent(key)},200,request);
-      }
-      if(url.pathname.startsWith("/api/media/")&&request.method==="GET"){
-        if(!env.MEDIA)return json({detail:"Media storage is not configured"},503,request);
-        const key=decodeURIComponent(url.pathname.slice("/api/media/".length)),obj=await env.MEDIA.get(key);if(!obj)return json({detail:"Media not found"},404,request);
-        return new Response(obj.body,{headers:{"Content-Type":obj.httpMetadata?.contentType||"application/octet-stream","Cache-Control":"public, max-age=31536000, immutable","Access-Control-Allow-Origin":"https://nexus-social.merickoken54.workers.dev"}});
+        if(!env.CLOUDINARY_API_KEY||!env.CLOUDINARY_API_SECRET||!env.CLOUDINARY_CLOUD_NAME)return json({detail:"Media storage is not configured"},503,request);
+        const timestamp=Math.floor(Date.now()/1000),folder="nexus-social/"+user.id,params="folder="+folder+"&timestamp="+timestamp;
+        const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(env.CLOUDINARY_API_SECRET),{name:"HMAC",hash:"SHA-1"},false,["sign"]);
+        const sig=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(params)));
+        const signature=Array.from(sig).map(b=>b.toString(16).padStart(2,"0")).join("");
+        return json({cloud_name:env.CLOUDINARY_CLOUD_NAME,api_key:env.CLOUDINARY_API_KEY,timestamp,folder,signature},200,request);
       }
 
       if (url.pathname === "/api/auth/login" && request.method === "POST") {
