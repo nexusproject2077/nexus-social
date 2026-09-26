@@ -308,6 +308,11 @@ export default {
       if (url.pathname === "/api/finance" && request.method === "GET") {
         const catalog:any={bitcoin:"Bitcoin",ethereum:"Ethereum",solana:"Solana",cardano:"Cardano",ripple:"XRP",dogecoin:"Dogecoin"},cfg:any=user.widget_stack_config||{},ids=(url.searchParams.get("ids")||"").split(",").map(x=>x.trim()).filter(Boolean),want=(ids.length?ids:(cfg.finance_assets||["bitcoin","ethereum","solana"])).filter((x:any)=>catalog[x]).slice(0,10);try{const r=await fetch("https://api.coingecko.com/api/v3/simple/price?ids="+encodeURIComponent(want.join(","))+"&vs_currencies=eur&include_24hr_change=true"),d:any=r.ok?await r.json():{};return json({assets:want.map((id:any)=>({id,name:catalog[id],price_eur:d[id]?.eur??null,change_24h:d[id]?.eur_24h_change??null})),catalog},200,request);}catch{return json({assets:[],catalog},200,request);}
       }
+      if (url.pathname === "/api/livescores" && request.method === "GET") {
+        const now=new Date(),from=new Date(now.getTime()-6*3600000).toISOString(),to=new Date(now.getTime()+48*3600000).toISOString();
+        const rows=await db.collection("live_scores").find({$or:[{starts_at:{$gte:from,$lte:to}},{status:{$in:["live","in_progress"]}}]},{projection:{_id:0}}).sort({starts_at:1}).limit(100).toArray();
+        return json({matches:rows,updated_at:now.toISOString(),source:rows.length?"cache":"none"},200,request);
+      }
       if (url.pathname === "/api/users/me/profile-views" && request.method === "GET") {
         const since=new Date(Date.now()-30*86400000).toISOString(),rows=await db.collection("profile_views").find({profile_id:uid,ts:{$gte:since}},{projection:{_id:0,viewer_id:1,ts:1}}).sort({ts:-1}).limit(500).toArray(),ordered:string[]=[],seen=new Set<string>();for(const x of rows)if(x.viewer_id&&!seen.has(x.viewer_id)){seen.add(x.viewer_id);ordered.push(x.viewer_id);}let visitors:any[]=[];if(user.is_premium&&ordered.length){const top=ordered.slice(0,12),us=await db.collection("users").find({id:{$in:top}},{projection:{_id:0,id:1,username:1,profile_pic:1,is_verified:1,is_premium:1}}).toArray(),m=new Map(us.map((u:any)=>[u.id,u]));visitors=top.map(id=>m.get(id)).filter(Boolean);}return json({count:ordered.length,is_premium:Boolean(user.is_premium),visitors},200,request);
       }
