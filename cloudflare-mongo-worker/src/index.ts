@@ -317,7 +317,7 @@ export default {
         return json(out,200,request);
       }
       if (url.pathname === "/api/users/search" && request.method === "GET") {
-        const q=String(url.searchParams.get("q")||"").trim();if(!q)return json([],200,request);const safeQ=q.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\\\const q=String(url.searchParams.get("q")||"").trim();if(!q)return json([],200,request);");
+        const q=String(url.searchParams.get("q")||"").trim();if(!q)return json([],200,request);const safeQ=q.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\\\const safeQ=q.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\\\const q=String(url.searchParams.get("q")||"").trim();if(!q)return json([],200,request);");");
         const users=await db.collection("users").find({$or:[{username:{$regex:safeQ,$options:"i"}},{bio:{$regex:safeQ,$options:"i"}}]},{projection:{_id:0,password:0}}).limit(20).toArray(),ids=users.map((u:any)=>u.id).filter(Boolean);
         const follows=ids.length?await db.collection("follows").find({follower_id:uid,followed_id:{$in:ids},status:"following"},{projection:{_id:0,followed_id:1}}).toArray():[], following=new Set(follows.map((x:any)=>x.followed_id));
         return json(users.map((u:any)=>({id:u.id,username:u.username,bio:u.bio||"",profile_pic:u.profile_pic||null,followers_count:u.followers_count||0,following_count:u.following_count||0,is_following:following.has(u.id),created_at:u.created_at,is_verified:Boolean(u.is_verified),is_premium:Boolean(u.is_premium)})),200,request);
