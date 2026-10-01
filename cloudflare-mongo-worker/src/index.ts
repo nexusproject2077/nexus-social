@@ -156,9 +156,8 @@ export default {
         const user=env.SECRET_KEY?await authUser(request,env.SECRET_KEY,db):null;if(!user)return json({detail:"Not authenticated"},401,request);
         if(!env.CLOUDINARY_API_KEY||!env.CLOUDINARY_API_SECRET||!env.CLOUDINARY_CLOUD_NAME)return json({detail:"Media storage is not configured"},503,request);
         const timestamp=Math.floor(Date.now()/1000),folder="nexus-social/"+user.id,params="folder="+folder+"&timestamp="+timestamp;
-        const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(env.CLOUDINARY_API_SECRET),{name:"HMAC",hash:"SHA-1"},false,["sign"]);
-        const sig=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(params)));
-        const signature=Array.from(sig).map(b=>b.toString(16).padStart(2,"0")).join("");
+        const digest=await crypto.subtle.digest("SHA-1",new TextEncoder().encode(params+env.CLOUDINARY_API_SECRET));
+        const signature=Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,"0")).join("");
         return json({cloud_name:env.CLOUDINARY_CLOUD_NAME,api_key:env.CLOUDINARY_API_KEY,timestamp,folder,signature},200,request);
       }
 
