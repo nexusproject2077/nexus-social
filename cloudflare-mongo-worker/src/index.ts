@@ -791,7 +791,7 @@ export default {
         return json({ found: true, user: publicUser(user as Record<string, any>) });
       }
 
-      return json({ error: "Not found" }, 404);
+      return json({ error: "Not found" }, 404, request);
     } catch (error) {
       return json({
         status: "error",
@@ -799,7 +799,7 @@ export default {
         database: dbName,
         error_type: error instanceof Error ? error.name : "UnknownError",
         detail: error instanceof Error ? error.message.slice(0, 500) : "Unexpected database error",
-      }, 503);
+      }, 503, request);
     } finally {
       await client.close().catch(() => undefined);
     }
