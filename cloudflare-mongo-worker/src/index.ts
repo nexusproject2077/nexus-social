@@ -1,14 +1,12 @@
 import { MongoClient } from "mongodb";
 import bcrypt from "bcryptjs";
 
-export interface Env {\n  REALTIME?: DurableObjectNamespace;
-  MONGO_URL: string;
+export interface Env {\n  REALTIME?: DurableObjectNamespace;\n  MONGO_URL: string;
   DB_NAME?: string;
   SECRET_KEY?: string;
   BREVO_API_KEY?: string;
   BREVO_SENDER_EMAIL?: string;
-  BREVO_SENDER_NAME?: string;\n  CLOUDINARY_API_KEY?: string;\n  CLOUDINARY_API_SECRET?: string;\n  CLOUDINARY_CLOUD_NAME?: string;
-}
+  BREVO_SENDER_NAME?: string;\n  CLOUDINARY_API_KEY?: string;\n  CLOUDINARY_API_SECRET?: string;\n  CLOUDINARY_CLOUD_NAME?: string;\n}
 
 function corsHeaders(request?: Request): Record<string,string> {
   const origin = request?.headers.get("Origin") || "";
