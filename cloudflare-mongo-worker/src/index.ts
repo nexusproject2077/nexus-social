@@ -1,12 +1,12 @@
 import { MongoClient } from "mongodb";
 import bcrypt from "bcryptjs";
 
-export interface Env {\n  REALTIME?: DurableObjectNamespace;\n  MONGO_URL: string;
+export interface Env {  REALTIME?: DurableObjectNamespace;  MONGO_URL: string;
   DB_NAME?: string;
   SECRET_KEY?: string;
   BREVO_API_KEY?: string;
   BREVO_SENDER_EMAIL?: string;
-  BREVO_SENDER_NAME?: string;\n  CLOUDINARY_API_KEY?: string;\n  CLOUDINARY_API_SECRET?: string;\n  CLOUDINARY_CLOUD_NAME?: string;\n}
+  BREVO_SENDER_NAME?: string;  CLOUDINARY_API_KEY?: string;  CLOUDINARY_API_SECRET?: string;  CLOUDINARY_CLOUD_NAME?: string;}
 
 function corsHeaders(request?: Request): Record<string,string> {
   const origin = request?.headers.get("Origin") || "";
@@ -59,7 +59,7 @@ async function sendBrevoEmail(env:Env,to:string,code:string):Promise<void>{
   });
   if(!response.ok) throw new Error("Unable to send authentication email");
 }
-async function realtimeSend(env:Env,userId:string,payload:any):Promise<void>{if(!env.REALTIME)return;try{const id=env.REALTIME.idFromName(userId);await env.REALTIME.get(id).fetch("https://realtime.internal/publish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});}catch{}}\nasync function authUser(request:Request, secret:string, db:any):Promise<any|null>{
+async function realtimeSend(env:Env,userId:string,payload:any):Promise<void>{if(!env.REALTIME)return;try{const id=env.REALTIME.idFromName(userId);await env.REALTIME.get(id).fetch("https://realtime.internal/publish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});}catch{}} async function authUser(request:Request, secret:string, db:any):Promise<any|null>{
   const raw=request.headers.get("Authorization")||""; if(!raw.toLowerCase().startsWith("bearer ")) return null;
   const token=raw.slice(7).trim(), parts=token.split("."); if(parts.length!==3) return null;
   if(await hmac(secret,parts[0]+"."+parts[1])!==parts[2]) return null;
@@ -98,7 +98,7 @@ export class RealtimeHub {
   sockets: Set<WebSocket>;
   constructor(state: DurableObjectState) { this.state=state; this.sockets=new Set(); }
   async fetch(request: Request): Promise<Response> {
-    const u=new URL(request.url); if(u.pathname==="/publish"&&request.method==="POST"){const payload=await request.text();for(const ws of this.sockets){try{ws.send(payload);}catch{this.sockets.delete(ws);}}return new Response(null,{status:204});}\n    if ((request.headers.get("Upgrade")||"").toLowerCase() !== "websocket") return new Response("Expected WebSocket",{status:426});
+    const u=new URL(request.url); if(u.pathname==="/publish"&&request.method==="POST"){const payload=await request.text();for(const ws of this.sockets){try{ws.send(payload);}catch{this.sockets.delete(ws);}}return new Response(null,{status:204});}    if ((request.headers.get("Upgrade")||"").toLowerCase() !== "websocket") return new Response("Expected WebSocket",{status:426});
     const pair=new WebSocketPair(); const client=pair[0],server=pair[1];
     server.accept(); this.sockets.add(server);
     server.addEventListener("message",(event:any)=>{ if(event.data==="ping"){try{server.send(JSON.stringify({type:"pong"}));}catch{}} });
