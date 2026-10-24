@@ -477,6 +477,17 @@ export default {
       if (url.pathname === "/api/push/vapid-public-key" && request.method === "GET") return json({public_key:"",enabled:false},200,request);
       if (url.pathname === "/api/push/subscribe" && request.method === "POST") {let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400,request);}const sub=b?.subscription||b,endpoint=String(sub?.endpoint||"");if(!endpoint)return json({detail:"Abonnement invalide"},400,request);await db.collection("push_subscriptions").updateOne({endpoint},{$set:{user_id:uid,subscription:sub,endpoint,updated_at:new Date().toISOString()}},{upsert:true});return json({success:true},200,request);}
       if (url.pathname === "/api/push/unsubscribe" && request.method === "POST") {let b:any={};try{b=await request.json();}catch{}const endpoint=String((b?.subscription||b)?.endpoint||"");if(endpoint)await db.collection("push_subscriptions").deleteOne({endpoint,user_id:uid});return json({success:true},200,request);}
+      if (url.pathname === "/api/users/me/referrals" && request.method === "GET") {
+        const count=Number(user.referral_count||0),perReward=3;
+        return json({code:String(user.username||""),count,per_reward:perReward,to_next:perReward-(count%perReward),rewards_granted:Number(user.referral_rewards||0)},200,request);
+      }
+      const creatorStatsRoute=url.pathname.match(/^\/api\/users\/([^/]+)\/creator-stats$/);
+      if (creatorStatsRoute && request.method === "GET") {
+        const targetId=decodeURIComponent(creatorStatsRoute[1]);
+        const clips=await db.collection("posts").find({author_id:targetId,$or:[{media_type:"video"},{is_clip:true}]},{projection:{_id:0,views:1,views_count:1,likes_count:1}}).limit(500).toArray();
+        const views=clips.reduce((sum:number,p:any)=>sum+Number(p.views??p.views_count??0),0),likes=clips.reduce((sum:number,p:any)=>sum+Number(p.likes_count||0),0);
+        return json({clips:clips.length,views,likes,avg_views:clips.length?Math.round(views/clips.length):0},200,request);
+      }
       if (url.pathname === "/api/users/me/settings" && request.method === "GET") {const profile=publicUser(user as Record<string,any>),privacy={is_private:Boolean(user.is_private),hide_political:Boolean(user.hide_political),privacy_strict:Boolean(user.privacy_strict)};return json({profile,privacy,time_limit_enabled:Boolean(user.time_limit_enabled),is_premium:Boolean(user.is_premium)},200,request);}
       if (url.pathname === "/api/users/me/stats" && request.method === "GET") {const [posts,followers,following]=await Promise.all([db.collection("posts").countDocuments({author_id:uid}),db.collection("follows").countDocuments({followed_id:uid,status:"following"}),db.collection("follows").countDocuments({follower_id:uid,status:"following"})]);return json({posts_count:posts,followers_count:followers,following_count:following},200,request);}
       if (url.pathname === "/api/users/me/sport-alerts" && request.method === "GET") {const a:any=user.sport_alerts||{};return json({goals:a.goals!==false,match:Boolean(a.match),mma:a.mma!==false},200,request);}
