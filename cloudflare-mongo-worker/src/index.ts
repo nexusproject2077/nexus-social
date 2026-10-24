@@ -204,7 +204,7 @@ export default {
       }
 
       const user = url.pathname.startsWith("/api/") && env.SECRET_KEY ? await authUser(request,env.SECRET_KEY,db) : null;
-      if (url.pathname.startsWith("/api/") && !user) return json({detail:"Not authenticated"},401,request);
+      if (url.pathname.startsWith("/api/") && !["/api/geo/status","/api/geo/language"].includes(url.pathname) && !user) return json({detail:"Not authenticated"},401,request);
       const uid=String(user?.id||"");
       const userRoute = url.pathname.match(/^\/api\/users\/([^/]+)(?:\/(stats|posts|follow-status|reposts|mentions|follow))?$/);
       if (userRoute) {
