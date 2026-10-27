@@ -266,16 +266,35 @@ function InstantsCamera({ user, onClose, onSent, onOpenArchive }) {
   // sélecteur, où l'état n'est pas encore à jour).
   // Envoi/publication EN ARRIÈRE-PLAN : pas de blocage ni de chargement, la
   // caméra reste utilisable et l'écran NE se ferme PAS. Média = photo OU vidéo.
-  const doSend = (media, aud = audience, list = manual) => {
-    axios.post(`${API}/instants`, {
-      media,
-      caption: caption.trim(),
-      audience: aud,
-      recipient_ids: aud === "manual" ? list.map((u) => u.id) : [],
-    })
-      .then(({ data }) => onSent(data.instant, data.recipients))
-      .catch((e) => toast.error(e.response?.data?.detail || i18n.t("instants.err_send")));
+  const doSend = async (media, aud = audience, list = manual) => {
     setCaption("");
+    try {
+      const blob = typeof media === "string" && media.startsWith("data:")
+        ? await (await fetch(media)).blob()
+        : media;
+      const { data: sign } = await axios.post(`${API}/media/sign`);
+      const form = new FormData();
+      form.append("file", blob);
+      form.append("api_key", sign.api_key);
+      form.append("timestamp", String(sign.timestamp));
+      form.append("folder", sign.folder);
+      form.append("signature", sign.signature);
+      const resourceType = blob?.type?.startsWith("video/") ? "video" : "image";
+      const { data: uploaded } = await axios.post(
+        `https://api.cloudinary.com/v1_1/${encodeURIComponent(sign.cloud_name)}/${resourceType}/upload`,
+        form,
+      );
+      if (!uploaded?.secure_url) throw new Error("Cloudinary upload failed");
+      const { data } = await axios.post(`${API}/instants`, {
+        media: uploaded.secure_url,
+        caption: caption.trim(),
+        audience: aud,
+        recipient_ids: aud === "manual" ? list.map((u) => u.id) : [],
+      });
+      onSent(data.instant, data.recipients);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || i18n.t("instants.err_send"));
+    }
   };
 
   // Capture PHOTO (appui court) → envoi direct immédiat.
