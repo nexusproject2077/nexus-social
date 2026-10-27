@@ -53,14 +53,6 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
   useEffect(() => {
     if (compact) return;
     axios
-      .get(`${API}/users/search?q=`)
-      .then((res) => {
-        const users = Array.isArray(res.data) ? res.data : [];
-        setSuggestedUsers(users.filter((u) => u.id !== user.id).slice(0, 3));
-      })
-      .catch(() => {});
-
-    axios
       .get(`${API}/trending/hashtags?limit=5`)
       .then((res) => {
         setTrending(Array.isArray(res.data?.trending) ? res.data.trending : []);
