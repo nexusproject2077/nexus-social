@@ -144,6 +144,7 @@ export default {
       const db = client.db(dbName);
 
       if (url.pathname === "/api/health") return json({status:"ok",service:"nexus-social-api-ts",database:dbName},200,request);
+      if (url.pathname === "/api/billing/plan" && request.method === "GET") return json({enabled:false,amount:null,currency:"EUR",interval:"month"},200,request);
       if (url.pathname === "/api/health/mongodb" && request.method === "GET") {
         await client.db("admin").command({ ping: 1 });
         const collections = await db.listCollections({}, { nameOnly: true }).toArray();
@@ -504,6 +505,7 @@ export default {
       if (url.pathname === "/api/users/me/stats" && request.method === "GET") {const [posts,followers,following]=await Promise.all([db.collection("posts").countDocuments({author_id:uid}),db.collection("follows").countDocuments({followed_id:uid,status:"following"}),db.collection("follows").countDocuments({follower_id:uid,status:"following"})]);return json({posts_count:posts,followers_count:followers,following_count:following},200,request);}
       if (url.pathname === "/api/users/me/sport-alerts" && request.method === "GET") {const a:any=user.sport_alerts||{};return json({goals:a.goals!==false,match:Boolean(a.match),mma:a.mma!==false},200,request);}
       if (url.pathname === "/api/users/me/sport-alerts" && request.method === "PUT") {let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400,request);}const allowed=["goals","match","mma"],set:any={};for(const k of allowed)if(k in b)set["sport_alerts."+k]=Boolean(b[k]);if(Object.keys(set).length)await db.collection("users").updateOne({id:uid},{$set:set});return json({success:true},200,request);}
+      if (url.pathname === "/api/billing/create-checkout-session" && request.method === "POST") return json({detail:"Paiement Premium temporairement indisponible."},503,request);
       if (url.pathname === "/api/billing/connect/status" && request.method === "GET") return json({enabled:false,connected:false,charges_enabled:false},200,request);
       if (url.pathname === "/api/billing/paypal/status" && request.method === "GET") return json({enabled:false,connected:false,receivable:false},200,request);
       if (url.pathname === "/api/users/me/widget-stack" && request.method === "GET") {const cfg:any=user.widget_stack_config||{},valid=["trends","screentime","weather","finance","football","mma","wwe","profile_views","ai_analytics","astro_lifestyle"];return json({smart_rotate:cfg.smart_rotate!==false,order:Array.isArray(cfg.order)?cfg.order.filter((x:any)=>valid.includes(x)):valid,finance_assets:Array.isArray(cfg.finance_assets)?cfg.finance_assets:["bitcoin","ethereum","solana"],weather_city:cfg.weather_city||null},200,request);}
