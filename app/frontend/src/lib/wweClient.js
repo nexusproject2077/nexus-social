@@ -7,22 +7,8 @@
  * WWE utilise sport: "wwe".
  */
 
-const TSDB = "https://www.thesportsdb.com/api/v1/json/3";
-const WWE_LEAGUE_ID = "4444";
+const API = "https://nexus-social-api-ts.merickoken54.workers.dev/api";
 
-async function fetchJson(url) {
-  try {
-    const r = await fetch(url, {
-      headers: { Accept: "application/json" },
-      mode: "cors",
-      credentials: "omit",
-    });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch {
-    return null;
-  }
-}
 
 function brandFromName(name = "") {
   const n = name.toUpperCase();
@@ -116,15 +102,12 @@ function normalizeEvent(ev) {
  * Récupère prochains + récents événements WWE via TheSportsDB (gratuit).
  */
 export async function fetchWweEvents() {
-  const [next, past] = await Promise.all([
-    fetchJson(`${TSDB}/eventsnextleague.php?id=${WWE_LEAGUE_ID}`),
-    fetchJson(`${TSDB}/eventspastleague.php?id=${WWE_LEAGUE_ID}`),
-  ]);
-
-  const raw = [
-    ...((next && next.events) || []),
-    ...((past && past.events) || []),
-  ];
+  let payload = { events: [] };
+  try {
+    const r = await fetch(`${API}/wwe/events`, { headers: { Accept: "application/json" } });
+    if (r.ok) payload = await r.json();
+  } catch {}
+  const raw = Array.isArray(payload?.events) ? payload.events : [];
 
   const seen = new Set();
   const out = [];
