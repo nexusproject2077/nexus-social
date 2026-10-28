@@ -56,6 +56,15 @@ export const MAJOR_LEAGUES = [
 ];
 
 const STATE_ORDER = { in: 0, pre: 1, post: 2 };
+const PAST_EVENT_RETENTION_MS = 48 * 60 * 60 * 1000;
+
+// Les résultats et combats achevés restent utiles pendant deux jours, puis ils
+// sortent de toutes les vues (mobile comme ordinateur). Les dates absentes ou
+// illisibles sont conservées afin de ne pas masquer un événement à venir.
+export const keepRecentEvent = (match, now = Date.now()) => {
+  const timestamp = new Date(match?.date || "").getTime();
+  return !Number.isFinite(timestamp) || timestamp >= now - PAST_EVENT_RETENTION_MS;
+};
 
 // Tri client identique au backend : favoris d'abord, puis en cours, puis date.
 export function sortMatches(list, favL, favT) {
@@ -70,6 +79,7 @@ export function sortMatches(list, favL, favT) {
 // prochains À VENIR (chronologiques) → les derniers TERMINÉS avec leur score
 // final (plus récents d'abord, ~24 h). Favoris remontés dans chaque groupe.
 export function displayMatches(list, favL, favT) {
+  const recentList = list.filter(keepRecentEvent);
   const isFav = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id);
   // Priorité : favoris d'abord, puis Ligue des Champions, puis le reste
   // (tri stable → l'ordre par date est conservé à rang égal).
@@ -77,12 +87,12 @@ export function displayMatches(list, favL, favT) {
   const favFirst = (arr) => [...arr].sort((a, b) => rank(a) - rank(b));
   const asc = (a, b) => String(a.date || "").localeCompare(String(b.date || ""));
   const desc = (a, b) => String(b.date || "").localeCompare(String(a.date || ""));
-  const live = favFirst(list.filter((m) => m.state === "in"));
+  const live = favFirst(recentList.filter((m) => m.state === "in"));
   // Aucune limite : on montre TOUS les matchs (en cours, à venir, terminés).
-  const pre = favFirst(list.filter((m) => m.state === "pre").sort(asc));
-  const post = favFirst(list.filter((m) => m.state === "post").sort(desc)); // tous les scores finals récents
+  const pre = favFirst(recentList.filter((m) => m.state === "pre").sort(asc));
+  const post = favFirst(recentList.filter((m) => m.state === "post").sort(desc));
   const out = [...live, ...pre, ...post];
-  return out.length ? out : list;
+  return out.length ? out : recentList;
 }
 
 // Heure + jour du coup d'envoi, format ultra-court (ex : « Dim. 15:00 »,
@@ -296,6 +306,38 @@ export function WweCard({ m, compact, flash }) {
   );
 }
 
+// Ligne dense pour ordinateur : même contenu que les cartes mobiles, sans
+// format widget. Chaque événement reste dans une liste lisible et scannable.
+function DesktopScoreRow({ m, flash, onOpen }) {
+  const live = m.state === "in";
+  const done = m.state === "post";
+  const isMma = m.sport === "mma";
+  const title = isMma
+    ? `${m.f1?.name || "?"} · ${m.f2?.name || "?"}`
+    : `${m.home || "?"} · ${m.away || "?"}`;
+  const subtitle = isMma ? m.event : m.league;
+  const score = isMma
+    ? (live ? `R${m.round || "?"}${m.clock ? ` · ${m.clock}` : ""}` : (done ? (m.method || i18n.t("livescores.finished")) : formatKickoff(m.date)))
+    : (live ? (m.clock || i18n.t("livescores.in_progress")) : (done ? i18n.t("livescores.finished") : formatKickoff(m.date)));
+  const canOpen = !isMma && typeof onOpen === "function";
+  const content = (
+    <>
+      <span className="material-symbols-outlined flex-shrink-0" style={{ color: live ? NEON : isMma ? "#ef4444" : "#60a5fa", fontSize: 18 }}>
+        {isMma ? "sports_mma" : "sports_soccer"}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-bold" style={{ color: "#dae2fd" }}>{title}</p>
+        <p className="truncate text-[10px]" style={{ color: "#859397" }}>{subtitle}</p>
+      </div>
+      <span className={`flex-shrink-0 text-[10px] font-bold ${flash ? "nexus-score-flash" : ""}`} style={{ color: live ? NEON : "#9fb0c8" }}>
+        {live && "LIVE · "}{score}
+      </span>
+    </>
+  );
+  const classes = "w-full flex items-center gap-3 py-3 text-left transition-colors";
+  return canOpen ? <button type="button" onClick={() => onOpen(m)} className={`${classes} hover:bg-white/[0.03]`}>{content}</button> : <div className={classes}>{content}</div>;
+}
+
 // Modale de filtres : cocher les ligues majeures (Toggles).
 function FilterModal({ favL, onSave, onClose }) {
   const [sel, setSel] = useState(new Set(favL));
@@ -433,7 +475,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   };
 
   // Repli DÉMO (opt-in) quand l'API ne renvoie aucun match → permet de voir le widget.
-  const src = matches.length ? matches : (demoScoresOn() ? DEMO_SCORES : []);
+  const src = (matches.length ? matches : (demoScoresOn() ? DEMO_SCORES : [])).filter(keepRecentEvent);
   if (!src.length) return null;
   const cardProps = { favL, favT, onToggleLeague, onToggleTeam, onOpen: setOpenMatch };
 
@@ -508,6 +550,20 @@ export default function LiveScores({ variant = "mobile", setUser }) {
         <div className="mb-3">{header(true)}</div>
         <div className="space-y-2 max-h-[70vh] overflow-y-auto no-scrollbar">
           {arranged.map((m) => renderCard(m, true))}
+        </div>
+        {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
+        {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
+        {confirmDialog}
+      </section>
+    );
+  }
+
+  if (variant === "desktop-list") {
+    return (
+      <section style={fadeStyle}>
+        <div className="mb-2">{header(true)}</div>
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+          {arranged.map((m) => <DesktopScoreRow key={`${m.sport}-${m.id}`} m={m} flash={!!flashing[`${m.sport}-${m.id}`]} onOpen={setOpenMatch} />)}
         </div>
         {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}

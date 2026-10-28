@@ -5,7 +5,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 import CallManager from "@/components/CallManager";
-import WidgetStack from "@/components/WidgetStack";
+import LiveScores from "@/components/LiveScores";
 
 export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome, hideMobileHeader, bottomNav }) {
   const navigate = useNavigate();
@@ -348,12 +348,13 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           className="fixed right-0 top-0 h-screen w-80 z-40 hidden lg:flex flex-col py-8 px-6 gap-8 overflow-y-auto"
           style={{ backgroundColor: "#0b1326", borderLeft: "1px solid rgba(255,255,255,0.04)" }}
         >
-          {/* Même pile de widgets sur ordinateur et téléphone : les contenus et
-              réglages restent ainsi cohérents entre les deux appareils. */}
-          <WidgetStack user={user} setUser={setUser} />
+          {/* Ordinateur : résultats sous forme de liste, pas de widgets. */}
+          <div className="order-2">
+            {(user?.show_sports !== false || user?.show_mma !== false) && <LiveScores variant="desktop-list" setUser={setUser} />}
+          </div>
 
           {/* Trending — carte au fond gris très sombre (façon X) */}
-          <section className="rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
+          <section className="order-1 rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
             <h2 className="font-headline font-bold text-lg mb-5 tracking-tight" style={{ color: "#dae2fd" }}>{t("trending")}</h2>
             <div className="space-y-5">
               {trending.length === 0 ? (
@@ -380,7 +381,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
 
           {/* Suggested Users — même carte (cohérence avec Tendances) */}
           {suggestedUsers.length > 0 && (
-            <section className="rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <section className="order-3 rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
               <h2 className="font-headline font-bold text-lg mb-5 tracking-tight" style={{ color: "#dae2fd" }}>{t("suggestions")}</h2>
               <div className="space-y-4">
                 {suggestedUsers.map((u) => (
@@ -407,7 +408,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             </section>
           )}
 
-          <footer className="mt-auto pt-8">
+          <footer className="order-4 mt-auto pt-8">
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-medium" style={{ color: "#3c494c" }}>
               <Link to="/a-propos" className="hover:text-slate-400">{t("nav.about")}</Link>
               <Link to="/comment-ca-marche" className="hover:text-slate-400">{t("nav.how")}</Link>
