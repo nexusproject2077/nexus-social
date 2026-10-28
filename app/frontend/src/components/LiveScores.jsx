@@ -559,11 +559,23 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   }
 
   if (variant === "desktop-list") {
+    const desktopGroup = (title, icon, color, items) => items.length ? (
+      <section>
+        <h3 className="flex items-center gap-2 pb-2 text-[11px] font-black uppercase tracking-wider" style={{ color }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>
+          {title}
+        </h3>
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+          {items.map((m) => <DesktopScoreRow key={`${m.sport}-${m.id}`} m={m} flash={!!flashing[`${m.sport}-${m.id}`]} onOpen={setOpenMatch} />)}
+        </div>
+      </section>
+    ) : null;
     return (
       <section style={fadeStyle}>
         <div className="mb-2">{header(true)}</div>
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-          {arranged.map((m) => <DesktopScoreRow key={`${m.sport}-${m.id}`} m={m} flash={!!flashing[`${m.sport}-${m.id}`]} onOpen={setOpenMatch} />)}
+        <div className="space-y-5">
+          {desktopGroup("Football", "sports_soccer", "#4ade80", footItems)}
+          {desktopGroup("MMA / UFC", "sports_mma", "#f87171", mmaItems)}
         </div>
         {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
