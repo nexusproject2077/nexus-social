@@ -3,6 +3,44 @@ import axios from "axios";
 import { API } from "@/App";
 
 const REFRESH_MS = 10 * 60 * 1000;
+const OPEN_METEO = "https://api.open-meteo.com/v1/forecast";
+
+const weatherLabel = (code) => ({
+  0: "Ciel dégagé", 1: "Peu nuageux", 2: "Partiellement nuageux", 3: "Couvert",
+  45: "Brouillard", 48: "Brouillard givrant", 51: "Bruine légère", 53: "Bruine",
+  55: "Forte bruine", 61: "Pluie faible", 63: "Pluie", 65: "Forte pluie",
+  71: "Neige faible", 73: "Neige", 75: "Forte neige", 80: "Averses",
+  81: "Averses", 82: "Fortes averses", 95: "Orage", 96: "Orage avec grêle", 99: "Orage avec grêle",
+}[code] || "Météo actuelle");
+
+const weatherCondition = (code) => {
+  if (code === 0) return "clear";
+  if ([1, 2].includes(code)) return "partly";
+  if (code === 3) return "cloudy";
+  if ([45, 48].includes(code)) return "fog";
+  if ([51, 53, 55].includes(code)) return "drizzle";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "snow";
+  if ([95, 96, 99].includes(code)) return "storm";
+  return "rain";
+};
+
+const normalizeWeather = (payload, location) => {
+  const value = payload?.weather || payload;
+  if (value?.temp != null) return value;
+  const current = value?.current || value;
+  const temp = current?.temperature_2m ?? current?.temperature;
+  if (temp == null) return null;
+  const code = Number(current?.weather_code ?? current?.weathercode);
+  return {
+    temp: Math.round(Number(temp)),
+    feels_like: current?.apparent_temperature != null ? Math.round(Number(current.apparent_temperature)) : null,
+    humidity: current?.relative_humidity_2m ?? null,
+    cond: weatherCondition(code),
+    label: weatherLabel(code),
+    is_day: current?.is_day !== 0,
+    location: location || "Ma position",
+  };
+};
 
 const weatherIcon = (condition, isDay) => {
   if (!isDay && ["clear", "partly"].includes(condition)) return "dark_mode";
@@ -33,9 +71,29 @@ export default function DesktopWeather({ user }) {
   useEffect(() => {
     let active = true;
     let timer;
-    const load = (lat, lon) => axios.get(`${API}/weather`, { params: { lat, lon } })
-      .then((res) => { if (active) setWeather(res.data?.weather || null); })
-      .catch(() => { if (active) setWeather(null); });
+    const load = async (lat, lon) => {
+      const location = city?.name || "Ma position";
+      try {
+        const res = await axios.get(`${API}/weather`, { params: { lat, lon } });
+        const normalized = normalizeWeather(res.data, location);
+        if (normalized) { if (active) setWeather(normalized); return; }
+      } catch {
+        // Le backend n'est pas requis pour la météo : on poursuit avec Open-Meteo.
+      }
+      try {
+        const res = await axios.get(OPEN_METEO, {
+          params: {
+            latitude: lat,
+            longitude: lon,
+            current: "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day",
+            timezone: "auto",
+          },
+        });
+        if (active) setWeather(normalizeWeather(res.data, location));
+      } catch {
+        if (active) setWeather(null);
+      }
+    };
     const refresh = () => {
       if (city && Number.isFinite(Number(city.lat)) && Number.isFinite(Number(city.lon))) {
         setLocationDenied(false);
