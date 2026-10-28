@@ -6,6 +6,7 @@ import { API } from "@/App";
 import { toast } from "sonner";
 import CallManager from "@/components/CallManager";
 import LiveScores from "@/components/LiveScores";
+import DesktopWeather from "@/components/DesktopWeather";
 
 export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome, hideMobileHeader, bottomNav }) {
   const navigate = useNavigate();
@@ -349,7 +350,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           style={{ backgroundColor: "#0b1326", borderLeft: "1px solid rgba(255,255,255,0.04)" }}
         >
           {/* Ordinateur : résultats sous forme de liste, pas de widgets. */}
-          <div className="order-2">
+          <div className="order-3">
             {(user?.show_sports !== false || user?.show_mma !== false) && <LiveScores variant="desktop-list" setUser={setUser} />}
           </div>
 
@@ -379,9 +380,13 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             </div>
           </section>
 
+          <div className="order-2">
+            <DesktopWeather user={user} />
+          </div>
+
           {/* Suggested Users — même carte (cohérence avec Tendances) */}
           {suggestedUsers.length > 0 && (
-            <section className="order-3 rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <section className="order-4 rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
               <h2 className="font-headline font-bold text-lg mb-5 tracking-tight" style={{ color: "#dae2fd" }}>{t("suggestions")}</h2>
               <div className="space-y-4">
                 {suggestedUsers.map((u) => (
@@ -408,7 +413,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             </section>
           )}
 
-          <footer className="order-4 mt-auto pt-8">
+          <footer className="order-5 mt-auto pt-8">
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-medium" style={{ color: "#3c494c" }}>
               <Link to="/a-propos" className="hover:text-slate-400">{t("nav.about")}</Link>
               <Link to="/comment-ca-marche" className="hover:text-slate-400">{t("nav.how")}</Link>
