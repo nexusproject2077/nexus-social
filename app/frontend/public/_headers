@@ -1,0 +1,19 @@
+# En-têtes de cache Cloudflare (Workers Assets lit ce fichier depuis ./build).
+#
+# Objectif : que les utilisateurs reçoivent TOUJOURS la dernière version sans
+# rester bloqués sur un ancien bundle en cache.
+#
+# - Tout (HTML d'entrée, routes SPA, service worker) : revalidation obligatoire
+#   à chaque chargement → le navigateur récupère toujours le index.html à jour,
+#   qui référence le dernier bundle JS/CSS (nommé par hash).
+# - /static/* (JS/CSS/media hashés par le build) : immuables, cache long — leur
+#   nom change à chaque build, donc aucun risque de servir du périmé.
+
+/*
+  Cache-Control: no-cache, must-revalidate
+
+/service-worker.js
+  Cache-Control: no-cache, must-revalidate
+
+/static/*
+  Cache-Control: public, max-age=31536000, immutable

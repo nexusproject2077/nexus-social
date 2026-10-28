@@ -1,0 +1,14 @@
+# Dépendances OPTIONNELLES pour la modération auto gratuite (voir moderation.py).
+# Non incluses dans requirements.txt car lourdes (torch ~800 Mo) : elles ne
+# tiennent pas sur les offres serverless/légères (Vercel, Render free). Installez-les
+# uniquement sur un worker/instance dédié :
+#
+#     pip install -r requirements-moderation.txt
+#     export MODERATION_ENABLED=true
+#
+# Sans ces paquets, la modération est *fail-open* : l'app fonctionne, rien n'est filtré.
+
+transformers>=4.40.0      # pipeline de classification (toxic-bert)
+torch>=2.2.0              # backend d'inférence de transformers
+nudenet>=3.4.0            # détection NSFW (images)
+opencv-python-headless>=4.9.0  # échantillonnage d'images des vidéos (NSFW vidéo)

@@ -1,0 +1,11 @@
+# Contexte de build Cloud Run = racine du dépôt. On exclut tout le superflu
+# (le front, node_modules, git…) : seul app/backend/ est copié dans l'image.
+.git/
+node_modules/
+app/frontend/node_modules/
+app/frontend/build/
+**/__pycache__/
+**/*.pyc
+*.log
+.env
+.env.*
