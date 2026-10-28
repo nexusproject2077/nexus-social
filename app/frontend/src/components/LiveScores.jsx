@@ -57,6 +57,19 @@ export const MAJOR_LEAGUES = [
 
 const STATE_ORDER = { in: 0, pre: 1, post: 2 };
 const PAST_EVENT_RETENTION_MS = 48 * 60 * 60 * 1000;
+const DESKTOP_PAGE_SIZE = 10;
+const FAVORITE_LEAGUES_KEY = "nexus_sports_favorite_leagues";
+
+const readSavedLeagues = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FAVORITE_LEAGUES_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch { return []; }
+};
+
+const saveLeaguesLocally = (leagues) => {
+  try { localStorage.setItem(FAVORITE_LEAGUES_KEY, JSON.stringify(leagues)); } catch { /* stockage indisponible */ }
+};
 
 // Les résultats et combats achevés restent utiles pendant deux jours, puis ils
 // sortent de toutes les vues (mobile comme ordinateur). Les dates absentes ou
@@ -81,18 +94,25 @@ export function sortMatches(list, favL, favT) {
 export function displayMatches(list, favL, favT) {
   const recentList = list.filter(keepRecentEvent);
   const isFav = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id);
+  // Dès qu'une préférence est définie, elle devient un vrai filtre : une autre
+  // compétition ne se glisse plus dans la liste. Le MMA reste à part car la
+  // modale ne propose que des compétitions de football.
+  const hasSelection = favL.size > 0 || favT.size > 0;
+  const selectedList = hasSelection
+    ? recentList.filter((m) => m.sport === "mma" || isFav(m))
+    : recentList;
   // Priorité : favoris d'abord, puis Ligue des Champions, puis le reste
   // (tri stable → l'ordre par date est conservé à rang égal).
   const rank = (m) => (isFav(m) ? 0 : 2) + (isUclMatch(m) ? 0 : 1);
   const favFirst = (arr) => [...arr].sort((a, b) => rank(a) - rank(b));
   const asc = (a, b) => String(a.date || "").localeCompare(String(b.date || ""));
   const desc = (a, b) => String(b.date || "").localeCompare(String(a.date || ""));
-  const live = favFirst(recentList.filter((m) => m.state === "in"));
+  const live = favFirst(selectedList.filter((m) => m.state === "in"));
   // Aucune limite : on montre TOUS les matchs (en cours, à venir, terminés).
-  const pre = favFirst(recentList.filter((m) => m.state === "pre").sort(asc));
-  const post = favFirst(recentList.filter((m) => m.state === "post").sort(desc));
+  const pre = favFirst(selectedList.filter((m) => m.state === "pre").sort(asc));
+  const post = favFirst(selectedList.filter((m) => m.state === "post").sort(desc));
   const out = [...live, ...pre, ...post];
-  return out.length ? out : recentList;
+  return out.length ? out : selectedList;
 }
 
 // Heure + jour du coup d'envoi, format ultra-court (ex : « Dim. 15:00 »,
@@ -320,11 +340,25 @@ function DesktopScoreRow({ m, flash, onOpen }) {
     ? (live ? `R${m.round || "?"}${m.clock ? ` · ${m.clock}` : ""}` : (done ? (m.method || i18n.t("livescores.finished")) : formatKickoff(m.date)))
     : (live ? (m.clock || i18n.t("livescores.in_progress")) : (done ? i18n.t("livescores.finished") : formatKickoff(m.date)));
   const canOpen = !isMma && typeof onOpen === "function";
+  const ClubLogo = ({ src, name }) => src ? (
+    <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#ffffff0d", border: "1px solid #ffffff12" }}>
+      <img src={src} alt={`Logo ${name || "club"}`} className="w-4 h-4 object-contain" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+    </span>
+  ) : (
+    <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#172238", color: "#60a5fa" }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 13 }}>sports_soccer</span>
+    </span>
+  );
   const content = (
     <>
-      <span className="material-symbols-outlined flex-shrink-0" style={{ color: live ? NEON : isMma ? "#ef4444" : "#60a5fa", fontSize: 18 }}>
-        {isMma ? "sports_mma" : "sports_soccer"}
-      </span>
+      {isMma ? (
+        <span className="material-symbols-outlined flex-shrink-0" style={{ color: live ? NEON : "#ef4444", fontSize: 18 }}>sports_mma</span>
+      ) : (
+        <span className="flex -space-x-1 flex-shrink-0">
+          <ClubLogo src={m.home_logo} name={m.home} />
+          <ClubLogo src={m.away_logo} name={m.away} />
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-bold" style={{ color: "#dae2fd" }}>{title}</p>
         <p className="truncate text-[10px]" style={{ color: "#859397" }}>{subtitle}</p>
@@ -336,6 +370,45 @@ function DesktopScoreRow({ m, flash, onOpen }) {
   );
   const classes = "w-full flex items-center gap-3 py-3 text-left transition-colors";
   return canOpen ? <button type="button" onClick={() => onOpen(m)} className={`${classes} hover:bg-white/[0.03]`}>{content}</button> : <div className={classes}>{content}</div>;
+}
+
+function DesktopScoreGroup({ title, icon, color, items, flashing, onOpen }) {
+  const [page, setPage] = useState(0);
+  const signature = items.map((m) => `${m.sport}-${m.id}`).join("|");
+  const pages = Math.max(1, Math.ceil(items.length / DESKTOP_PAGE_SIZE));
+  const safePage = Math.min(page, pages - 1);
+  const visibleItems = items.slice(safePage * DESKTOP_PAGE_SIZE, (safePage + 1) * DESKTOP_PAGE_SIZE);
+
+  useEffect(() => { setPage(0); }, [signature]);
+  if (!items.length) return null;
+
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-2 pb-2">
+        <h3 className="flex min-w-0 items-center gap-2 text-[11px] font-black uppercase tracking-wider" style={{ color }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>
+          <span className="truncate">{title}</span>
+          <span style={{ color: "#71809a" }}>({items.length})</span>
+        </h3>
+        {pages > 1 && <span className="text-[10px] font-bold" style={{ color: "#859397" }}>{safePage + 1}/{pages}</span>}
+      </div>
+      <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        {visibleItems.map((m) => <DesktopScoreRow key={`${m.sport}-${m.id}`} m={m} flash={!!flashing[`${m.sport}-${m.id}`]} onOpen={onOpen} />)}
+      </div>
+      {pages > 1 && (
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={safePage === 0}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold disabled:opacity-35" style={{ color: "#a9c4ff", background: "#ffffff08" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 15 }}>chevron_left</span> Précédent
+          </button>
+          <button type="button" onClick={() => setPage((current) => Math.min(pages - 1, current + 1))} disabled={safePage >= pages - 1}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold disabled:opacity-35" style={{ color: "#a9c4ff", background: "#ffffff08" }}>
+            Suivant <span className="material-symbols-outlined" style={{ fontSize: 15 }}>chevron_right</span>
+          </button>
+        </div>
+      )}
+    </section>
+  );
 }
 
 // Modale de filtres : cocher les ligues majeures (Toggles).
@@ -385,7 +458,7 @@ function FilterModal({ favL, onSave, onClose }) {
 
 export default function LiveScores({ variant = "mobile", setUser }) {
   const [matches, setMatches] = useState([]);
-  const [favL, setFavL] = useState(() => new Set());
+  const [favL, setFavL] = useState(() => new Set(readSavedLeagues()));
   const [favT, setFavT] = useState(() => new Set());
   const [showFilter, setShowFilter] = useState(false);
   const [openMatch, setOpenMatch] = useState(null);
@@ -413,7 +486,13 @@ export default function LiveScores({ variant = "mobile", setUser }) {
         sigRef.current[key] = sig;
       }
       setMatches(items);
-      setFavL(new Set(d.favorites?.leagues || []));
+      // Le serveur reste la source partagée quand il répond avec des favoris.
+      // Sinon, on garde le choix local : le filtre continue de fonctionner même
+      // lors d'une indisponibilité temporaire de l'API.
+      const serverLeagues = d.favorites && Array.isArray(d.favorites.leagues)
+        ? d.favorites.leagues
+        : readSavedLeagues();
+      setFavL(new Set(serverLeagues));
       setFavT(new Set(d.favorites?.teams || []));
       if (changed.length) {
         setFlashing((f) => { const n = { ...f }; changed.forEach((k) => (n[k] = true)); return n; });
@@ -446,10 +525,16 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   const toggleFav = (kind, id) => {
     if (!id) return;
     const setFav = kind === "league" ? setFavL : setFavT;
-    setFav((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setFav((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      if (kind === "league") saveLeaguesLocally(Array.from(n));
+      return n;
+    });
     axios.post(`${API}/users/me/sports-favorites/toggle`, { kind, id }).catch(() => {
-      // En cas d'échec réseau, on resynchronise avec le serveur.
-      load();
+      // Le choix local est volontairement conservé : le serveur se resynchronisera
+      // au prochain accès réussi, sans faire réapparaître les ligues masquées.
+      toast.error(i18n.t("livescores.err_save"));
     });
   };
   const onToggleLeague = (id) => toggleFav("league", id);
@@ -457,9 +542,12 @@ export default function LiveScores({ variant = "mobile", setUser }) {
 
   const saveFilter = async (selSet) => {
     const leagues = Array.from(selSet);
+    // Application instantanée et sauvegarde locale : le filtre ne dépend pas
+    // d'un éventuel délai ou échec du backend.
+    setFavL(new Set(leagues));
+    saveLeaguesLocally(leagues);
     try {
       await axios.put(`${API}/users/me/sports-favorites`, { leagues, teams: Array.from(favT) });
-      setFavL(new Set(leagues));
       toast.success(i18n.t("livescores.favs_saved"));
     } catch { toast.error(i18n.t("livescores.err_save")); }
   };
@@ -559,23 +647,20 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   }
 
   if (variant === "desktop-list") {
-    const desktopGroup = (title, icon, color, items) => items.length ? (
-      <section>
-        <h3 className="flex items-center gap-2 pb-2 text-[11px] font-black uppercase tracking-wider" style={{ color }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>
-          {title}
-        </h3>
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-          {items.map((m) => <DesktopScoreRow key={`${m.sport}-${m.id}`} m={m} flash={!!flashing[`${m.sport}-${m.id}`]} onOpen={setOpenMatch} />)}
-        </div>
-      </section>
-    ) : null;
+    const liveItems = [...footItems, ...mmaItems].filter((m) => m.state === "in");
+    const footUpcoming = footItems.filter((m) => m.state === "pre");
+    const footFinished = footItems.filter((m) => m.state === "post");
+    const mmaUpcoming = mmaItems.filter((m) => m.state === "pre");
+    const mmaFinished = mmaItems.filter((m) => m.state === "post");
     return (
       <section style={fadeStyle}>
         <div className="mb-2">{header(true)}</div>
         <div className="space-y-5">
-          {desktopGroup("Football", "sports_soccer", "#4ade80", footItems)}
-          {desktopGroup("MMA / UFC", "sports_mma", "#f87171", mmaItems)}
+          <DesktopScoreGroup title="En direct" icon="sensors" color={NEON} items={liveItems} flashing={flashing} onOpen={setOpenMatch} />
+          <DesktopScoreGroup title="Football" icon="sports_soccer" color="#4ade80" items={footUpcoming} flashing={flashing} onOpen={setOpenMatch} />
+          <DesktopScoreGroup title="Football — terminés" icon="history" color="#9fb0c8" items={footFinished} flashing={flashing} onOpen={setOpenMatch} />
+          <DesktopScoreGroup title="MMA / UFC" icon="sports_mma" color="#f87171" items={mmaUpcoming} flashing={flashing} onOpen={setOpenMatch} />
+          <DesktopScoreGroup title="MMA / UFC — terminés" icon="history" color="#f3a5a5" items={mmaFinished} flashing={flashing} onOpen={setOpenMatch} />
         </div>
         {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
