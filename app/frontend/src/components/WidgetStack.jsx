@@ -10,7 +10,7 @@ import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
 import { useSheetDismiss } from "@/hooks/useDraggableSheet";
-import { MatchCard, MmaCard, WweCard, displayMatches, isUclMatch } from "@/components/LiveScores";
+import { MatchCard, MmaCard, WweCard, displayMatches, formatKickoff, isUclMatch } from "@/components/LiveScores";
 import { fetchWweEvents } from "@/lib/wweClient";
 import { getTodayMinutes, syncScreenTime } from "@/lib/screenTime";
 import { fetchLiveScoresFromEspn, searchTeamsFromEspn, resolveTeamIdByName } from "@/lib/espnClient";
@@ -1003,7 +1003,7 @@ export default function WidgetStack({ user, setUser }) {
 
   const pageNode = (id) => {
     if (id === "football") return (
-      <div className="h-full flex flex-col pl-3 py-2.5">
+      <div className="h-full flex flex-col px-3 py-2.5">
         <div className="pr-3"><PageHeader id="football" badge={uclMatchday ? (
           <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 flex-shrink-0"
             style={{ background: "rgba(31,111,235,0.16)", border: "1px solid rgba(88,145,255,0.45)" }}
@@ -1014,24 +1014,24 @@ export default function WidgetStack({ user, setUser }) {
             <span className="text-[9px] font-black uppercase tracking-wide" style={{ color: "#a9c4ff" }}>{t("livescores.ucl_matchday")}</span>
           </span>
         ) : null} /></div>
-        <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar items-center" style={{ scrollSnapType: "x mandatory", paddingRight: 16 }}>
-          {footItems.map((m) => (
-            <div key={m.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
-              <MatchCard m={m} flash={!!flashing[`foot-${m.id}`]} {...cardProps} />
-            </div>
-          ))}
+        <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          {footItems.slice(0, 10).map((m) => {
+            const live = m.state === "in", done = m.state === "post";
+            const status = live ? `LIVE · ${m.clock || ""}` : done ? "Terminé" : formatKickoff(m.date);
+            return <button key={m.id} onClick={() => setOpenMatch(m)} className="w-full flex items-center gap-2 py-2.5 text-left" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <span className="flex -space-x-1 flex-shrink-0">{m.home_logo ? <img src={m.home_logo} alt="" className="w-5 h-5 rounded-full object-contain" /> : <span className="w-5 h-5 rounded-full" style={{ background: "#242424" }} />}{m.away_logo ? <img src={m.away_logo} alt="" className="w-5 h-5 rounded-full object-contain" /> : <span className="w-5 h-5 rounded-full" style={{ background: "#242424" }} />}</span>
+              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.home} · {m.away}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.league}</span></span>
+              <span className="text-[10px] font-bold" style={{ color: live ? NEON : "#cfcfcf" }}>{status}</span>
+            </button>;
+          })}
         </div>
       </div>
     );
     if (id === "mma") return (
-      <div className="h-full flex flex-col pl-3 py-2.5">
+      <div className="h-full flex flex-col px-3 py-2.5">
         <div className="pr-3"><PageHeader id="mma" /></div>
-        <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar items-center" style={{ scrollSnapType: "x mandatory", paddingRight: 16 }}>
-          {mmaItems.map((m) => (
-            <div key={m.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
-              <MmaCard m={m} flash={!!flashing[`mma-${m.id}`]} />
-            </div>
-          ))}
+        <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          {mmaItems.slice(0, 10).map((m) => <div key={m.id} className="flex items-center gap-2 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><span className="material-symbols-outlined" style={{ color: "#e57373", fontSize: 17 }}>sports_mma</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.f1?.name} · {m.f2?.name}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.event}</span></span><span className="text-[10px] font-bold" style={{ color: m.state === "in" ? NEON : "#cfcfcf" }}>{m.state === "in" ? "LIVE" : formatKickoff(m.date)}</span></div>)}
         </div>
       </div>
     );
