@@ -195,6 +195,29 @@ function WeatherIcon({ cond, isDay = true, size = 56 }) {
   }
 }
 
+const mobileWeatherCondition = (code) => {
+  if ([0, 1].includes(code)) return "clear";
+  if ([2].includes(code)) return "partly";
+  if ([3].includes(code)) return "cloudy";
+  if ([45, 48].includes(code)) return "fog";
+  if ([51, 53, 55, 56, 57].includes(code)) return "drizzle";
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "rain";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "snow";
+  if ([95, 96, 99].includes(code)) return "storm";
+  return "cloudy";
+};
+const mobileWeatherLabel = (code) => ({ 0: "Ensoleillé", 1: "Plutôt ensoleillé", 2: "Partiellement nuageux", 3: "Nuageux", 45: "Brouillard", 48: "Brouillard", 51: "Bruine", 53: "Bruine", 55: "Bruine", 61: "Pluie faible", 63: "Pluie", 65: "Forte pluie", 71: "Neige", 80: "Averses", 95: "Orage" }[code] || "Conditions météo");
+const normalizeMobileWeather = (payload, location) => {
+  const raw = payload?.weather || payload;
+  const current = raw?.current || raw?.current_weather;
+  if (!current) return null;
+  const code = Number(current.weather_code ?? current.weathercode);
+  const temp = current.temperature_2m ?? current.temperature;
+  if (!Number.isFinite(Number(temp))) return null;
+  return { temp: Math.round(Number(temp)), feels_like: Number.isFinite(Number(current.apparent_temperature)) ? Math.round(Number(current.apparent_temperature)) : null, humidity: Number.isFinite(Number(current.relative_humidity_2m)) ? Math.round(Number(current.relative_humidity_2m)) : null, cond: mobileWeatherCondition(code), label: mobileWeatherLabel(code), is_day: current.is_day !== 0, location: location || "Ma position" };
+};
+const fetchMobileOpenMeteo = (lat, lon) => fetch(`https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day&timezone=auto`).then((r) => r.ok ? r.json() : null);
+
 // ─────────────────────────── Éditeur (bottom sheet) ───────────────────────────
 function StackEditor({ order, smartRotate, onChange, onClose }) {
   const { t } = useTranslation();
@@ -708,14 +731,25 @@ export default function WidgetStack({ user, setUser }) {
   useEffect(() => {
     if (!wantWeather) return;
     let alive = true;
-    const fetchW = (lat, lon) => {
+    const fetchW = async (lat, lon, location) => {
+      // Même repli que la météo PC : l'affichage mobile ne dépend plus d'une
+      // réponse du backend pour transformer les données Open-Meteo.
       axios.get(`${API}/weather`, { params: { lat, lon } })
-        .then((r) => { if (alive) setWeather(r.data?.weather || null); }).catch(() => {});
+        .then(async (r) => {
+          const normalized = normalizeMobileWeather(r.data, location);
+          if (normalized) { if (alive) setWeather(normalized); return; }
+          const fallback = await fetchMobileOpenMeteo(lat, lon);
+          if (alive) setWeather(normalizeMobileWeather(fallback, location));
+        })
+        .catch(async () => {
+          const fallback = await fetchMobileOpenMeteo(lat, lon).catch(() => null);
+          if (alive) setWeather(normalizeMobileWeather(fallback, location));
+        });
     };
     const opts = { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 };
     const run = () => {
-      if (weatherCity) fetchW(weatherCity.lat, weatherCity.lon);            // ville forcée
-      else if (navigator.geolocation) navigator.geolocation.getCurrentPosition((p) => fetchW(p.coords.latitude, p.coords.longitude), () => {}, opts);
+      if (weatherCity) fetchW(weatherCity.lat, weatherCity.lon, weatherCity.name); // ville forcée
+      else if (navigator.geolocation) navigator.geolocation.getCurrentPosition((p) => fetchW(p.coords.latitude, p.coords.longitude, "Ma position"), () => { if (alive) setWeather(null); }, opts);
     };
     run();
     const iv = setInterval(run, 600000);

@@ -664,7 +664,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
         )}
       </div>
       <div className="flex items-center gap-1.5">
-        {big && iconBtn("leaderboard", () => setShowStandings(true), "Voir les classements")}
+        {iconBtn("leaderboard", () => setShowStandings(true), "Voir les classements")}
         {iconBtn("tune", () => setShowFilter(true), i18n.t("livescores.filter_aria"))}
         {iconBtn("close", () => setConfirmHide(true), i18n.t("livescores.hide_aria"))}
       </div>
