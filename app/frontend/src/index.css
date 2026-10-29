@@ -4,10 +4,10 @@
 
 /* Couleur d'accentuation globale (surchargée par les paramètres). */
 :root {
-    --nexus-accent: #22d3ee;
+    --nexus-accent: #e5e7eb;
     /* Repli UNI pour les usages en `color`/`border` (le dégradé premium ne
        peut pas servir de couleur de texte → sinon repli blanc). */
-    --nexus-accent-solid: #22d3ee;
+    --nexus-accent-solid: #e5e7eb;
 }
 
 .material-symbols-outlined {
@@ -59,11 +59,11 @@
 }
 
 .bg-kinetic-gradient {
-    background: linear-gradient(90deg, var(--nexus-accent) 0%, #3B82F6 100%);
+    background: var(--nexus-accent);
 }
 
 .text-kinetic-gradient {
-    background: linear-gradient(90deg, var(--nexus-accent) 0%, #3B82F6 100%);
+    background: var(--nexus-accent);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -106,14 +106,14 @@ body {
  * une bande noire et donnait l'impression que « ça change de couleur ».
  *  - overscroll-behavior: none  → coupe le rebond aux bords, tout en gardant le
  *    scroll normal (ex. fil d'accueil).
- *  - background navy (#0b1326)  → même si un résidu de rebond subsiste, il reste
+ *  - fond noir AMOLED (#000) → même si un résidu de rebond subsiste, il reste
  *    invisible au lieu de révéler du noir derrière l'app.
  * (Règle hors @layer → prioritaire sur le bg-background de Tailwind.)
  */
 html,
 body {
     overscroll-behavior: none;
-    background-color: #0b1326;
+    background-color: #000;
 }
 
 /* iOS (Safari / Chrome iOS) : le vrai conteneur de défilement est souvent #root,
@@ -176,20 +176,20 @@ code {
 
 @layer base {
     :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
-        --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
+        --background: 0 0% 0%;
+        --foreground: 0 0% 98%;
+        --card: 0 0% 4%;
+        --card-foreground: 0 0% 98%;
+        --popover: 0 0% 4%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 0 0% 5%;
+        --secondary: 0 0% 8%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 0 0% 8%;
+        --muted-foreground: 0 0% 64%;
+        --accent: 0 0% 8%;
+        --accent-foreground: 0 0% 98%;
         --destructive: 0 84.2% 60.2%;
         --destructive-foreground: 0 0% 98%;
         --border: 0 0% 89.8%;
@@ -203,11 +203,11 @@ code {
         --radius: 0.5rem;
     }
     .dark {
-        --background: 0 0% 3.9%;
+        --background: 0 0% 0%;
         --foreground: 0 0% 98%;
-        --card: 0 0% 3.9%;
+        --card: 0 0% 4%;
         --card-foreground: 0 0% 98%;
-        --popover: 0 0% 3.9%;
+        --popover: 0 0% 4%;
         --popover-foreground: 0 0% 98%;
         --primary: 0 0% 98%;
         --primary-foreground: 0 0% 9%;

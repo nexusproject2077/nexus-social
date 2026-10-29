@@ -6,7 +6,6 @@ import { API } from "@/App";
 import { toast } from "sonner";
 import CallManager from "@/components/CallManager";
 import LiveScores from "@/components/LiveScores";
-import DesktopWeather from "@/components/DesktopWeather";
 
 export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome, hideMobileHeader, bottomNav }) {
   const navigate = useNavigate();
@@ -53,6 +52,14 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
 
   useEffect(() => {
     if (compact) return;
+    axios
+      .get(`${API}/users/search?q=`)
+      .then((res) => {
+        const users = Array.isArray(res.data) ? res.data : [];
+        setSuggestedUsers(users.filter((u) => u.id !== user.id).slice(0, 3));
+      })
+      .catch(() => {});
+
     axios
       .get(`${API}/trending/hashtags?limit=5`)
       .then((res) => {
@@ -251,7 +258,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
   ];
 
   return (
-    <div style={{ backgroundColor: "#0b1326", color: "#dae2fd" }}
+    <div style={{ backgroundColor: "#000", color: "#f5f5f5" }}
       className={`${hideMobileChrome ? "h-[100dvh] overflow-hidden lg:h-auto lg:overflow-visible lg:min-h-screen" : "min-h-screen"} font-body`}>
 
       {/* ===== Desktop Left Sidebar (repliée → pictos seuls ; survol → pictos+noms) ===== */}
@@ -259,12 +266,12 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         onMouseEnter={() => setSbExpanded(true)}
         onMouseLeave={() => setSbExpanded(false)}
         className={`no-scrollbar fixed left-0 top-0 h-screen z-[60] hidden lg:flex flex-col py-4 gap-2 select-none overflow-y-auto overscroll-contain transition-[width] duration-200 ease-out ${sbExpanded ? "w-64 px-4 shadow-2xl" : "w-20 px-2"}`}
-        style={{ backgroundColor: "#0b1326", borderRight: "1px solid rgba(255,255,255,0.04)" }}
+        style={{ backgroundColor: "#000", borderRight: "1px solid rgba(255,255,255,0.08)" }}
       >
         {/* Logo : « NEXUS » déployé, « N » replié */}
         <div
           className={`font-headline font-black tracking-tighter mb-2 bg-clip-text whitespace-nowrap flex-shrink-0 ${sbExpanded ? "text-2xl px-4" : "text-2xl text-center"}`}
-          style={{ background: "linear-gradient(90deg,var(--nexus-accent),#3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+          style={{ color: "#f5f5f5" }}
         >
           {sbExpanded ? "NEXUS" : "N"}
         </div>
@@ -325,7 +332,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             ) : (
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm cursor-pointer flex-shrink-0"
-                style={{ background: "linear-gradient(135deg, var(--nexus-accent), #3b82f6)", color: "#00363e" }}
+                style={{ background: "#f5f5f5", color: "#050505" }}
                 onClick={() => navigate(`/profil/${user.id}`)}
               >
                 {user.username[0].toUpperCase()}
@@ -347,15 +354,14 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {!compact && (
         <aside
           className="fixed right-0 top-0 h-screen w-80 z-40 hidden lg:flex flex-col py-8 px-6 gap-8 overflow-y-auto"
-          style={{ backgroundColor: "#0b1326", borderLeft: "1px solid rgba(255,255,255,0.04)" }}
+          style={{ backgroundColor: "#000", borderLeft: "1px solid rgba(255,255,255,0.08)" }}
         >
-          {/* Ordinateur : résultats sous forme de liste, pas de widgets. */}
-          <div className="order-3">
-            {(user?.show_sports !== false || user?.show_mma !== false) && <LiveScores variant="desktop-list" setUser={setUser} />}
-          </div>
+          {/* Scores de foot en direct — tout en haut de la colonne. Optionnel :
+              masqué si l'utilisateur a désactivé les scores. */}
+          {(user?.show_sports !== false || user?.show_mma !== false) && <LiveScores variant="sidebar" setUser={setUser} />}
 
           {/* Trending — carte au fond gris très sombre (façon X) */}
-          <section className="order-1 rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
+          <section className="rounded-2xl p-5" style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)" }}>
             <h2 className="font-headline font-bold text-lg mb-5 tracking-tight" style={{ color: "#dae2fd" }}>{t("trending")}</h2>
             <div className="space-y-5">
               {trending.length === 0 ? (
@@ -380,13 +386,9 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             </div>
           </section>
 
-          <div className="order-2">
-            <DesktopWeather user={user} />
-          </div>
-
           {/* Suggested Users — même carte (cohérence avec Tendances) */}
           {suggestedUsers.length > 0 && (
-            <section className="order-4 rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <section className="rounded-2xl p-5" style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)" }}>
               <h2 className="font-headline font-bold text-lg mb-5 tracking-tight" style={{ color: "#dae2fd" }}>{t("suggestions")}</h2>
               <div className="space-y-4">
                 {suggestedUsers.map((u) => (
@@ -413,7 +415,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
             </section>
           )}
 
-          <footer className="order-5 mt-auto pt-8">
+          <footer className="mt-auto pt-8">
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-medium" style={{ color: "#3c494c" }}>
               <Link to="/a-propos" className="hover:text-slate-400">{t("nav.about")}</Link>
               <Link to="/comment-ca-marche" className="hover:text-slate-400">{t("nav.how")}</Link>

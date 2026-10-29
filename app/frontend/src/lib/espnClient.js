@@ -15,7 +15,6 @@ const MMA_URL = "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboar
 // Mêmes ligues que ESPN_SOCCER_LEAGUES côté backend.
 const SOCCER_LEAGUES = [
   ["uefa.champions", "Ligue des Champions"],
-  ["uefa.wchampions", "Women's Champions League"],
   ["uefa.europa", "Ligue Europa"],
   ["eng.1", "Premier League"],
   ["esp.1", "LaLiga"],
@@ -67,6 +66,10 @@ function normalizeLeague(data, slug, fallbackName) {
   const out = [];
   if (!data) return out;
   const leagueName = data.leagues?.[0]?.name || fallbackName;
+  // Les compétitions féminines ne font pas partie du périmètre de ce panneau.
+  // Le contrôle porte aussi sur le libellé ESPN pour éviter un retour accidentel
+  // via une ligue ou un événement renommé.
+  if (/women|female|feminin|féminin|feminine|féminine/i.test(leagueName)) return out;
   for (const ev of data.events || []) {
     const comp = (ev.competitions || [])[0] || {};
     const status = ev.status || comp.status || {};
@@ -160,11 +163,11 @@ export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) 
 // Chargé une seule fois puis mis en cache mémoire.
 
 const TEAM_DIR_LEAGUES = [
-  "uefa.champions", "uefa.wchampions", "uefa.europa",  // Coupes d'Europe → élite de tous les pays
+  "uefa.champions", "uefa.europa", "uefa.europa.conf", // Coupes d'Europe → élite de tous les pays
   "fifa.world", "uefa.euro",                // Sélections nationales (CdM / Euro)
   "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", // top 5
-  "eng.2", "ned.1", "por.1", "tur.1",        // autres championnats européens
-  "usa.1", "mex.1", "bra.1", "arg.1", "sau.1", // Amériques + Saudi
+  "eng.2", "eng.3", "esp.2", "fra.2", "ita.2", "ger.2", "ned.1", "bel.1", "por.1", "tur.1", "sco.1", "aut.1", "sui.1", "gre.1", "den.1", "swe.1", "nor.1", "pol.1", "cze.1", "ukr.1", // Europe élargie
+  "usa.1", "usa.2", "mex.1", "bra.1", "arg.1", "chi.1", "col.1", "uru.1", "jpn.1", "kor.1", "aus.1", "sau.1", "qat.1", "chn.1", "rsa.1", // Amériques, Asie, Afrique, Golfe
 ];
 
 let _teamDirCache = null; // Promise<Team[]>
