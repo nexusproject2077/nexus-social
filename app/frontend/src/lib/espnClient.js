@@ -37,6 +37,31 @@ async function fetchJson(url) {
   }
 }
 
+// Identité de compétition et classement directement depuis ESPN. Aucun logo ni
+// point n'est inventé : si ESPN ne répond pas, l'interface affiche simplement
+// son état indisponible.
+export const getLeagueLogo = (slug) => `https://a.espncdn.com/i/leaguelogos/soccer/500/${encodeURIComponent(slug)}.png`;
+
+export async function fetchStandingsFromEspn(slug) {
+  const data = await fetchJson(`https://site.api.espn.com/apis/v2/sports/soccer/${encodeURIComponent(slug)}/standings`);
+  const entries = data?.children?.flatMap((child) => child.standings?.entries || []) || data?.standings?.entries || [];
+  return entries.map((entry) => {
+    const stats = entry.stats || [];
+    const find = (...names) => stats.find((stat) => names.includes(String(stat.name || "").toLowerCase()));
+    const rank = find("rank", "playoffseed")?.displayValue || entry?.stats?.find((stat) => stat.name === "rank")?.value || "–";
+    const points = find("points", "pts")?.displayValue ?? find("points", "pts")?.value ?? "–";
+    const team = entry.team || {};
+    return {
+      id: String(team.id || entry.id || ""),
+      rank: String(rank),
+      name: team.displayName || team.name || team.shortDisplayName || "Équipe",
+      logo: team.logos?.[0]?.href || team.logo || null,
+      points: String(points),
+      played: String(find("gamesplayed", "games", "gp")?.displayValue ?? find("gamesplayed", "games", "gp")?.value ?? "–"),
+    };
+  });
+}
+
 // Scoreboard d'une ligue → liste normalisée (identique à _espn_fetch_league).
 function normalizeLeague(data, slug, fallbackName) {
   const out = [];

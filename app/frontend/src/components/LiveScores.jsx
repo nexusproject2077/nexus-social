@@ -8,7 +8,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 import MatchCenter from "@/components/MatchCenter";
-import { fetchLiveScoresFromEspn } from "@/lib/espnClient";
+import { fetchLiveScoresFromEspn, fetchStandingsFromEspn, getLeagueLogo, searchTeamsFromEspn } from "@/lib/espnClient";
 import i18n from "@/i18n";
 
 const NEON = "#4ade80";      // vert néon (match en cours)
@@ -59,6 +59,7 @@ const STATE_ORDER = { in: 0, pre: 1, post: 2 };
 const PAST_EVENT_RETENTION_MS = 48 * 60 * 60 * 1000;
 const DESKTOP_PAGE_SIZE = 10;
 const FAVORITE_LEAGUES_KEY = "nexus_sports_favorite_leagues";
+const FAVORITE_TEAMS_KEY = "nexus_sports_favorite_teams";
 
 const readSavedLeagues = () => {
   try {
@@ -69,6 +70,12 @@ const readSavedLeagues = () => {
 
 const saveLeaguesLocally = (leagues) => {
   try { localStorage.setItem(FAVORITE_LEAGUES_KEY, JSON.stringify(leagues)); } catch { /* stockage indisponible */ }
+};
+const readSavedTeams = () => {
+  try { const saved = JSON.parse(localStorage.getItem(FAVORITE_TEAMS_KEY) || "[]"); return Array.isArray(saved) ? saved : []; } catch { return []; }
+};
+const saveTeamsLocally = (teams) => {
+  try { localStorage.setItem(FAVORITE_TEAMS_KEY, JSON.stringify(teams)); } catch { /* stockage indisponible */ }
 };
 
 // Les résultats et combats achevés restent utiles pendant deux jours, puis ils
@@ -411,31 +418,79 @@ function DesktopScoreGroup({ title, icon, color, items, flashing, onOpen }) {
   );
 }
 
-// Modale de filtres : cocher les ligues majeures (Toggles).
-function FilterModal({ favL, onSave, onClose }) {
+function LeagueLogo({ slug, name, size = 28 }) {
+  return <img src={getLeagueLogo(slug)} alt={`Logo ${name}`} width={size} height={size} loading="lazy" className="object-contain flex-shrink-0" onError={(e) => { e.currentTarget.style.display = "none"; }} />;
+}
+
+function StandingsModal({ favL, onClose }) {
+  const available = MAJOR_LEAGUES.filter((league) => favL.size === 0 || favL.has(league.id));
+  const [leagueId, setLeagueId] = useState(() => available[0]?.id || MAJOR_LEAGUES[0].id);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const league = MAJOR_LEAGUES.find((item) => item.id === leagueId) || MAJOR_LEAGUES[0];
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    fetchStandingsFromEspn(leagueId).then((next) => { if (active) setRows(next); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [leagueId]);
+  return (
+    <div className="fixed inset-0 z-[76] flex items-end sm:items-center justify-center sm:p-5" style={{ background: "rgba(2,6,20,0.82)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "88vh" }}>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2"><span className="material-symbols-outlined" style={{ color: NEON }}>leaderboard</span><h3 className="font-bold text-white">Classements</h3></div>
+          <button onClick={onClose} className="material-symbols-outlined" style={{ color: "#9fb0c8" }} aria-label="Fermer">close</button>
+        </div>
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-3">
+          {available.map((item) => <button key={item.id} onClick={() => setLeagueId(item.id)} className="flex items-center gap-1.5 flex-shrink-0 rounded-xl px-2.5 py-2 text-xs font-bold" style={{ background: item.id === leagueId ? NEON + "20" : "#1a2234", color: item.id === leagueId ? "#eaf7ee" : "#aeb9cb" }}><LeagueLogo slug={item.id} name={item.name} size={20} />{item.name}</button>)}
+        </div>
+        <div className="flex items-center gap-2 px-2 py-2 border-y" style={{ borderColor: "rgba(255,255,255,0.07)" }}><LeagueLogo slug={league.id} name={league.name} size={26} /><span className="text-sm font-bold text-white flex-1">{league.name}</span><span className="text-[10px] font-black" style={{ color: "#859397" }}>PTS</span></div>
+        <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: "52vh" }}>
+          {loading ? <p className="py-8 text-center text-sm" style={{ color: "#859397" }}>Chargement du classement…</p> : rows.length ? rows.map((team) => <div key={team.id || `${team.rank}-${team.name}`} className="flex items-center gap-3 px-2 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}><span className="w-5 text-center text-xs font-black" style={{ color: "#91a3c2" }}>{team.rank}</span>{team.logo ? <img src={team.logo} alt="" className="w-6 h-6 object-contain" loading="lazy" /> : <span className="w-6 h-6 rounded-full" style={{ background: "#25324a" }} />}<span className="flex-1 truncate text-sm font-semibold text-white">{team.name}</span><span className="text-[11px]" style={{ color: "#8fa0b9" }}>{team.played} MJ</span><span className="w-7 text-right text-sm font-black" style={{ color: NEON }}>{team.points}</span></div>) : <p className="py-8 text-center text-sm" style={{ color: "#859397" }}>Classement indisponible pour cette compétition.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modale de filtres : ligues et clubs, avec une grille adaptée aux grands écrans.
+function FilterModal({ favL, favT, onToggleTeam, onSave, onClose }) {
   const [sel, setSel] = useState(new Set(favL));
   const [saving, setSaving] = useState(false);
+  const [teamQuery, setTeamQuery] = useState("");
+  const [teamResults, setTeamResults] = useState([]);
   const toggle = (id) => setSel((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const save = async () => { setSaving(true); await onSave(sel); setSaving(false); onClose(); };
+  useEffect(() => {
+    if (teamQuery.trim().length < 2) { setTeamResults([]); return; }
+    let active = true;
+    const timer = setTimeout(() => searchTeamsFromEspn(teamQuery, 12).then((items) => { if (active) setTeamResults(items); }), 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [teamQuery]);
   return (
     <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center sm:p-4"
       style={{ background: "rgba(2,6,20,0.8)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
-      <div className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5"
+      <div className="w-full sm:max-w-3xl rounded-t-3xl sm:rounded-3xl p-5"
         style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)" }}>
         <div className="flex items-center gap-2 mb-1">
           <span className="material-symbols-outlined" style={{ color: NEON }}>tune</span>
           <h3 className="font-bold text-white">{i18n.t("livescores.fav_title")}</h3>
         </div>
-        <p className="text-[12px] mb-4" style={{ color: "#859397" }}>{i18n.t("livescores.fav_sub")}</p>
-        <div className="space-y-1 max-h-[52vh] overflow-y-auto no-scrollbar">
+        <p className="text-[12px] mb-4" style={{ color: "#859397" }}>Sélectionne des compétitions ou uniquement tes clubs : seuls leurs matchs seront affichés.</p>
+        <div className="mb-4 rounded-2xl p-3" style={{ background: "#0b1220" }}>
+          <label className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#859397" }}>Tes équipes favorites</label>
+          <div className="mt-2 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: "#1a2234" }}><span className="material-symbols-outlined" style={{ color: "#859397", fontSize: 18 }}>search</span><input value={teamQuery} onChange={(e) => setTeamQuery(e.target.value)} placeholder="PSG, Real Madrid, Arsenal…" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none" /></div>
+          {teamResults.length > 0 && <div className="mt-2 grid gap-1 sm:grid-cols-2">{teamResults.map((team) => { const on = favT.has(team.id); return <button key={team.id} onClick={() => onToggleTeam(team.id)} className="flex items-center gap-2 rounded-xl px-2 py-2 text-left" style={{ background: on ? NEON + "16" : "#ffffff08" }}>{team.logo ? <img src={team.logo} alt="" className="w-6 h-6 object-contain" loading="lazy" /> : <span className="w-6 h-6 rounded-full" style={{ background: "#2a3446" }} />}<span className="flex-1 truncate text-xs font-bold" style={{ color: "#eaf1ff" }}>{team.name}</span><span className="material-symbols-outlined" style={{ color: on ? NEON : "#6b7686", fontVariationSettings: `'FILL' ${on ? 1 : 0}` }}>star</span></button>; })}</div>}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[42vh] overflow-y-auto no-scrollbar">
           {MAJOR_LEAGUES.map((l) => {
             const on = sel.has(l.id);
             return (
               <button key={l.id} onClick={() => toggle(l.id)}
-                className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-left active:scale-[0.99] transition-transform"
+                className="w-full flex items-center justify-between gap-3 px-3 py-3 rounded-xl text-left active:scale-[0.99] transition-transform"
                 style={{ background: on ? NEON + "14" : "#1a2234" }}>
-                <span className="text-sm font-semibold" style={{ color: on ? "#eaf7ee" : "#c7d0e0" }}>{l.name}</span>
+                <span className="flex items-center gap-2 min-w-0"><LeagueLogo slug={l.id} name={l.name} /><span className="text-sm font-semibold truncate" style={{ color: on ? "#eaf7ee" : "#c7d0e0" }}>{l.name}</span></span>
                 <span className="relative flex-shrink-0" style={{ width: 40, height: 22, borderRadius: 999, background: on ? NEON : "#333d52", transition: "background 0.2s" }}>
                   <span className="absolute top-0.5 rounded-full bg-white" style={{ width: 18, height: 18, left: on ? 20 : 2, transition: "left 0.2s" }} />
                 </span>
@@ -459,8 +514,9 @@ function FilterModal({ favL, onSave, onClose }) {
 export default function LiveScores({ variant = "mobile", setUser }) {
   const [matches, setMatches] = useState([]);
   const [favL, setFavL] = useState(() => new Set(readSavedLeagues()));
-  const [favT, setFavT] = useState(() => new Set());
+  const [favT, setFavT] = useState(() => new Set(readSavedTeams()));
   const [showFilter, setShowFilter] = useState(false);
+  const [showStandings, setShowStandings] = useState(false);
   const [openMatch, setOpenMatch] = useState(null);
   const [confirmHide, setConfirmHide] = useState(false);
   const [fading, setFading] = useState(false);
@@ -492,8 +548,11 @@ export default function LiveScores({ variant = "mobile", setUser }) {
       const serverLeagues = d.favorites && Array.isArray(d.favorites.leagues)
         ? d.favorites.leagues
         : readSavedLeagues();
+      const serverTeams = d.favorites && Array.isArray(d.favorites.teams)
+        ? d.favorites.teams
+        : readSavedTeams();
       setFavL(new Set(serverLeagues));
-      setFavT(new Set(d.favorites?.teams || []));
+      setFavT(new Set(serverTeams));
       if (changed.length) {
         setFlashing((f) => { const n = { ...f }; changed.forEach((k) => (n[k] = true)); return n; });
         changed.forEach((k) => setTimeout(() =>
@@ -529,6 +588,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
       const n = new Set(prev);
       n.has(id) ? n.delete(id) : n.add(id);
       if (kind === "league") saveLeaguesLocally(Array.from(n));
+      else saveTeamsLocally(Array.from(n));
       return n;
     });
     axios.post(`${API}/users/me/sports-favorites/toggle`, { kind, id }).catch(() => {
@@ -546,6 +606,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
     // d'un éventuel délai ou échec du backend.
     setFavL(new Set(leagues));
     saveLeaguesLocally(leagues);
+    saveTeamsLocally(Array.from(favT));
     try {
       await axios.put(`${API}/users/me/sports-favorites`, { leagues, teams: Array.from(favT) });
       toast.success(i18n.t("livescores.favs_saved"));
@@ -603,6 +664,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
         )}
       </div>
       <div className="flex items-center gap-1.5">
+        {big && iconBtn("leaderboard", () => setShowStandings(true), "Voir les classements")}
         {iconBtn("tune", () => setShowFilter(true), i18n.t("livescores.filter_aria"))}
         {iconBtn("close", () => setConfirmHide(true), i18n.t("livescores.hide_aria"))}
       </div>
@@ -639,7 +701,8 @@ export default function LiveScores({ variant = "mobile", setUser }) {
         <div className="space-y-2 max-h-[70vh] overflow-y-auto no-scrollbar">
           {arranged.map((m) => renderCard(m, true))}
         </div>
-        {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
+        {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
+        {showStandings && <StandingsModal favL={favL} onClose={() => setShowStandings(false)} />}
         {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
         {confirmDialog}
       </section>
@@ -662,7 +725,8 @@ export default function LiveScores({ variant = "mobile", setUser }) {
           <DesktopScoreGroup title="MMA / UFC" icon="sports_mma" color="#f87171" items={mmaUpcoming} flashing={flashing} onOpen={setOpenMatch} />
           <DesktopScoreGroup title="MMA / UFC — terminés" icon="history" color="#f3a5a5" items={mmaFinished} flashing={flashing} onOpen={setOpenMatch} />
         </div>
-        {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
+        {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
+        {showStandings && <StandingsModal favL={favL} onClose={() => setShowStandings(false)} />}
         {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
         {confirmDialog}
       </section>
@@ -675,7 +739,8 @@ export default function LiveScores({ variant = "mobile", setUser }) {
       <div className="flex gap-3 overflow-x-auto no-scrollbar px-4">
         {arranged.map((m) => renderCard(m, false))}
       </div>
-      {showFilter && <FilterModal favL={favL} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
+      {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
+      {showStandings && <StandingsModal favL={favL} onClose={() => setShowStandings(false)} />}
       {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
       {confirmDialog}
     </div>
