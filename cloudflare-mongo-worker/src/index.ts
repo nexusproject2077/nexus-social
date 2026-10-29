@@ -350,10 +350,28 @@ export default {
         const catalog:any={bitcoin:"Bitcoin",ethereum:"Ethereum",solana:"Solana",cardano:"Cardano",ripple:"XRP",dogecoin:"Dogecoin"},cfg:any=user.widget_stack_config||{},ids=(url.searchParams.get("ids")||"").split(",").map(x=>x.trim()).filter(Boolean),want=(ids.length?ids:(cfg.finance_assets||["bitcoin","ethereum","solana"])).filter((x:any)=>catalog[x]).slice(0,10);try{const r=await fetch("https://api.coingecko.com/api/v3/simple/price?ids="+encodeURIComponent(want.join(","))+"&vs_currencies=eur&include_24hr_change=true"),d:any=r.ok?await r.json():{};return json({assets:want.map((id:any)=>({id,name:catalog[id],price_eur:d[id]?.eur??null,change_24h:d[id]?.eur_24h_change??null})),catalog},200,request);}catch{return json({assets:[],catalog},200,request);}
       }
       if (url.pathname === "/api/wwe/events" && request.method === "GET") {try{const base="https://www.thesportsdb.com/api/v1/json/3";const [next,past]=await Promise.all([fetch(base+"/eventsnextleague.php?id=4444",{headers:{Accept:"application/json"}}),fetch(base+"/eventspastleague.php?id=4444",{headers:{Accept:"application/json"}})]);const a=next.ok?await next.json() as any:{events:[]},b=past.ok?await past.json() as any:{events:[]};return json({events:[...(a?.events||[]),...(b?.events||[])]},200,request);}catch{return json({events:[]},200,request);}}
+      if (url.pathname === "/api/users/me/sports-favorites" && request.method === "GET") {
+        return json({leagues:Array.isArray(user.sports_favorite_leagues)?user.sports_favorite_leagues:[],teams:Array.isArray(user.sports_favorite_teams)?user.sports_favorite_teams:[]},200,request);
+      }
+      if (url.pathname === "/api/users/me/sports-favorites" && request.method === "PUT") {
+        let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400,request);}
+        const clean=(value:any)=>[...new Set((Array.isArray(value)?value:[]).map(String).filter((x:string)=>x.length>0&&x.length<=80))].slice(0,100);
+        const leagues=clean(b?.leagues),teams=clean(b?.teams);
+        await db.collection("users").updateOne({id:uid},{$set:{sports_favorite_leagues:leagues,sports_favorite_teams:teams}});
+        return json({success:true,leagues,teams},200,request);
+      }
+      if (url.pathname === "/api/users/me/sports-favorites/toggle" && request.method === "POST") {
+        let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400,request);}
+        const kind=b?.kind==="team"?"team":b?.kind==="league"?"league":null,id=String(b?.id||"").trim();
+        if(!kind||!id||id.length>80)return json({detail:"Favori invalide"},400,request);
+        const field=kind==="team"?"sports_favorite_teams":"sports_favorite_leagues",current=Array.isArray(user[field])?user[field].map(String):[],next=current.includes(id)?current.filter((x:string)=>x!==id):[...current,id].slice(-100);
+        await db.collection("users").updateOne({id:uid},{$set:{[field]:next}});
+        return json({success:true,kind,id,active:next.includes(id),leagues:kind==="league"?next:(Array.isArray(user.sports_favorite_leagues)?user.sports_favorite_leagues:[]),teams:kind==="team"?next:(Array.isArray(user.sports_favorite_teams)?user.sports_favorite_teams:[])},200,request);
+      }
       if (url.pathname === "/api/livescores" && request.method === "GET") {
         const now=new Date(),from=new Date(now.getTime()-6*3600000).toISOString(),to=new Date(now.getTime()+48*3600000).toISOString();
         const rows=await db.collection("live_scores").find({$or:[{starts_at:{$gte:from,$lte:to}},{status:{$in:["live","in_progress"]}}]},{projection:{_id:0}}).sort({starts_at:1}).limit(100).toArray();
-        return json({matches:rows,updated_at:now.toISOString(),source:rows.length?"cache":"none"},200,request);
+        return json({matches:rows,updated_at:now.toISOString(),source:rows.length?"cache":"none",favorites:{leagues:Array.isArray(user.sports_favorite_leagues)?user.sports_favorite_leagues:[],teams:Array.isArray(user.sports_favorite_teams)?user.sports_favorite_teams:[]}},200,request);
       }
       if (url.pathname === "/api/users/me/profile-views" && request.method === "GET") {
         const since=new Date(Date.now()-30*86400000).toISOString(),rows=await db.collection("profile_views").find({profile_id:uid,ts:{$gte:since}},{projection:{_id:0,viewer_id:1,ts:1}}).sort({ts:-1}).limit(500).toArray(),ordered:string[]=[],seen=new Set<string>();for(const x of rows)if(x.viewer_id&&!seen.has(x.viewer_id)){seen.add(x.viewer_id);ordered.push(x.viewer_id);}let visitors:any[]=[];if(user.is_premium&&ordered.length){const top=ordered.slice(0,12),us=await db.collection("users").find({id:{$in:top}},{projection:{_id:0,id:1,username:1,profile_pic:1,is_verified:1,is_premium:1}}).toArray(),m=new Map(us.map((u:any)=>[u.id,u]));visitors=top.map(id=>m.get(id)).filter(Boolean);}return json({count:ordered.length,is_premium:Boolean(user.is_premium),visitors},200,request);
