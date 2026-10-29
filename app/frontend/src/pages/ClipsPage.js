@@ -438,7 +438,12 @@ function ClipCard({ post, currentUser, isActive, index, registerVideo, onDelete,
   };
 
   // Appui long (mobile) sur la vidéo → lecture 2x ; relâchement → 1x.
-  const startSpeed = () => {
+  const startSpeed = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    // Les deux zones latérales sont réservées à l'accélération ; le centre
+    // garde son comportement normal (tap = son ou lecture/pause).
+    if (x >= rect.width * 0.34 && x <= rect.width * 0.66) return;
     longPressFired.current = false;
     longPressTimer.current = setTimeout(() => {
       const v = videoRef.current;

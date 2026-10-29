@@ -29,7 +29,12 @@ const C = {
 function FeedVideo({ src }) {
   const { t } = useTranslation();
   const ref = useRef(null);
+  const speedTimer = useRef(null);
+  const speedUsed = useRef(false);
   const [muted, setMuted] = useState(true);
+  const [paused, setPaused] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const [speeding, setSpeeding] = useState(false);
 
   useEffect(() => {
     const video = ref.current;
@@ -48,8 +53,39 @@ function FeedVideo({ src }) {
     return () => io.disconnect();
   }, []);
 
+  const togglePlay = () => {
+    const video = ref.current;
+    if (!video) return;
+    if (video.paused) video.play().catch(() => {});
+    else video.pause();
+  };
+  // Appui long sur les deux zones latérales : x2 tant que le doigt/la souris
+  // reste enfoncé. Une courte temporisation laisse le tap simple au play/pause.
+  const startSpeed = (event) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position = event.clientX - bounds.left;
+    const isSide = position < bounds.width * 0.34 || position > bounds.width * 0.66;
+    if (!isSide) return;
+    speedUsed.current = false;
+    speedTimer.current = setTimeout(() => {
+      const video = ref.current;
+      if (!video) return;
+      video.playbackRate = 2;
+      video.play().catch(() => {});
+      speedUsed.current = true;
+      setSpeeding(true);
+    }, 280);
+  };
+  const stopSpeed = () => {
+    if (speedTimer.current) { clearTimeout(speedTimer.current); speedTimer.current = null; }
+    const video = ref.current;
+    if (video && video.playbackRate !== 1) video.playbackRate = 1;
+    setSpeeding(false);
+  };
+  useEffect(() => () => { if (speedTimer.current) clearTimeout(speedTimer.current); }, []);
+
   return (
-    <div className="relative rounded-2xl overflow-hidden border" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+    <div className="relative rounded-2xl overflow-hidden border select-none" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
       <video
         ref={ref}
         src={src}
@@ -60,9 +96,20 @@ function FeedVideo({ src }) {
         muted={muted}
         loop
         playsInline
-        controls
         preload="metadata"
+        onPlay={() => setPaused(false)}
+        onPause={() => setPaused(true)}
+        onTimeUpdate={(event) => { const video = event.currentTarget; if (video.duration) setProgress((video.currentTime / video.duration) * 100); }}
+        onPointerDown={startSpeed}
+        onPointerUp={stopSpeed}
+        onPointerCancel={stopSpeed}
+        onPointerLeave={stopSpeed}
+        onClick={() => { if (speedUsed.current) { speedUsed.current = false; return; } togglePlay(); }}
       />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.35), transparent 42%)" }} />
+      {paused && <div className="absolute inset-0 pointer-events-none flex items-center justify-center"><span className="material-symbols-outlined text-white" style={{ fontSize: 42, filter: "drop-shadow(0 2px 8px #000)" }}>play_circle</span></div>}
+      {speeding && <div className="absolute top-3 left-1/2 -translate-x-1/2 pointer-events-none rounded-full px-3 py-1 text-xs font-black text-white" style={{ background: "rgba(0,0,0,0.65)" }}>Lecture x2</div>}
+      <div className="absolute bottom-0 left-0 right-0 h-1 pointer-events-none" style={{ background: "rgba(255,255,255,0.25)" }}><div className="h-full" style={{ width: `${progress}%`, background: "#fff" }} /></div>
       {/* Bouton son (l'autoplay impose le mode muet au départ) */}
       <button
         type="button"
