@@ -13,33 +13,32 @@
 
 // Échelle de surfaces : du fond le plus sombre aux surfaces surélevées.
 export const SURFACE = {
-  deep:      "#020617", // fond profond (derrière le verre, ex. chat)
-  base:      "#0b1326", // fond de l'app
-  low:       "#131b2e",
-  container: "#171f33",
-  high:      "#222a3d",
-  bright:    "#31394d",
+  deep:      "#000000",
+  base:      "#000000",
+  low:       "#050505",
+  container: "#0a0a0a",
+  high:      "#121212",
+  bright:    "#1b1b1b",
 };
 
 // Texte & bordures.
 export const TEXT = {
-  primary:  "#dae2fd", // sur surface
-  variant:  "#bbc9cd", // texte secondaire
-  muted:    "#859397", // libellés discrets
-  onAccent: "#00363e", // texte sur bouton accent
+  primary:  "#f5f5f5",
+  variant:  "#c9c9c9",
+  muted:    "#a3a3a3",
+  onAccent: "#050505",
 };
-export const OUTLINE = "#3c494c"; // bordures discrètes
+export const OUTLINE = "#2a2a2a";
 
 // Accent (couleur choisie par l'utilisateur ; défaut cyan). Lu une fois ;
 // pour la réactivité live, la variable CSS `--nexus-accent` reste la référence.
-export const ACCENT =
-  (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee";
-export const ACCENT_2 = "#3b82f6"; // 2e teinte des dégradés d'accent
-export const ACCENT_GRADIENT = `linear-gradient(135deg, ${ACCENT}, ${ACCENT_2})`;
+export const ACCENT = "#e5e5e5";
+export const ACCENT_2 = "#e5e5e5";
+export const ACCENT_GRADIENT = "#e5e5e5";
 
 // Effet « verre dépoli » — un réglage unique partout (barres, cartes, entêtes).
 export const glass = {
-  background: "rgba(19,27,46,0.6)",
+  background: "rgba(0,0,0,0.82)",
   backdropFilter: "blur(24px)",
   WebkitBackdropFilter: "blur(24px)",
   border: "1px solid rgba(255,255,255,0.06)",

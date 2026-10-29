@@ -57,7 +57,15 @@ export function applyAccent(color) {
 
 // À appeler une fois au démarrage de l'application.
 export function initAccent() {
-  const value = getAccent();
+  // Les anciennes installations pouvaient conserver un cyan/violet dans le
+  // navigateur. On le remplace au démarrage afin que les composants legacy
+  // qui lisent encore localStorage restent eux aussi dans le thème AMOLED.
+  const value = DEFAULT_ACCENT;
   _setVars(value);
+  try {
+    localStorage.setItem(STORAGE_KEY, value);
+  } catch {
+    /* stockage indisponible */
+  }
   return value;
 }

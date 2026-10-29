@@ -140,7 +140,7 @@ export function formatKickoff(dateStr) {
 // Badge « À VENIR » discret (gris anthracite) — remplace le badge LIVE.
 const UpcomingBadge = () => (
   <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-black tracking-wide"
-    style={{ background: "#232c3a", color: "#9fb0c8" }}>{i18n.t("livescores.upcoming_badge")}</span>
+    style={{ background: "#242424", color: "#c9c9c9" }}>{i18n.t("livescores.upcoming_badge")}</span>
 );
 
 // Badge DÉMO (données de simulation, jamais présentées comme réelles).
@@ -179,9 +179,9 @@ const Team = ({ id, logo, name, score, live, upcoming, flash, favT, onToggleTeam
     {logo ? (
       <img src={logo} alt="" className="w-4 h-4 object-contain flex-shrink-0" loading="lazy" />
     ) : (
-      <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ background: "#2a3446" }} />
+      <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ background: "#303030" }} />
     )}
-    <span className="text-xs truncate flex-1" style={{ color: "#c7d0e0" }}>{name}</span>
+    <span className="text-xs truncate flex-1" style={{ color: "#d4d4d4" }}>{name}</span>
     {/* Match à venir : pas de score (remplacé par l'heure/date dans le pied). */}
     {!upcoming && (
       <span className={`text-sm font-black tabular-nums ${flash ? "nexus-score-flash" : ""}`} style={{
@@ -210,7 +210,7 @@ export function MatchCard({ m, compact, flash, favL, favT, onToggleLeague, onTog
       role="button"
       className={`rounded-2xl p-3 flex flex-col justify-between cursor-pointer active:scale-[0.98] transition-transform ${compact ? "" : "flex-shrink-0"}`}
       style={{
-        background: ucl ? `linear-gradient(160deg, ${UCL_BLUE}1f, #111827 55%)` : "#111827",
+        background: ucl ? `linear-gradient(160deg, ${UCL_BLUE}14, #0a0a0a 55%)` : "#0a0a0a",
         border: `1px solid ${live ? NEON + "33" : ucl ? UCL_BLUE + "55" : "rgba(255,255,255,0.06)"}`,
         width: compact ? "auto" : 178, minHeight: 98,
       }}
@@ -268,7 +268,7 @@ export function MmaCard({ m, compact, flash }) {
   const w2 = done && m.winner && m.f2?.name === m.winner;
   return (
     <div className={`rounded-2xl p-3 flex flex-col justify-between ${compact ? "" : "flex-shrink-0"}`}
-      style={{ background: "#111827", border: `1px solid ${live ? NEON + "33" : "rgba(255,255,255,0.06)"}`, width: compact ? "auto" : 178, minHeight: 98 }}>
+      style={{ background: "#0a0a0a", border: `1px solid ${live ? NEON + "33" : "rgba(255,255,255,0.08)"}`, width: compact ? "auto" : 178, minHeight: 98 }}>
       <div className="flex items-center justify-between gap-2 mb-2">
         <span className="text-[10px] font-bold uppercase tracking-wider truncate flex items-center gap-1 min-w-0 flex-1" style={{ color: "#6b7686" }}>
           <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 12, color: "#ef4444" }}>sports_mma</span>
@@ -304,7 +304,7 @@ export function WweCard({ m, compact, flash }) {
     : formatKickoff(m.date);
   return (
     <div className={`rounded-2xl p-3 flex flex-col justify-between ${compact ? "" : "flex-shrink-0"}`}
-      style={{ background: "#111827", border: `1px solid ${live ? brandColor + "55" : "rgba(255,255,255,0.06)"}`, boxShadow: flash ? `0 0 18px ${brandColor}44` : "none", width: compact ? "auto" : 178, minHeight: 98 }}>
+      style={{ background: "#0a0a0a", border: `1px solid ${live ? brandColor + "55" : "rgba(255,255,255,0.08)"}`, boxShadow: flash ? `0 0 18px ${brandColor}44` : "none", width: compact ? "auto" : 178, minHeight: 98 }}>
       <div className="flex items-center justify-between gap-2 mb-2">
         <span className="flex items-center gap-1 min-w-0 flex-1">
           <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 12, color: brandColor }}>sports_kabaddi</span>
@@ -442,7 +442,7 @@ function StandingsModal({ favL, onClose }) {
           <button onClick={onClose} className="material-symbols-outlined" style={{ color: "#9fb0c8" }} aria-label="Fermer">close</button>
         </div>
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-3">
-          {available.map((item) => <button key={item.id} onClick={() => setLeagueId(item.id)} className="flex items-center gap-1.5 flex-shrink-0 rounded-xl px-2.5 py-2 text-xs font-bold" style={{ background: item.id === leagueId ? NEON + "20" : "#1a2234", color: item.id === leagueId ? "#eaf7ee" : "#aeb9cb" }}><LeagueLogo slug={item.id} name={item.name} size={20} />{item.name}</button>)}
+          {available.map((item) => <button key={item.id} onClick={() => setLeagueId(item.id)} className="flex items-center gap-1.5 flex-shrink-0 rounded-xl px-2.5 py-2 text-xs font-bold" style={{ background: item.id === leagueId ? NEON + "20" : "#121212", color: item.id === leagueId ? "#f5f5f5" : "#c9c9c9" }}><LeagueLogo slug={item.id} name={item.name} size={20} />{item.name}</button>)}
         </div>
         <div className="flex items-center gap-2 px-2 py-2 border-y" style={{ borderColor: "rgba(255,255,255,0.07)" }}><LeagueLogo slug={league.id} name={league.name} size={26} /><span className="text-sm font-bold text-white flex-1">{league.name}</span><span className="text-[10px] font-black" style={{ color: "#859397" }}>PTS</span></div>
         <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: "52vh" }}>
@@ -480,7 +480,7 @@ function FilterModal({ favL, favT, onToggleTeam, onSave, onClose }) {
         <p className="text-[12px] mb-4" style={{ color: "#859397" }}>Sélectionne des compétitions ou uniquement tes clubs : seuls leurs matchs seront affichés.</p>
         <div className="mb-4 rounded-2xl p-3" style={{ background: "#0b1220" }}>
           <label className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#859397" }}>Tes équipes favorites</label>
-          <div className="mt-2 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: "#1a2234" }}><span className="material-symbols-outlined" style={{ color: "#859397", fontSize: 18 }}>search</span><input value={teamQuery} onChange={(e) => setTeamQuery(e.target.value)} placeholder="PSG, Real Madrid, Arsenal…" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none" /></div>
+          <div className="mt-2 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: "#121212" }}><span className="material-symbols-outlined" style={{ color: "#a3a3a3", fontSize: 18 }}>search</span><input value={teamQuery} onChange={(e) => setTeamQuery(e.target.value)} placeholder="PSG, Real Madrid, Arsenal…" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none" /></div>
           {teamResults.length > 0 && <div className="mt-2 grid gap-1 sm:grid-cols-2">{teamResults.map((team) => { const on = favT.has(team.id); return <button key={team.id} onClick={() => onToggleTeam(team.id)} className="flex items-center gap-2 rounded-xl px-2 py-2 text-left" style={{ background: on ? NEON + "16" : "#ffffff08" }}>{team.logo ? <img src={team.logo} alt="" className="w-6 h-6 object-contain" loading="lazy" /> : <span className="w-6 h-6 rounded-full" style={{ background: "#2a3446" }} />}<span className="flex-1 truncate text-xs font-bold" style={{ color: "#eaf1ff" }}>{team.name}</span><span className="material-symbols-outlined" style={{ color: on ? NEON : "#6b7686", fontVariationSettings: `'FILL' ${on ? 1 : 0}` }}>star</span></button>; })}</div>}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[42vh] overflow-y-auto no-scrollbar">
@@ -489,7 +489,7 @@ function FilterModal({ favL, favT, onToggleTeam, onSave, onClose }) {
             return (
               <button key={l.id} onClick={() => toggle(l.id)}
                 className="w-full flex items-center justify-between gap-3 px-3 py-3 rounded-xl text-left active:scale-[0.99] transition-transform"
-                style={{ background: on ? NEON + "14" : "#1a2234" }}>
+                style={{ background: on ? NEON + "14" : "#121212" }}>
                 <span className="flex items-center gap-2 min-w-0"><LeagueLogo slug={l.id} name={l.name} /><span className="text-sm font-semibold truncate" style={{ color: on ? "#eaf7ee" : "#c7d0e0" }}>{l.name}</span></span>
                 <span className="relative flex-shrink-0" style={{ width: 40, height: 22, borderRadius: 999, background: on ? NEON : "#333d52", transition: "background 0.2s" }}>
                   <span className="absolute top-0.5 rounded-full bg-white" style={{ width: 18, height: 18, left: on ? 20 : 2, transition: "left 0.2s" }} />
@@ -505,7 +505,7 @@ function FilterModal({ favL, favT, onToggleTeam, onSave, onClose }) {
         </button>
         <button onClick={onClose} disabled={saving}
           className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
-          style={{ background: "#222a3d", color: "#a7b3cc" }}>{i18n.t("livescores.close")}</button>
+          style={{ background: "#181818", color: "#c9c9c9" }}>{i18n.t("livescores.close")}</button>
       </div>
     </div>
   );
@@ -674,10 +674,10 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   // Alerte épurée de confirmation de masquage.
   const confirmDialog = confirmHide && (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4"
-      style={{ background: "rgba(2,6,20,0.82)" }}
+      style={{ background: "rgba(0,0,0,0.88)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) setConfirmHide(false); }}>
       <div className="w-full max-w-xs rounded-3xl p-5 text-center"
-        style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)" }}>
+        style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)" }}>
         <span className="material-symbols-outlined mb-2" style={{ color: "#9fb0c8", fontSize: 30 }}>visibility_off</span>
         <h3 className="text-white font-bold text-base mb-1">{i18n.t("livescores.hide_confirm")}</h3>
         <p className="text-xs mb-4" style={{ color: "#859397" }}>{i18n.t("livescores.hide_body")}</p>
@@ -687,7 +687,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
           {i18n.t("livescores.hide")}
         </button>
         <button onClick={() => setConfirmHide(false)}
-          className="w-full py-2.5 rounded-xl font-bold text-sm" style={{ background: "#222a3d", color: "#a7b3cc" }}>
+          className="w-full py-2.5 rounded-xl font-bold text-sm" style={{ background: "#181818", color: "#c9c9c9" }}>
           {i18n.t("livescores.cancel")}
         </button>
       </div>
@@ -696,7 +696,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
 
   if (variant === "sidebar") {
     return (
-      <section className="rounded-2xl p-4" style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.05)", ...fadeStyle }}>
+      <section className="rounded-2xl p-4" style={{ background: "#050505", border: "1px solid rgba(255,255,255,0.08)", ...fadeStyle }}>
         <div className="mb-3">{header(true)}</div>
         <div className="space-y-2 max-h-[70vh] overflow-y-auto no-scrollbar">
           {arranged.map((m) => renderCard(m, true))}
