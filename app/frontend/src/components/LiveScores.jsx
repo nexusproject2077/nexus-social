@@ -698,8 +698,19 @@ export default function LiveScores({ variant = "mobile", setUser }) {
     return (
       <section className="rounded-2xl p-4" style={{ background: "#050505", border: "1px solid rgba(255,255,255,0.08)", ...fadeStyle }}>
         <div className="mb-3">{header(true)}</div>
-        <div className="space-y-2 max-h-[70vh] overflow-y-auto no-scrollbar">
-          {arranged.map((m) => renderCard(m, true))}
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto no-scrollbar">
+          {footItems.length > 0 && (
+            <section>
+              <h3 className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-wider" style={{ color: "#4ade80" }}><span className="material-symbols-outlined" style={{ fontSize: 15 }}>sports_soccer</span>Football</h3>
+              <div className="space-y-2">{footItems.map((m) => renderCard(m, true))}</div>
+            </section>
+          )}
+          {mmaItems.length > 0 && (
+            <section>
+              <h3 className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-wider" style={{ color: "#f87171" }}><span className="material-symbols-outlined" style={{ fontSize: 15 }}>sports_mma</span>MMA / UFC</h3>
+              <div className="space-y-2">{mmaItems.map((m) => renderCard(m, true))}</div>
+            </section>
+          )}
         </div>
         {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {showStandings && <StandingsModal favL={favL} onClose={() => setShowStandings(false)} />}

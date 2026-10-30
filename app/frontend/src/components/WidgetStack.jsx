@@ -33,7 +33,7 @@ const WIDGETS = {
   ai_analytics: { label: "AI Analytics", icon: "auto_graph", color: "#22d3ee", premium: true },
   astro_lifestyle: { label: "Astro", icon: "auto_awesome", color: "#e5e5e5", premium: true },
 };
-const DEFAULT_ORDER = ["trends", "screentime", "weather", "finance", "football", "mma", "wwe",
+const DEFAULT_ORDER = ["trends", "weather", "football", "mma", "wwe", "screentime", "finance",
   "profile_views", "ai_analytics", "astro_lifestyle"];
 
 // Signes astro (widget Astro Néon).
@@ -651,7 +651,10 @@ export default function WidgetStack({ user, setUser }) {
   const showMma = user?.show_mma !== false;
   const cfg = user?.widget_stack_config || {};
   const smartRotate = cfg.smart_rotate !== false;
-  const configOrder = (Array.isArray(cfg.order) && cfg.order.length) ? cfg.order : DEFAULT_ORDER;
+  const savedOrder = (Array.isArray(cfg.order) && cfg.order.length) ? cfg.order : DEFAULT_ORDER;
+  // Ces deux informations restent toujours les premières dans la pile : elles
+  // ne doivent pas dépendre d'un ancien ordre mémorisé avant la nouvelle UI.
+  const configOrder = ["trends", "weather", ...savedOrder.filter((id) => id !== "trends" && id !== "weather")];
   // WWE est un sport à part : dès qu'il est dans la pile, on le charge même si
   // le sport MMA/combat est masqué (sinon le widget « disparaît »).
   const wantWwe = configOrder.includes("wwe");
@@ -852,7 +855,9 @@ export default function WidgetStack({ user, setUser }) {
   const uclSoon = (m) => { const t = new Date(m.date).getTime(); return Number.isFinite(t) && (t - Date.now()) <= 6 * 3600 * 1000 && (t - Date.now()) >= -150 * 60 * 1000; };
   const uclMatchday = footItems.some((m) => isUclMatch(m) && (m.state === "in" || uclSoon(m)));
   const financeSwing = finance.some((a) => Math.abs(a.change_24h || 0) >= 5);
-  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, wwe: wantWwe, weather: !!weather, finance: finance.length > 0, screentime: true, trends: true,
+  // La carte météo doit rester accessible même si la permission arrive après
+  // le rendu (ou est refusée) : elle explique alors clairement quoi faire.
+  const avail = { football: showFoot && footItems.length > 0, mma: showMma && mmaItems.length > 0, wwe: wantWwe, weather: wantWeather, finance: finance.length > 0, screentime: true, trends: true,
     // Widgets Premium : toujours affichés (verrouillés = teaser d'abonnement).
     profile_views: true, ai_analytics: true, astro_lifestyle: true };
   const pages = configOrder.filter((id) => avail[id]);

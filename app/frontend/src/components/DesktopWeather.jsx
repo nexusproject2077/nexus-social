@@ -117,7 +117,7 @@ export default function DesktopWeather({ user }) {
 
   const iconColor = weather?.is_day ? "#fbbf24" : "#93c5fd";
   return (
-    <section className="rounded-2xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.05)" }}>
+    <section className="rounded-2xl p-5" style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)" }}>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-headline font-bold text-lg tracking-tight" style={{ color: "#dae2fd" }}>Météo</h2>
         <span className="material-symbols-outlined" style={{ color: iconColor, fontSize: 20 }}>{weatherIcon(weather?.cond, weather?.is_day)}</span>

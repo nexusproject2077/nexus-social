@@ -6,6 +6,7 @@ import { API } from "@/App";
 import { toast } from "sonner";
 import CallManager from "@/components/CallManager";
 import LiveScores from "@/components/LiveScores";
+import DesktopWeather from "@/components/DesktopWeather";
 
 export default function Layout({ children, user, setUser, onCreatePost, compact, hideMobileChrome, hideMobileHeader, bottomNav }) {
   const navigate = useNavigate();
@@ -356,10 +357,6 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           className="fixed right-0 top-0 h-screen w-80 z-40 hidden lg:flex flex-col py-8 px-6 gap-8 overflow-y-auto"
           style={{ backgroundColor: "#000", borderLeft: "1px solid rgba(255,255,255,0.08)" }}
         >
-          {/* Scores de foot en direct — tout en haut de la colonne. Optionnel :
-              masqué si l'utilisateur a désactivé les scores. */}
-          {(user?.show_sports !== false || user?.show_mma !== false) && <LiveScores variant="sidebar" setUser={setUser} />}
-
           {/* Trending — carte au fond gris très sombre (façon X) */}
           <section className="rounded-2xl p-5" style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)" }}>
             <h2 className="font-headline font-bold text-lg mb-5 tracking-tight" style={{ color: "#dae2fd" }}>{t("trending")}</h2>
@@ -385,6 +382,10 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
               )}
             </div>
           </section>
+
+          {/* Ordre PC : tendances, météo, puis sports séparés. */}
+          <DesktopWeather user={user} />
+          {(user?.show_sports !== false || user?.show_mma !== false) && <LiveScores variant="sidebar" setUser={setUser} />}
 
           {/* Suggested Users — même carte (cohérence avec Tendances) */}
           {suggestedUsers.length > 0 && (
