@@ -20,6 +20,7 @@ import PremiumModal from "@/components/PremiumModal";
 const NEON = "#4ade80";
 const STACK_H = 150;
 const ROW_H = 54;
+const SCORE_PAGE_SIZE = 10;
 const WIDGETS = {
   football: { label: "Football", icon: "sports_soccer", color: NEON },
   mma: { label: "MMA / UFC", icon: "sports_mma", color: "#ef4444" },
@@ -670,6 +671,8 @@ export default function WidgetStack({ user, setUser }) {
   const [screenMin, setScreenMin] = useState(() => getTodayMinutes());
   const [flashing, setFlashing] = useState({});
   const [openMatch, setOpenMatch] = useState(null);
+  const [footPage, setFootPage] = useState(0);
+  const [mmaPage, setMmaPage] = useState(0);
   const [active, setActive] = useState(0);
   const [editing, setEditing] = useState(false);
   const [configWidget, setConfigWidget] = useState(null);  // id du widget en cours de personnalisation
@@ -843,6 +846,12 @@ export default function WidgetStack({ user, setUser }) {
   const footItems = footBase.length ? footBase : (demoOn ? DEMO_FOOT : []);
   const mmaBase = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
   const mmaItems = mmaBase.length ? mmaBase : (demoOn ? DEMO_MMA : []);
+  const footPageCount = Math.max(1, Math.ceil(footItems.length / SCORE_PAGE_SIZE));
+  const mmaPageCount = Math.max(1, Math.ceil(mmaItems.length / SCORE_PAGE_SIZE));
+  const safeFootPage = Math.min(footPage, footPageCount - 1);
+  const safeMmaPage = Math.min(mmaPage, mmaPageCount - 1);
+  const visibleFootItems = footItems.slice(safeFootPage * SCORE_PAGE_SIZE, (safeFootPage + 1) * SCORE_PAGE_SIZE);
+  const visibleMmaItems = mmaItems.slice(safeMmaPage * SCORE_PAGE_SIZE, (safeMmaPage + 1) * SCORE_PAGE_SIZE);
   // WWE : direct d'abord, puis à venir, puis terminés (le tri vient déjà du client).
   const wweItems = matches.filter((m) => m.sport === "wwe");
   const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id));
@@ -1006,6 +1015,14 @@ export default function WidgetStack({ user, setUser }) {
     );
   };
 
+  const ScorePager = ({ page, pages, setPage }) => pages > 1 ? (
+    <div className="flex items-center justify-end gap-1.5 pt-1.5 flex-shrink-0">
+      <button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={page === 0} className="material-symbols-outlined rounded-md px-1 text-xs disabled:opacity-30" style={{ background: "#121212", color: "#e5e5e5" }} aria-label="Page précédente">chevron_left</button>
+      <span className="text-[10px] font-bold" style={{ color: "#a3a3a3" }}>{page + 1}/{pages}</span>
+      <button type="button" onClick={() => setPage((current) => Math.min(pages - 1, current + 1))} disabled={page >= pages - 1} className="material-symbols-outlined rounded-md px-1 text-xs disabled:opacity-30" style={{ background: "#121212", color: "#e5e5e5" }} aria-label="Page suivante">chevron_right</button>
+    </div>
+  ) : null;
+
   const pageNode = (id) => {
     if (id === "football") return (
       <div className="h-full flex flex-col px-3 py-2.5">
@@ -1020,7 +1037,7 @@ export default function WidgetStack({ user, setUser }) {
           </span>
         ) : null} /></div>
         <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-          {footItems.slice(0, 10).map((m) => {
+          {visibleFootItems.map((m) => {
             const live = m.state === "in", done = m.state === "post";
             const status = live ? `LIVE · ${m.clock || ""}` : done ? "Terminé" : formatKickoff(m.date);
             return <button key={m.id} onClick={() => setOpenMatch(m)} className="w-full flex items-center gap-2 py-2.5 text-left" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1030,14 +1047,16 @@ export default function WidgetStack({ user, setUser }) {
             </button>;
           })}
         </div>
+        <ScorePager page={safeFootPage} pages={footPageCount} setPage={setFootPage} />
       </div>
     );
     if (id === "mma") return (
       <div className="h-full flex flex-col px-3 py-2.5">
         <div className="pr-3"><PageHeader id="mma" /></div>
         <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-          {mmaItems.slice(0, 10).map((m) => <div key={m.id} className="flex items-center gap-2 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><span className="material-symbols-outlined" style={{ color: "#e57373", fontSize: 17 }}>sports_mma</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.f1?.name} · {m.f2?.name}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.event}</span></span><span className="text-[10px] font-bold" style={{ color: m.state === "in" ? NEON : "#cfcfcf" }}>{m.state === "in" ? "LIVE" : formatKickoff(m.date)}</span></div>)}
+          {visibleMmaItems.map((m) => <div key={m.id} className="flex items-center gap-2 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><span className="material-symbols-outlined" style={{ color: "#e57373", fontSize: 17 }}>sports_mma</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.f1?.name} · {m.f2?.name}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.event}</span></span><span className="text-[10px] font-bold" style={{ color: m.state === "in" ? NEON : "#cfcfcf" }}>{m.state === "in" ? "LIVE" : formatKickoff(m.date)}</span></div>)}
         </div>
+        <ScorePager page={safeMmaPage} pages={mmaPageCount} setPage={setMmaPage} />
       </div>
     );
     if (id === "wwe") return (
