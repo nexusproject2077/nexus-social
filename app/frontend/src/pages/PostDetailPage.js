@@ -25,6 +25,7 @@ export default function PostDetailPage({ user }) {
     try {
       const response = await axios.get(`${API}/posts/${postId}`);
       setPost(response.data);
+      axios.post(`${API}/users/me/watch-history`, { post_id: postId, content_type: 'post' }).catch(() => {});
     } catch (error) {
       toast.error(t("postdetail.err_load_post"));
     } finally {

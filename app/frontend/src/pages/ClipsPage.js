@@ -1113,6 +1113,7 @@ export default function ClipsPage({ user, setUser }) {
     if (!clip || viewedRef.current.has(clip.id)) return;
     viewedRef.current.add(clip.id);
     axios.post(`${API}/clips/${clip.id}/view`).catch(() => {});
+    axios.post(`${API}/users/me/watch-history`, { clip_id: clip.id, content_type: 'clip' }).catch(() => {});
   }, [activeIndex, clips]);
 
   useEffect(() => {
