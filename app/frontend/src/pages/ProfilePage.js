@@ -16,22 +16,22 @@ import { toast } from "sonner";
 
 // ── Design tokens (from Tailwind config) ──────────────────────────────────────
 const C = {
-  surface:          "#0b1326",
-  surfaceLow:       "#131b2e",
-  surfaceContainer: "#171f33",
-  surfaceHigh:      "#222a3d",
-  surfaceHighest:   "#2d3449",
-  surfaceBright:    "#31394d",
-  primary:          "#8aebff",
+  surface:          "#000000",
+  surfaceLow:       "#050505",
+  surfaceContainer: "#0a0a0a",
+  surfaceHigh:      "#121212",
+  surfaceHighest:   "#1b1b1b",
+  surfaceBright:    "#242424",
+  primary:          "#e5e5e5",
   primaryContainer: "var(--nexus-accent)",
-  onPrimary:        "#00363e",
+  onPrimary:        "#050505",
   outline:          "#859397",
   outlineVariant:   "#3c494c",
-  onSurface:        "#dae2fd",
+  onSurface:        "#f5f5f5",
 };
 
 const glass = {
-  background: "rgba(19, 27, 46, 0.72)",
+  background: "rgba(0, 0, 0, 0.82)",
   backdropFilter: "blur(40px)",
   WebkitBackdropFilter: "blur(40px)",
 };
@@ -362,7 +362,7 @@ export default function ProfilePage({ user, setUser }) {
       {/* ── Cinematic Hero ───────────────────────────────────────────────── */}
       <div className="relative w-full overflow-hidden" style={{ height: 290 }}>
         {/* Gradient banner (repli quand aucune bannière de couverture) */}
-        <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #0a1628 0%, #0d1e3d 35%, #071525 65%, #0b1326 100%)" }} />
+        <div className="absolute inset-0" style={{ background: "#000" }} />
         {/* Ambient glows */}
         <div className="absolute rounded-full blur-3xl" style={{ width: 320, height: 320, top: -40, left: "20%", background: "radial-gradient(circle, rgba(34,211,238,0.12), transparent)" }} />
         <div className="absolute rounded-full blur-3xl" style={{ width: 240, height: 240, top: 0, right: "25%", background: "radial-gradient(circle, rgba(59,130,246,0.10), transparent)" }} />

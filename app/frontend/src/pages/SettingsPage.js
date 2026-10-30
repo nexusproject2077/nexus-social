@@ -16,17 +16,17 @@ import { isPrivacyStrict, setPrivacyStrict } from '@/lib/privacyStrict';
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
-  surface:   "#0b1326",
-  low:       "#131b2e",
-  container: "#171f33",
-  high:      "#222a3d",
-  bright:    "#31394d",
-  cyan:      (typeof window !== "undefined" && window.localStorage.getItem("nexus_accent")) || "#22d3ee",
-  onPrimary: "#00363e",
+  surface:   "#000000",
+  low:       "#050505",
+  container: "#0a0a0a",
+  high:      "#121212",
+  bright:    "#1b1b1b",
+  cyan:      "#e5e5e5",
+  onPrimary: "#050505",
   outline:   "#859397",
   outlineVar:"#3c494c",
-  onSurface: "#dae2fd",
-  onVariant: "#bbc9cd",
+  onSurface: "#f5f5f5",
+  onVariant: "#c9c9c9",
   error:     "#ffb4ab",
 };
 
@@ -815,7 +815,7 @@ export default function SettingsPage({ user, setUser }) {
                   placeholder={t("settings.add_word_placeholder")}
                   maxLength={60}
                   className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
-                  style={{ backgroundColor: "#171f33", color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}
+                  style={{ backgroundColor: "#0a0a0a", color: C.onSurface, border: "1px solid rgba(255,255,255,0.1)" }}
                 />
                 <button
                   onClick={addMuted}
@@ -829,7 +829,7 @@ export default function SettingsPage({ user, setUser }) {
                 <div className="flex flex-wrap gap-2 mt-3">
                   {words.map((w) => (
                     <span key={w} className="inline-flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-full text-xs font-semibold"
-                      style={{ backgroundColor: "#171f33", color: C.onSurface, border: "1px solid rgba(255,255,255,0.08)" }}>
+                      style={{ backgroundColor: "#0a0a0a", color: C.onSurface, border: "1px solid rgba(255,255,255,0.1)" }}>
                       {w}
                       <button onClick={() => removeMuted(w)} aria-label={`Retirer ${w}`}
                         className="w-5 h-5 rounded-full flex items-center justify-center active:scale-90"

@@ -213,7 +213,7 @@ export default function AuthPage({ setUser }) {
 
       <main
         className="min-h-[100dvh] lg:h-screen grid lg:grid-cols-2"
-        style={{ backgroundColor: "#0b1326", color: "#dae2fd" }}
+        style={{ backgroundColor: "#000", color: "#f5f5f5" }}
       >
         {/* Sélecteur de langue — accessible dès l'arrivée sur la page. */}
         <div className="fixed top-3 right-3 z-50 rounded-full px-1.5 py-0.5"
@@ -224,7 +224,7 @@ export default function AuthPage({ setUser }) {
         {/* Left Column: Branding */}
         <section
           className="hidden lg:flex flex-col justify-center p-16 relative overflow-hidden"
-          style={{ backgroundColor: "#060e20" }}
+          style={{ backgroundColor: "#000" }}
         >
           <div
             className="absolute rounded-full blur-[120px]"
@@ -272,7 +272,7 @@ export default function AuthPage({ setUser }) {
         {/* Right Column: Form */}
         <section
           className="flex items-center justify-center p-5 sm:p-8 lg:p-12 lg:h-screen lg:overflow-y-auto"
-          style={{ backgroundColor: "#0b1326" }}
+          style={{ backgroundColor: "#000" }}
         >
           <div className="w-full max-w-md space-y-5 py-4">
             {/* Mobile logo */}
@@ -597,7 +597,7 @@ export default function AuthPage({ setUser }) {
       {/* Overlay 2FA : code de connexion reçu par email */}
       {twofa && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4" style={{ background: "rgba(3,7,18,0.94)", backdropFilter: "blur(6px)" }}>
-          <form onSubmit={submit2fa} className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#0b1326", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <form onSubmit={submit2fa} className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#050505", border: "1px solid rgba(255,255,255,0.1)" }}>
             <div className="text-center mb-4">
               <span className="material-symbols-outlined text-4xl mb-1" style={{ color: "#22d3ee" }}>encrypted</span>
               <h2 className="font-black text-lg" style={{ color: "#dae2fd" }}>{t("auth.twofa_title")}</h2>
@@ -618,7 +618,7 @@ export default function AuthPage({ setUser }) {
       {/* Overlay Mot de passe oublié */}
       {forgot && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4" style={{ background: "rgba(3,7,18,0.94)", backdropFilter: "blur(6px)" }}>
-          <form onSubmit={submitForgot} className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#0b1326", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <form onSubmit={submitForgot} className="w-full max-w-sm rounded-3xl p-6" style={{ background: "#050505", border: "1px solid rgba(255,255,255,0.1)" }}>
             <div className="text-center mb-4">
               <span className="material-symbols-outlined text-4xl mb-1" style={{ color: "#22d3ee" }}>lock_reset</span>
               <h2 className="font-black text-lg" style={{ color: "#dae2fd" }}>{t("auth.forgot_title")}</h2>

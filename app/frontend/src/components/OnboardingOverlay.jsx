@@ -44,13 +44,13 @@ export default function OnboardingOverlay() {
   return (
     <div
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
-      style={{ background: "rgba(2,6,23,0.78)", backdropFilter: "blur(4px)" }}
+      style={{ background: "rgba(0,0,0,0.88)", backdropFilter: "blur(4px)" }}
       onClick={(e) => { if (e.target === e.currentTarget) finish(); }}
     >
       <div
         className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden"
         style={{
-          background: "#0f172a",
+          background: "#050505",
           border: "1px solid rgba(255,255,255,0.08)",
           paddingBottom: "env(safe-area-inset-bottom)",
         }}
@@ -58,7 +58,7 @@ export default function OnboardingOverlay() {
         <div className="p-6 sm:p-8 text-center">
           <div
             className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-5"
-            style={{ background: "linear-gradient(135deg,#22d3ee,#3b82f6)" }}
+            style={{ background: "#e5e5e5" }}
           >
             <span className="material-symbols-outlined text-white" style={{ fontSize: 32 }}>{s.icon}</span>
           </div>

@@ -19,7 +19,32 @@ body {
 .App {
   min-height: 100vh;
   width: 100%;
+  background: #000;
 }
+
+/* Migration AMOLED : plusieurs écrans historiques avaient encore la palette
+   bleu nuit en styles inline. Ces règles couvrent aussi les composants qui ne
+   passent pas encore par lib/theme, sans toucher aux images, vidéos ni textes. */
+[style*="rgb(2, 6, 23)"],
+[style*="rgb(6, 14, 32)"],
+[style*="rgb(11, 19, 38)"],
+[style*="rgb(13, 20, 36)"],
+[style*="rgba(2, 6, 23"],
+[style*="rgba(2, 6, 20"],
+[style*="rgba(11, 19, 38"] {
+  background-color: #000 !important;
+}
+
+[style*="rgb(15, 23, 42)"],
+[style*="rgb(17, 24, 39)"],
+[style*="rgb(23, 31, 51)"],
+[style*="rgb(26, 34, 52)"],
+[style*="rgb(34, 42, 61)"] {
+  background-color: #0a0a0a !important;
+}
+
+.bg-\[\#0b1326\] { background-color: #000 !important; }
+.bg-\[\#171f33\], .bg-\[\#111827\] { background-color: #0a0a0a !important; }
 
 /* Scrollbar Styles */
 ::-webkit-scrollbar {

@@ -435,7 +435,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {!hideMobileChrome && !hideMobileHeader && (
       <header
         className="lg:hidden fixed top-0 left-0 right-0 z-50 flex flex-col select-none transition-transform duration-300 pt-safe"
-        style={{ backgroundColor: "rgba(11,19,38,0.85)", backdropFilter: "blur(20px)", transform: headerHidden ? "translateY(-100%)" : "translateY(0)" }}
+        style={{ backgroundColor: "rgba(0,0,0,0.92)", backdropFilter: "blur(20px)", transform: headerHidden ? "translateY(-100%)" : "translateY(0)" }}
       >
         {/* Ligne 1 : « Nexus Social » centré, cloche de notifications à droite
             (comme avant). Pas de trait de séparation. */}
@@ -504,7 +504,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           // appareils sans encoche (safe-area = 0), reste exactement 4rem.
           height: "calc(4rem + env(safe-area-inset-bottom))",
           paddingBottom: "env(safe-area-inset-bottom)",
-          backgroundColor: "rgba(11,19,38,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.05)",
+          backgroundColor: "rgba(0,0,0,0.94)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.08)",
         }}
       >
         {/* Le bouton « + » n'est plus au centre : il flotte en bas à droite (FAB,

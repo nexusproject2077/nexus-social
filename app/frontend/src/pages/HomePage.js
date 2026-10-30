@@ -233,7 +233,7 @@ export default function HomePage({ user, setUser }) {
         <header
           className="sticky top-0 z-30 h-16 hidden lg:flex items-center px-8"
           style={{
-            backgroundColor: "rgba(11,19,38,0.7)",
+            backgroundColor: "rgba(0,0,0,0.88)",
             backdropFilter: "blur(20px)",
           }}
         >
@@ -329,7 +329,7 @@ export default function HomePage({ user, setUser }) {
             <div className="space-y-4 lg:space-y-6" data-testid="feed-skeleton">
               {serverWaking && (
                 <div className="flex items-center gap-3 rounded-2xl px-4 py-3"
-                  style={{ backgroundColor: "#171f33", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  style={{ backgroundColor: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)" }}>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: "#22d3ee" }} />
                   <p className="text-sm" style={{ color: "#a9b6d9" }}>
                     {t("feed.server_waking")}
@@ -340,7 +340,7 @@ export default function HomePage({ user, setUser }) {
                 <div
                   key={i}
                   className="rounded-2xl border p-4 lg:p-5"
-                  style={{ backgroundColor: "#171f33", borderColor: "rgba(255,255,255,0.05)" }}
+                  style={{ backgroundColor: "#0a0a0a", borderColor: "rgba(255,255,255,0.08)" }}
                 >
                   <div className="flex items-center gap-3 mb-4">
                     <Skeleton className="w-10 h-10 rounded-full" />
@@ -397,7 +397,7 @@ export default function HomePage({ user, setUser }) {
           {/* Carte de fin épurée : « tu as fait le tour de ton réseau ». */}
           {!loading && posts.length > 0 && (endGate || !hasMore) && (
             <div className="mx-3 my-6 rounded-2xl px-6 py-8 flex flex-col items-center text-center"
-              style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.06)" }}>
+              style={{ background: "#050505", border: "1px solid rgba(255,255,255,0.1)" }}>
               <svg width="40" height="40" viewBox="0 0 48 48" fill="none" stroke="#22d3ee" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M24 8 l3.2 8.8 L36 20 l-8.8 3.2 L24 32 l-3.2-8.8 L12 20 l8.8-3.2 Z" />
                 <path d="M37 30 l1.4 3.8 L42 35 l-3.6 1.2 L37 40 l-1.4-3.8 L32 35 l3.6-1.2 Z" />
@@ -409,7 +409,7 @@ export default function HomePage({ user, setUser }) {
               {endKind === "fresh" && !user?.is_minor && (
                 <button onClick={resumeExplore}
                   className="mt-4 px-4 py-2 rounded-full text-xs font-bold"
-                  style={{ background: "#1a2234", color: "#c7d0e0", border: "1px solid rgba(255,255,255,0.1)" }}>
+                  style={{ background: "#121212", color: "#d4d4d4", border: "1px solid rgba(255,255,255,0.12)" }}>
                   {t("feed.resume_explore")}
                 </button>
               )}
