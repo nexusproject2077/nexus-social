@@ -432,9 +432,9 @@
     "twofa_sent_title": "Code de connexion envoyé par email.",
     "twofa_sent_desc": "Vérifie ta boîte (et les spams).",
     "err_generic": "Une erreur s'est produite",
-    "hero_title_1": "Ton réseau social,",
-    "hero_title_2": "à ta façon.",
-    "hero_body": "Ta vie privée d'abord, tes créateurs mis en avant, et la liberté de t'exprimer. Poste, filme, discute et soutiens ta communauté, sans suivi caché ni bruit inutile.",
+    "hero_title_1": "Tout ce qui compte.",
+    "hero_title_2": "En un seul endroit.",
+    "hero_body": "Partage, regarde, discute et retrouve ta communauté, sans bruit inutile.",
     "lang_label": "Langue"
   },
   "dm": {
