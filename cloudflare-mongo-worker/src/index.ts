@@ -229,7 +229,7 @@ export default {
           const [followers, following, posts] = await Promise.all([
             db.collection("follows").countDocuments({ followed_id: targetId, status: "following" }),
             db.collection("follows").countDocuments({ follower_id: targetId, status: "following" }),
-            db.collection("posts").countDocuments({ author_id: targetId }),
+            db.collection("posts").countDocuments({ author_id: targetId, repost_of: null, soft_deleted: { $ne: true }, is_draft: { $ne: true } }),
           ]);
           return json({ followers, following, posts }, 200, request);
         }
@@ -242,7 +242,7 @@ export default {
         }
         if (action === "posts" && request.method === "GET") {
           if (!(await canViewTarget())) return json({ detail: "Private profile" }, 403, request);
-          const posts = await db.collection("posts").find({ author_id: targetId, soft_deleted:{$ne:true} }, { projection: { _id: 0 } }).sort({ created_at: -1 }).limit(200).toArray();
+          const posts = await db.collection("posts").find({ author_id: targetId, repost_of: null, soft_deleted:{$ne:true}, is_draft:{$ne:true} }, { projection: { _id: 0 } }).sort({ created_at: -1 }).limit(200).toArray();
           const ids = posts.map((p:any) => p.id).filter(Boolean);
           const [liked, saved] = ids.length ? await Promise.all([
             db.collection("likes").find({ user_id: uid, post_id: { $in: ids } }, { projection: { _id: 0, post_id: 1 } }).toArray(),
@@ -254,7 +254,7 @@ export default {
         if ((action === "reposts" || action === "mentions") && request.method === "GET") {
           if (!(await canViewTarget())) return json({ detail: "Private profile" }, 403, request);
           const query:any = action === "reposts"
-            ? { author_id: targetId, repost_of: { $ne: null } }
+            ? { author_id: targetId, repost_of: { $ne: null }, soft_deleted: { $ne: true } }
             : { mentioned_user_ids: targetId, repost_of: null };
           const posts = await db.collection("posts").find(query, { projection: { _id: 0 } }).sort({ created_at: -1 }).limit(50).toArray();
           const ids = posts.map((p:any) => p.id).filter(Boolean);
