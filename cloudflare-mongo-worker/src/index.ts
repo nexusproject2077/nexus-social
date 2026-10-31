@@ -212,8 +212,21 @@ export default {
         return json(publicUser(user),200,request);
       }
 
+      if (url.pathname === "/api/sports/data" && request.method === "GET") {
+        const resource=String(url.searchParams.get("resource")||""),league=String(url.searchParams.get("league")||""),dates=String(url.searchParams.get("dates")||""),event=String(url.searchParams.get("event")||""),q=String(url.searchParams.get("q")||"").trim();
+        const validLeague=/^[a-z0-9.\-]{2,30}$/.test(league),validDates=/^\d{8}-\d{8}$/.test(dates),validEvent=/^\d{3,20}$/.test(event);
+        let upstream="";
+        if(resource==="soccer-scoreboard"&&validLeague) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/scoreboard"+(validDates?"?dates="+dates+"&limit=1000":"");
+        else if(resource==="soccer-teams"&&validLeague) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/teams";
+        else if(resource==="soccer-standings"&&validLeague) upstream="https://site.api.espn.com/apis/v2/sports/soccer/"+encodeURIComponent(league)+"/standings";
+        else if(resource==="soccer-summary"&&validLeague&&validEvent) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/summary?event="+event;
+        else if(resource==="mma-scoreboard") upstream="https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard";
+        else if(resource==="team-search"&&q.length>=2&&q.length<=80) upstream="https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t="+encodeURIComponent(q);
+        else return json({detail:"Invalid sports query"},400,request);
+        try {const response=await fetch(upstream,{headers:{Accept:"application/json"}});if(!response.ok)return json({detail:"Sports provider unavailable"},502,request);return json(await response.json(),200,request);}catch{return json({detail:"Sports provider unavailable"},502,request);}
+      }
       const user = url.pathname.startsWith("/api/") && env.SECRET_KEY ? await authUser(request,env.SECRET_KEY,db) : null;
-      if (url.pathname.startsWith("/api/") && !["/api/geo/status","/api/geo/language","/api/wwe/events"].includes(url.pathname) && !user) return json({detail:"Not authenticated"},401,request);
+      if (url.pathname.startsWith("/api/") && !["/api/geo/status","/api/geo/language","/api/wwe/events","/api/sports/data"].includes(url.pathname) && !user) return json({detail:"Not authenticated"},401,request);
       const uid=String(user?.id||"");
       const userRoute = url.pathname.match(/^\/api\/users\/([^/]+)(?:\/(stats|posts|follow-status|reposts|mentions|follow))?$/);
       if (userRoute && !["me","search"].includes(decodeURIComponent(userRoute[1]))) {
