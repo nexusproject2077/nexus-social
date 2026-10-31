@@ -16,6 +16,15 @@ const SOCCER_LEAGUES = [
   ["usa.1", "MLS"],
 ];
 
+const FRENCH_LEAGUE_NAMES = {
+  "fra.1": "Ligue 1", "fra.2": "Ligue 2", "fra.3": "National",
+  "eng.1": "Premier League", "eng.2": "Championship", "esp.1": "LaLiga",
+  "ita.1": "Serie A", "ger.1": "Bundesliga", "uefa.champions": "Ligue des champions",
+  "uefa.europa": "Ligue Europa", "uefa.europa.conf": "Ligue Conférence",
+  "fifa.world": "Coupe du monde", "uefa.euro": "Euro", "usa.1": "MLS",
+};
+export const localizeLeagueName = (slug, fallback = "") => FRENCH_LEAGUE_NAMES[String(slug || "").toLowerCase()] || fallback;
+
 async function fetchSports(resource, params = {}) {
   try {
     const query = new URLSearchParams({ resource, ...Object.fromEntries(Object.entries(params).filter(([, value]) => value)) });
@@ -56,7 +65,7 @@ export async function fetchStandingsFromEspn(slug) {
 function normalizeLeague(data, slug, fallbackName) {
   const out = [];
   if (!data) return out;
-  const leagueName = data.leagues?.[0]?.name || fallbackName;
+  const leagueName = localizeLeagueName(slug, data.leagues?.[0]?.name || fallbackName);
   // Les compétitions féminines ne font pas partie du périmètre de ce panneau.
   // Le contrôle porte aussi sur le libellé ESPN pour éviter un retour accidentel
   // via une ligue ou un événement renommé.

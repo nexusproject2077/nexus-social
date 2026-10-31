@@ -2,7 +2,7 @@
 // Design sombre premium, typo fine (Inter), icônes 100 % SVG (aucun emoji).
 // Événements domicile à GAUCHE de l'axe, extérieur à DROITE. Rafraîchi 60 s.
 import { useState, useEffect, useCallback } from "react";
-import { fetchMatchDetailsFromEspn } from "@/lib/espnClient";
+import { fetchMatchDetailsFromEspn, localizeLeagueName } from "@/lib/espnClient";
 import MatchRoom from "@/components/MatchRoom";
 import i18n from "@/i18n";
 
@@ -117,6 +117,19 @@ const Side = ({ ev, align }) => {
 const HOME_C = "#3b82f6"; // domicile = bleu
 const AWAY_C = "#ef4444"; // extérieur = rouge
 
+const formatParisKickoff = (value) => {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date).replace(/\.$/, "");
+};
+
 // Une ligne de stat : valeur domicile · libellé · valeur extérieur + barre
 // à deux segments proportionnels (façon capture X).
 function StatBar({ label, home, away }) {
@@ -204,6 +217,11 @@ export default function MatchCenter({ match, onClose, currentUser }) {
 
   const h = { ...match, ...(detail?.header || {}) };
   const live = h.state === "in";
+  const matchStatus = live
+    ? (h.clock || i18n.t("matchcenter.in_progress"))
+    : h.state === "pre"
+      ? formatParisKickoff(h.date)
+      : (h.detail || "");
   const events = detail?.events || [];
   const ordered = [...events].reverse(); // le plus récent en haut
   const stats = detail?.stats || [];
@@ -226,7 +244,7 @@ export default function MatchCenter({ match, onClose, currentUser }) {
         {/* En-tête : équipes + score */}
         <div className="px-5 pt-5 pb-4 flex-shrink-0" style={{ background: "linear-gradient(180deg,#111a2e,#0b1220)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#6b7686" }}>{match?.league}</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#6b7686" }}>{localizeLeagueName(match?.league_slug, match?.league)}</span>
             <button onClick={onClose} className="w-8 h-8 -mr-1 flex items-center justify-center rounded-full active:scale-90 transition-transform" aria-label={i18n.t("matchcenter.close")}>
               <span className="material-symbols-outlined" style={{ color: "#9fb0c8", fontSize: 22 }}>close</span>
             </button>
@@ -244,7 +262,7 @@ export default function MatchCenter({ match, onClose, currentUser }) {
               </div>
               <span className="text-[11px] font-bold mt-1 flex items-center gap-1" style={{ color: live ? NEON : "#8b96a8" }}>
                 {live && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: NEON }} />}
-                {live ? (h.clock || i18n.t("matchcenter.in_progress")) : (h.detail || "")}
+                {matchStatus}
               </span>
             </div>
             <div className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
