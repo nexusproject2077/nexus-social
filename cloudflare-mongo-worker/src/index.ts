@@ -228,6 +228,8 @@ export default {
       const user = url.pathname.startsWith("/api/") && env.SECRET_KEY ? await authUser(request,env.SECRET_KEY,db) : null;
       if (url.pathname.startsWith("/api/") && !["/api/geo/status","/api/geo/language","/api/wwe/events","/api/sports/data"].includes(url.pathname) && !user) return json({detail:"Not authenticated"},401,request);
       const uid=String(user?.id||"");
+      const matchRoomRoute=url.pathname.match(/^\/api\/match-rooms\/([^/]+)\/messages$/);
+      if(matchRoomRoute){const matchId=decodeURIComponent(matchRoomRoute[1]);if(!/^[a-zA-Z0-9._:-]{3,100}$/.test(matchId))return json({detail:"Invalid match room"},400,request);if(request.method==="GET"){const rows=await db.collection("match_room_messages").find({match_id:matchId},{projection:{_id:0}}).sort({created_at:1}).limit(200).toArray();return json({messages:rows},200,request);}if(request.method==="POST"){let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400,request);}const content=String(b?.content||"").trim();if(!content||content.length>500)return json({detail:"Invalid message"},400,request);const message={id:crypto.randomUUID(),match_id:matchId,content,author_id:uid,author_username:String(user?.username||"Membre"),author_profile_pic:user?.profile_pic||null,created_at:new Date().toISOString()};await db.collection("match_room_messages").insertOne(message);return json({message},201,request);}return json({detail:"Method not allowed"},405,request);}
       const userRoute = url.pathname.match(/^\/api\/users\/([^/]+)(?:\/(stats|posts|follow-status|reposts|mentions|follow))?$/);
       if (userRoute && !["me","search"].includes(decodeURIComponent(userRoute[1]))) {
         const targetId = decodeURIComponent(userRoute[1]);
