@@ -354,6 +354,7 @@ export default function SettingsPage({ user, setUser }) {
     try {
       const res = await axios.get(`${API}/users/me/settings`);
       setSettings(res.data);
+      if (res.data?.ad_targeting) localStorage.setItem("nexus_ad_targeting", JSON.stringify(res.data.ad_targeting));
       if (res.data?.profile) setProfileData(res.data.profile);
     } catch { toast.error(t("settings.err_loading")); }
     finally { setLoading(false); }
@@ -372,6 +373,23 @@ export default function SettingsPage({ user, setUser }) {
       setSettings(prev => ({ ...prev, privacy: { ...prev?.privacy, [key]: value } }));
       toast.success(t("settings.updated"));
     } catch { toast.error(t("settings.err_generic")); }
+  };
+
+  const updateAdTargeting = async (key, value) => {
+    const previous = settings?.ad_targeting || {};
+    const next = { ...previous, [key]: value };
+    setSettings((current) => ({ ...current, ad_targeting: next }));
+    try {
+      const response = await axios.put(`${API}/users/me/ad-targeting`, { [key]: value });
+      const saved = response.data || next;
+      setSettings((current) => ({ ...current, ad_targeting: saved }));
+      localStorage.setItem("nexus_ad_targeting", JSON.stringify(saved));
+      window.dispatchEvent(new Event("nexus:ad-targeting-change"));
+      toast.success(t("settings.updated"));
+    } catch {
+      setSettings((current) => ({ ...current, ad_targeting: previous }));
+      toast.error(t("settings.err_generic"));
+    }
   };
 
   const updateProfile = async () => {
@@ -865,9 +883,9 @@ export default function SettingsPage({ user, setUser }) {
       {/* Ad targeting */}
       <Card>
         <CardHeader title={t("settings.ad_targeting")} icon="target" />
-        <ToggleRow label={t("settings.personalized_ads")} sublabel={t("settings.personalized_ads_sub")} checked={true} onChange={() => toast.info(t("settings.setting_soon"))} />
-        <ToggleRow label={t("settings.third_party_data")} sublabel={t("settings.third_party_data_sub")} checked={false} onChange={() => toast.info(t("settings.setting_soon"))} />
-        <ToggleRow label={t("settings.geo_targeting")} sublabel={t("settings.geo_targeting_sub")} checked={false} onChange={() => toast.info(t("settings.setting_soon"))} />
+        <ToggleRow label={t("settings.personalized_ads")} sublabel={t("settings.personalized_ads_sub")} checked={Boolean(settings?.ad_targeting?.personalized_ads)} onChange={(value) => updateAdTargeting("personalized_ads", value)} />
+        <ToggleRow label={t("settings.third_party_data")} sublabel={t("settings.third_party_data_sub")} checked={Boolean(settings?.ad_targeting?.third_party_data)} onChange={(value) => updateAdTargeting("third_party_data", value)} />
+        <ToggleRow label={t("settings.geo_targeting")} sublabel={t("settings.geo_targeting_sub")} checked={Boolean(settings?.ad_targeting?.geo_targeting)} onChange={(value) => updateAdTargeting("geo_targeting", value)} />
       </Card>
     </div>
   );

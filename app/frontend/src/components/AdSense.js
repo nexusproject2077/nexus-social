@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useGeo } from "@/context/GeoContext";
 import { isPrivacyStrict, onPrivacyStrictChange } from "@/lib/privacyStrict";
+import axios from "axios";
+import { API } from "../App";
 
 // Identifiant éditeur AdSense (ex. "ca-pub-XXXXXXXXXXXX").
 // La valeur peut être surchargée via l'env ; à défaut on utilise l'ID du site
@@ -28,14 +30,35 @@ const isPremiumUser = () => {
   }
 };
 
+const getAdTargeting = () => {
+  try {
+    return { personalized_ads: false, third_party_data: false, geo_targeting: false, ...JSON.parse(window.localStorage?.getItem("nexus_ad_targeting") || "{}") };
+  } catch {
+    return { personalized_ads: false, third_party_data: false, geo_targeting: false };
+  }
+};
+
 export default function AdSense({ slot, format = "auto" }) {
   const initialized = useRef(false);
   const { restricted } = useGeo();
   const [strict, setStrict] = useState(isPrivacyStrict());
+  const [targeting, setTargeting] = useState(getAdTargeting);
 
   // Réagit en direct au Mode Confidentialité stricte (les pubs disparaissent /
   // réapparaissent sans rechargement de page).
   useEffect(() => onPrivacyStrictChange(setStrict), []);
+  useEffect(() => {
+    const refresh = () => setTargeting(getAdTargeting());
+    window.addEventListener("nexus:ad-targeting-change", refresh);
+    return () => window.removeEventListener("nexus:ad-targeting-change", refresh);
+  }, []);
+  useEffect(() => {
+    axios.get(`${API}/users/me/ad-targeting`).then((response) => {
+      const saved = response.data || getAdTargeting();
+      localStorage.setItem("nexus_ad_targeting", JSON.stringify(saved));
+      setTargeting(saved);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Aucune pub pour les visiteurs restreints (UE), les membres Premium, ni en
@@ -55,15 +78,12 @@ export default function AdSense({ slot, format = "auto" }) {
 
     try {
       window.adsbygoogle = window.adsbygoogle || [];
-      // Hors-UE : pubs personnalisées (accès complet) sauf si NPA forcé par l'env.
-      if (NON_PERSONALIZED) {
-        window.adsbygoogle.requestNonPersonalizedAds = 1;
-      }
+      window.adsbygoogle.requestNonPersonalizedAds = NON_PERSONALIZED || !targeting.personalized_ads ? 1 : 0;
       window.adsbygoogle.push({});
     } catch {
       /* le script n'est pas encore prêt : AdSense réessaiera au chargement */
     }
-  }, [slot, restricted, strict]);
+  }, [slot, restricted, strict, targeting.personalized_ads]);
 
   // Rien n'est rendu si mode strict, restreint (UE), Premium, non configuré, ou non consenti.
   if (strict || restricted || isPremiumUser() || !ADSENSE_CLIENT || !slot || !adsAllowed()) return null;
@@ -76,6 +96,7 @@ export default function AdSense({ slot, format = "auto" }) {
       data-ad-slot={slot}
       data-ad-format={format}
       data-full-width-responsive="true"
+      data-npa={NON_PERSONALIZED || !targeting.personalized_ads ? "1" : undefined}
     />
   );
 }
