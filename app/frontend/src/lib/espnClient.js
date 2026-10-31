@@ -167,6 +167,7 @@ const TEAM_DIR_LEAGUES = [
   "fifa.world", "uefa.euro",                // Sélections nationales (CdM / Euro)
   "eng.1", "esp.1", "ita.1", "ger.1", "fra.1", // top 5
   "eng.2", "eng.3", "esp.2", "fra.2", "ita.2", "ger.2", "ned.1", "bel.1", "por.1", "tur.1", "sco.1", "aut.1", "sui.1", "gre.1", "den.1", "swe.1", "nor.1", "pol.1", "cze.1", "ukr.1", // Europe élargie
+  "eng.4", "esp.3", "ita.3", "ger.3", "ger.4", "fra.3", "fra.coupe", // divisions et coupes nationales
   "usa.1", "usa.2", "mex.1", "bra.1", "arg.1", "chi.1", "col.1", "uru.1", "jpn.1", "kor.1", "aus.1", "sau.1", "qat.1", "chn.1", "rsa.1", // Amériques, Asie, Afrique, Golfe
 ];
 
@@ -259,6 +260,43 @@ function loadTeamDirectory() {
 const _DIACRITICS = new RegExp("[\\u0300-\\u036f]", "g");
 const _fold = (s) => (s || "").toLowerCase().normalize("NFD").replace(_DIACRITICS, "");
 
+// Certains clubs sont connus sous un sigle, un ancien nom ou une forme courte.
+// Une clé canonique permet à un favori issu du catalogue mondial de retrouver
+// le même club dans les scoreboards ESPN.
+const TEAM_ALIASES = {
+  "estac": "troyes", "estac troyes": "troyes", "es troyes ac": "troyes",
+  "paris sg": "psg", "paris saint germain": "psg", "olympique lyonnais": "lyon",
+};
+const canonicalTeamName = (name) => {
+  const folded = _fold(name).replace(/[^a-z0-9]+/g, " ").trim();
+  return TEAM_ALIASES[folded] || folded;
+};
+export const teamFavoriteKey = (name) => `name:${canonicalTeamName(name)}`;
+
+async function searchGlobalTeams(query) {
+  const aliases = [...new Set([query, TEAM_ALIASES[canonicalTeamName(query)]].filter(Boolean))];
+  const payloads = await Promise.all(aliases.map((term) => fetchJson(`https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(term)}`)));
+  const found = new Map();
+  for (const payload of payloads) {
+    for (const team of payload?.teams || []) {
+      const name = team.strTeam || team.strTeamShort || team.strAlternate || "";
+      if (!name) continue;
+      const key = teamFavoriteKey(name);
+      if (!found.has(key)) found.set(key, {
+        id: key,
+        name,
+        shortName: team.strTeamShort || team.strAlternate || "",
+        abbrev: "",
+        logo: team.strTeamBadge || team.strTeamLogo || null,
+        league: team.strLeague || "",
+        country: team.strCountry || "",
+        global: true,
+      });
+    }
+  }
+  return [...found.values()];
+}
+
 // Résout l'ID ESPN EXACT d'une sélection nationale (ou club) à partir de son nom
 // officiel (« France », « Türkiye »…), en interrogeant l'annuaire (qui inclut
 // fifa.world / uefa.euro). Renvoie null si aucune correspondance exacte → l'appelant
@@ -275,7 +313,7 @@ export async function resolveTeamIdByName(names) {
 export async function searchTeamsFromEspn(query, limit = 24) {
   const q = _fold((query || "").trim());
   if (q.length < 2) return [];
-  const dir = await loadTeamDirectory();
+  const [dir, globalTeams] = await Promise.all([loadTeamDirectory(), searchGlobalTeams(query)]);
   const scored = [];
   for (const t of dir) {
     const name = _fold(t.name);
@@ -288,7 +326,11 @@ export async function searchTeamsFromEspn(query, limit = 24) {
     if (score >= 0) scored.push([score, t]);
   }
   scored.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name));
-  return scored.slice(0, limit).map((x) => x[1]);
+  const espnTeams = scored.map((x) => x[1]);
+  // ESPN garde ses IDs lorsqu'il connaît le club ; sinon le catalogue mondial
+  // fournit une clé nommée persistante, utilisable pour filtrer les futurs matchs.
+  const seen = new Set(espnTeams.map((team) => teamFavoriteKey(team.name)));
+  return [...espnTeams, ...globalTeams.filter((team) => !seen.has(team.id))].slice(0, limit);
 }
 
 // ─────────────── Détail d'un match : chronologie des événements ────────────────

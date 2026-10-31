@@ -8,7 +8,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 import MatchCenter from "@/components/MatchCenter";
-import { fetchLiveScoresFromEspn, fetchStandingsFromEspn, getLeagueLogo, searchTeamsFromEspn } from "@/lib/espnClient";
+import { fetchLiveScoresFromEspn, fetchStandingsFromEspn, getLeagueLogo, searchTeamsFromEspn, teamFavoriteKey } from "@/lib/espnClient";
 import i18n from "@/i18n";
 
 const NEON = "#4ade80";      // vert néon (match en cours)
@@ -88,7 +88,7 @@ export const keepRecentEvent = (match, now = Date.now()) => {
 
 // Tri client identique au backend : favoris d'abord, puis en cours, puis date.
 export function sortMatches(list, favL, favT) {
-  const isFav = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id);
+  const isFav = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id) || favT.has(teamFavoriteKey(m.home)) || favT.has(teamFavoriteKey(m.away));
   return [...list].sort((a, b) =>
     (isFav(a) ? 0 : 1) - (isFav(b) ? 0 : 1)
     || (STATE_ORDER[a.state] ?? 3) - (STATE_ORDER[b.state] ?? 3)
@@ -100,7 +100,7 @@ export function sortMatches(list, favL, favT) {
 // final (plus récents d'abord, ~24 h). Favoris remontés dans chaque groupe.
 export function displayMatches(list, favL, favT) {
   const recentList = list.filter(keepRecentEvent);
-  const isFav = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id);
+  const isFav = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id) || favT.has(teamFavoriteKey(m.home)) || favT.has(teamFavoriteKey(m.away));
   // Dès qu'une préférence est définie, elle devient un vrai filtre : une autre
   // compétition ne se glisse plus dans la liste. Le MMA reste à part car la
   // modale ne propose que des compétitions de football.
@@ -190,7 +190,7 @@ const Team = ({ id, logo, name, score, live, upcoming, flash, favT, onToggleTeam
         minWidth: 14, textAlign: "right",
       }}>{score ?? "-"}</span>
     )}
-    {!!id && <StarBtn active={favT.has(id)} onClick={() => onToggleTeam(id)} size={13} />}
+    {!!id && <StarBtn active={favT.has(id) || favT.has(teamFavoriteKey(name))} onClick={() => onToggleTeam(favT.has(teamFavoriteKey(name)) ? teamFavoriteKey(name) : id)} size={13} />}
   </div>
 );
 
@@ -481,7 +481,7 @@ function FilterModal({ favL, favT, onToggleTeam, onSave, onClose }) {
         <div className="mb-4 rounded-2xl p-3" style={{ background: "#0b1220" }}>
           <label className="text-[10px] font-black uppercase tracking-wider" style={{ color: "#859397" }}>Tes équipes favorites</label>
           <div className="mt-2 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: "#121212" }}><span className="material-symbols-outlined" style={{ color: "#a3a3a3", fontSize: 18 }}>search</span><input value={teamQuery} onChange={(e) => setTeamQuery(e.target.value)} placeholder="PSG, Real Madrid, Arsenal…" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none" /></div>
-          {teamResults.length > 0 && <div className="mt-2 grid gap-1 sm:grid-cols-2">{teamResults.map((team) => { const on = favT.has(team.id); return <button key={team.id} onClick={() => onToggleTeam(team.id)} className="flex items-center gap-2 rounded-xl px-2 py-2 text-left" style={{ background: on ? NEON + "16" : "#ffffff08" }}>{team.logo ? <img src={team.logo} alt="" className="w-6 h-6 object-contain" loading="lazy" /> : <span className="w-6 h-6 rounded-full" style={{ background: "#2a3446" }} />}<span className="flex-1 truncate text-xs font-bold" style={{ color: "#eaf1ff" }}>{team.name}</span><span className="material-symbols-outlined" style={{ color: on ? NEON : "#6b7686", fontVariationSettings: `'FILL' ${on ? 1 : 0}` }}>star</span></button>; })}</div>}
+          {teamResults.length > 0 && <div className="mt-2 grid gap-1 sm:grid-cols-2">{teamResults.map((team) => { const on = favT.has(team.id); return <button key={team.id} onClick={() => onToggleTeam(team.id)} className="flex items-center gap-2 rounded-xl px-2 py-2 text-left" style={{ background: on ? NEON + "16" : "#ffffff08" }}>{team.logo ? <img src={team.logo} alt="" className="w-6 h-6 object-contain" loading="lazy" /> : <span className="w-6 h-6 rounded-full" style={{ background: "#2a3446" }} />}<span className="flex-1 min-w-0"><span className="block truncate text-xs font-bold" style={{ color: "#eaf1ff" }}>{team.name}</span>{(team.league || team.country) && <span className="block truncate text-[10px]" style={{ color: "#8fa0b9" }}>{[team.league, team.country].filter(Boolean).join(" · ")}</span>}</span><span className="material-symbols-outlined" style={{ color: on ? NEON : "#6b7686", fontVariationSettings: `'FILL' ${on ? 1 : 0}` }}>star</span></button>; })}</div>}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[42vh] overflow-y-auto no-scrollbar">
           {MAJOR_LEAGUES.map((l) => {

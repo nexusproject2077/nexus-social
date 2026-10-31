@@ -13,7 +13,7 @@ import { useSheetDismiss } from "@/hooks/useDraggableSheet";
 import { MatchCard, MmaCard, WweCard, displayMatches, formatKickoff, isUclMatch } from "@/components/LiveScores";
 import { fetchWweEvents } from "@/lib/wweClient";
 import { getTodayMinutes, syncScreenTime } from "@/lib/screenTime";
-import { fetchLiveScoresFromEspn, searchTeamsFromEspn, resolveTeamIdByName } from "@/lib/espnClient";
+import { fetchLiveScoresFromEspn, searchTeamsFromEspn, resolveTeamIdByName, teamFavoriteKey } from "@/lib/espnClient";
 import Flag from "@/components/Flags";
 import PremiumModal from "@/components/PremiumModal";
 
@@ -854,9 +854,9 @@ export default function WidgetStack({ user, setUser }) {
   const visibleMmaItems = mmaItems.slice(safeMmaPage * SCORE_PAGE_SIZE, (safeMmaPage + 1) * SCORE_PAGE_SIZE);
   // WWE : direct d'abord, puis à venir, puis terminés (le tri vient déjà du client).
   const wweItems = matches.filter((m) => m.sport === "wwe");
-  const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id));
+  const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id) || favT.has(teamFavoriteKey(m.home)) || favT.has(teamFavoriteKey(m.away)));
   // Pré-match « à surveiller » : favori OU Ligue 1, qui débute dans moins de 2 h.
-  const isFavOrL1 = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id) || m.league_slug === "fra.1";
+  const isFavOrL1 = (m) => favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id) || favT.has(teamFavoriteKey(m.home)) || favT.has(teamFavoriteKey(m.away)) || m.league_slug === "fra.1";
   const startsWithin2h = (m) => { const t = new Date(m.date).getTime(); return Number.isFinite(t) && (t - Date.now()) <= 2 * 3600 * 1000 && (t - Date.now()) >= -15 * 60 * 1000; };
   const imminentFavPre = footItems.some((m) => m.state === "pre" && isFavOrL1(m) && startsWithin2h(m));
   // Soirée Champions League : pastille contextuelle affichée uniquement quand un
