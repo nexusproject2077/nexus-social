@@ -307,9 +307,10 @@ export default {
 
       if (["/api/posts/feed","/api/feed/foryou"].includes(url.pathname) && request.method === "GET") {
         const skip=Math.max(0,Number(url.searchParams.get("skip")||0)),limit=Math.max(1,Math.min(30,Number(url.searchParams.get("limit")||10)));
-        const follows=await db.collection("follows").find({follower_id:uid,status:"following"},{projection:{_id:0,followed_id:1,following_id:1}}).toArray();
+        const follows=await db.collection("follows").find({follower_id:uid,status:"following"},{projection:{_id:0,followed_id:1,following_id:1}}).toArray(),followingIds=[...new Set(follows.map((x:any)=>String(x.followed_id||x.following_id||"")).filter(Boolean))],reciprocal=followingIds.length?await db.collection("follows").find({follower_id:{$in:followingIds},followed_id:uid,status:"following"},{projection:{_id:0,follower_id:1}}).toArray():[],mutualIds=reciprocal.map((x:any)=>String(x.follower_id)),visibleUsers=await db.collection("users").find({$or:[{is_private:{$ne:true}},{id:uid},{id:{$in:mutualIds}}]},{projection:{_id:0,id:1}}).toArray(),visibleIds=new Set(visibleUsers.map((x:any)=>String(x.id)));
         const query:any={soft_deleted:{$ne:true},is_draft:{$ne:true}};
-        if(url.pathname==="/api/posts/feed") query.author_id={$in:[uid,...follows.map((x:any)=>x.followed_id||x.following_id).filter(Boolean)]};
+        if(url.pathname==="/api/posts/feed") query.author_id={$in:[uid,...followingIds].filter((id:string)=>visibleIds.has(id))};
+        else query.author_id={$in:[...visibleIds]};
         if(user.hide_political===true) query.is_political={$ne:true};
         const posts=await db.collection("posts").find(query,{projection:{_id:0}}).sort({created_at:-1}).skip(skip).limit(limit).toArray(),ids=posts.map((p:any)=>p.id).filter(Boolean);
         const [liked,saved]=ids.length?await Promise.all([db.collection("likes").find({user_id:uid,post_id:{$in:ids}},{projection:{_id:0,post_id:1}}).toArray(),db.collection("saved_posts").find({user_id:uid,post_id:{$in:ids}},{projection:{_id:0,post_id:1}}).toArray()]):[[],[]],likedIds=new Set(liked.map((x:any)=>x.post_id)),savedIds=new Set(saved.map((x:any)=>x.post_id));
