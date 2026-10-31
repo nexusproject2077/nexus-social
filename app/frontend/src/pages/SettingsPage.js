@@ -404,6 +404,14 @@ export default function SettingsPage({ user, setUser }) {
     } catch { toast.error(t("settings.export_failed")); }
   };
 
+  const handleDeletionRequest = async () => {
+    if (!window.confirm('Envoyer une demande de suppression de votre compte ? Vos données ne seront pas effacées immédiatement.')) return;
+    try {
+      await axios.post(`${API}/users/me/deletion-request`);
+      toast.success('Demande de suppression envoyée.');
+    } catch { toast.error(t('settings.err_generic')); }
+  };
+
   const navSections = [
     { id: "account",  icon: "manage_accounts",  label: t("settings.account") },
     { id: "activity", icon: "history",           label: t("settings.activity") },
@@ -851,7 +859,7 @@ export default function SettingsPage({ user, setUser }) {
       <Card>
         <CardHeader title={t("settings.data_control")} icon="database" />
         <RowItem icon="download" label={t("settings.export_data")} sublabel={t("settings.export_all_sub")} onClick={handleDataExport} />
-        <RowItem icon="delete_forever" label={t("settings.request_deletion")} sublabel={t("settings.request_deletion_sub")} onClick={() => toast.info(t("settings.contact_support"))} danger />
+        <RowItem icon="delete_forever" label={t("settings.request_deletion")} sublabel={t("settings.request_deletion_sub")} onClick={handleDeletionRequest} danger />
       </Card>
 
       {/* Ad targeting */}
