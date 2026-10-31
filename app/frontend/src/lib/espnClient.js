@@ -1,16 +1,6 @@
-// Récupération des scores ESPN DIRECTEMENT depuis le navigateur.
-//
-// Pourquoi côté client ? ESPN bloque les plages d'IP des datacenters (Cloud Run
-// reçoit un « HTTP 403 » sur chaque requête, même avec un User-Agent navigateur).
-// En revanche l'API publique `site.api.espn.com` autorise le CORS navigateur
-// (Access-Control-Allow-Origin: *) : depuis l'IP de l'utilisateur, la requête
-// passe. On récupère donc les scoreboards ici et on les normalise EXACTEMENT
-// dans le même format que le backend, pour que l'UI reste identique.
-//
-// Le backend reste la source des FAVORIS (ligues/équipes) et le repli éventuel.
-
-const SOCCER_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
-const MMA_URL = "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard";
+// Les fournisseurs sportifs sont appelés par le Worker : ESPN ne fournit plus
+// les en-têtes CORS nécessaires au navigateur de façon fiable.
+import { API } from "@/App";
 
 // Mêmes ligues que ESPN_SOCCER_LEAGUES côté backend.
 const SOCCER_LEAGUES = [
@@ -26,9 +16,10 @@ const SOCCER_LEAGUES = [
   ["usa.1", "MLS"],
 ];
 
-async function fetchJson(url) {
+async function fetchSports(resource, params = {}) {
   try {
-    const r = await fetch(url, { headers: { Accept: "application/json" }, mode: "cors", credentials: "omit" });
+    const query = new URLSearchParams({ resource, ...Object.fromEntries(Object.entries(params).filter(([, value]) => value)) });
+    const r = await fetch(`${API}/sports/data?${query.toString()}`, { headers: { Accept: "application/json" }, credentials: "omit" });
     if (!r.ok) return null;
     return await r.json();
   } catch {
@@ -42,7 +33,7 @@ async function fetchJson(url) {
 export const getLeagueLogo = (slug) => `https://a.espncdn.com/i/leaguelogos/soccer/500/${encodeURIComponent(slug)}.png`;
 
 export async function fetchStandingsFromEspn(slug) {
-  const data = await fetchJson(`https://site.api.espn.com/apis/v2/sports/soccer/${encodeURIComponent(slug)}/standings`);
+  const data = await fetchSports("soccer-standings", { league: slug });
   const entries = data?.children?.flatMap((child) => child.standings?.entries || []) || data?.standings?.entries || [];
   return entries.map((entry) => {
     const stats = entry.stats || [];
@@ -149,10 +140,10 @@ export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) 
   const jobs = [];
   if (foot) {
     for (const [slug, name] of SOCCER_LEAGUES) {
-      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/scoreboard`).then((d) => normalizeLeague(d, slug, name)));
+      jobs.push(fetchSports("soccer-scoreboard", { league: slug }).then((d) => normalizeLeague(d, slug, name)));
     }
   }
-  const mmaJob = mma ? fetchJson(MMA_URL).then(normalizeMma) : Promise.resolve([]);
+  const mmaJob = mma ? fetchSports("mma-scoreboard").then(normalizeMma) : Promise.resolve([]);
   const [footResults, mmaResult] = await Promise.all([Promise.all(jobs), mmaJob]);
   return [...footResults.flat(), ...mmaResult];
 }
@@ -236,9 +227,9 @@ function loadTeamDirectory() {
     for (const slug of TEAM_DIR_LEAGUES) {
       // 3 sources fusionnées, par ordre de fiabilité décroissante :
       // 1) scoreboard du jour (fiable), 2) scoreboard saison (large), 3) /teams (bonus).
-      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/scoreboard`).then((d) => extractTeamsFromScoreboard(d, slug)));
-      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/scoreboard?dates=${range}&limit=1000`).then((d) => extractTeamsFromScoreboard(d, slug)));
-      jobs.push(fetchJson(`${SOCCER_BASE}/${slug}/teams`).then((d) => extractTeams(d, slug)));
+      jobs.push(fetchSports("soccer-scoreboard", { league: slug }).then((d) => extractTeamsFromScoreboard(d, slug)));
+      jobs.push(fetchSports("soccer-scoreboard", { league: slug, dates: range }).then((d) => extractTeamsFromScoreboard(d, slug)));
+      jobs.push(fetchSports("soccer-teams", { league: slug }).then((d) => extractTeams(d, slug)));
     }
     const all = (await Promise.all(jobs)).flat();
     // Dédoublonnage par id (une équipe apparaît dans plusieurs sources/listes).
@@ -275,7 +266,7 @@ export const teamFavoriteKey = (name) => `name:${canonicalTeamName(name)}`;
 
 async function searchGlobalTeams(query) {
   const aliases = [...new Set([query, TEAM_ALIASES[canonicalTeamName(query)]].filter(Boolean))];
-  const payloads = await Promise.all(aliases.map((term) => fetchJson(`https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(term)}`)));
+  const payloads = await Promise.all(aliases.map((term) => fetchSports("team-search", { q: term })));
   const found = new Map();
   for (const payload of payloads) {
     for (const team of payload?.teams || []) {
@@ -436,7 +427,7 @@ export async function fetchMatchDetailsFromEspn(eventId, slug) {
   // Validation stricte (ces valeurs entrent dans l'URL ESPN → anti-injection).
   if (!/^[0-9]{3,20}$/.test(id) || !/^[a-z0-9.\-]{2,30}$/.test(lg)) return empty;
 
-  const data = await fetchJson(`${SOCCER_BASE}/${lg}/summary?event=${encodeURIComponent(id)}`);
+  const data = await fetchSports("soccer-summary", { league: lg, event: id });
   if (!data) return empty;
 
   // team.id -> "home" / "away"
