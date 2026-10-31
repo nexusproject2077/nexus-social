@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
@@ -45,6 +46,12 @@ export default function MatchRoom({ match, currentUser, onClose }) {
     });
   }, [messages.length]);
 
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previous; };
+  }, []);
+
   const send = async () => {
     const content = text.trim();
     if (!content || sending) return;
@@ -81,23 +88,16 @@ export default function MatchRoom({ match, currentUser, onClose }) {
       ? "vs"
       : `${match?.home_score ?? 0}–${match?.away_score ?? 0}`;
 
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex flex-col"
-      style={{
-        background: "rgba(11,19,38,0.92)",
-        backdropFilter: "blur(12px)",
-      }}
-    >
-      <div
-        className="flex items-center gap-3 px-4 py-3"
-        style={{ borderBottom: "1px solid rgba(34,211,238,0.15)" }}
-      >
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-stretch justify-center bg-black/80 p-0 sm:items-center sm:p-6" style={{ backdropFilter: "blur(10px)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="flex h-[100dvh] w-full flex-col overflow-hidden bg-black sm:h-[min(780px,calc(100dvh-3rem))] sm:max-w-3xl sm:rounded-3xl" style={{ border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 24px 80px rgba(0,0,0,0.72)" }}>
+      <header className="flex items-center gap-3 px-4 py-3 sm:px-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", background: "#050505", paddingTop: "max(12px, env(safe-area-inset-top))" }}>
         <button
           type="button"
           onClick={onClose}
-          className="w-9 h-9 rounded-full flex items-center justify-center"
-          style={{ background: "rgba(255,255,255,0.06)" }}
+          className="w-10 h-10 rounded-full flex items-center justify-center active:scale-95"
+          style={{ background: "#181818" }}
+          aria-label="Fermer la salle du match"
         >
           <span className="material-symbols-outlined text-white">close</span>
         </button>
@@ -105,59 +105,55 @@ export default function MatchRoom({ match, currentUser, onClose }) {
           <p className="text-sm font-bold text-white truncate">
             {match?.home} {score} {match?.away}
           </p>
-          <p className="text-[11px]" style={{ color: "#859397" }}>
+          <p className="text-[11px]" style={{ color: "#a3a3a3" }}>
             {match?.state === "in" ? "LIVE · " : ""}
             {t("match_room.title")}
             {match?.league ? ` · ${match.league}` : ""}
           </p>
         </div>
-        {match?.state === "in" && (
+        {match?.state === "in" ? (
           <span
             className="text-[10px] font-black px-2 py-1 rounded-full"
             style={{ background: "#4ade80", color: "#052e16" }}
           >
             LIVE
           </span>
-        )}
-      </div>
+        ) : <span className="text-[11px] font-semibold" style={{ color: "#a3a3a3" }}>Discussion</span>}
+      </header>
 
-      <div
+      <main
         ref={listRef}
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5"
+        className="flex-1 overflow-y-auto px-4 py-5 space-y-4 sm:px-7"
+        style={{ overscrollBehavior: "contain" }}
       >
         {messages.length === 0 && (
-          <p className="text-center text-sm py-12" style={{ color: "#859397" }}>
-            {t("match_room.empty")}
-          </p>
+          <div className="mx-auto flex min-h-full max-w-sm flex-col items-center justify-center pb-20 text-center">
+            <span className="material-symbols-outlined mb-3 flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: "#151515", color: "#d4d4d4" }}>forum</span>
+            <p className="text-sm font-semibold text-white">{t("match_room.empty")}</p>
+            <p className="mt-1 text-xs" style={{ color: "#a3a3a3" }}>Partage ton pronostic ou réagis au match avec les autres supporters.</p>
+          </div>
         )}
         {messages.map((m) => (
-          <div key={m.id} className="flex gap-2">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-              style={{
-                background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
-                color: "#00363e",
-              }}
-            >
-              {(m.author_username || "?")[0]?.toUpperCase()}
-            </div>
+          <div key={m.id} className="flex gap-3">
+            {m.author_profile_pic ? <img src={m.author_profile_pic} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" /> : <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: "#242424", color: "#f5f5f5" }}>{(m.author_username || "?")[0]?.toUpperCase()}</div>}
             <div className="min-w-0">
               <span
                 className="text-[12px] font-bold"
-                style={{ color: "#67e8f9" }}
+                style={{ color: "#e5e5e5" }}
               >
                 {m.author_username}
               </span>
-              <p className="text-[14px] text-white break-words">{m.content}</p>
+              <p className="mt-0.5 text-[14px] text-white break-words leading-relaxed">{m.content}</p>
             </div>
           </div>
         ))}
-      </div>
+      </main>
 
-      <div
-        className="px-3 py-3 flex gap-2"
+      <footer
+        className="px-3 py-3 flex gap-2 sm:px-5"
         style={{
-          borderTop: "1px solid rgba(34,211,238,0.12)",
+          borderTop: "1px solid rgba(255,255,255,0.1)",
+          background: "#050505",
           paddingBottom: "max(12px, env(safe-area-inset-bottom))",
         }}
       >
@@ -166,25 +162,21 @@ export default function MatchRoom({ match, currentUser, onClose }) {
           onChange={(e) => setText(e.target.value.slice(0, 280))}
           placeholder={t("match_room.placeholder")}
           className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none text-white"
-          style={{
-            background: "#222a3d",
-            border: "1px solid rgba(34,211,238,0.15)",
-          }}
-          onKeyDown={(e) => e.key === "Enter" && send()}
+          style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.12)" }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
         />
         <button
           type="button"
           onClick={send}
           disabled={!text.trim() || sending}
           className="w-11 h-11 rounded-full flex items-center justify-center disabled:opacity-40"
-          style={{
-            background: "linear-gradient(135deg,#22d3ee,#3b82f6)",
-            color: "#00363e",
-          }}
+          style={{ background: "#f5f5f5", color: "#050505" }}
         >
           <span className="material-symbols-outlined">send</span>
         </button>
-      </div>
-    </div>
+      </footer>
+      </section>
+    </div>,
+    document.body,
   );
 }
