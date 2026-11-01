@@ -631,15 +631,24 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   // Foot + MMA : direct prioritaire, sinon 3 prochains à venir (par sport).
   const footItems = displayMatches(src.filter((m) => m.sport !== "mma"), favL, favT);
   const mmaItems = displayMatches(src.filter((m) => m.sport === "mma"), favL, favT);
+  // Les clubs favoris ont leur propre zone : ils ne sont plus noyés dans la
+  // liste des compétitions. On les retire ensuite des listes générales pour
+  // qu'un match n'apparaisse qu'une seule fois.
+  const isFavoriteFootballMatch = (m) => m.sport !== "mma" && (
+    favT.has(m.home_id) || favT.has(m.away_id)
+    || favT.has(teamFavoriteKey(m.home)) || favT.has(teamFavoriteKey(m.away))
+  );
+  const favoriteFootItems = footItems.filter(isFavoriteFootballMatch);
+  const otherFootItems = footItems.filter((m) => !isFavoriteFootballMatch(m));
   let arranged;
-  if (footItems.length && mmaItems.length) {
+  if (otherFootItems.length && mmaItems.length) {
     arranged = [];
-    for (let i = 0; i < Math.max(footItems.length, mmaItems.length); i++) {
-      if (i < footItems.length) arranged.push(footItems[i]);
+    for (let i = 0; i < Math.max(otherFootItems.length, mmaItems.length); i++) {
+      if (i < otherFootItems.length) arranged.push(otherFootItems[i]);
       if (i < mmaItems.length) arranged.push(mmaItems[i]);
     }
   } else {
-    arranged = footItems.length ? footItems : mmaItems;
+    arranged = otherFootItems.length ? otherFootItems : mmaItems;
   }
   const renderCard = (m, compact) => (m.sport === "mma"
     ? <MmaCard key={`mma-${m.id}`} m={m} compact={compact} flash={!!flashing[`mma-${m.id}`]} />
@@ -699,7 +708,8 @@ export default function LiveScores({ variant = "mobile", setUser }) {
       <section className="rounded-2xl p-4" style={{ background: "#050505", border: "1px solid rgba(255,255,255,0.08)", ...fadeStyle }}>
         <div className="mb-3">{header(true)}</div>
         <div className="space-y-5 max-h-[70vh] overflow-y-auto no-scrollbar">
-          <DesktopScoreGroup title="Football" icon="sports_soccer" color="#4ade80" items={footItems} flashing={flashing} onOpen={setOpenMatch} />
+          <DesktopScoreGroup title="Mes équipes favorites" icon="star" color="#facc15" items={favoriteFootItems} flashing={flashing} onOpen={setOpenMatch} />
+          <DesktopScoreGroup title="Football" icon="sports_soccer" color="#4ade80" items={otherFootItems} flashing={flashing} onOpen={setOpenMatch} />
           <DesktopScoreGroup title="MMA / UFC" icon="sports_mma" color="#f87171" items={mmaItems} flashing={flashing} onOpen={setOpenMatch} />
         </div>
         {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
@@ -711,15 +721,16 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   }
 
   if (variant === "desktop-list") {
-    const liveItems = [...footItems, ...mmaItems].filter((m) => m.state === "in");
-    const footUpcoming = footItems.filter((m) => m.state === "pre");
-    const footFinished = footItems.filter((m) => m.state === "post");
+    const liveItems = [...otherFootItems, ...mmaItems].filter((m) => m.state === "in");
+    const footUpcoming = otherFootItems.filter((m) => m.state === "pre");
+    const footFinished = otherFootItems.filter((m) => m.state === "post");
     const mmaUpcoming = mmaItems.filter((m) => m.state === "pre");
     const mmaFinished = mmaItems.filter((m) => m.state === "post");
     return (
       <section style={fadeStyle}>
         <div className="mb-2">{header(true)}</div>
         <div className="space-y-5">
+          <DesktopScoreGroup title="Mes équipes favorites" icon="star" color="#facc15" items={favoriteFootItems} flashing={flashing} onOpen={setOpenMatch} />
           <DesktopScoreGroup title="En direct" icon="sensors" color={NEON} items={liveItems} flashing={flashing} onOpen={setOpenMatch} />
           <DesktopScoreGroup title="Football" icon="sports_soccer" color="#4ade80" items={footUpcoming} flashing={flashing} onOpen={setOpenMatch} />
           <DesktopScoreGroup title="Football — terminés" icon="history" color="#9fb0c8" items={footFinished} flashing={flashing} onOpen={setOpenMatch} />
@@ -737,6 +748,15 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   return (
     <div className="pt-1 pb-2" style={fadeStyle}>
       <div className="px-4 mb-1.5">{header(false)}</div>
+      {favoriteFootItems.length > 0 && <>
+        <div className="px-4 mb-2 flex items-center gap-1.5">
+          <span className="material-symbols-outlined" style={{ color: "#facc15", fontSize: 16, fontVariationSettings: "'FILL' 1" }}>star</span>
+          <span className="text-xs font-black uppercase tracking-wider" style={{ color: "#facc15" }}>Mes équipes</span>
+        </div>
+        <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-4">
+          {favoriteFootItems.map((m) => renderCard(m, false))}
+        </div>
+      </>}
       <div className="flex gap-3 overflow-x-auto no-scrollbar px-4">
         {arranged.map((m) => renderCard(m, false))}
       </div>
