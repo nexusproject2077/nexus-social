@@ -137,6 +137,27 @@ export function formatKickoff(dateStr) {
   return `${day.charAt(0).toUpperCase() + day.slice(1)} ${time}`;
 }
 
+const parisDayKey = (date) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(date).reduce((out, part) => ({ ...out, [part.type]: part.value }), {});
+  return `${parts.year}${parts.month}${parts.day}`;
+};
+
+// Les dates de l'interface suivent Paris, pas le fuseau de l'appareil.
+const splitMatchesByDay = (items) => {
+  const today = parisDayKey(new Date());
+  const yesterday = parisDayKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  return items.reduce((groups, match) => {
+    const date = new Date(match?.date || "");
+    const key = Number.isFinite(date.getTime()) ? parisDayKey(date) : "upcoming";
+    if (key === yesterday) groups.yesterday.push(match);
+    else if (key === today) groups.today.push(match);
+    else groups.upcoming.push(match);
+    return groups;
+  }, { yesterday: [], today: [], upcoming: [] });
+};
+
 // Badge « À VENIR » discret (gris anthracite) — remplace le badge LIVE.
 const UpcomingBadge = () => (
   <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-black tracking-wide"
@@ -418,6 +439,15 @@ function DesktopScoreGroup({ title, icon, color, items, flashing, onOpen }) {
   );
 }
 
+function PeriodScoreGroups({ sport, icon, color, items, flashing, onOpen }) {
+  const periods = splitMatchesByDay(items);
+  return <>
+    <DesktopScoreGroup title={`${sport} — Hier`} icon="history" color={color} items={periods.yesterday} flashing={flashing} onOpen={onOpen} />
+    <DesktopScoreGroup title={`${sport} — Aujourd’hui`} icon={icon} color={color} items={periods.today} flashing={flashing} onOpen={onOpen} />
+    <DesktopScoreGroup title={`${sport} — À venir`} icon="event" color={color} items={periods.upcoming} flashing={flashing} onOpen={onOpen} />
+  </>;
+}
+
 function LeagueLogo({ slug, name, size = 28 }) {
   return <img src={getLeagueLogo(slug)} alt={`Logo ${name}`} width={size} height={size} loading="lazy" className="object-contain flex-shrink-0" onError={(e) => { e.currentTarget.style.display = "none"; }} />;
 }
@@ -640,19 +670,18 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   );
   const favoriteFootItems = footItems.filter(isFavoriteFootballMatch);
   const otherFootItems = footItems.filter((m) => !isFavoriteFootballMatch(m));
-  let arranged;
-  if (otherFootItems.length && mmaItems.length) {
-    arranged = [];
-    for (let i = 0; i < Math.max(otherFootItems.length, mmaItems.length); i++) {
-      if (i < otherFootItems.length) arranged.push(otherFootItems[i]);
-      if (i < mmaItems.length) arranged.push(mmaItems[i]);
-    }
-  } else {
-    arranged = otherFootItems.length ? otherFootItems : mmaItems;
-  }
   const renderCard = (m, compact) => (m.sport === "mma"
     ? <MmaCard key={`mma-${m.id}`} m={m} compact={compact} flash={!!flashing[`mma-${m.id}`]} />
     : <MatchCard key={`foot-${m.id}`} m={m} compact={compact} flash={!!flashing[`foot-${m.id}`]} {...cardProps} />);
+  const mobilePeriod = (title, icon, color, items) => !items.length ? null : (
+    <section className="pb-4">
+      <div className="px-4 mb-2 flex items-center gap-1.5">
+        <span className="material-symbols-outlined" style={{ color, fontSize: 16 }}>{icon}</span>
+        <span className="text-xs font-black uppercase tracking-wider" style={{ color }}>{title}</span>
+      </div>
+      <div className="flex gap-3 overflow-x-auto no-scrollbar px-4">{items.map((m) => renderCard(m, false))}</div>
+    </section>
+  );
   const fadeStyle = { opacity: fading ? 0 : 1, transition: "opacity 0.34s ease" };
 
   const iconBtn = (icon, onClick, label) => (
@@ -708,9 +737,9 @@ export default function LiveScores({ variant = "mobile", setUser }) {
       <section className="rounded-2xl p-4" style={{ background: "#050505", border: "1px solid rgba(255,255,255,0.08)", ...fadeStyle }}>
         <div className="mb-3">{header(true)}</div>
         <div className="space-y-5 max-h-[70vh] overflow-y-auto no-scrollbar">
-          <DesktopScoreGroup title="Mes équipes favorites" icon="star" color="#facc15" items={favoriteFootItems} flashing={flashing} onOpen={setOpenMatch} />
-          <DesktopScoreGroup title="Football" icon="sports_soccer" color="#4ade80" items={otherFootItems} flashing={flashing} onOpen={setOpenMatch} />
-          <DesktopScoreGroup title="MMA / UFC" icon="sports_mma" color="#f87171" items={mmaItems} flashing={flashing} onOpen={setOpenMatch} />
+          <PeriodScoreGroups sport="Mes équipes favorites" icon="star" color="#facc15" items={favoriteFootItems} flashing={flashing} onOpen={setOpenMatch} />
+          <PeriodScoreGroups sport="Football" icon="sports_soccer" color="#4ade80" items={otherFootItems} flashing={flashing} onOpen={setOpenMatch} />
+          <PeriodScoreGroups sport="MMA / UFC" icon="sports_mma" color="#f87171" items={mmaItems} flashing={flashing} onOpen={setOpenMatch} />
         </div>
         {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {showStandings && <StandingsModal favL={favL} onClose={() => setShowStandings(false)} />}
@@ -721,21 +750,13 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   }
 
   if (variant === "desktop-list") {
-    const liveItems = [...otherFootItems, ...mmaItems].filter((m) => m.state === "in");
-    const footUpcoming = otherFootItems.filter((m) => m.state === "pre");
-    const footFinished = otherFootItems.filter((m) => m.state === "post");
-    const mmaUpcoming = mmaItems.filter((m) => m.state === "pre");
-    const mmaFinished = mmaItems.filter((m) => m.state === "post");
     return (
       <section style={fadeStyle}>
         <div className="mb-2">{header(true)}</div>
         <div className="space-y-5">
-          <DesktopScoreGroup title="Mes équipes favorites" icon="star" color="#facc15" items={favoriteFootItems} flashing={flashing} onOpen={setOpenMatch} />
-          <DesktopScoreGroup title="En direct" icon="sensors" color={NEON} items={liveItems} flashing={flashing} onOpen={setOpenMatch} />
-          <DesktopScoreGroup title="Football" icon="sports_soccer" color="#4ade80" items={footUpcoming} flashing={flashing} onOpen={setOpenMatch} />
-          <DesktopScoreGroup title="Football — terminés" icon="history" color="#9fb0c8" items={footFinished} flashing={flashing} onOpen={setOpenMatch} />
-          <DesktopScoreGroup title="MMA / UFC" icon="sports_mma" color="#f87171" items={mmaUpcoming} flashing={flashing} onOpen={setOpenMatch} />
-          <DesktopScoreGroup title="MMA / UFC — terminés" icon="history" color="#f3a5a5" items={mmaFinished} flashing={flashing} onOpen={setOpenMatch} />
+          <PeriodScoreGroups sport="Mes équipes favorites" icon="star" color="#facc15" items={favoriteFootItems} flashing={flashing} onOpen={setOpenMatch} />
+          <PeriodScoreGroups sport="Football" icon="sports_soccer" color="#4ade80" items={otherFootItems} flashing={flashing} onOpen={setOpenMatch} />
+          <PeriodScoreGroups sport="MMA / UFC" icon="sports_mma" color="#f87171" items={mmaItems} flashing={flashing} onOpen={setOpenMatch} />
         </div>
         {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {showStandings && <StandingsModal favL={favL} onClose={() => setShowStandings(false)} />}
@@ -748,18 +769,15 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   return (
     <div className="pt-1 pb-2" style={fadeStyle}>
       <div className="px-4 mb-1.5">{header(false)}</div>
-      {favoriteFootItems.length > 0 && <>
-        <div className="px-4 mb-2 flex items-center gap-1.5">
-          <span className="material-symbols-outlined" style={{ color: "#facc15", fontSize: 16, fontVariationSettings: "'FILL' 1" }}>star</span>
-          <span className="text-xs font-black uppercase tracking-wider" style={{ color: "#facc15" }}>Mes équipes</span>
-        </div>
-        <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-4">
-          {favoriteFootItems.map((m) => renderCard(m, false))}
-        </div>
-      </>}
-      <div className="flex gap-3 overflow-x-auto no-scrollbar px-4">
-        {arranged.map((m) => renderCard(m, false))}
-      </div>
+      {mobilePeriod("Mes équipes — Hier", "history", "#facc15", splitMatchesByDay(favoriteFootItems).yesterday)}
+      {mobilePeriod("Mes équipes — Aujourd’hui", "star", "#facc15", splitMatchesByDay(favoriteFootItems).today)}
+      {mobilePeriod("Mes équipes — À venir", "event", "#facc15", splitMatchesByDay(favoriteFootItems).upcoming)}
+      {mobilePeriod("Football — Hier", "history", "#4ade80", splitMatchesByDay(otherFootItems).yesterday)}
+      {mobilePeriod("Football — Aujourd’hui", "sports_soccer", "#4ade80", splitMatchesByDay(otherFootItems).today)}
+      {mobilePeriod("Football — À venir", "event", "#4ade80", splitMatchesByDay(otherFootItems).upcoming)}
+      {mobilePeriod("MMA / UFC — Hier", "history", "#f87171", splitMatchesByDay(mmaItems).yesterday)}
+      {mobilePeriod("MMA / UFC — Aujourd’hui", "sports_mma", "#f87171", splitMatchesByDay(mmaItems).today)}
+      {mobilePeriod("MMA / UFC — À venir", "event", "#f87171", splitMatchesByDay(mmaItems).upcoming)}
       {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
       {showStandings && <StandingsModal favL={favL} onClose={() => setShowStandings(false)} />}
       {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
