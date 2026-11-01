@@ -214,7 +214,7 @@ export default {
 
       if (url.pathname === "/api/sports/data" && request.method === "GET") {
         const resource=String(url.searchParams.get("resource")||""),league=String(url.searchParams.get("league")||""),dates=String(url.searchParams.get("dates")||""),event=String(url.searchParams.get("event")||""),q=String(url.searchParams.get("q")||"").trim();
-        const validLeague=/^[a-z0-9.\-]{2,30}$/.test(league),validDates=/^\d{8}-\d{8}$/.test(dates),validEvent=/^\d{3,20}$/.test(event);
+        const validLeague=/^[a-z0-9.\-]{2,30}$/.test(league),validDates=/^\d{8}(?:-\d{8})?$/.test(dates),validEvent=/^\d{3,20}$/.test(event);
         let upstream="";
         if(resource==="soccer-scoreboard"&&validLeague) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/scoreboard"+(validDates?"?dates="+dates+"&limit=1000":"");
         else if(resource==="soccer-teams"&&validLeague) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/teams";
