@@ -155,30 +155,59 @@ function StatBar({ label, home, away }) {
   );
 }
 
-const PLAYER_LINE_Y = [28, 49, 69, 88]; // attaque → gardien, en % du terrain
+function playerKind(player) {
+  const position = String(player.position || "").toUpperCase();
+  if (/^(G|GK|GOALKEEPER)$/.test(position)) return "goalkeeper";
+  if (/(DEFENDER|BACK|^(D|DF|CB|LB|RB|LWB|RWB|CD|CD-L|CD-R)$)/.test(position)) return "defense";
+  if (/(MIDFIELDER|^(M|MF|CM|DM|AM|LM|RM|WM|CM-L|CM-R)$)/.test(position)) return "midfield";
+  return "attack";
+}
+
+function orderAcrossPitch(players) {
+  const side = (player) => {
+    const position = String(player.position || "").toUpperCase();
+    if (/(^LB$|^LWB$|^LM$|^LW$)/.test(position)) return -2;
+    if (/(^RB$|^RWB$|^RM$|^RW$)/.test(position)) return 2;
+    if (/(^L|[- ]L$|LF)/.test(position)) return -1;
+    if (/(^R|[- ]R$|RF)/.test(position)) return 1;
+    return 0;
+  };
+  return [...players].sort((a, b) => side(a) - side(b) || (a.formationPlace || 99) - (b.formationPlace || 99));
+}
 
 function playerLineups(players, formation) {
   const starters = players.filter((p) => p.starter).sort((a, b) => (a.formationPlace || 99) - (b.formationPlace || 99));
   if (!starters.length) return [];
-  const goalkeeper = starters.find((p) => /^(g|gk|goalkeeper)$/i.test(p.position)) || starters[0];
+  const goalkeeper = starters.find((p) => playerKind(p) === "goalkeeper") || starters[0];
   const outfield = starters.filter((p) => p !== goalkeeper);
   const shape = String(formation || "").split("-").map(Number).filter((n) => n > 0);
-  const groups = [];
-  let cursor = 0;
-  // ESPN ordonne formationPlace gardien → défense → milieu → attaque.
-  for (const count of shape) { groups.push(outfield.slice(cursor, cursor + count)); cursor += count; }
-  if (!shape.length || cursor !== outfield.length) {
-    const defense = outfield.filter((p) => /^(d|df|cb|lb|rb|lwb|rwb|defender)$/i.test(p.position));
-    const midfield = outfield.filter((p) => /^(m|mf|cm|dm|am|lm|rm|midfielder)$/i.test(p.position));
-    const attack = outfield.filter((p) => !defense.includes(p) && !midfield.includes(p));
-    groups.splice(0, groups.length, defense, midfield, attack);
+  const defense = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "defense"));
+  const midfield = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "midfield"));
+  const attack = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "attack"));
+  // Une formation comme 3-4-2-1 est découpée à partir des postes réels :
+  // 3 défenseurs, 4 milieux, puis 2 soutiens et 1 avant-centre.
+  const attackCount = attack.length;
+  const attackStart = shape.findIndex((_, index) => shape.slice(index).reduce((sum, value) => sum + value, 0) === attackCount);
+  const attackShape = attackStart >= 0 ? shape.slice(attackStart) : [attackCount];
+  const attackForFormation = attackShape.length > 1 ? [...attack].sort((a, b) => {
+    const isTip = (player) => /^(F|ST|CF)$/.test(String(player.position || "").toUpperCase());
+    return Number(isTip(a)) - Number(isTip(b));
+  }) : attack;
+  const attackRows = [];
+  let attackCursor = 0;
+  for (const count of attackShape) {
+    attackRows.push(attackForFormation.slice(attackCursor, attackCursor + count));
+    attackCursor += count;
   }
-  const rows = groups.filter((row) => row.length).reverse();
+  const accounted = [...defense, ...midfield, ...attack];
+  const unknown = outfield.filter((p) => !accounted.includes(p));
+  const rows = [...attackRows.reverse(), midfield, defense, unknown].filter((row) => row.length);
   rows.push([goalkeeper]);
+  const rowSpacing = 72 / Math.max(1, rows.length - 1);
   return rows.flatMap((row, rowIndex) => row.map((player, index) => ({
     player,
     left: `${((index + 1) / (row.length + 1)) * 100}%`,
-    top: `${PLAYER_LINE_Y[Math.min(rowIndex, PLAYER_LINE_Y.length - 1)]}%`,
+    top: `${18 + rowIndex * rowSpacing}%`,
   })));
 }
 
