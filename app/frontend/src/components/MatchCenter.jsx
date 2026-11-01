@@ -158,6 +158,10 @@ function StatBar({ label, home, away }) {
 function playerKind(player) {
   const position = String(player.position || "").toUpperCase();
   if (/^(G|GK|GOALKEEPER)$/.test(position)) return "goalkeeper";
+  // ESPN distingue parfois un libéro (SW) du reste de la défense. Il doit
+  // occuper sa propre ligne, entre le milieu et les défenseurs : le fondre
+  // parmi les attaquants déforme notamment les 3-1-4-2.
+  if (/^(SW|LIB|LIBERO)$/.test(position)) return "sweeper";
   if (/(DEFENDER|BACK|^(D|DF|CB|LB|RB|LWB|RWB|CD|CD-L|CD-R)$)/.test(position)) return "defense";
   if (/(MIDFIELDER|^(M|MF|CM|DM|AM|LM|RM|WM|CM-L|CM-R)$)/.test(position)) return "midfield";
   return "attack";
@@ -183,6 +187,7 @@ function playerLineups(players, formation) {
   const shape = String(formation || "").split("-").map(Number).filter((n) => n > 0);
   const defense = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "defense"));
   const midfield = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "midfield"));
+  const sweepers = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "sweeper"));
   const attack = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "attack"));
   // Une formation comme 3-4-2-1 est découpée à partir des postes réels :
   // 3 défenseurs, 4 milieux, puis 2 soutiens et 1 avant-centre.
@@ -199,9 +204,9 @@ function playerLineups(players, formation) {
     attackRows.push(attackForFormation.slice(attackCursor, attackCursor + count));
     attackCursor += count;
   }
-  const accounted = [...defense, ...midfield, ...attack];
+  const accounted = [...defense, ...midfield, ...sweepers, ...attack];
   const unknown = outfield.filter((p) => !accounted.includes(p));
-  const rows = [...attackRows.reverse(), midfield, defense, unknown].filter((row) => row.length);
+  const rows = [...attackRows.reverse(), midfield, sweepers, defense, unknown].filter((row) => row.length);
   rows.push([goalkeeper]);
   const rowSpacing = 72 / Math.max(1, rows.length - 1);
   return rows.flatMap((row, rowIndex) => row.map((player, index) => ({
