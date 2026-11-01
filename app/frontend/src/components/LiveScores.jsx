@@ -452,12 +452,17 @@ function LeagueLogo({ slug, name, size = 28 }) {
   return <img src={getLeagueLogo(slug)} alt={`Logo ${name}`} width={size} height={size} loading="lazy" className="object-contain flex-shrink-0" onError={(e) => { e.currentTarget.style.display = "none"; }} />;
 }
 
-function StandingsModal({ favL, onClose }) {
-  const available = MAJOR_LEAGUES.filter((league) => favL.size === 0 || favL.has(league.id));
+function StandingsModal({ matches, onClose }) {
+  // Les compétitions présentes dans les scores sont ajoutées aux ligues
+  // principales : chaque championnat réellement remonté par l'API peut donc
+  // ouvrir son tableau, même s'il n'est pas mis en favori.
+  const liveLeagues = (matches || []).filter((match) => match.sport === "foot" && match.league_slug)
+    .map((match) => ({ id: match.league_slug, name: match.league || match.league_slug }));
+  const available = [...new Map([...MAJOR_LEAGUES, ...liveLeagues].map((league) => [league.id, league])).values()];
   const [leagueId, setLeagueId] = useState(() => available[0]?.id || MAJOR_LEAGUES[0].id);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const league = MAJOR_LEAGUES.find((item) => item.id === leagueId) || MAJOR_LEAGUES[0];
+  const league = available.find((item) => item.id === leagueId) || available[0] || MAJOR_LEAGUES[0];
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -466,7 +471,7 @@ function StandingsModal({ favL, onClose }) {
   }, [leagueId]);
   return (
     <div className="fixed inset-0 z-[76] flex items-end sm:items-center justify-center sm:p-5" style={{ background: "rgba(2,6,20,0.82)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "88vh" }}>
+      <div className="w-full sm:max-w-3xl rounded-t-3xl sm:rounded-3xl p-5" style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "88vh" }}>
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2"><span className="material-symbols-outlined" style={{ color: NEON }}>leaderboard</span><h3 className="font-bold text-white">Classements</h3></div>
           <button onClick={onClose} className="material-symbols-outlined" style={{ color: "#9fb0c8" }} aria-label="Fermer">close</button>
@@ -474,9 +479,9 @@ function StandingsModal({ favL, onClose }) {
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-3">
           {available.map((item) => <button key={item.id} onClick={() => setLeagueId(item.id)} className="flex items-center gap-1.5 flex-shrink-0 rounded-xl px-2.5 py-2 text-xs font-bold" style={{ background: item.id === leagueId ? NEON + "20" : "#121212", color: item.id === leagueId ? "#f5f5f5" : "#c9c9c9" }}><LeagueLogo slug={item.id} name={item.name} size={20} />{item.name}</button>)}
         </div>
-        <div className="flex items-center gap-2 px-2 py-2 border-y" style={{ borderColor: "rgba(255,255,255,0.07)" }}><LeagueLogo slug={league.id} name={league.name} size={26} /><span className="text-sm font-bold text-white flex-1">{league.name}</span><span className="text-[10px] font-black" style={{ color: "#859397" }}>PTS</span></div>
-        <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: "52vh" }}>
-          {loading ? <p className="py-8 text-center text-sm" style={{ color: "#859397" }}>Chargement du classement…</p> : rows.length ? rows.map((team) => <div key={team.id || `${team.rank}-${team.name}`} className="flex items-center gap-3 px-2 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}><span className="w-5 text-center text-xs font-black" style={{ color: "#91a3c2" }}>{team.rank}</span>{team.logo ? <img src={team.logo} alt="" className="w-6 h-6 object-contain" loading="lazy" /> : <span className="w-6 h-6 rounded-full" style={{ background: "#25324a" }} />}<span className="flex-1 truncate text-sm font-semibold text-white">{team.name}</span><span className="text-[11px]" style={{ color: "#8fa0b9" }}>{team.played} MJ</span><span className="w-7 text-right text-sm font-black" style={{ color: NEON }}>{team.points}</span></div>) : <p className="py-8 text-center text-sm" style={{ color: "#859397" }}>Classement indisponible pour cette compétition.</p>}
+        <div className="flex items-center gap-2 px-2 py-2 border-y" style={{ borderColor: "rgba(255,255,255,0.07)" }}><LeagueLogo slug={league.id} name={league.name} size={26} /><span className="text-sm font-bold text-white flex-1">{league.name}</span><span className="text-[10px] font-bold" style={{ color: "#859397" }}>Données ESPN en direct</span></div>
+        <div className="overflow-auto no-scrollbar" style={{ maxHeight: "52vh" }}>
+          {loading ? <p className="py-8 text-center text-sm" style={{ color: "#859397" }}>Chargement du classement…</p> : rows.length ? <div className="min-w-[620px]"><div className="grid items-center gap-2 px-2 py-2 text-[10px] font-black uppercase tracking-wide" style={{ gridTemplateColumns: "28px minmax(170px,1fr) repeat(6,36px)", color: "#859397", borderBottom: "1px solid rgba(255,255,255,0.08)" }}><span>#</span><span>Équipe</span><span className="text-center">MJ</span><span className="text-center">V</span><span className="text-center">N</span><span className="text-center">D</span><span className="text-center">DB</span><span className="text-center">PTS</span></div>{rows.map((team) => <div key={team.id || `${team.rank}-${team.name}`} className="grid items-center gap-2 px-2 py-2.5" style={{ gridTemplateColumns: "28px minmax(170px,1fr) repeat(6,36px)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}><span className="text-center text-xs font-black" style={{ color: "#91a3c2" }}>{team.rank}</span><span className="flex min-w-0 items-center gap-2">{team.logo ? <img src={team.logo} alt="" className="w-6 h-6 object-contain flex-shrink-0" loading="lazy" /> : <span className="w-6 h-6 rounded-full flex-shrink-0" style={{ background: "#25324a" }} />}<span className="truncate text-sm font-semibold text-white">{team.name}</span></span><span className="text-center text-xs" style={{ color: "#c9c9c9" }}>{team.played}</span><span className="text-center text-xs" style={{ color: "#c9c9c9" }}>{team.wins}</span><span className="text-center text-xs" style={{ color: "#c9c9c9" }}>{team.draws}</span><span className="text-center text-xs" style={{ color: "#c9c9c9" }}>{team.losses}</span><span className="text-center text-xs font-bold" style={{ color: "#d4d4d4" }}>{team.goalDifference}</span><span className="text-center text-sm font-black" style={{ color: NEON }}>{team.points}</span></div>)}</div> : <p className="py-8 text-center text-sm" style={{ color: "#859397" }}>Classement indisponible pour cette compétition.</p>}
         </div>
       </div>
     </div>
@@ -742,7 +747,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
           <PeriodScoreGroups sport="MMA / UFC" icon="sports_mma" color="#f87171" items={mmaItems} flashing={flashing} onOpen={setOpenMatch} />
         </div>
         {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
-        {showStandings && <StandingsModal favL={favL} onClose={() => setShowStandings(false)} />}
+        {showStandings && <StandingsModal matches={src} onClose={() => setShowStandings(false)} />}
         {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
         {confirmDialog}
       </section>
@@ -759,7 +764,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
           <PeriodScoreGroups sport="MMA / UFC" icon="sports_mma" color="#f87171" items={mmaItems} flashing={flashing} onOpen={setOpenMatch} />
         </div>
         {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
-        {showStandings && <StandingsModal favL={favL} onClose={() => setShowStandings(false)} />}
+        {showStandings && <StandingsModal matches={src} onClose={() => setShowStandings(false)} />}
         {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
         {confirmDialog}
       </section>
@@ -779,7 +784,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
       {mobilePeriod("MMA / UFC — Aujourd’hui", "sports_mma", "#f87171", splitMatchesByDay(mmaItems).today)}
       {mobilePeriod("MMA / UFC — À venir", "event", "#f87171", splitMatchesByDay(mmaItems).upcoming)}
       {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
-      {showStandings && <StandingsModal favL={favL} onClose={() => setShowStandings(false)} />}
+      {showStandings && <StandingsModal matches={src} onClose={() => setShowStandings(false)} />}
       {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
       {confirmDialog}
     </div>

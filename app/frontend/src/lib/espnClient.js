@@ -46,17 +46,25 @@ export async function fetchStandingsFromEspn(slug) {
   const entries = data?.children?.flatMap((child) => child.standings?.entries || []) || data?.standings?.entries || [];
   return entries.map((entry) => {
     const stats = entry.stats || [];
-    const find = (...names) => stats.find((stat) => names.includes(String(stat.name || "").toLowerCase()));
-    const rank = find("rank", "playoffseed")?.displayValue || entry?.stats?.find((stat) => stat.name === "rank")?.value || "–";
-    const points = find("points", "pts")?.displayValue ?? find("points", "pts")?.value ?? "–";
+    const find = (...names) => stats.find((stat) => names.includes(String(stat.name || "").toLowerCase().replace(/[^a-z]/g, "")));
+    const value = (...names) => {
+      const stat = find(...names);
+      return String(stat?.displayValue ?? stat?.value ?? "–");
+    };
+    const rank = value("rank", "playoffseed");
+    const points = value("points", "pts");
     const team = entry.team || {};
     return {
       id: String(team.id || entry.id || ""),
       rank: String(rank),
       name: team.displayName || team.name || team.shortDisplayName || "Équipe",
       logo: team.logos?.[0]?.href || team.logo || null,
-      points: String(points),
-      played: String(find("gamesplayed", "games", "gp")?.displayValue ?? find("gamesplayed", "games", "gp")?.value ?? "–"),
+      played: value("gamesplayed", "games", "gp"),
+      wins: value("wins", "win"),
+      draws: value("ties", "draws", "draw"),
+      losses: value("losses", "loss"),
+      goalDifference: value("pointdifferential", "goaldifference", "differential"),
+      points,
     };
   });
 }
