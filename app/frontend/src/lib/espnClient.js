@@ -153,20 +153,25 @@ const parisScoreDate = (offsetDays = 0) => {
   return `${values.year}${values.month}${values.day}`;
 };
 
-// Récupère foot (toutes les ligues, en parallèle) + MMA. Le créneau est
-// volontairement complet : hier, aujourd'hui et les deux semaines qui arrivent.
+// Récupère foot (toutes les ligues, en parallèle) + MMA. ESPN accepte une
+// date seule, mais refuse les plages sur ce endpoint (400). On demande donc
+// hier explicitement, puis le tableau ESPN courant qui contient aujourd'hui et
+// les prochaines affiches, sans perdre tout le panneau si une source échoue.
 // Renvoie une liste plate normalisée (même forme que /api/livescores).
 export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) {
   const jobs = [];
-  const scoreRange = `${parisScoreDate(-1)}-${parisScoreDate(14)}`;
+  const yesterday = parisScoreDate(-1);
   if (foot) {
     for (const [slug, name] of SOCCER_LEAGUES) {
-      jobs.push(fetchSports("soccer-scoreboard", { league: slug, dates: scoreRange }).then((d) => normalizeLeague(d, slug, name)));
+      jobs.push(fetchSports("soccer-scoreboard", { league: slug }).then((d) => normalizeLeague(d, slug, name)));
+      jobs.push(fetchSports("soccer-scoreboard", { league: slug, dates: yesterday }).then((d) => normalizeLeague(d, slug, name)));
     }
   }
   const mmaJob = mma ? fetchSports("mma-scoreboard").then(normalizeMma) : Promise.resolve([]);
   const [footResults, mmaResult] = await Promise.all([Promise.all(jobs), mmaJob]);
-  return [...footResults.flat(), ...mmaResult];
+  const unique = new Map();
+  for (const match of [...footResults.flat(), ...mmaResult]) unique.set(`${match.sport}:${match.id}`, match);
+  return [...unique.values()];
 }
 
 // ───────────────────── Recherche d'équipes (mise en favori) ────────────────────
