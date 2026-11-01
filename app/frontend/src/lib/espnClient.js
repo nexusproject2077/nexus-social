@@ -433,25 +433,29 @@ function parseTeamStats(data, sideMap) {
   return out;
 }
 
-// Compositions (rosters ESPN) → { home:[...], away:[...] }, chaque joueur
-// { name, number, position, starter }. null si indisponible.
+// Compositions ESPN : la place de formation permet de placer réellement les
+// titulaires sur le terrain. Les portraits utilisent d'abord la photo fournie,
+// puis le CDN ESPN associé à l'identifiant du joueur.
 function parseLineups(data) {
   const rosters = data?.rosters || [];
   const side = (s) => {
     const r = rosters.find((x) => x.homeAway === s);
-    return (r?.roster || [])
+    const players = (r?.roster || [])
       .map((p) => ({
         name: p.athlete?.shortName || p.athlete?.displayName || "",
         number: String(p.jersey ?? p.athlete?.jersey ?? "").trim(),
         position: p.position?.abbreviation || p.position?.name || "",
         starter: !!p.starter,
+        formationPlace: Number(p.formationPlace || 0),
+        photo: p.athlete?.headshot?.href || p.athlete?.headshot || (p.athlete?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${p.athlete.id}.png` : null),
       }))
       .filter((p) => p.name);
+    return { players, formation: String(r?.formation || "") };
   };
   const home = side("home");
   const away = side("away");
-  if (!home.length && !away.length) return null;
-  return { home, away };
+  if (!home.players.length && !away.players.length) return null;
+  return { home: home.players, away: away.players, homeFormation: home.formation, awayFormation: away.formation };
 }
 
 export async function fetchMatchDetailsFromEspn(eventId, slug) {

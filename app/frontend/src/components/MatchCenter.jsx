@@ -155,34 +155,77 @@ function StatBar({ label, home, away }) {
   );
 }
 
-// Une colonne de composition (titulaires puis remplaçants).
-function LineupColumn({ players, accent, align }) {
-  const starters = players.filter((p) => p.starter);
-  const subs = players.filter((p) => !p.starter);
-  const right = align === "right";
-  const Row = (p, i) => (
-    <div key={i} className={`flex items-center gap-2 py-1 ${right ? "flex-row-reverse text-right" : ""}`}>
-      <span className="flex-shrink-0 flex items-center justify-center text-[10px] font-black tabular-nums rounded-md"
-        style={{ width: 20, height: 20, background: `${accent}22`, color: accent }}>{p.number || "·"}</span>
-      <div className="min-w-0">
-        <p className="text-[12px] leading-tight truncate" style={{ color: "#e6ecf7", fontWeight: 500 }}>{p.name}</p>
-        {p.position && <p className="text-[10px] leading-tight" style={{ color: "#6b7686" }}>{p.position}</p>}
-      </div>
-    </div>
-  );
-  return (
-    <div className="flex-1 min-w-0">
-      {starters.map(Row)}
-      {subs.length > 0 && (
-        <>
-          <p className={`text-[10px] font-bold uppercase tracking-wider mt-2 mb-1 ${right ? "text-right" : ""}`} style={{ color: "#5b6577" }}>
-            {i18n.t("matchcenter.subs")}
-          </p>
-          {subs.map(Row)}
-        </>
-      )}
-    </div>
-  );
+const PLAYER_LINE_Y = [28, 49, 69, 88]; // attaque → gardien, en % du terrain
+
+function playerLineups(players, formation) {
+  const starters = players.filter((p) => p.starter).sort((a, b) => (a.formationPlace || 99) - (b.formationPlace || 99));
+  if (!starters.length) return [];
+  const goalkeeper = starters.find((p) => /^(g|gk|goalkeeper)$/i.test(p.position)) || starters[0];
+  const outfield = starters.filter((p) => p !== goalkeeper);
+  const shape = String(formation || "").split("-").map(Number).filter((n) => n > 0);
+  const groups = [];
+  let cursor = 0;
+  // ESPN ordonne formationPlace gardien → défense → milieu → attaque.
+  for (const count of shape) { groups.push(outfield.slice(cursor, cursor + count)); cursor += count; }
+  if (!shape.length || cursor !== outfield.length) {
+    const defense = outfield.filter((p) => /^(d|df|cb|lb|rb|lwb|rwb|defender)$/i.test(p.position));
+    const midfield = outfield.filter((p) => /^(m|mf|cm|dm|am|lm|rm|midfielder)$/i.test(p.position));
+    const attack = outfield.filter((p) => !defense.includes(p) && !midfield.includes(p));
+    groups.splice(0, groups.length, defense, midfield, attack);
+  }
+  const rows = groups.filter((row) => row.length).reverse();
+  rows.push([goalkeeper]);
+  return rows.flatMap((row, rowIndex) => row.map((player, index) => ({
+    player,
+    left: `${((index + 1) / (row.length + 1)) * 100}%`,
+    top: `${PLAYER_LINE_Y[Math.min(rowIndex, PLAYER_LINE_Y.length - 1)]}%`,
+  })));
+}
+
+function PitchPlayer({ entry, accent }) {
+  const { player, left, top } = entry;
+  return <div className="absolute z-10 flex w-[66px] -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center sm:w-[76px]" style={{ left, top }}>
+    <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full sm:h-12 sm:w-12" style={{ background: "#111827", border: `2px solid ${accent}`, boxShadow: `0 3px 12px ${accent}55` }}>
+      {player.photo && <img src={player.photo} alt="" className="h-full w-full object-cover" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} />}
+      <span className="absolute bottom-0 right-0 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-black" style={{ background: accent, color: "#07111d" }}>{player.number || "·"}</span>
+    </span>
+    <span className="mt-1 max-w-full truncate text-[10px] font-bold leading-tight text-white sm:text-[11px]">{player.name}</span>
+  </div>;
+}
+
+function TacticalPitch({ players, formation, accent }) {
+  const positions = playerLineups(players, formation);
+  return <div className="relative mx-auto w-full max-w-[460px] overflow-hidden rounded-2xl" style={{ aspectRatio: "0.69", background: "linear-gradient(135deg,#123923,#0d2c20 48%,#123923)", border: "1px solid rgba(255,255,255,0.18)" }}>
+    <svg className="absolute inset-0 h-full w-full opacity-45" viewBox="0 0 100 145" fill="none" aria-hidden>
+      <rect x="2" y="2" width="96" height="141" rx="2" stroke="white" strokeWidth="0.65" />
+      <path d="M2 72.5h96M50 54.5v36" stroke="white" strokeWidth="0.65" />
+      <circle cx="50" cy="72.5" r="14" stroke="white" strokeWidth="0.65" />
+      <circle cx="50" cy="72.5" r="0.9" fill="white" />
+      <path d="M25 2v18h50V2M25 143v-18h50v18M38 2v8h24V2M38 143v-8h24v8" stroke="white" strokeWidth="0.65" />
+      <circle cx="50" cy="16" r="0.8" fill="white" /><circle cx="50" cy="129" r="0.8" fill="white" />
+    </svg>
+    {positions.map((entry) => <PitchPlayer key={`${entry.player.name}-${entry.player.number}`} entry={entry} accent={accent} />)}
+  </div>;
+}
+
+function TacticalLineup({ lineups, match }) {
+  const [side, setSide] = useState("home");
+  const isHome = side === "home";
+  const players = lineups[side] || [];
+  const formation = isHome ? lineups.homeFormation : lineups.awayFormation;
+  const accent = isHome ? HOME_C : AWAY_C;
+  const name = isHome ? match?.home : match?.away;
+  const substitutes = players.filter((player) => !player.starter);
+  const selector = (value, club, clubLogo, clubFormation, clubAccent) => <button type="button" onClick={() => setSide(value)} className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-2 py-2 text-xs font-bold transition-colors" style={{ background: side === value ? `${clubAccent}33` : "rgba(255,255,255,0.05)", color: side === value ? "#fff" : "#9ca3af", border: `1px solid ${side === value ? clubAccent : "transparent"}` }}>
+    {clubLogo ? <img src={clubLogo} alt="" className="h-5 w-5 object-contain" /> : null}<span className="truncate">{club}</span><span className="text-[10px] opacity-80">{clubFormation || "—"}</span>
+  </button>;
+  return <div className="space-y-4">
+    <div className="text-center"><p className="text-base font-black text-white">Compositions</p><p className="mt-0.5 text-xs" style={{ color: "#9ca3af" }}>Choisis une équipe pour voir son onze sur le terrain.</p></div>
+    <div className="flex gap-2">{selector("home", match?.home, match?.home_logo, lineups.homeFormation, HOME_C)}{selector("away", match?.away, match?.away_logo, lineups.awayFormation, AWAY_C)}</div>
+    <div className="flex items-center justify-between px-1"><span className="text-sm font-bold text-white">{name}</span><span className="rounded-full px-2 py-1 text-[10px] font-black" style={{ color: accent, background: `${accent}1f` }}>{formation || "Formation indisponible"}</span></div>
+    <TacticalPitch players={players} formation={formation} accent={accent} />
+    {substitutes.length > 0 && <div><p className="mb-2 text-[11px] font-black uppercase tracking-wider" style={{ color: "#9ca3af" }}>Banc · Remplaçants</p><div className="grid grid-cols-1 gap-1 sm:grid-cols-2">{substitutes.map((player) => <div key={`${player.name}-${player.number}`} className="flex items-center gap-2 rounded-xl px-2 py-2" style={{ background: "rgba(255,255,255,0.045)" }}>{player.photo ? <img src={player.photo} alt="" className="h-7 w-7 rounded-full object-cover" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <span className="h-7 w-7 rounded-full" style={{ background: `${accent}44` }} />}<span className="flex h-5 min-w-5 items-center justify-center rounded text-[10px] font-black" style={{ background: `${accent}22`, color: accent }}>{player.number || "·"}</span><span className="min-w-0 flex-1 truncate text-xs font-semibold text-white">{player.name}</span></div>)}</div></div>}
+  </div>;
 }
 
 export default function MatchCenter({ match, onClose, currentUser }) {
@@ -238,7 +281,7 @@ export default function MatchCenter({ match, onClose, currentUser }) {
     <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center sm:p-4"
       style={{ background: "rgba(2,6,20,0.82)", fontFamily: INTER }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col"
+      <div className="w-full sm:max-w-3xl rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col"
         style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "88vh" }}>
 
         {/* En-tête : équipes + score */}
@@ -330,10 +373,7 @@ export default function MatchCenter({ match, onClose, currentUser }) {
             !lineups ? (
               <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_lineup")}</p>
             ) : (
-              <div className="flex gap-4">
-                <LineupColumn players={lineups.home} accent={HOME_C} />
-                <LineupColumn players={lineups.away} accent={AWAY_C} align="right" />
-              </div>
+              <TacticalLineup lineups={lineups} match={h} />
             )
           )}
         </div>
