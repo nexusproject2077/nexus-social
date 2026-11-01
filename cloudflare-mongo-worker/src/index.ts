@@ -137,6 +137,32 @@ export default {
       });
     }
 
+    // Ces données ne dépendent ni du compte ni de MongoDB. Les traiter avant
+    // la connexion évite qu'une indisponibilité temporaire de la base fasse
+    // tomber aussi le foot, la météo et la géolocalisation.
+    if (url.pathname === "/api/geo/language" && request.method === "GET") {
+      const country=String((request as any).cf?.country||"").toUpperCase()||null,langs:any={FR:"fr",BE:"fr",CH:"fr",CA:"fr",TR:"tr",ES:"es",MX:"es",DE:"de",AT:"de",IT:"it",PT:"pt",BR:"pt",GB:"en",US:"en",IE:"en",AU:"en"},language=(country&&langs[country])||"en";return json({country,language,supported:["de","en","es","fr","it","pt","tr"]},200,request);
+    }
+    if (url.pathname === "/api/geo/status" && request.method === "GET") {
+      const country=String((request as any).cf?.country||"").toUpperCase()||null,eu=new Set(["AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE"]).has(country||""),langs:any={FR:"fr",BE:"fr",CH:"fr",CA:"fr",TR:"tr",ES:"es",MX:"es",DE:"de",AT:"de",IT:"it",PT:"pt",BR:"pt"};return json({profile:eu?"EU_STANDARD":"GLOBAL_STANDARD",country,eu,restricted:eu,minimum_age:15,consent_style:eu?"explicit":"standard",read_only:false,suggested_language:(country&&langs[country])||"en"},200,request);
+    }
+    if (url.pathname === "/api/weather" && request.method === "GET") {
+      const lat=Number(url.searchParams.get("lat")),lon=Number(url.searchParams.get("lon"));if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat< -90||lat>90||lon< -180||lon>180)return json({detail:"Coordonnées invalides"},400,request);try{const r=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+encodeURIComponent(lat)+"&longitude="+encodeURIComponent(lon)+"&current=temperature_2m,apparent_temperature,precipitation,rain,weather_code,wind_speed_10m&timezone=auto");return json({weather:r.ok?await r.json():null},200,request);}catch{return json({weather:null},200,request);}
+    }
+    if (url.pathname === "/api/sports/data" && request.method === "GET") {
+      const resource=String(url.searchParams.get("resource")||""),league=String(url.searchParams.get("league")||""),dates=String(url.searchParams.get("dates")||""),event=String(url.searchParams.get("event")||""),q=String(url.searchParams.get("q")||"").trim();
+      const validLeague=/^[a-z0-9.\-]{2,30}$/.test(league),validDates=/^\d{8}(?:-\d{8})?$/.test(dates),validEvent=/^\d{3,20}$/.test(event);
+      let upstream="";
+      if(resource==="soccer-scoreboard"&&validLeague) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/scoreboard"+(validDates?"?dates="+dates+"&limit=1000":"");
+      else if(resource==="soccer-teams"&&validLeague) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/teams";
+      else if(resource==="soccer-standings"&&validLeague) upstream="https://site.api.espn.com/apis/v2/sports/soccer/"+encodeURIComponent(league)+"/standings";
+      else if(resource==="soccer-summary"&&validLeague&&validEvent) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/summary?event="+event;
+      else if(resource==="mma-scoreboard") upstream="https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard";
+      else if(resource==="team-search"&&q.length>=2&&q.length<=80) upstream="https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t="+encodeURIComponent(q);
+      else return json({detail:"Invalid sports query"},400,request);
+      try {const response=await fetch(upstream,{headers:{Accept:"application/json"}});if(!response.ok)return json({detail:"Sports provider unavailable"},502,request);return json(await response.json(),200,request);}catch{return json({detail:"Sports provider unavailable"},502,request);}
+    }
+
     if (!env.MONGO_URL) {
       return json({ status: "error", detail: "Database is not configured" }, 503);
     }
@@ -212,19 +238,6 @@ export default {
         return json(publicUser(user),200,request);
       }
 
-      if (url.pathname === "/api/sports/data" && request.method === "GET") {
-        const resource=String(url.searchParams.get("resource")||""),league=String(url.searchParams.get("league")||""),dates=String(url.searchParams.get("dates")||""),event=String(url.searchParams.get("event")||""),q=String(url.searchParams.get("q")||"").trim();
-        const validLeague=/^[a-z0-9.\-]{2,30}$/.test(league),validDates=/^\d{8}(?:-\d{8})?$/.test(dates),validEvent=/^\d{3,20}$/.test(event);
-        let upstream="";
-        if(resource==="soccer-scoreboard"&&validLeague) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/scoreboard"+(validDates?"?dates="+dates+"&limit=1000":"");
-        else if(resource==="soccer-teams"&&validLeague) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/teams";
-        else if(resource==="soccer-standings"&&validLeague) upstream="https://site.api.espn.com/apis/v2/sports/soccer/"+encodeURIComponent(league)+"/standings";
-        else if(resource==="soccer-summary"&&validLeague&&validEvent) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/summary?event="+event;
-        else if(resource==="mma-scoreboard") upstream="https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard";
-        else if(resource==="team-search"&&q.length>=2&&q.length<=80) upstream="https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t="+encodeURIComponent(q);
-        else return json({detail:"Invalid sports query"},400,request);
-        try {const response=await fetch(upstream,{headers:{Accept:"application/json"}});if(!response.ok)return json({detail:"Sports provider unavailable"},502,request);return json(await response.json(),200,request);}catch{return json({detail:"Sports provider unavailable"},502,request);}
-      }
       const user = url.pathname.startsWith("/api/") && env.SECRET_KEY ? await authUser(request,env.SECRET_KEY,db) : null;
       if (url.pathname.startsWith("/api/") && !["/api/geo/status","/api/geo/language","/api/wwe/events","/api/sports/data"].includes(url.pathname) && !user) return json({detail:"Not authenticated"},401,request);
       const uid=String(user?.id||"");
@@ -360,15 +373,6 @@ export default {
         const limit=Math.max(1,Math.min(50,Number(url.searchParams.get("limit")||10))),since=new Date(Date.now()-86400000).toISOString(),posts=await db.collection("posts").find({created_at:{$gte:since},media_type:{$ne:"video"}},{projection:{_id:0,content:1,likes_count:1}}).sort({created_at:-1}).limit(3000).toArray(),stats=new Map<string,any>();
         for(const p of posts){const seen=new Set<string>();for(const m of String(p.content||"").matchAll(/#(\w+)/gu)){const display=m[1],key=display.toLowerCase();if(seen.has(key))continue;seen.add(key);const e=stats.get(key)||{display,count:0,likes:0};e.count++;e.likes+=Number(p.likes_count||0);stats.set(key,e);}}
         const trending=Array.from(stats.entries()).map(([key,e]:any)=>({tag:"#"+e.display,normalized:key,post_count:e.count,posts_24h:e.count,likes:e.likes,score:Math.round((e.count*3+e.likes*.1)*100)/100})).sort((a:any,b:any)=>b.score-a.score).slice(0,limit);return json({success:true,trending},200,request);
-      }
-      if (url.pathname === "/api/geo/language" && request.method === "GET") {
-        const country=String((request as any).cf?.country||"").toUpperCase()||null,langs:any={FR:"fr",BE:"fr",CH:"fr",CA:"fr",TR:"tr",ES:"es",MX:"es",DE:"de",AT:"de",IT:"it",PT:"pt",BR:"pt",GB:"en",US:"en",IE:"en",AU:"en"},language=(country&&langs[country])||"en";return json({country,language,supported:["de","en","es","fr","it","pt","tr"]},200,request);
-      }
-      if (url.pathname === "/api/geo/status" && request.method === "GET") {
-        const country=String((request as any).cf?.country||"").toUpperCase()||null,eu=new Set(["AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE"]).has(country||""),langs:any={FR:"fr",BE:"fr",CH:"fr",CA:"fr",TR:"tr",ES:"es",MX:"es",DE:"de",AT:"de",IT:"it",PT:"pt",BR:"pt"};return json({profile:eu?"EU_STANDARD":"GLOBAL_STANDARD",country,eu,restricted:eu,minimum_age:15,consent_style:eu?"explicit":"standard",read_only:false,suggested_language:(country&&langs[country])||"en"},200,request);
-      }
-      if (url.pathname === "/api/weather" && request.method === "GET") {
-        const lat=Number(url.searchParams.get("lat")),lon=Number(url.searchParams.get("lon"));if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat< -90||lat>90||lon< -180||lon>180)return json({detail:"Coordonnées invalides"},400,request);try{const r=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+encodeURIComponent(lat)+"&longitude="+encodeURIComponent(lon)+"&current=temperature_2m,apparent_temperature,precipitation,rain,weather_code,wind_speed_10m&timezone=auto");return json({weather:r.ok?await r.json():null},200,request);}catch{return json({weather:null},200,request);}
       }
       if (url.pathname === "/api/finance" && request.method === "GET") {
         const catalog:any={bitcoin:"Bitcoin",ethereum:"Ethereum",solana:"Solana",cardano:"Cardano",ripple:"XRP",dogecoin:"Dogecoin"},cfg:any=user.widget_stack_config||{},ids=(url.searchParams.get("ids")||"").split(",").map(x=>x.trim()).filter(Boolean),want=(ids.length?ids:(cfg.finance_assets||["bitcoin","ethereum","solana"])).filter((x:any)=>catalog[x]).slice(0,10);try{const r=await fetch("https://api.coingecko.com/api/v3/simple/price?ids="+encodeURIComponent(want.join(","))+"&vs_currencies=eur&include_24hr_change=true"),d:any=r.ok?await r.json():{};return json({assets:want.map((id:any)=>({id,name:catalog[id],price_eur:d[id]?.eur??null,change_24h:d[id]?.eur_24h_change??null})),catalog},200,request);}catch{return json({assets:[],catalog},200,request);}
