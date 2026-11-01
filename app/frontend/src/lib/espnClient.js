@@ -143,13 +143,25 @@ function normalizeMma(data) {
   return out;
 }
 
-// Récupère foot (toutes les ligues, en parallèle) + MMA, directement depuis le
-// navigateur. Renvoie une liste plate normalisée (même forme que /api/livescores).
+// Renvoie la date Paris au format accepté par ESPN, indépendamment du fuseau de
+// l'appareil. Cela évite qu'un match de la veille disparaisse autour de minuit.
+const parisScoreDate = (offsetDays = 0) => {
+  const date = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+  const values = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(date).reduce((out, part) => ({ ...out, [part.type]: part.value }), {});
+  return `${values.year}${values.month}${values.day}`;
+};
+
+// Récupère foot (toutes les ligues, en parallèle) + MMA. Le créneau est
+// volontairement complet : hier, aujourd'hui et les deux semaines qui arrivent.
+// Renvoie une liste plate normalisée (même forme que /api/livescores).
 export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) {
   const jobs = [];
+  const scoreRange = `${parisScoreDate(-1)}-${parisScoreDate(14)}`;
   if (foot) {
     for (const [slug, name] of SOCCER_LEAGUES) {
-      jobs.push(fetchSports("soccer-scoreboard", { league: slug }).then((d) => normalizeLeague(d, slug, name)));
+      jobs.push(fetchSports("soccer-scoreboard", { league: slug, dates: scoreRange }).then((d) => normalizeLeague(d, slug, name)));
     }
   }
   const mmaJob = mma ? fetchSports("mma-scoreboard").then(normalizeMma) : Promise.resolve([]);
