@@ -1,7 +1,7 @@
 // Match Center — chronologie détaillée d'un match (données ESPN gratuites).
 // Design sombre premium, typo fine (Inter), icônes 100 % SVG (aucun emoji).
 // Événements domicile à GAUCHE de l'axe, extérieur à DROITE. Rafraîchi 60 s.
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchMatchDetailsFromEspn, localizeLeagueName } from "@/lib/espnClient";
 import MatchRoom from "@/components/MatchRoom";
 import i18n from "@/i18n";
@@ -213,10 +213,12 @@ function playerLineups(players, formation) {
 
 function PitchPlayer({ entry, accent }) {
   const { player, left, top } = entry;
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const hasPhoto = !!player.photo && !photoFailed;
   return <div className="absolute z-10 flex w-[66px] -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center sm:w-[76px]" style={{ left, top }}>
-    <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full sm:h-12 sm:w-12" style={{ background: "#111827", border: `2px solid ${accent}`, boxShadow: `0 3px 12px ${accent}55` }}>
-      {player.photo && <img src={player.photo} alt="" className="h-full w-full object-cover" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} />}
-      <span className="absolute bottom-0 right-0 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-black" style={{ background: accent, color: "#07111d" }}>{player.number || "·"}</span>
+    <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full sm:h-12 sm:w-12" style={{ background: hasPhoto ? "#111827" : accent, border: `2px solid ${accent}`, boxShadow: `0 3px 12px ${accent}55` }}>
+      {hasPhoto && <img src={player.photo} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setPhotoFailed(true)} />}
+      {hasPhoto ? <span className="absolute bottom-0 right-0 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-black" style={{ background: accent, color: "#07111d" }}>{player.number || "·"}</span> : <span className="text-sm font-black tabular-nums" style={{ color: "#07111d" }}>{player.number || "·"}</span>}
     </span>
     <span className="mt-1 max-w-full truncate text-[10px] font-bold leading-tight text-white sm:text-[11px]">{player.name}</span>
   </div>;
@@ -261,6 +263,7 @@ export default function MatchCenter({ match, onClose, currentUser }) {
   const [detail, setDetail] = useState(null);
   const [roomOpen, setRoomOpen] = useState(false);
   const [tab, setTab] = useState("events"); // events | stats | lineup
+  const contentRef = useRef(null);
   const eventId = match?.id;
   const slug = match?.league_slug;
 
@@ -286,6 +289,10 @@ export default function MatchCenter({ match, onClose, currentUser }) {
     const iv = setInterval(load, 60000); // s'actualise en fond, comme le score
     return () => clearInterval(iv);
   }, [load]);
+
+  // Chaque onglet doit commencer en haut : sans cela, la composition pouvait
+  // hériter du défilement des événements et se retrouver coupée sous les tabs.
+  useEffect(() => { contentRef.current?.scrollTo?.({ top: 0 }); }, [tab]);
 
   const h = { ...match, ...(detail?.header || {}) };
   const live = h.state === "in";
@@ -360,7 +367,7 @@ export default function MatchCenter({ match, onClose, currentUser }) {
         </div>
 
         {/* Contenu de l'onglet — seule cette zone défile (scroll confiné). */}
-        <div className="relative overflow-y-auto no-scrollbar px-4 py-5"
+        <div ref={contentRef} className="relative overflow-y-auto no-scrollbar px-4 py-5"
           style={{ flex: 1, overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}
           onTouchMove={(e) => e.stopPropagation()}>
           {detail === null ? (
