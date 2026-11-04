@@ -1051,6 +1051,7 @@ export default function WidgetStack({ user, setUser }) {
             <span className="text-[9px] font-black uppercase tracking-wide" style={{ color: "#a9c4ff" }}>{t("livescores.ucl_matchday")}</span>
           </span>
         ) : null} /></div>
+        {footPageCount > 1 && <div className="flex items-center justify-center gap-1 pb-1 text-[9px] font-semibold" style={{ color: "#71809a" }}><span className="material-symbols-outlined" style={{ fontSize: 13 }}>swipe</span>Balayez pour voir les autres matchs</div>}
         <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", transform: `translateX(${scoreDrag.id === "football" ? scoreDrag.dx : 0}px)`, transition: scoreDrag.id === "football" ? "none" : "transform 220ms cubic-bezier(0.22,1,0.36,1)" }}>
           {visibleFootItems.map((m) => {
             const live = m.state === "in", done = m.state === "post";
@@ -1067,6 +1068,7 @@ export default function WidgetStack({ user, setUser }) {
     if (id === "mma") return (
       <div className="h-full flex flex-col px-3 py-2.5">
         <div className="pr-3"><PageHeader id="mma" /></div>
+        {mmaPageCount > 1 && <div className="flex items-center justify-center gap-1 pb-1 text-[9px] font-semibold" style={{ color: "#71809a" }}><span className="material-symbols-outlined" style={{ fontSize: 13 }}>swipe</span>Balayez pour voir les autres combats</div>}
         <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", transform: `translateX(${scoreDrag.id === "mma" ? scoreDrag.dx : 0}px)`, transition: scoreDrag.id === "mma" ? "none" : "transform 220ms cubic-bezier(0.22,1,0.36,1)" }}>
           {visibleMmaItems.map((m) => <div key={m.id} className="flex items-center gap-2 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><span className="material-symbols-outlined" style={{ color: "#e57373", fontSize: 17 }}>sports_mma</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.f1?.name} · {m.f2?.name}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.event}</span></span><span className="text-[10px] font-bold" style={{ color: m.state === "in" ? NEON : "#cfcfcf" }}>{m.state === "in" ? "LIVE" : formatKickoff(m.date)}</span></div>)}
         </div>
