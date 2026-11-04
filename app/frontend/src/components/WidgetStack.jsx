@@ -20,7 +20,8 @@ import PremiumModal from "@/components/PremiumModal";
 const NEON = "#4ade80";
 const STACK_H = 150;
 const ROW_H = 54;
-const SCORE_PAGE_SIZE = 10;
+const SCORE_SLIDE_SIZE = 2;
+const intoScoreSlides = (items) => Array.from({ length: Math.ceil(items.length / SCORE_SLIDE_SIZE) }, (_, index) => items.slice(index * SCORE_SLIDE_SIZE, (index + 1) * SCORE_SLIDE_SIZE));
 const WIDGETS = {
   football: { label: "Football", icon: "sports_soccer", color: NEON },
   mma: { label: "MMA / UFC", icon: "sports_mma", color: "#ef4444" },
@@ -672,9 +673,6 @@ export default function WidgetStack({ user, setUser }) {
   const [flashing, setFlashing] = useState({});
   const [openMatch, setOpenMatch] = useState(null);
   const [showStandings, setShowStandings] = useState(false);
-  const [footPage, setFootPage] = useState(0);
-  const [mmaPage, setMmaPage] = useState(0);
-  const [scoreDrag, setScoreDrag] = useState({ id: null, dx: 0 });
   const [active, setActive] = useState(0);
   const [editing, setEditing] = useState(false);
   const [configWidget, setConfigWidget] = useState(null);  // id du widget en cours de personnalisation
@@ -848,12 +846,10 @@ export default function WidgetStack({ user, setUser }) {
   const footItems = footBase.length ? footBase : (demoOn ? DEMO_FOOT : []);
   const mmaBase = displayMatches(matches.filter((m) => m.sport === "mma"), favL, favT);
   const mmaItems = mmaBase.length ? mmaBase : (demoOn ? DEMO_MMA : []);
-  const footPageCount = Math.max(1, Math.ceil(footItems.length / SCORE_PAGE_SIZE));
-  const mmaPageCount = Math.max(1, Math.ceil(mmaItems.length / SCORE_PAGE_SIZE));
-  const safeFootPage = Math.min(footPage, footPageCount - 1);
-  const safeMmaPage = Math.min(mmaPage, mmaPageCount - 1);
-  const visibleFootItems = footItems.slice(safeFootPage * SCORE_PAGE_SIZE, (safeFootPage + 1) * SCORE_PAGE_SIZE);
-  const visibleMmaItems = mmaItems.slice(safeMmaPage * SCORE_PAGE_SIZE, (safeMmaPage + 1) * SCORE_PAGE_SIZE);
+  // Toutes les rencontres restent dans le DOM : le défilement horizontal les
+  // rend accessibles deux par deux, sans pagination ni compteur artificiel.
+  const footSlides = intoScoreSlides(footItems);
+  const mmaSlides = intoScoreSlides(mmaItems);
   // WWE : direct d'abord, puis à venir, puis terminés (le tri vient déjà du client).
   const wweItems = matches.filter((m) => m.sport === "wwe");
   const isFavLive = (m) => m.state === "in" && (favL.has(m.league_slug) || favT.has(m.home_id) || favT.has(m.away_id) || favT.has(teamFavoriteKey(m.home)) || favT.has(teamFavoriteKey(m.away)));
@@ -876,7 +872,6 @@ export default function WidgetStack({ user, setUser }) {
   // Rotation intelligente.
   const pagesRef = useRef(pages);
   const activeRef = useRef(active);
-  const scoreCountsRef = useRef({ football: footPageCount, mma: mmaPageCount });
   const urgentRef = useRef(null);
   const smartRef = useRef(smartRotate);
   const manualUntilRef = useRef(0);
@@ -886,7 +881,6 @@ export default function WidgetStack({ user, setUser }) {
   const wantWeatherRef = useRef(wantWeather);
   pagesRef.current = pages;
   activeRef.current = active;
-  scoreCountsRef.current = { football: footPageCount, mma: mmaPageCount };
   smartRef.current = smartRotate;
   wantWeatherRef.current = wantWeather;
   // Urgence (rotation forcée) : direct favori foot > combat MMA en cours >
@@ -930,8 +924,7 @@ export default function WidgetStack({ user, setUser }) {
 
   const idx = Math.min(active, Math.max(0, pages.length - 1));
 
-  // Gestes : swipe vertical (changer de widget), horizontal (page de scores)
-  // et appui long 2 s (mode Édition).
+  // Gestes : swipe vertical (changer de widget) et appui long 2 s (mode Édition).
   // FIX iOS/Android : les écouteurs tactiles de React sont PASSIFS par défaut →
   // e.preventDefault() y est ignoré et la PAGE défile derrière la pile. On attache
   // donc des écouteurs NATIFS non passifs ({ passive:false }) sur le conteneur
@@ -961,13 +954,6 @@ export default function WidgetStack({ user, setUser }) {
       if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(lpRef.current);
       // Geste vertical dominant → on NEUTRALISE le scroll de la page (force brute).
       if (Math.abs(dy) >= Math.abs(dx)) e.preventDefault();
-      else {
-        const currentWidget = pagesRef.current[Math.min(activeRef.current, pagesRef.current.length - 1)];
-        if ((currentWidget === "football" || currentWidget === "mma") && scoreCountsRef.current[currentWidget] > 1) {
-          e.preventDefault();
-          setScoreDrag({ id: currentWidget, dx: Math.max(-72, Math.min(72, dx)) });
-        }
-      }
     };
     const onEnd = (e) => {
       e.stopPropagation();
@@ -977,15 +963,7 @@ export default function WidgetStack({ user, setUser }) {
       const ct = e.changedTouches[0];
       const dy = (ct?.clientY ?? touch.current.y) - touch.current.y;
       const dx = (ct?.clientX ?? touch.current.x) - touch.current.x;
-      if (Math.abs(dx) > Math.abs(dy)) {
-        const currentWidget = pagesRef.current[Math.min(activeRef.current, pagesRef.current.length - 1)];
-        const count = scoreCountsRef.current[currentWidget] || 1;
-        setScoreDrag({ id: null, dx: 0 });
-        if (Math.abs(dx) < 32 || count < 2) return;
-        if (currentWidget === "football") setFootPage((page) => Math.max(0, Math.min(count - 1, page + (dx < 0 ? 1 : -1))));
-        if (currentWidget === "mma") setMmaPage((page) => Math.max(0, Math.min(count - 1, page + (dx < 0 ? 1 : -1))));
-        return;
-      }
+      if (Math.abs(dx) > Math.abs(dy)) return;
       if (Math.abs(dy) < 30) return; // vrai swipe vertical
       manualUntilRef.current = Date.now() + 15000;
       const n = pagesRef.current.length;
@@ -1051,9 +1029,8 @@ export default function WidgetStack({ user, setUser }) {
             <span className="text-[9px] font-black uppercase tracking-wide" style={{ color: "#a9c4ff" }}>{t("livescores.ucl_matchday")}</span>
           </span>
         ) : null} /></div>
-        {footPageCount > 1 && <div className="flex items-center justify-center gap-1 pb-1 text-[9px] font-semibold" style={{ color: "#71809a" }}><span className="material-symbols-outlined" style={{ fontSize: 13 }}>swipe</span>Balayez pour voir les autres matchs</div>}
-        <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", transform: `translateX(${scoreDrag.id === "football" ? scoreDrag.dx : 0}px)`, transition: scoreDrag.id === "football" ? "none" : "transform 220ms cubic-bezier(0.22,1,0.36,1)" }}>
-          {visibleFootItems.map((m) => {
+        <div className="flex flex-1 overflow-x-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", scrollSnapType: "x mandatory", overscrollBehaviorX: "contain", touchAction: "pan-x" }}>
+          {footSlides.map((slide, slideIndex) => <div key={slideIndex} className="w-full min-w-full flex-shrink-0 px-0.5" style={{ scrollSnapAlign: "start" }}>{slide.map((m) => {
             const live = m.state === "in", done = m.state === "post";
             const status = live ? `LIVE · ${m.clock || ""}` : done ? "Terminé" : formatKickoff(m.date);
             return <button key={m.id} onClick={() => setOpenMatch(m)} className="w-full flex items-center gap-2 py-2.5 text-left" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1061,16 +1038,15 @@ export default function WidgetStack({ user, setUser }) {
               <span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.home} · {m.away}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.league}</span></span>
               <span className="text-[10px] font-bold" style={{ color: live ? NEON : "#cfcfcf" }}>{status}</span>
             </button>;
-          })}
+          })}</div>)}
         </div>
       </div>
     );
     if (id === "mma") return (
       <div className="h-full flex flex-col px-3 py-2.5">
         <div className="pr-3"><PageHeader id="mma" /></div>
-        {mmaPageCount > 1 && <div className="flex items-center justify-center gap-1 pb-1 text-[9px] font-semibold" style={{ color: "#71809a" }}><span className="material-symbols-outlined" style={{ fontSize: 13 }}>swipe</span>Balayez pour voir les autres combats</div>}
-        <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", transform: `translateX(${scoreDrag.id === "mma" ? scoreDrag.dx : 0}px)`, transition: scoreDrag.id === "mma" ? "none" : "transform 220ms cubic-bezier(0.22,1,0.36,1)" }}>
-          {visibleMmaItems.map((m) => <div key={m.id} className="flex items-center gap-2 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><span className="material-symbols-outlined" style={{ color: "#e57373", fontSize: 17 }}>sports_mma</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.f1?.name} · {m.f2?.name}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.event}</span></span><span className="text-[10px] font-bold" style={{ color: m.state === "in" ? NEON : "#cfcfcf" }}>{m.state === "in" ? "LIVE" : formatKickoff(m.date)}</span></div>)}
+        <div className="flex flex-1 overflow-x-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", scrollSnapType: "x mandatory", overscrollBehaviorX: "contain", touchAction: "pan-x" }}>
+          {mmaSlides.map((slide, slideIndex) => <div key={slideIndex} className="w-full min-w-full flex-shrink-0 px-0.5" style={{ scrollSnapAlign: "start" }}>{slide.map((m) => <div key={m.id} className="flex items-center gap-2 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><span className="material-symbols-outlined" style={{ color: "#e57373", fontSize: 17 }}>sports_mma</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.f1?.name} · {m.f2?.name}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.event}</span></span><span className="text-[10px] font-bold" style={{ color: m.state === "in" ? NEON : "#cfcfcf" }}>{m.state === "in" ? "LIVE" : formatKickoff(m.date)}</span></div>)}</div>)}
         </div>
       </div>
     );
