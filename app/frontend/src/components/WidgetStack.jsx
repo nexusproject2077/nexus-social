@@ -10,7 +10,7 @@ import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
 import { useSheetDismiss } from "@/hooks/useDraggableSheet";
-import { MatchCard, MmaCard, WweCard, displayMatches, formatKickoff, isUclMatch } from "@/components/LiveScores";
+import { MatchCard, MmaCard, WweCard, StandingsModal, displayMatches, formatKickoff, isUclMatch } from "@/components/LiveScores";
 import { fetchWweEvents } from "@/lib/wweClient";
 import { getTodayMinutes, syncScreenTime } from "@/lib/screenTime";
 import { fetchLiveScoresFromEspn, searchTeamsFromEspn, resolveTeamIdByName, teamFavoriteKey } from "@/lib/espnClient";
@@ -671,8 +671,10 @@ export default function WidgetStack({ user, setUser }) {
   const [screenMin, setScreenMin] = useState(() => getTodayMinutes());
   const [flashing, setFlashing] = useState({});
   const [openMatch, setOpenMatch] = useState(null);
+  const [showStandings, setShowStandings] = useState(false);
   const [footPage, setFootPage] = useState(0);
   const [mmaPage, setMmaPage] = useState(0);
+  const [scoreDrag, setScoreDrag] = useState({ id: null, dx: 0 });
   const [active, setActive] = useState(0);
   const [editing, setEditing] = useState(false);
   const [configWidget, setConfigWidget] = useState(null);  // id du widget en cours de personnalisation
@@ -873,6 +875,8 @@ export default function WidgetStack({ user, setUser }) {
 
   // Rotation intelligente.
   const pagesRef = useRef(pages);
+  const activeRef = useRef(active);
+  const scoreCountsRef = useRef({ football: footPageCount, mma: mmaPageCount });
   const urgentRef = useRef(null);
   const smartRef = useRef(smartRotate);
   const manualUntilRef = useRef(0);
@@ -881,6 +885,8 @@ export default function WidgetStack({ user, setUser }) {
   const mountedAtRef = useRef(Date.now());
   const wantWeatherRef = useRef(wantWeather);
   pagesRef.current = pages;
+  activeRef.current = active;
+  scoreCountsRef.current = { football: footPageCount, mma: mmaPageCount };
   smartRef.current = smartRotate;
   wantWeatherRef.current = wantWeather;
   // Urgence (rotation forcée) : direct favori foot > combat MMA en cours >
@@ -924,7 +930,8 @@ export default function WidgetStack({ user, setUser }) {
 
   const idx = Math.min(active, Math.max(0, pages.length - 1));
 
-  // Gestes : swipe vertical (changer de widget) + appui long 2 s (mode Édition).
+  // Gestes : swipe vertical (changer de widget), horizontal (page de scores)
+  // et appui long 2 s (mode Édition).
   // FIX iOS/Android : les écouteurs tactiles de React sont PASSIFS par défaut →
   // e.preventDefault() y est ignoré et la PAGE défile derrière la pile. On attache
   // donc des écouteurs NATIFS non passifs ({ passive:false }) sur le conteneur
@@ -954,6 +961,13 @@ export default function WidgetStack({ user, setUser }) {
       if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(lpRef.current);
       // Geste vertical dominant → on NEUTRALISE le scroll de la page (force brute).
       if (Math.abs(dy) >= Math.abs(dx)) e.preventDefault();
+      else {
+        const currentWidget = pagesRef.current[Math.min(activeRef.current, pagesRef.current.length - 1)];
+        if ((currentWidget === "football" || currentWidget === "mma") && scoreCountsRef.current[currentWidget] > 1) {
+          e.preventDefault();
+          setScoreDrag({ id: currentWidget, dx: Math.max(-72, Math.min(72, dx)) });
+        }
+      }
     };
     const onEnd = (e) => {
       e.stopPropagation();
@@ -963,7 +977,16 @@ export default function WidgetStack({ user, setUser }) {
       const ct = e.changedTouches[0];
       const dy = (ct?.clientY ?? touch.current.y) - touch.current.y;
       const dx = (ct?.clientX ?? touch.current.x) - touch.current.x;
-      if (Math.abs(dy) < 30 || Math.abs(dx) > Math.abs(dy)) return; // vrai swipe vertical
+      if (Math.abs(dx) > Math.abs(dy)) {
+        const currentWidget = pagesRef.current[Math.min(activeRef.current, pagesRef.current.length - 1)];
+        const count = scoreCountsRef.current[currentWidget] || 1;
+        setScoreDrag({ id: null, dx: 0 });
+        if (Math.abs(dx) < 32 || count < 2) return;
+        if (currentWidget === "football") setFootPage((page) => Math.max(0, Math.min(count - 1, page + (dx < 0 ? 1 : -1))));
+        if (currentWidget === "mma") setMmaPage((page) => Math.max(0, Math.min(count - 1, page + (dx < 0 ? 1 : -1))));
+        return;
+      }
+      if (Math.abs(dy) < 30) return; // vrai swipe vertical
       manualUntilRef.current = Date.now() + 15000;
       const n = pagesRef.current.length;
       setActive((a) => Math.max(0, Math.min(n - 1, a + (dy < 0 ? 1 : -1))));
@@ -998,7 +1021,7 @@ export default function WidgetStack({ user, setUser }) {
     if (CONFIGURABLE[id]) setConfigWidget(id); else setEditing(true);
   };
 
-  const PageHeader = ({ id, badge = null }) => {
+  const PageHeader = ({ id, badge = null, action = null }) => {
     const w = WIDGETS[id];
     return (
       <div className="flex items-center justify-between mb-1.5 px-0.5">
@@ -1007,26 +1030,18 @@ export default function WidgetStack({ user, setUser }) {
           <span className="text-[11px] font-black uppercase tracking-wider" style={{ color: "#8b96a8" }}>{t("widgets." + id)}</span>
           {badge}
         </div>
-        <button onClick={() => openWidgetMenu(id)} aria-label={t("stack.customize_widget")}
+        <div className="flex items-center gap-1">{action}<button onClick={() => openWidgetMenu(id)} aria-label={t("stack.customize_widget")}
           className="flex items-center justify-center -m-1 p-1 rounded-lg active:scale-90 transition-transform">
           <span className="material-symbols-outlined" style={{ color: "#6b7686", fontSize: 16 }} title={t("stack.customize")}>more_horiz</span>
-        </button>
+        </button></div>
       </div>
     );
   };
 
-  const ScorePager = ({ page, pages, setPage }) => pages > 1 ? (
-    <div className="flex items-center justify-end gap-1.5 pt-1.5 flex-shrink-0">
-      <button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={page === 0} className="material-symbols-outlined rounded-md px-1 text-xs disabled:opacity-30" style={{ background: "#121212", color: "#e5e5e5" }} aria-label="Page précédente">chevron_left</button>
-      <span className="text-[10px] font-bold" style={{ color: "#a3a3a3" }}>{page + 1}/{pages}</span>
-      <button type="button" onClick={() => setPage((current) => Math.min(pages - 1, current + 1))} disabled={page >= pages - 1} className="material-symbols-outlined rounded-md px-1 text-xs disabled:opacity-30" style={{ background: "#121212", color: "#e5e5e5" }} aria-label="Page suivante">chevron_right</button>
-    </div>
-  ) : null;
-
   const pageNode = (id) => {
     if (id === "football") return (
       <div className="h-full flex flex-col px-3 py-2.5">
-        <div className="pr-3"><PageHeader id="football" badge={uclMatchday ? (
+        <div className="pr-3"><PageHeader id="football" action={<button type="button" onClick={() => setShowStandings(true)} className="flex h-7 w-7 items-center justify-center rounded-lg active:scale-90 transition-transform" style={{ color: NEON, background: "rgba(74,222,128,0.10)" }} aria-label="Voir les classements"><span className="material-symbols-outlined" style={{ fontSize: 17 }}>leaderboard</span></button>} badge={uclMatchday ? (
           <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 flex-shrink-0"
             style={{ background: "rgba(31,111,235,0.16)", border: "1px solid rgba(88,145,255,0.45)" }}
             title={t("livescores.ucl_matchday")}>
@@ -1036,7 +1051,7 @@ export default function WidgetStack({ user, setUser }) {
             <span className="text-[9px] font-black uppercase tracking-wide" style={{ color: "#a9c4ff" }}>{t("livescores.ucl_matchday")}</span>
           </span>
         ) : null} /></div>
-        <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", transform: `translateX(${scoreDrag.id === "football" ? scoreDrag.dx : 0}px)`, transition: scoreDrag.id === "football" ? "none" : "transform 220ms cubic-bezier(0.22,1,0.36,1)" }}>
           {visibleFootItems.map((m) => {
             const live = m.state === "in", done = m.state === "post";
             const status = live ? `LIVE · ${m.clock || ""}` : done ? "Terminé" : formatKickoff(m.date);
@@ -1047,16 +1062,14 @@ export default function WidgetStack({ user, setUser }) {
             </button>;
           })}
         </div>
-        <ScorePager page={safeFootPage} pages={footPageCount} setPage={setFootPage} />
       </div>
     );
     if (id === "mma") return (
       <div className="h-full flex flex-col px-3 py-2.5">
         <div className="pr-3"><PageHeader id="mma" /></div>
-        <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="flex-1 overflow-y-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", transform: `translateX(${scoreDrag.id === "mma" ? scoreDrag.dx : 0}px)`, transition: scoreDrag.id === "mma" ? "none" : "transform 220ms cubic-bezier(0.22,1,0.36,1)" }}>
           {visibleMmaItems.map((m) => <div key={m.id} className="flex items-center gap-2 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><span className="material-symbols-outlined" style={{ color: "#e57373", fontSize: 17 }}>sports_mma</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.f1?.name} · {m.f2?.name}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.event}</span></span><span className="text-[10px] font-bold" style={{ color: m.state === "in" ? NEON : "#cfcfcf" }}>{m.state === "in" ? "LIVE" : formatKickoff(m.date)}</span></div>)}
         </div>
-        <ScorePager page={safeMmaPage} pages={mmaPageCount} setPage={setMmaPage} />
       </div>
     );
     if (id === "wwe") return (
@@ -1349,7 +1362,7 @@ export default function WidgetStack({ user, setUser }) {
   return (
     <div className="px-4 pt-1 pb-2">
       <div ref={containerRef} className="relative rounded-2xl overflow-hidden select-none"
-        style={{ height: STACK_H, background: "#050505", border: "1px solid rgba(255,255,255,0.08)", touchAction: "pan-x" }}>
+        style={{ height: STACK_H, background: "#050505", border: "1px solid rgba(255,255,255,0.08)", touchAction: "none" }}>
         <div style={{ height: STACK_H * pages.length, transform: `translateY(-${idx * STACK_H}px)`, transition: "transform 0.4s cubic-bezier(0.22,1,0.36,1)" }}>
           {pages.map((id) => (<div key={id} style={{ height: STACK_H }}>{pageNode(id)}</div>))}
         </div>
@@ -1363,6 +1376,7 @@ export default function WidgetStack({ user, setUser }) {
         )}
       </div>
       {openMatch && <MatchCenter match={openMatch} currentUser={user} onClose={() => setOpenMatch(null)} />}
+      {showStandings && <StandingsModal matches={footItems} onClose={() => setShowStandings(false)} />}
       {editing && (
         <StackEditor order={configOrder} smartRotate={smartRotate} onChange={applyConfig} onClose={() => setEditing(false)} />
       )}

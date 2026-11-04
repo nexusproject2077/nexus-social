@@ -260,13 +260,21 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
 
   return (
     <div style={{ backgroundColor: "#000", color: "#f5f5f5" }}
-      className={`${hideMobileChrome ? "h-[100dvh] overflow-hidden lg:h-auto lg:overflow-visible lg:min-h-screen" : "min-h-screen"} font-body`}>
+      className={`${hideMobileChrome ? "h-[100dvh] overflow-hidden md:h-auto md:overflow-visible md:min-h-screen" : "min-h-screen"} font-body`}>
+
+      {/* Sur téléphone uniquement, l'interface reste volontairement en portrait.
+          Les tablettes conservent leur layout latéral, même en paysage. */}
+      <div className="nexus-portrait-lock" role="status" aria-live="polite">
+        <span className="material-symbols-outlined">screen_rotation</span>
+        <strong>Tourne ton téléphone</strong>
+        <span>Utilise Nexus Social en mode portrait.</span>
+      </div>
 
       {/* ===== Desktop Left Sidebar (repliée → pictos seuls ; survol → pictos+noms) ===== */}
       <aside
         onMouseEnter={() => setSbExpanded(true)}
         onMouseLeave={() => setSbExpanded(false)}
-        className={`no-scrollbar fixed left-0 top-0 h-screen z-[60] hidden lg:flex flex-col py-4 gap-2 select-none overflow-y-auto overscroll-contain transition-[width] duration-200 ease-out ${sbExpanded ? "w-64 px-4 shadow-2xl" : "w-20 px-2"}`}
+        className={`no-scrollbar fixed left-0 top-0 h-screen z-[60] hidden md:flex flex-col py-4 gap-2 select-none overflow-y-auto overscroll-contain transition-[width] duration-200 ease-out ${sbExpanded ? "w-64 px-4 shadow-2xl" : "w-20 px-2"}`}
         style={{ backgroundColor: "#000", borderRight: "1px solid rgba(255,255,255,0.08)" }}
       >
         {/* Logo : « NEXUS » déployé, « N » replié */}
@@ -434,7 +442,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* ===== Mobile Header ===== */}
       {!hideMobileChrome && !hideMobileHeader && (
       <header
-        className="lg:hidden fixed top-0 left-0 right-0 z-50 flex flex-col select-none transition-transform duration-300 pt-safe"
+        className="md:hidden fixed top-0 left-0 right-0 z-50 flex flex-col select-none transition-transform duration-300 pt-safe"
         style={{ backgroundColor: "rgba(0,0,0,0.92)", backdropFilter: "blur(20px)", transform: headerHidden ? "translateY(-100%)" : "translateY(0)" }}
       >
         {/* Ligne 1 : « Nexus Social » centré, cloche de notifications à droite
@@ -487,7 +495,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {/* ===== Main Content ===== */}
       {/* lg:ml-20 = largeur de la sidebar repliée (pas de chevauchement ; la
           sidebar déployée passe au-dessus au survol). */}
-      <main className={`ml-0 lg:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] lg:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : ((location.pathname === "/feed" || location.pathname === "/") ? "pt-[calc(5.5rem_+_env(safe-area-inset-top))] pb-20" : "pt-[calc(3.5rem_+_env(safe-area-inset-top))] pb-20"))} lg:pt-0 lg:pb-0`}>
+      <main className={`ml-0 md:ml-20 ${compact ? "" : "lg:mr-80"} ${hideMobileChrome ? "min-h-[100dvh] md:min-h-screen" : "min-h-screen"} ${hideMobileChrome ? "pt-0 pb-0" : (hideMobileHeader ? "pt-0 pb-20" : ((location.pathname === "/feed" || location.pathname === "/") ? "pt-[calc(5.5rem_+_env(safe-area-inset-top))] pb-20" : "pt-[calc(3.5rem_+_env(safe-area-inset-top))] pb-20"))} md:pt-0 md:pb-0`}>
         {children}
       </main>
 
@@ -497,7 +505,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
       {(!hideMobileChrome || bottomNav) && (
       <>
       <nav
-        className="mobile-bottom-nav lg:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 select-none"
+        className="mobile-bottom-nav md:hidden fixed bottom-0 inset-x-0 z-50 flex justify-around items-center px-4 select-none"
         style={{
           // Hauteur = 4rem de contenu + zone sûre iOS (indicateur d'accueil) :
           // les icônes ne tombent plus dans la zone de geste du bas. Sur les
@@ -556,7 +564,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
         <button
           data-testid="fab-create-post"
           onClick={handleCreatePost}
-          className="lg:hidden fixed right-4 z-[55] w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95"
+          className="md:hidden fixed right-4 z-[55] w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95"
           style={{ bottom: "calc(5rem + env(safe-area-inset-bottom))", background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 6px 18px rgba(34,211,238,0.4)" }}
           aria-label={t("create_post")}
         >

@@ -276,9 +276,38 @@ code {
    écran l'exige (ex. commentaires Nexus Clips) pour ne pas cacher le champ de
    saisie. Le corps porte alors la classe `nexus-hide-bottomnav`. */
 .mobile-bottom-nav {
+    /* La barre est ancrée aux deux bords, y compris lors des changements de
+       hauteur Safari (barre d'URL / clavier) : aucun interstice ne doit apparaître. */
+    left: 0;
+    right: 0;
+    width: auto;
     transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 body.nexus-hide-bottomnav .mobile-bottom-nav {
     transform: translateY(130%);
     pointer-events: none;
+}
+
+/* Verrou visuel du paysage sur téléphone. Les navigateurs ne permettent pas de
+   forcer l'orientation hors plein écran ; cet écran empêche donc toute
+   utilisation accidentelle en paysage sans casser les tablettes. */
+.nexus-portrait-lock { display: none; }
+@media screen and (max-width: 767px) and (orientation: landscape) {
+    .nexus-portrait-lock {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        padding: 2rem;
+        text-align: center;
+        color: #f5f5f5;
+        background: #000;
+    }
+    .nexus-portrait-lock .material-symbols-outlined { color: var(--nexus-accent-solid); font-size: 3rem; }
+    .nexus-portrait-lock strong { font-size: 1.125rem; }
+    .nexus-portrait-lock span:last-child { color: #9ca3af; font-size: 0.875rem; }
 }
