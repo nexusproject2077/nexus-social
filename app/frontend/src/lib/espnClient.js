@@ -134,6 +134,7 @@ function normalizeMma(data) {
       const winner = f1.winner ? f1.name : f2.winner ? f2.name : null;
       out.push({
         id: String(comp.id || ev.id || ""),
+      event_id: String(ev.id || comp.id || ""),
         sport: "mma",
         event: eventName,
         f1,
@@ -180,6 +181,51 @@ export async function fetchLiveScoresFromEspn({ foot = true, mma = true } = {}) 
   const unique = new Map();
   for (const match of [...footResults.flat(), ...mmaResult]) unique.set(`${match.sport}:${match.id}`, match);
   return [...unique.values()];
+}
+
+// Détail UFC : ESPN reste la source de vérité. On ne fabrique jamais une
+// taille, un poids ou un palmarès si le fournisseur ne les renvoie pas.
+const mmaValue = (value) => (value === undefined || value === null || value === "" ? null : String(value));
+const mmaAthlete = (source = {}) => {
+  const athlete = source.athlete || source;
+  const headshot = athlete.headshot?.href || athlete.headshot || athlete.image?.href || athlete.image || null;
+  const stats = athlete.statistics || source.statistics || [];
+  const stat = (...names) => {
+    const item = Array.isArray(stats) ? stats.find((x) => names.includes(String(x?.name || x?.label || "").toLowerCase().replace(/[^a-z]/g, ""))) : null;
+    return mmaValue(item?.displayValue ?? item?.value);
+  };
+  return {
+    id: String(athlete.id || source.id || ""),
+    name: athlete.displayName || athlete.shortName || source.displayName || source.shortName || "Combattant",
+    avatar: headshot,
+    record: mmaValue(athlete.record?.summary || athlete.recordSummary || source.record?.summary || source.recordSummary),
+    age: mmaValue(athlete.age || source.age) || stat("age"),
+    weight: mmaValue(athlete.weight || athlete.weightDisplay || source.weight) || stat("weight", "weightlbs"),
+    height: mmaValue(athlete.height || athlete.heightDisplay || source.height) || stat("height"),
+    reach: mmaValue(athlete.reach || athlete.reachDisplay || source.reach) || stat("reach"),
+    winsByKo: stat("winsbyko", "knockouts", "kowins"),
+    sigStrikes: stat("significantstrikes", "sigstrikes", "significantstrikeslanded"),
+    submissions: stat("submissionwins", "submissions"),
+    takedowns: stat("takedowns", "takedownaverage"),
+  };
+};
+
+export async function fetchMmaFightDetailsFromEspn(eventId, fallback = {}) {
+  const id = String(eventId || "").trim();
+  const empty = { fighters: [mmaAthlete(fallback.f1), mmaAthlete(fallback.f2)], event: fallback.event || "UFC", date: fallback.date || null, state: fallback.state || "pre", detail: fallback.detail || "" };
+  if (!/^[0-9]{3,20}$/.test(id)) return empty;
+  const data = await fetchSports("mma-summary", { event: id });
+  if (!data) return empty;
+  const competition = data?.header?.competitions?.[0] || data?.competitions?.[0] || {};
+  const competitors = competition.competitors || data?.competitors || [];
+  const fighters = competitors.slice(0, 2).map(mmaAthlete);
+  return {
+    fighters: fighters.length === 2 ? fighters : empty.fighters,
+    event: data?.header?.season?.displayName || data?.header?.league?.name || fallback.event || "UFC",
+    date: competition.date || data?.header?.competitions?.[0]?.date || fallback.date || null,
+    state: competition.status?.type?.state || fallback.state || "pre",
+    detail: competition.status?.type?.shortDetail || competition.status?.type?.detail || fallback.detail || "",
+  };
 }
 
 // ───────────────────── Recherche d'équipes (mise en favori) ────────────────────

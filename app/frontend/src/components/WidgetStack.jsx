@@ -9,6 +9,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { useNavigate } from "react-router-dom";
 import MatchCenter from "@/components/MatchCenter";
+import MmaFightCenter from "@/components/MmaFightCenter";
 import { useSheetDismiss } from "@/hooks/useDraggableSheet";
 import { MatchCard, MmaCard, WweCard, StandingsModal, displayMatches, formatKickoff, isUclMatch } from "@/components/LiveScores";
 import { fetchWweEvents } from "@/lib/wweClient";
@@ -1046,7 +1047,7 @@ export default function WidgetStack({ user, setUser }) {
       <div className="h-full flex flex-col px-3 py-2.5">
         <div className="pr-3"><PageHeader id="mma" /></div>
         <div className="flex flex-1 overflow-x-auto no-scrollbar" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", scrollSnapType: "x mandatory", overscrollBehaviorX: "contain", touchAction: "pan-x" }}>
-          {mmaSlides.map((slide, slideIndex) => <div key={slideIndex} className="w-full min-w-full flex-shrink-0 px-0.5" style={{ scrollSnapAlign: "start" }}>{slide.map((m) => <div key={m.id} className="flex items-center gap-2 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><span className="material-symbols-outlined" style={{ color: "#e57373", fontSize: 17 }}>sports_mma</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.f1?.name} · {m.f2?.name}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.event}</span></span><span className="text-[10px] font-bold" style={{ color: m.state === "in" ? NEON : "#cfcfcf" }}>{m.state === "in" ? "LIVE" : formatKickoff(m.date)}</span></div>)}</div>)}
+          {mmaSlides.map((slide, slideIndex) => <div key={slideIndex} className="w-full min-w-full flex-shrink-0 px-0.5" style={{ scrollSnapAlign: "start" }}>{slide.map((m) => <button type="button" key={m.id} onClick={() => setOpenMatch(m)} className="w-full flex items-center gap-2 py-2.5 text-left" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}><span className="material-symbols-outlined" style={{ color: "#e57373", fontSize: 17 }}>sports_mma</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold" style={{ color: "#f5f5f5" }}>{m.f1?.name} · {m.f2?.name}</span><span className="block truncate text-[10px]" style={{ color: "#9a9a9a" }}>{m.event}</span></span><span className="text-[10px] font-bold" style={{ color: m.state === "in" ? NEON : "#cfcfcf" }}>{m.state === "in" ? "LIVE" : formatKickoff(m.date)}</span></button>)}</div>)}
         </div>
       </div>
     );
@@ -1353,7 +1354,7 @@ export default function WidgetStack({ user, setUser }) {
           </div>
         )}
       </div>
-      {openMatch && <MatchCenter match={openMatch} currentUser={user} onClose={() => setOpenMatch(null)} />}
+      {openMatch && (openMatch.sport === "mma" ? <MmaFightCenter fight={openMatch} onClose={() => setOpenMatch(null)} /> : <MatchCenter match={openMatch} currentUser={user} onClose={() => setOpenMatch(null)} />)}
       {showStandings && <StandingsModal matches={footItems} onClose={() => setShowStandings(false)} />}
       {editing && (
         <StackEditor order={configOrder} smartRotate={smartRotate} onChange={applyConfig} onClose={() => setEditing(false)} />

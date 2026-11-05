@@ -8,6 +8,7 @@ import axios from "axios";
 import { API } from "@/App";
 import { toast } from "sonner";
 import MatchCenter from "@/components/MatchCenter";
+import MmaFightCenter from "@/components/MmaFightCenter";
 import { fetchLiveScoresFromEspn, fetchStandingsFromEspn, getLeagueLogo, searchTeamsFromEspn, teamFavoriteKey } from "@/lib/espnClient";
 import i18n from "@/i18n";
 
@@ -277,7 +278,7 @@ function MmaFighter({ f, winner, done }) {
   );
 }
 
-export function MmaCard({ m, compact, flash }) {
+export function MmaCard({ m, compact, flash, onOpen }) {
   const live = m.state === "in";
   const done = m.state === "post";
   const upcoming = !live && !done;
@@ -288,7 +289,7 @@ export function MmaCard({ m, compact, flash }) {
   const w1 = done && m.winner && m.f1?.name === m.winner;
   const w2 = done && m.winner && m.f2?.name === m.winner;
   return (
-    <div className={`rounded-2xl p-3 flex flex-col justify-between ${compact ? "" : "flex-shrink-0"}`}
+    <button type="button" onClick={() => onOpen?.(m)} className={`rounded-2xl p-3 flex flex-col justify-between text-left ${compact ? "" : "flex-shrink-0"}`}
       style={{ background: "#0a0a0a", border: `1px solid ${live ? NEON + "33" : "rgba(255,255,255,0.08)"}`, width: compact ? "auto" : 178, minHeight: 98 }}>
       <div className="flex items-center justify-between gap-2 mb-2">
         <span className="text-[10px] font-bold uppercase tracking-wider truncate flex items-center gap-1 min-w-0 flex-1" style={{ color: "#6b7686" }}>
@@ -307,7 +308,7 @@ export function MmaCard({ m, compact, flash }) {
           {status}
         </span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -684,7 +685,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
   const favoriteFootItems = footItems.filter(isFavoriteFootballMatch);
   const otherFootItems = footItems.filter((m) => !isFavoriteFootballMatch(m));
   const renderCard = (m, compact) => (m.sport === "mma"
-    ? <MmaCard key={`mma-${m.id}`} m={m} compact={compact} flash={!!flashing[`mma-${m.id}`]} />
+    ? <MmaCard key={`mma-${m.id}`} m={m} compact={compact} flash={!!flashing[`mma-${m.id}`]} onOpen={setOpenMatch} />
     : <MatchCard key={`foot-${m.id}`} m={m} compact={compact} flash={!!flashing[`foot-${m.id}`]} {...cardProps} />);
   const mobilePeriod = (title, icon, color, items) => !items.length ? null : (
     <section className="pb-4">
@@ -756,7 +757,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
         </div>
         {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {showStandings && <StandingsModal matches={src} onClose={() => setShowStandings(false)} />}
-        {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
+        {openMatch && (openMatch.sport === "mma" ? <MmaFightCenter fight={openMatch} onClose={() => setOpenMatch(null)} /> : <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />)}
         {confirmDialog}
       </section>
     );
@@ -773,7 +774,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
         </div>
         {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
         {showStandings && <StandingsModal matches={src} onClose={() => setShowStandings(false)} />}
-        {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
+        {openMatch && (openMatch.sport === "mma" ? <MmaFightCenter fight={openMatch} onClose={() => setOpenMatch(null)} /> : <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />)}
         {confirmDialog}
       </section>
     );
@@ -793,7 +794,7 @@ export default function LiveScores({ variant = "mobile", setUser }) {
       {mobilePeriod("MMA / UFC — À venir", "event", "#f87171", splitMatchesByDay(mmaItems).upcoming)}
       {showFilter && <FilterModal favL={favL} favT={favT} onToggleTeam={onToggleTeam} onSave={saveFilter} onClose={() => setShowFilter(false)} />}
       {showStandings && <StandingsModal matches={src} onClose={() => setShowStandings(false)} />}
-      {openMatch && <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />}
+      {openMatch && (openMatch.sport === "mma" ? <MmaFightCenter fight={openMatch} onClose={() => setOpenMatch(null)} /> : <MatchCenter match={openMatch} onClose={() => setOpenMatch(null)} />)}
       {confirmDialog}
     </div>
   );
