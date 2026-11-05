@@ -41,7 +41,6 @@ export default function MmaFightCenter({ fight, onClose }) {
 
   const [left = {}, right = {}] = detail.fighters || [];
   const live = detail.state === "in";
-  const hasStats = statRows.some(([key]) => left[key] || right[key]);
   return <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/90 sm:items-center sm:p-5" onMouseDown={(e) => { if (e.currentTarget === e.target) onClose(); }}>
     <article className="flex h-[100dvh] w-full max-w-4xl flex-col overflow-hidden bg-[#050505] sm:h-[90dvh] sm:rounded-[28px]" aria-label="Fiche combat UFC">
       <header className="relative z-20 flex flex-shrink-0 items-center justify-between border-b border-white/10 bg-[#050505] px-3 pb-3 sm:px-6 sm:py-4" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
@@ -55,7 +54,7 @@ export default function MmaFightCenter({ fight, onClose }) {
         <div className="px-4 pt-4 text-center sm:px-8"><p className="text-sm font-black text-white">{live ? "EN DIRECT" : detail.state === "post" ? (detail.detail || "Terminé") : dateParis(detail.date)}</p><p className="mt-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: live ? "#4ade80" : "#888" }}>{live ? detail.detail || "Combat en cours" : "Face-à-face"}</p></div>
         <div className="mx-auto mt-1 flex max-w-2xl items-end gap-2 px-3 sm:gap-8 sm:px-10"><FighterPortrait fighter={left} side="left" /><div className="mb-8 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 text-xs font-black text-white">VS</div><FighterPortrait fighter={right} side="right" /></div>
         <section className="mx-auto max-w-xl border-y border-white/10 px-5 py-5 sm:px-8" aria-label="Comparaison des combattants">
-          {hasStats ? <div className="space-y-4">{statRows.filter(([key]) => left[key] || right[key]).map(([key, label]) => <div key={key} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3"><div className="text-right"><Value value={left[key]} /></div><span className="min-w-28 text-center text-[10px] font-black uppercase tracking-wide" style={{ color: "#8b8b8b" }}>{label}</span><div><Value value={right[key]} /></div></div>)}</div> : <p className="py-3 text-center text-sm" style={{ color: "#9b9b9b" }}>Les statistiques détaillées de ce combat ne sont pas encore fournies par la source.</p>}
+          <div className="space-y-4">{statRows.map(([key, label]) => <div key={key} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3"><div className="text-right"><Value value={left[key]} /></div><span className="min-w-28 text-center text-[10px] font-black uppercase tracking-wide" style={{ color: "#8b8b8b" }}>{label}</span><div><Value value={right[key]} /></div></div>)}</div>
         </section>
         <p className="px-6 py-4 text-center text-[11px]" style={{ color: "#6f6f6f" }}>Données et portraits liés à cette affiche UFC uniquement · actualisation automatique</p>
       </main>
