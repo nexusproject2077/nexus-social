@@ -158,9 +158,9 @@ export default {
       else if(resource==="soccer-standings"&&validLeague) upstream="https://site.api.espn.com/apis/v2/sports/soccer/"+encodeURIComponent(league)+"/standings";
       else if(resource==="soccer-summary"&&validLeague&&validEvent) upstream="https://site.api.espn.com/apis/site/v2/sports/soccer/"+encodeURIComponent(league)+"/summary?event="+event;
       else if(resource==="mma-scoreboard") upstream="https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard";
-      // Le résumé est lié à l'événement UFC (et non à une carte locale) : la
-      // fiche combat ne peut donc jamais mélanger deux adversaires.
-      else if(resource==="mma-summary"&&validEvent) upstream="https://site.api.espn.com/apis/site/v2/sports/mma/ufc/summary?event="+event;
+      // ESPN ne publie pas de /summary MMA (404), contrairement au football.
+      // Son scoreboard accepte toutefois event= et renvoie la carte exacte.
+      else if(resource==="mma-summary"&&validEvent) upstream="https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard?event="+event;
       else if(resource==="team-search"&&q.length>=2&&q.length<=80) upstream="https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t="+encodeURIComponent(q);
       else return json({detail:"Invalid sports query"},400,request);
       try {const response=await fetch(upstream,{headers:{Accept:"application/json"}});if(!response.ok)return json({detail:"Sports provider unavailable"},502,request);return json(await response.json(),200,request);}catch{return json({detail:"Sports provider unavailable"},502,request);}
