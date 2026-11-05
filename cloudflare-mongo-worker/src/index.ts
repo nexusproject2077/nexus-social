@@ -239,8 +239,33 @@ export default {
       }
 
       const user = url.pathname.startsWith("/api/") && env.SECRET_KEY ? await authUser(request,env.SECRET_KEY,db) : null;
+      // Preuve de consentement : choix explicite, version du texte, horodatage
+      // et zone juridique uniquement. Pas d'IP, d'agent utilisateur ni de fingerprint.
+      if (url.pathname === "/api/privacy/cookie-consent" && request.method === "POST") {
+        let body:any; try { body=await request.json(); } catch { return json({detail:"Invalid JSON"},400,request); }
+        const consentId=String(body?.consent_id||""),choice=String(body?.choice||""),version=String(body?.policy_version||"");
+        if(!/^[a-zA-Z0-9-]{16,80}$/.test(consentId)||!["accepted","rejected"].includes(choice)||!/^\d{4}-\d{2}-\d{2}$/.test(version)) return json({detail:"Invalid consent"},400,request);
+        const country=String((request as any).cf?.country||"").toUpperCase();
+        const eu=new Set(["AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE","IS","LI","NO"]).has(country);
+        const now=new Date(),expiresAt=new Date(now.getTime()+183*86400000).toISOString();
+        await db.collection("cookie_consent_events").deleteMany({expires_at:{$lte:now.toISOString()}}).catch(()=>undefined);
+        await db.collection("cookie_consent_events").updateOne(
+          {consent_id:consentId,policy_version:version,choice},
+          {$set:{choice,policy_version:version,jurisdiction:eu?"EEA":"other",user_id:user?.id||null,updated_at:now.toISOString(),expires_at:expiresAt},$setOnInsert:{id:crypto.randomUUID(),consent_id:consentId,created_at:now.toISOString()}},
+          {upsert:true},
+        );
+        return json({success:true,expires_at:expiresAt},200,request);
+      }
       if (url.pathname.startsWith("/api/") && !["/api/geo/status","/api/geo/language","/api/wwe/events","/api/sports/data"].includes(url.pathname) && !user) return json({detail:"Not authenticated"},401,request);
       const uid=String(user?.id||"");
+      if (url.pathname === "/api/admin/cookie-consent" && request.method === "GET") {
+        if (!user?.is_admin) return json({detail:"Admin only"},403,request);
+        const since=new Date(Date.now()-30*86400000).toISOString();
+        const rows=await db.collection("cookie_consent_events").aggregate([{$match:{updated_at:{$gte:since}}},{$group:{_id:{choice:"$choice",jurisdiction:"$jurisdiction"},count:{$sum:1}}}]).toArray();
+        const summary:any={accepted:0,rejected:0,eea_accepted:0,eea_rejected:0,period_days:30};
+        for(const row of rows){const key=String(row?._id?.choice||"");if(key==="accepted"||key==="rejected"){summary[key]+=Number(row.count||0);if(row?._id?.jurisdiction==="EEA")summary[`eea_${key}`]+=Number(row.count||0);}}
+        return json(summary,200,request);
+      }
       const matchRoomRoute=url.pathname.match(/^\/api\/match-rooms\/([^/]+)\/messages$/);
       if(matchRoomRoute){const matchId=decodeURIComponent(matchRoomRoute[1]);if(!/^[a-zA-Z0-9._:-]{3,100}$/.test(matchId))return json({detail:"Invalid match room"},400,request);if(request.method==="GET"){const rows=await db.collection("match_room_messages").find({match_id:matchId},{projection:{_id:0}}).sort({created_at:1}).limit(200).toArray();return json({messages:rows},200,request);}if(request.method==="POST"){let b:any;try{b=await request.json();}catch{return json({detail:"Invalid JSON"},400,request);}const content=String(b?.content||"").trim();if(!content||content.length>500)return json({detail:"Invalid message"},400,request);const message={id:crypto.randomUUID(),match_id:matchId,content,author_id:uid,author_username:String(user?.username||"Membre"),author_profile_pic:user?.profile_pic||null,created_at:new Date().toISOString()};await db.collection("match_room_messages").insertOne(message);return json({message},201,request);}return json({detail:"Method not allowed"},405,request);}
       const userRoute = url.pathname.match(/^\/api\/users\/([^/]+)(?:\/(stats|posts|follow-status|reposts|mentions|follow))?$/);
