@@ -44,9 +44,12 @@ export default function MmaFightCenter({ fight, onClose }) {
   const hasStats = statRows.some(([key]) => left[key] || right[key]);
   return <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/90 sm:items-center sm:p-5" onMouseDown={(e) => { if (e.currentTarget === e.target) onClose(); }}>
     <article className="flex h-[100dvh] w-full max-w-4xl flex-col overflow-hidden bg-[#050505] sm:h-[90dvh] sm:rounded-[28px]" aria-label="Fiche combat UFC">
-      <header className="flex items-center justify-between border-b border-white/10 px-4 py-4 sm:px-6">
-        <div><p className="text-[10px] font-black uppercase tracking-[.18em]" style={{ color: RED }}>MMA / UFC</p><p className="mt-1 text-sm font-bold text-white">{fight.event || "UFC"}</p></div>
-        <button type="button" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-white transition-transform active:scale-90" aria-label="Fermer"><span className="material-symbols-outlined">close</span></button>
+      <header className="relative z-20 flex flex-shrink-0 items-center justify-between border-b border-white/10 bg-[#050505] px-3 pb-3 sm:px-6 sm:py-4" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
+        <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white transition-transform active:scale-90" aria-label="Retour aux scores">
+          <span className="material-symbols-outlined" style={{ fontSize: 27 }}>arrow_back</span>
+        </button>
+        <div className="min-w-0 flex-1 px-3 text-center"><p className="text-[10px] font-black uppercase tracking-[.18em]" style={{ color: RED }}>MMA / UFC</p><p className="mt-1 truncate text-sm font-bold text-white">{fight.event || "UFC"}</p></div>
+        <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white transition-transform active:scale-90" aria-label="Fermer"><span className="material-symbols-outlined">close</span></button>
       </header>
       <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="px-4 pt-4 text-center sm:px-8"><p className="text-sm font-black text-white">{live ? "EN DIRECT" : detail.state === "post" ? (detail.detail || "Terminé") : dateParis(detail.date)}</p><p className="mt-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: live ? "#4ade80" : "#888" }}>{live ? detail.detail || "Combat en cours" : "Face-à-face"}</p></div>
