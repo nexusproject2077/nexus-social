@@ -17,6 +17,7 @@ import {
   Eye,
 } from "lucide-react";
 import { useTranslation, Trans } from "react-i18next";
+import { COOKIE_CONSENT_EVENT, getCookieConsent, setCookieConsent } from "@/lib/cookieConsent";
 
 export default function PrivacyCenter({ user, setUser }) {
   const { t } = useTranslation();
@@ -38,9 +39,16 @@ export default function PrivacyCenter({ user, setUser }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [analyticsCookies, setAnalyticsCookies] = useState(() => getCookieConsent()?.choice === "accepted");
 
   useEffect(() => {
     loadPrivacySettings();
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => setAnalyticsCookies(getCookieConsent()?.choice === "accepted");
+    window.addEventListener(COOKIE_CONSENT_EVENT, refresh);
+    return () => window.removeEventListener(COOKIE_CONSENT_EVENT, refresh);
   }, []);
 
   const loadPrivacySettings = async () => {
@@ -234,9 +242,10 @@ export default function PrivacyCenter({ user, setUser }) {
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={localStorage.getItem("cookie_consent") === "accepted"}
-                        onChange={(e) => {
-                          localStorage.setItem("cookie_consent", e.target.checked ? "accepted" : "rejected");
+                        checked={analyticsCookies}
+                        onChange={async (e) => {
+                          await setCookieConsent(e.target.checked ? "accepted" : "rejected");
+                          setAnalyticsCookies(e.target.checked);
                           alert(e.target.checked ? t("privacycenter.cookies_on") : t("privacycenter.cookies_off"));
                         }}
                         className="sr-only peer"

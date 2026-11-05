@@ -135,10 +135,8 @@
                     }),
                     (e.__SV = 1));
             })(document, window.posthog || []);
-            posthog.init("phc_yJW1VjHGGwmCbbrtczfqqNxgBDbhlhOWcdzcIJEOTFE", {
-                api_host: "https://us.i.posthog.com",
-                person_profiles: "identified_only", // or 'always' to create profiles for anonymous users as well
-            });
+            // Le SDK reste inactif tant que CookieConsent ne reçoit pas un
+            // consentement explicite. Aucun script PostHog n'est alors chargé.
         </script>
     </body>
 </html>

@@ -19,11 +19,15 @@ export default function AdminMetrics({ user, setUser }) {
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
   const [data, setData] = useState(null);
+  const [cookieConsent, setCookieConsent] = useState(null);
 
   const load = async () => {
     try {
       const r = await axios.get(`${API}/admin/metrics`);
       setData(r.data);
+      // Statistiques agrégées uniquement : aucun identifiant visiteur n'est
+      // exposé à l'administration depuis ce tableau.
+      axios.get(`${API}/admin/cookie-consent`).then((consent) => setCookieConsent(consent.data)).catch(() => setCookieConsent(null));
       setDenied(false);
     } catch (e) {
       if (e?.response?.status === 403) setDenied(true);
@@ -106,6 +110,13 @@ export default function AdminMetrics({ user, setUser }) {
             </Card>
           ))}
         </div>
+
+        {cookieConsent && <Card className="bg-slate-900 border-slate-800 mb-3 sm:mb-4">
+          <CardHeader className="pb-2"><CardTitle className="text-base sm:text-lg">Consentements aux traceurs</CardTitle><CardDescription className="text-xs">Choix enregistrés sur les 30 derniers jours — données agrégées.</CardDescription></CardHeader>
+          <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[['Acceptés', cookieConsent.accepted, 'text-emerald-400'], ['Refusés', cookieConsent.rejected, 'text-rose-400'], ['UE acceptés', cookieConsent.eea_accepted, 'text-cyan-400'], ['UE refusés', cookieConsent.eea_rejected, 'text-amber-400']].map(([label, value, color]) => <div key={label} className="rounded-xl bg-slate-800/50 p-3"><p className="text-[11px] text-slate-400">{label}</p><p className={`text-2xl font-black ${color}`}>{Number(value || 0).toLocaleString()}</p></div>)}
+          </CardContent>
+        </Card>}
 
         {/* Rétention */}
         <Card className="bg-slate-900 border-slate-800 mb-3 sm:mb-4">

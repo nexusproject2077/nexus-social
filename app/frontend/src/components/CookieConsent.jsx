@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { X, Shield } from "lucide-react";
 import { useGeo } from "@/context/GeoContext";
 import { useTranslation, Trans } from "react-i18next";
+import { applyCookieConsent, getCookieConsent, setCookieConsent } from "@/lib/cookieConsent";
 
 export default function CookieConsent() {
   const { t } = useTranslation();
@@ -15,20 +16,27 @@ export default function CookieConsent() {
 
   useEffect(() => {
     if (!loaded) return;
-    const consent = localStorage.getItem("cookie_consent");
+    const consent = getCookieConsent();
+    if (consent) {
+      applyCookieConsent(consent);
+      return;
+    }
     if (!consent) {
       const t = setTimeout(() => setShow(true), 1000);
       return () => clearTimeout(t);
     }
   }, [loaded]);
 
-  const setConsent = (value) => {
-    localStorage.setItem("cookie_consent", value);
-    localStorage.setItem("cookie_consent_date", new Date().toISOString());
+  const chooseConsent = (value) => {
+    setCookieConsent(value);
     setShow(false);
   };
 
-  if (!show || !loaded) return null;
+  if (!loaded) return null;
+
+  if (!show) {
+    return <button type="button" onClick={() => setShow(true)} aria-label="Gérer mes cookies" className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] sm:bottom-4 left-3 z-[70] flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-950/95 text-slate-200 shadow-lg backdrop-blur hover:border-cyan-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><span aria-hidden="true">🍪</span></button>;
+  }
 
   // ── Hors-UE : notice discrète ────────────────────────────────────────────────
   if (!restricted) {
@@ -43,7 +51,7 @@ export default function CookieConsent() {
             </a>
           </p>
           <Button
-            onClick={() => setConsent("accepted")}
+            onClick={() => chooseConsent("accepted")}
             size="sm"
             className="flex-shrink-0 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 h-8 text-xs font-semibold"
           >
@@ -89,17 +97,18 @@ export default function CookieConsent() {
 
               <div className="flex gap-2 sm:gap-3 w-full sm:w-auto flex-shrink-0">
                 <Button
-                  onClick={() => setConsent("rejected")}
+                  onClick={() => chooseConsent("rejected")}
                   variant="outline"
                   size="sm"
-                  className="flex-1 sm:flex-initial border-slate-700 text-slate-300 hover:bg-slate-800 h-9 sm:h-10 text-xs sm:text-sm"
+                  className="flex-1 sm:flex-initial border-slate-600 bg-transparent text-slate-100 hover:bg-slate-800 h-9 sm:h-10 text-xs sm:text-sm font-semibold"
                 >
                   {t("cookieconsent.reject")}
                 </Button>
                 <Button
-                  onClick={() => setConsent("accepted")}
+                  onClick={() => chooseConsent("accepted")}
+                  variant="outline"
                   size="sm"
-                  className="flex-1 sm:flex-initial bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 h-9 sm:h-10 text-xs sm:text-sm font-semibold"
+                  className="flex-1 sm:flex-initial border-slate-600 bg-transparent text-slate-100 hover:bg-slate-800 h-9 sm:h-10 text-xs sm:text-sm font-semibold"
                 >
                   {t("cookieconsent.accept")}
                 </Button>
@@ -107,7 +116,7 @@ export default function CookieConsent() {
             </div>
 
             <button
-              onClick={() => setConsent("rejected")}
+              onClick={() => chooseConsent("rejected")}
               className="absolute top-2 right-2 sm:hidden p-2 text-slate-400 hover:text-white transition-colors"
               aria-label={t("cookieconsent.close")}
             >
