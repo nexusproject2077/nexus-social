@@ -216,12 +216,16 @@ export async function fetchMmaFightDetailsFromEspn(eventId, fallback = {}) {
   if (!/^[0-9]{3,20}$/.test(id)) return empty;
   const data = await fetchSports("mma-summary", { event: id });
   if (!data) return empty;
-  const competition = data?.header?.competitions?.[0] || data?.competitions?.[0] || {};
+  // Le proxy MMA renvoie le scoreboard filtré par event= : ESPN n'expose pas
+  // de endpoint /summary MMA. On isole tout de même l'événement demandé pour
+  // empêcher toute collision avec une autre affiche de la carte.
+  const event = (data?.events || []).find((item) => String(item?.id || "") === id) || data?.events?.[0] || {};
+  const competition = data?.header?.competitions?.[0] || event?.competitions?.[0] || data?.competitions?.[0] || {};
   const competitors = competition.competitors || data?.competitors || [];
   const fighters = competitors.slice(0, 2).map(mmaAthlete);
   return {
     fighters: fighters.length === 2 ? fighters : empty.fighters,
-    event: data?.header?.season?.displayName || data?.header?.league?.name || fallback.event || "UFC",
+    event: event?.shortName || event?.name || data?.header?.season?.displayName || data?.header?.league?.name || fallback.event || "UFC",
     date: competition.date || data?.header?.competitions?.[0]?.date || fallback.date || null,
     state: competition.status?.type?.state || fallback.state || "pre",
     detail: competition.status?.type?.shortDetail || competition.status?.type?.detail || fallback.detail || "",
