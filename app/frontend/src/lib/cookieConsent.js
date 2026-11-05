@@ -26,10 +26,18 @@ export function getCookieConsent() {
 function setPostHog(enabled) {
   const posthog = window.posthog;
   if (!enabled) {
-    try { posthog?.opt_out_capturing?.(); posthog?.reset?.(); } catch { /* tracker may not be loaded */ }
+    // Ne pas appeler le stub avant son initialisation : cela mettrait une
+    // commande en file d'attente alors que l'utilisateur vient de refuser.
+    if (window.__nexusPostHogStarted) {
+      try { posthog?.opt_out_capturing?.(); posthog?.reset?.(); } catch { /* tracker may not be loaded */ }
+    }
     return;
   }
-  if (!posthog || window.__nexusPostHogStarted) return;
+  if (!posthog) return;
+  if (window.__nexusPostHogStarted) {
+    try { posthog.opt_in_capturing?.(); } catch { /* tracker may be unavailable */ }
+    return;
+  }
   window.__nexusPostHogStarted = true;
   posthog.init("phc_yJW1VjHGGwmCbbrtczfqqNxgBDbhlhOWcdzcIJEOTFE", {
     api_host: "https://us.i.posthog.com",

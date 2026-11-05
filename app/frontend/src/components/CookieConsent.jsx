@@ -35,7 +35,9 @@ export default function CookieConsent() {
   if (!loaded) return null;
 
   if (!show) {
-    return <button type="button" onClick={() => setShow(true)} aria-label="Gérer mes cookies" className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] sm:bottom-4 left-3 z-[70] flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-950/95 text-slate-200 shadow-lg backdrop-blur hover:border-cyan-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"><span aria-hidden="true">🍪</span></button>;
+    return <button type="button" onClick={() => setShow(true)} aria-label="Gérer mes cookies" className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] sm:bottom-4 left-3 z-[70] flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-950/95 text-slate-200 shadow-lg backdrop-blur hover:border-cyan-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 2a8.5 8.5 0 0 0-8.45 7.55A3.5 3.5 0 0 1 7 13h1.1a2.4 2.4 0 0 0 2.35-2.9A3.5 3.5 0 0 1 14 6.5h1A3.5 3.5 0 0 1 18.5 10v.5a3 3 0 0 0 2.9 3A8.5 8.5 0 1 1 12 2Z"/><circle cx="8.3" cy="7.8" r=".8" fill="currentColor" stroke="none"/><circle cx="15.8" cy="15.4" r=".8" fill="currentColor" stroke="none"/><circle cx="8.4" cy="17" r=".65" fill="currentColor" stroke="none"/></svg>
+    </button>;
   }
 
   // ── Hors-UE : notice discrète ────────────────────────────────────────────────
