@@ -368,7 +368,10 @@ function DesktopScoreRow({ m, flash, onOpen }) {
   const score = isMma
     ? (live ? `R${m.round || "?"}${m.clock ? ` · ${m.clock}` : ""}` : (done ? (m.method || i18n.t("livescores.finished")) : formatKickoff(m.date)))
     : (live ? (m.clock || i18n.t("livescores.in_progress")) : (done ? i18n.t("livescores.finished") : formatKickoff(m.date)));
-  const canOpen = !isMma && typeof onOpen === "function";
+  // Foot et UFC ouvrent tous les deux leur fiche dédiée. Le parent choisit
+  // MatchCenter ou MmaFightCenter selon m.sport ; bloquer le MMA ici rendait
+  // les combats de la colonne PC impossibles à consulter.
+  const canOpen = typeof onOpen === "function";
   const ClubLogo = ({ src, name }) => src ? (
     <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#ffffff0d", border: "1px solid #ffffff12" }}>
       <img src={src} alt={`Logo ${name || "club"}`} className="w-4 h-4 object-contain" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} />
