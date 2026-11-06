@@ -1,190 +1,92 @@
-# Social - Réseau Social Moderne
+# Nexus Social
 
-Un réseau social complet et moderne inspiré de Twitter et Instagram, construit avec React, FastAPI et MongoDB.
+Nexus Social est un réseau social responsive, pensé d'abord pour mobile. Il réunit publications, profils, messagerie, clips, scores sportifs et centre de match, avec une interface sombre adaptée au téléphone, à la tablette et au bureau.
 
-## 🚀 Fonctionnalités
+## Fonctionnalités principales
 
-### Authentification
-- ✅ Inscription avec email, nom d'utilisateur, mot de passe et bio
-- ✅ Connexion sécurisée avec JWT
-- ✅ Gestion de session
+- Authentification, profils, abonnements et comptes privés.
+- Publications texte, images, vidéos et clips ; likes, commentaires, reposts, mentions et historique de visionnage.
+- Fil « Pour vous », abonnements et chronologique, tendances et météo.
+- Messagerie privée chiffrée P2P, conversations, statut en ligne et confirmations de lecture configurables.
+- Paramètres de confidentialité : visibilité du compte, réponses aux stories, mentions, mots masqués, publicité et contrôle des données.
+- Scores sportifs en direct et à venir : football et MMA/UFC.
+- Favoris d'équipes et recherche de clubs internationaux.
+- Centre de match football : événements, statistiques, classement et compositions selon les données disponibles.
+- Fiche UFC par combat : portraits, palmarès, comparaison des athlètes et retour explicite vers les scores.
 
-### Publications
-- ✅ Créer des publications avec texte, images et vidéos
-- ✅ Liker/Unliker des publications
-- ✅ Partager des publications
-- ✅ Commenter des publications
-- ✅ Supprimer ses propres publications
-- ✅ Affichage des compteurs (likes, commentaires, partages)
+## Données sportives
 
-### Profil Utilisateur
-- ✅ Profil personnalisable avec photo et bio
-- ✅ Affichage des statistiques (abonnements, abonnés)
-- ✅ Liste de toutes les publications de l'utilisateur
-- ✅ Modifier le profil (photo et bio)
+Les scores et fiches sportives sont obtenus côté serveur à partir des données ESPN puis normalisés avant l'affichage. Chaque fiche UFC reste rattachée à son `event_id` : aucune donnée d'un autre combat ne sert de remplacement.
 
-### Interactions Sociales
-- ✅ Suivre/Se désabonner d'autres utilisateurs
-- ✅ Fil d'actualité personnalisé basé sur les abonnements
-- ✅ Système de notifications en temps réel
-- ✅ Messages privés entre utilisateurs
+Les catégories de comparaison (âge, poids, taille, allonge, KO, frappes significatives, soumissions et takedowns) restent toujours visibles. Lorsqu'une donnée n'est pas fournie par la source, Nexus affiche `—` plutôt que d'inventer une valeur.
 
-### Recherche
-- ✅ Recherche d'utilisateurs par nom d'utilisateur ou bio
-- ✅ Recherche de publications par contenu
+## Architecture
 
-### Messagerie
-- ✅ Messages directs privés
-- ✅ Liste des conversations
-- ✅ Indicateur de messages non lus
-- ✅ Interface de chat en temps réel
+| Élément | Technologie |
+| --- | --- |
+| Application web | React 19, React Router, Tailwind CSS, CRACO |
+| API | Cloudflare Workers |
+| Temps réel | Cloudflare Durable Objects / Realtime Hub |
+| Données applicatives | MongoDB |
+| Données sportives | ESPN, via le Worker Nexus |
 
-### Notifications
-- ✅ Notifications pour likes, commentaires, partages et nouveaux abonnés
-- ✅ Marquer les notifications comme lues
-- ✅ Badge de notifications non lues
+## Structure du dépôt
 
-### Design Responsive
-- ✅ Design adaptatif pour mobile, tablette et desktop
-- ✅ Menu hamburger sur mobile
-- ✅ Interface moderne avec effets visuels
-
-## 🛠️ Stack Technique
-
-### Backend
-- **FastAPI** - Framework web Python moderne et rapide
-- **MongoDB** - Base de données NoSQL
-- **Motor** - Driver MongoDB asynchrone
-- **JWT** - Authentification par token
-- **Bcrypt** - Hachage sécurisé des mots de passe
-
-### Frontend
-- **React 19** - Bibliothèque UI
-- **React Router** - Navigation
-- **Axios** - Client HTTP
-- **Shadcn/UI** - Composants UI modernes
-- **Tailwind CSS** - Framework CSS utility-first
-- **Lucide React** - Icônes
-
-## 📦 Installation
-
-### Prérequis
-- Python 3.10+
-- Node.js 18+
-- MongoDB
-
-### Backend
-```bash
-cd backend
-pip install -r requirements.txt
-
-# Créer un fichier .env
-echo 'MONGO_URL="mongodb://localhost:27017"' > .env
-echo 'DB_NAME="social_network"' >> .env
-echo 'CORS_ORIGINS="*"' >> .env
-echo 'SECRET_KEY="your-secret-key-here"' >> .env
-
-# Lancer le serveur
-uvicorn server:app --reload --host 0.0.0.0 --port 8001
+```text
+app/frontend/              Application React
+cloudflare-mongo-worker/   API Cloudflare Workers et accès MongoDB
+cloudflare-backend/        Services Cloudflare complémentaires
 ```
 
+## Développement local
+
 ### Frontend
+
 ```bash
-cd frontend
+cd app/frontend
 yarn install
-
-# Créer un fichier .env
-echo 'REACT_APP_BACKEND_URL=http://localhost:8001' > .env
-
-# Lancer l'application
 yarn start
 ```
 
-## 🎨 Design
+L'application démarre habituellement sur `http://localhost:3000`.
 
-L'application utilise un design moderne avec :
-- Palette de couleurs cyan/blue sur fond sombre
-- Police Space Grotesk pour les titres
-- Police Inter pour le texte
-- Animations et transitions fluides
-- Effets de hover sur tous les éléments interactifs
-- Design glassmorphism pour certains composants
+### Worker API
 
-## 🔐 Sécurité
+```bash
+cd cloudflare-mongo-worker
+npm install
+npx wrangler dev
+```
 
-- Mots de passe hachés avec bcrypt
-- Authentification JWT avec expiration
-- Validation des données côté backend
-- Protection CORS configurée
-- Vérification des autorisations pour les actions sensibles
+Les secrets et variables de production ne doivent jamais être ajoutés au dépôt. Configure-les dans Cloudflare (secrets/variables du Worker), puis utilisez :
 
-## 📱 API Endpoints
+```bash
+npx wrangler deploy
+```
 
-### Authentification
-- `POST /api/auth/register` - Inscription
-- `POST /api/auth/login` - Connexion
-- `GET /api/auth/me` - Obtenir l'utilisateur actuel
-- `PUT /api/auth/profile` - Mettre à jour le profil
+## Responsive et navigation
 
-### Publications
-- `POST /api/posts` - Créer une publication
-- `GET /api/posts/feed` - Obtenir le fil d'actualité
-- `GET /api/posts/{post_id}` - Obtenir une publication
-- `POST /api/posts/{post_id}/like` - Liker/Unliker
-- `POST /api/posts/{post_id}/share` - Partager
-- `DELETE /api/posts/{post_id}` - Supprimer
+- Téléphone : navigation fixe basse, interfaces tactiles et défilement horizontal pour parcourir les groupes de scores.
+- Tablette : conservation d'une navigation compacte inspirée du mobile, sans transformation en barre latérale de bureau.
+- Bureau : navigation latérale et widgets de scores accessibles depuis le flux.
+- Les fiches UFC peuvent être quittées à tout moment par la flèche retour ou la croix présentes dans l'en-tête.
 
-### Commentaires
-- `POST /api/posts/{post_id}/comments` - Créer un commentaire
-- `GET /api/posts/{post_id}/comments` - Obtenir les commentaires
+## Confidentialité
 
-### Utilisateurs
-- `GET /api/users/search` - Rechercher des utilisateurs
-- `GET /api/users/{user_id}` - Obtenir un profil
-- `GET /api/users/{user_id}/posts` - Obtenir les publications d'un utilisateur
-- `POST /api/users/{user_id}/follow` - Suivre/Se désabonner
+Les choix de cookies et de publicité sont gérés séparément des fonctions essentielles. Les intégrations marketing optionnelles ne doivent être chargées ou utilisées qu'après un consentement explicite ; un refus doit bloquer tout suivi marketing, y compris côté serveur.
 
-### Messages
-- `POST /api/messages` - Envoyer un message
-- `GET /api/messages/conversations` - Obtenir les conversations
-- `GET /api/messages/{user_id}` - Obtenir les messages avec un utilisateur
+## Vérification avant déploiement
 
-### Notifications
-- `GET /api/notifications` - Obtenir les notifications
-- `PUT /api/notifications/{notification_id}/read` - Marquer comme lu
-- `PUT /api/notifications/read-all` - Tout marquer comme lu
+```bash
+# Frontend
+cd app/frontend
+yarn build
 
-### Recherche
-- `GET /api/search/posts` - Rechercher des publications
+# Worker
+cd ../../cloudflare-mongo-worker
+npx wrangler deploy --dry-run
+```
 
-## 🧪 Tests
+## Licence
 
-L'application a été testée avec :
-- 100% des tests backend passés (25/25)
-- 95% des tests frontend passés
-- Tests d'intégration complets
-- Tests de responsive design
-
-## 📄 License
-
-MIT
-
-## 👥 Contribution
-
-Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une issue ou une pull request.
-
-## 🌟 Fonctionnalités Futures
-
-- [ ] Notifications en temps réel avec WebSocket
-- [ ] Stories (publications temporaires)
-- [ ] Réactions variées (pas seulement like)
-- [ ] Thèmes personnalisables (clair/sombre)
-- [ ] Support de plus de types de médias
-- [ ] Hashtags et tendances
-- [ ] Groupes/Communautés
-- [ ] Appels vidéo/audio
-- [ ] Mode hors ligne avec PWA
-
----
-
-Créé avec ❤️ par l'équipe Social
+Projet privé. Tous droits réservés.
