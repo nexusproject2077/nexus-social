@@ -297,7 +297,7 @@ function StackEditor({ order, smartRotate, onChange, onClose }) {
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full sm:max-w-md rounded-t-3xl px-5 overflow-y-auto overscroll-contain no-scrollbar"
         onTouchMove={(e) => e.stopPropagation()}
-        style={{ background: "#050505", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "85vh", WebkitOverflowScrolling: "touch", paddingTop: "calc(env(safe-area-inset-top,0px) + 2rem)", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)", ...dismiss.sheetStyle }}>
+        style={{ background: "#050505", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "85vh", WebkitOverflowScrolling: "touch", paddingTop: "calc(var(--nexus-safe-top) + 2rem)", paddingBottom: "calc(var(--nexus-safe-bottom) + 1rem)", animation: "clipSheetUp 0.28s cubic-bezier(0.22,1,0.36,1)", ...dismiss.sheetStyle }}>
         {/* Poignée manipulable (glisser vers le bas pour fermer) */}
         <div {...dismiss.handleProps} className="-mt-2 -mx-5 pt-2 pb-3 flex justify-center">
           <div className="w-10 h-1.5 rounded-full" style={{ background: `${NEON}88` }} />

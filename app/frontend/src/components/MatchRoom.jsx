@@ -91,7 +91,7 @@ export default function MatchRoom({ match, currentUser, onClose }) {
   return createPortal(
     <div className="fixed inset-0 z-[999] flex items-stretch justify-center bg-black/80 p-0 sm:items-center sm:p-6" style={{ backdropFilter: "blur(10px)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <section className="flex h-[100dvh] w-full flex-col overflow-hidden bg-black sm:h-[min(780px,calc(100dvh-3rem))] sm:max-w-3xl sm:rounded-3xl" style={{ border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 24px 80px rgba(0,0,0,0.72)" }}>
-      <header className="flex items-center gap-3 px-4 py-3 sm:px-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", background: "#050505", paddingTop: "max(12px, env(safe-area-inset-top))" }}>
+      <header className="nexus-safe-header flex items-center gap-3 px-4 pb-3 sm:px-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", background: "#050505" }}>
         <button
           type="button"
           onClick={onClose}
@@ -123,7 +123,7 @@ export default function MatchRoom({ match, currentUser, onClose }) {
 
       <main
         ref={listRef}
-        className="flex-1 overflow-y-auto px-4 py-5 space-y-4 sm:px-7"
+        className="nexus-safe-scroll flex-1 overflow-y-auto px-4 py-5 space-y-4 sm:px-7"
         style={{ overscrollBehavior: "contain" }}
       >
         {messages.length === 0 && (
@@ -154,7 +154,7 @@ export default function MatchRoom({ match, currentUser, onClose }) {
         style={{
           borderTop: "1px solid rgba(255,255,255,0.1)",
           background: "#050505",
-          paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+          paddingBottom: "max(12px, calc(var(--nexus-safe-bottom) + 0.75rem))",
         }}
       >
         <input

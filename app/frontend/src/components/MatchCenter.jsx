@@ -326,11 +326,11 @@ export default function MatchCenter({ match, onClose, currentUser }) {
     <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center sm:p-4"
       style={{ background: "rgba(2,6,20,0.82)", fontFamily: INTER }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full sm:max-w-3xl rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col"
-        style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "88vh" }}>
+      <div className="w-full h-[100dvh] sm:h-auto sm:max-w-3xl rounded-none sm:rounded-3xl overflow-hidden flex flex-col"
+        style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "100dvh" }}>
 
         {/* En-tête : équipes + score */}
-        <div className="px-5 pt-5 pb-4 flex-shrink-0" style={{ background: "linear-gradient(180deg,#111a2e,#0b1220)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="nexus-safe-header px-5 pb-4 flex-shrink-0" style={{ background: "linear-gradient(180deg,#111a2e,#0b1220)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#6b7686" }}>{localizeLeagueName(match?.league_slug, match?.league)}</span>
             <button onClick={onClose} className="w-8 h-8 -mr-1 flex items-center justify-center rounded-full active:scale-90 transition-transform" aria-label={i18n.t("matchcenter.close")}>
@@ -376,7 +376,7 @@ export default function MatchCenter({ match, onClose, currentUser }) {
         </div>
 
         {/* Contenu de l'onglet — seule cette zone défile (scroll confiné). */}
-        <div ref={contentRef} className="relative overflow-y-auto no-scrollbar px-4 py-5"
+        <div ref={contentRef} className="nexus-safe-scroll relative overflow-y-auto no-scrollbar px-4 py-5"
           style={{ flex: 1, overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}
           onTouchMove={(e) => e.stopPropagation()}>
           {detail === null ? (

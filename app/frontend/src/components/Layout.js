@@ -510,8 +510,8 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           // Hauteur = 4rem de contenu + zone sûre iOS (indicateur d'accueil) :
           // les icônes ne tombent plus dans la zone de geste du bas. Sur les
           // appareils sans encoche (safe-area = 0), reste exactement 4rem.
-          height: "calc(4rem + env(safe-area-inset-bottom))",
-          paddingBottom: "env(safe-area-inset-bottom)",
+          height: "calc(4rem + var(--nexus-safe-bottom))",
+          paddingBottom: "var(--nexus-safe-bottom)",
           backgroundColor: "rgba(0,0,0,0.94)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.08)",
         }}
       >
@@ -565,7 +565,7 @@ export default function Layout({ children, user, setUser, onCreatePost, compact,
           data-testid="fab-create-post"
           onClick={handleCreatePost}
           className="md:hidden fixed right-4 z-[55] w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95"
-          style={{ bottom: "calc(5rem + env(safe-area-inset-bottom))", background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 6px 18px rgba(34,211,238,0.4)" }}
+          style={{ bottom: "calc(5rem + var(--nexus-safe-bottom))", background: "linear-gradient(135deg,var(--nexus-accent),#3b82f6)", color: "#00363e", boxShadow: "0 6px 18px rgba(34,211,238,0.4)" }}
           aria-label={t("create_post")}
         >
           <span className="material-symbols-outlined text-2xl">add</span>
