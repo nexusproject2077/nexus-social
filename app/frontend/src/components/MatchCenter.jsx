@@ -1,6 +1,3 @@
-// Match Center — chronologie détaillée d'un match (données ESPN gratuites).
-// Design sombre premium, typo fine (Inter), icônes 100 % SVG (aucun emoji).
-// Événements domicile à GAUCHE de l'axe, extérieur à DROITE. Rafraîchi 60 s.
 import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchMatchDetailsFromEspn, localizeLeagueName } from "@/lib/espnClient";
 import MatchRoom from "@/components/MatchRoom";
@@ -8,60 +5,23 @@ import i18n from "@/i18n";
 
 const NEON = "#4ade80";
 const INTER = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif";
+const HOME_C = "#3b82f6";
+const AWAY_C = "#ef4444";
 
-// ─── Icônes SVG épurées par type d'événement ───
 const Ball = ({ color = NEON, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
     <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.6" />
     <path d="M12 7.2l2.9 2.1-1.1 3.4h-3.6L9.1 9.3 12 7.2z" fill={color} />
-    <path d="M12 3v2.2M4.6 8.6l2 1.3M4.9 16.4l2.4-.9M19.4 8.6l-2 1.3M19.1 16.4l-2.4-.9M9.5 20.4l1-2.2M14.5 20.4l-1-2.2"
-      stroke={color} strokeWidth="1.3" strokeLinecap="round" />
+    <path d="M12 3v2.2M4.6 8.6l2 1.3M4.9 16.4l2.4-.9M19.4 8.6l-2 1.3M19.1 16.4l-2.4-.9M9.5 20.4l1-2.2M14.5 20.4l-1-2.2" stroke={color} strokeWidth="1.3" strokeLinecap="round" />
   </svg>
 );
-const Card = ({ color, size = 15 }) => (
-  <span style={{ display: "inline-block", width: size * 0.72, height: size, borderRadius: 2.5, background: color, boxShadow: `0 0 6px ${color}66` }} />
-);
-const Sub = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <path d="M8 7H16M16 7L13 4M16 7L13 10" stroke={NEON} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M16 17H8M8 17L11 14M8 17L11 20" stroke="#f87171" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-const VarIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <rect x="3" y="4.5" width="18" height="12" rx="1.8" stroke="#a78bfa" strokeWidth="1.6" />
-    <path d="M9 20h6M12 16.5V20" stroke="#a78bfa" strokeWidth="1.6" strokeLinecap="round" />
-    <path d="M8.5 10.5l2.2 2 4-4" stroke="#a78bfa" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-const Injury = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <rect x="4" y="4" width="16" height="16" rx="4" stroke="#fca5a5" strokeWidth="1.6" />
-    <path d="M12 8.5v7M8.5 12h7" stroke="#fca5a5" strokeWidth="1.8" strokeLinecap="round" />
-  </svg>
-);
-// But sur penalty : ballon + point de penalty + pastille verte « validé ».
-const PenGoal = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <circle cx="10.5" cy="10.5" r="7" stroke={NEON} strokeWidth="1.6" />
-    <path d="M10.5 6.8l2.5 1.8-1 3h-3l-1-3 2.5-1.8z" fill={NEON} />
-    <circle cx="10.5" cy="19.4" r="1.05" fill={NEON} />
-    <circle cx="18.6" cy="6.4" r="4" fill="#0b1220" stroke={NEON} strokeWidth="1.3" />
-    <path d="M16.9 6.5l1.2 1.2 2-2.3" stroke={NEON} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-// Penalty manqué : ballon + point de penalty + pastille rouge « raté » (croix).
-const PenMissed = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
-    <circle cx="10.5" cy="10.5" r="7" stroke="#f87171" strokeWidth="1.6" />
-    <path d="M10.5 6.8l2.5 1.8-1 3h-3l-1-3 2.5-1.8z" fill="#f87171" />
-    <circle cx="10.5" cy="19.4" r="1.05" fill="#f87171" />
-    <circle cx="18.6" cy="6.4" r="4" fill="#0b1220" stroke="#f87171" strokeWidth="1.3" />
-    <path d="M17.1 5l3 2.8M20.1 5l-3 2.8" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
+const Card = ({ color, size = 15 }) => <span style={{ display: "inline-block", width: size * 0.72, height: size, borderRadius: 2.5, background: color, boxShadow: `0 0 6px ${color}66` }} />;
+const Sub = ({ size = 18 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden><path d="M8 7H16M16 7L13 4M16 7L13 10" stroke={NEON} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M16 17H8M8 17L11 14M8 17L11 20" stroke="#f87171" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+const VarIcon = ({ size = 18 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden><rect x="3" y="4.5" width="18" height="12" rx="1.8" stroke="#a78bfa" strokeWidth="1.6" /><path d="M9 20h6M12 16.5V20" stroke="#a78bfa" strokeWidth="1.6" strokeLinecap="round" /><path d="M8.5 10.5l2.2 2 4-4" stroke="#a78bfa" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+const Injury = ({ size = 18 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden><rect x="4" y="4" width="16" height="16" rx="4" stroke="#fca5a5" strokeWidth="1.6" /><path d="M12 8.5v7M8.5 12h7" stroke="#fca5a5" strokeWidth="1.8" strokeLinecap="round" /></svg>;
+const PenGoal = ({ size = 18 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden><circle cx="10.5" cy="10.5" r="7" stroke={NEON} strokeWidth="1.6" /><path d="M10.5 6.8l2.5 1.8-1 3h-3l-1-3 2.5-1.8z" fill={NEON} /><circle cx="10.5" cy="19.4" r="1.05" fill={NEON} /><circle cx="18.6" cy="6.4" r="4" fill="#0b1220" stroke={NEON} strokeWidth="1.3" /><path d="M16.9 6.5l1.2 1.2 2-2.3" stroke={NEON} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+const PenMissed = ({ size = 18 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden><circle cx="10.5" cy="10.5" r="7" stroke="#f87171" strokeWidth="1.6" /><path d="M10.5 6.8l2.5 1.8-1 3h-3l-1-3 2.5-1.8z" fill="#f87171" /><circle cx="10.5" cy="19.4" r="1.05" fill="#f87171" /><circle cx="18.6" cy="6.4" r="4" fill="#0b1220" stroke="#f87171" strokeWidth="1.3" /><path d="M17.1 5l3 2.8M20.1 5l-3 2.8" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" /></svg>;
 const Dot = () => <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 999, background: "#5b6577" }} />;
-
 function EventIcon({ type }) {
   switch (type) {
     case "goal": return <Ball color={NEON} />;
@@ -77,13 +37,10 @@ function EventIcon({ type }) {
     default: return <Dot />;
   }
 }
-
 function eventTexts(ev) {
   const p = ev.players || [];
   switch (ev.type) {
-    case "goal":
-    case "penalty_goal":
-    case "own_goal": {
+    case "goal": case "penalty_goal": case "own_goal": {
       const scorer = ev.scorer || p[0] || i18n.t("matchcenter.goal");
       const tags = [ev.type === "penalty_goal" && i18n.t("matchcenter.pen"), ev.own_goal && i18n.t("matchcenter.own_goal_tag")].filter(Boolean).join(" · ");
       const sub = [ev.assist ? i18n.t("matchcenter.assist", { name: ev.assist }) : "", tags].filter(Boolean).join("  ");
@@ -94,7 +51,6 @@ function eventTexts(ev) {
     case "red": return { title: ev.player || p[0] || i18n.t("matchcenter.red"), sub: i18n.t("matchcenter.red") };
     case "sub": {
       const inn = ev.playerIn, out = ev.playerOut;
-      // Sortant ⇄ Entrant sur une seule ligne (ex : « O. Dembélé ⇄ B. Barcola »).
       if (inn && out) return { title: `${out} ⇄ ${inn}`, sub: i18n.t("matchcenter.sub") };
       return { title: inn || out || p[0] || i18n.t("matchcenter.sub"), sub: i18n.t("matchcenter.sub") };
     }
@@ -103,73 +59,30 @@ function eventTexts(ev) {
     default: return { title: p[0] || ev.text || "", sub: p[0] ? ev.text : "" };
   }
 }
-
 const Side = ({ ev, align }) => {
   const { title, sub } = eventTexts(ev);
-  return (
-    <div className={align === "right" ? "text-right" : "text-left"}>
-      <p className="text-[13px] text-white leading-tight" style={{ fontWeight: 600 }}>{title}</p>
-      {sub && <p className="text-[11px] leading-tight mt-0.5" style={{ color: "#8b96a8", fontWeight: 300 }}>{sub}</p>}
-    </div>
-  );
+  return <div className={align === "right" ? "text-right" : "text-left"}><p className="text-[13px] text-white leading-tight" style={{ fontWeight: 600 }}>{title}</p>{sub && <p className="text-[11px] leading-tight mt-0.5" style={{ color: "#8b96a8", fontWeight: 300 }}>{sub}</p>}</div>;
 };
-
-const HOME_C = "#3b82f6"; // domicile = bleu
-const AWAY_C = "#ef4444"; // extérieur = rouge
-
 const formatParisKickoff = (value) => {
   const date = new Date(value || "");
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("fr-FR", {
-    timeZone: "Europe/Paris",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date).replace(/\.$/, "");
+  return new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(date).replace(/\.$/, "");
 };
-
-// Une ligne de stat : valeur domicile · libellé · valeur extérieur + barre
-// à deux segments proportionnels (façon capture X).
 function StatBar({ label, home, away }) {
-  const num = (v) => {
-    const n = parseFloat(String(v).replace(/[^0-9.]/g, ""));
-    return Number.isFinite(n) ? n : 0;
-  };
-  const hv = num(home), av = num(away);
-  const total = hv + av;
+  const num = (v) => { const n = parseFloat(String(v).replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? n : 0; };
+  const hv = num(home), av = num(away), total = hv + av;
   const hp = total > 0 ? (hv / total) * 100 : 50;
-  return (
-    <div className="mb-4">
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-sm font-black tabular-nums" style={{ color: "#f4f8ff" }}>{home}</span>
-        <span className="text-[12px]" style={{ color: "#8b96a8" }}>{label}</span>
-        <span className="text-sm font-black tabular-nums" style={{ color: "#f4f8ff" }}>{away}</span>
-      </div>
-      <div className="flex h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-        <div style={{ width: `${hp}%`, background: HOME_C }} />
-        <div style={{ width: `${100 - hp}%`, background: AWAY_C }} />
-      </div>
-    </div>
-  );
+  return <div className="mb-4"><div className="flex items-center justify-between mb-1.5"><span className="text-sm font-black tabular-nums" style={{ color: "#f4f8ff" }}>{home}</span><span className="text-[12px]" style={{ color: "#8b96a8" }}>{label}</span><span className="text-sm font-black tabular-nums" style={{ color: "#f4f8ff" }}>{away}</span></div><div className="flex h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}><div style={{ width: `${hp}%`, background: HOME_C }} /><div style={{ width: `${100 - hp}%`, background: AWAY_C }} /></div></div>;
 }
-
 function playerKind(player) {
   const position = String(player.position || "").toUpperCase();
   if (/^(G|GK|GOALKEEPER)$/.test(position)) return "goalkeeper";
-  // ESPN distingue parfois un libéro (SW) du reste de la défense. Il doit
-  // occuper sa propre ligne, entre le milieu et les défenseurs : le fondre
-  // parmi les attaquants déforme notamment les 3-1-4-2.
   if (/^(SW|LIB|LIBERO)$/.test(position)) return "sweeper";
   if (/(DEFENDER|BACK|^(D|DF|CB|LB|RB|LWB|RWB|CD|CD-L|CD-R)$)/.test(position)) return "defense";
-  // Le meneur (AM) constitue une ligne offensive distincte. Le ranger avec
-  // les attaquants transforme à tort un 4-2-3-1 en 4-3-3.
   if (/^(AM|AM-L|AM-R|CAM|OM|SS)$/.test(position)) return "attackingMidfield";
   if (/(MIDFIELDER|^(M|MF|CM|DM|AM|LM|RM|WM|CM-L|CM-R)$)/.test(position)) return "midfield";
   return "attack";
 }
-
 function orderAcrossPitch(players) {
   const side = (player) => {
     const position = String(player.position || "").toUpperCase();
@@ -181,262 +94,111 @@ function orderAcrossPitch(players) {
   };
   return [...players].sort((a, b) => side(a) - side(b) || (a.formationPlace || 99) - (b.formationPlace || 99));
 }
-
 function playerLineups(players, formation) {
-  const starters = players.filter((p) => p.starter).sort((a, b) => (a.formationPlace || 99) - (b.formationPlace || 99));
+  const placeOf = (player) => { const value = Number(player.formationPlace); return Number.isInteger(value) && value > 0 ? value : null; };
+  const starters = players.filter((player) => player.starter);
   if (!starters.length) return [];
-  const goalkeeper = starters.find((p) => playerKind(p) === "goalkeeper") || starters[0];
-  const outfield = starters.filter((p) => p !== goalkeeper);
-  const shape = String(formation || "").split("-").map(Number).filter((n) => n > 0);
-  const defense = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "defense"));
-  const midfield = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "midfield"));
-  const attackingMidfield = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "attackingMidfield"));
-  const sweepers = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "sweeper"));
-  const attack = orderAcrossPitch(outfield.filter((p) => playerKind(p) === "attack"));
-  // Une formation comme 3-4-2-1 est découpée à partir des postes réels :
-  // 3 défenseurs, 4 milieux, puis 2 soutiens et 1 avant-centre.
-  const attackCount = attack.length;
-  const attackStart = shape.findIndex((_, index) => shape.slice(index).reduce((sum, value) => sum + value, 0) === attackCount);
-  const attackShape = attackStart >= 0 ? shape.slice(attackStart) : [attackCount];
-  const attackForFormation = attackShape.length > 1 ? [...attack].sort((a, b) => {
-    const isTip = (player) => /^(F|ST|CF)$/.test(String(player.position || "").toUpperCase());
-    return Number(isTip(a)) - Number(isTip(b));
-  }) : attack;
-  const attackRows = [];
-  let attackCursor = 0;
-  for (const count of attackShape) {
-    attackRows.push(attackForFormation.slice(attackCursor, attackCursor + count));
-    attackCursor += count;
+  const goalkeeper = starters.find((player) => playerKind(player) === "goalkeeper");
+  const outfield = starters.filter((player) => player !== goalkeeper);
+  const shape = String(formation || "").trim().split(/[-–—]/).map((value) => Number(value.trim()));
+  const validShape = shape.length >= 2 && shape.every((value) => Number.isInteger(value) && value > 0) && shape.reduce((sum, value) => sum + value, 0) === 10;
+  const places = outfield.map(placeOf);
+  const hasReliableOrder = places.every((value) => value !== null) && new Set(places).size === outfield.length;
+  let rows;
+  if (goalkeeper && outfield.length === 10 && validShape && hasReliableOrder) {
+    const ordered = [...outfield].sort((a, b) => placeOf(a) - placeOf(b));
+    let cursor = 0;
+    const defensiveToAttacking = shape.map((count) => { const row = ordered.slice(cursor, cursor + count); cursor += count; return row; });
+    rows = defensiveToAttacking.reverse();
+  } else {
+    rows = ["attack", "attackingMidfield", "midfield", "sweeper", "defense"].map((kind) => orderAcrossPitch(outfield.filter((player) => playerKind(player) === kind))).filter((row) => row.length);
   }
-  const accounted = [...defense, ...midfield, ...attackingMidfield, ...sweepers, ...attack];
-  const unknown = outfield.filter((p) => !accounted.includes(p));
-  const rows = [...attackRows.reverse(), attackingMidfield, midfield, sweepers, defense, unknown].filter((row) => row.length);
-  rows.push([goalkeeper]);
-  const rowSpacing = 72 / Math.max(1, rows.length - 1);
-  return rows.flatMap((row, rowIndex) => row.map((player, index) => ({
-    player,
-    left: `${((index + 1) / (row.length + 1)) * 100}%`,
-    top: `${18 + rowIndex * rowSpacing}%`,
-  })));
+  if (goalkeeper) rows.push([goalkeeper]);
+  const spacing = 74 / Math.max(1, rows.length - 1);
+  return rows.flatMap((row, rowIndex) => row.map((player, index) => ({ player, left: `${((index + 0.5) / row.length) * 100}%`, top: `${14 + rowIndex * spacing}%`, width: `${100 / row.length}%` })));
 }
-
 function PitchPlayer({ entry, accent }) {
-  const { player, left, top } = entry;
+  const { player, left, top, width } = entry;
   const [photoFailed, setPhotoFailed] = useState(false);
+  useEffect(() => { setPhotoFailed(false); }, [player.photo]);
   const hasPhoto = !!player.photo && !photoFailed;
-  return <div className="absolute z-10 flex w-[66px] -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center sm:w-[76px]" style={{ left, top }}>
-    <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full sm:h-12 sm:w-12" style={{ background: hasPhoto ? "#111827" : accent, border: `2px solid ${accent}`, boxShadow: `0 3px 12px ${accent}55` }}>
-      {hasPhoto && <img src={player.photo} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setPhotoFailed(true)} />}
-      {hasPhoto ? <span className="absolute bottom-0 right-0 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-black" style={{ background: accent, color: "#07111d" }}>{player.number || "·"}</span> : <span className="text-sm font-black tabular-nums" style={{ color: "#07111d" }}>{player.number || "·"}</span>}
+  return <div className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center px-0.5 text-center" style={{ left, top, width, maxWidth: 100 }}>
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full sm:h-12 sm:w-12" style={{ background: `${accent}55`, border: `1px solid ${accent}66` }}>
+      {hasPhoto ? <img src={player.photo} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setPhotoFailed(true)} /> : <span className="text-sm font-bold text-white">{player.number || "—"}</span>}
     </span>
-    <span className="mt-1 max-w-full truncate text-[10px] font-bold leading-tight text-white sm:text-[11px]">{player.name}</span>
+    <span className="mt-1 w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]" title={player.name}>{player.name}</span>
+    <span className="mt-0.5 text-[10px] leading-tight tabular-nums sm:text-[11px]" style={{ color: "#aab4c4" }}>{playerKind(player) === "goalkeeper" ? "GB · " : ""}{player.number || "—"}</span>
   </div>;
 }
-
 function TacticalPitch({ players, formation, accent }) {
   const positions = playerLineups(players, formation);
   return <div className="relative mx-auto w-full max-w-[460px] overflow-hidden rounded-2xl" style={{ aspectRatio: "0.69", background: "linear-gradient(135deg,#123923,#0d2c20 48%,#123923)", border: "1px solid rgba(255,255,255,0.18)" }}>
     <svg className="absolute inset-0 h-full w-full opacity-45" viewBox="0 0 100 145" fill="none" aria-hidden>
       <rect x="2" y="2" width="96" height="141" rx="2" stroke="white" strokeWidth="0.65" />
-      <path d="M2 72.5h96M50 54.5v36" stroke="white" strokeWidth="0.65" />
-      <circle cx="50" cy="72.5" r="14" stroke="white" strokeWidth="0.65" />
-      <circle cx="50" cy="72.5" r="0.9" fill="white" />
+      <path d="M2 72.5h96" stroke="white" strokeWidth="0.65" />
+      <circle cx="50" cy="72.5" r="14" stroke="white" strokeWidth="0.65" /><circle cx="50" cy="72.5" r="0.9" fill="white" />
       <path d="M25 2v18h50V2M25 143v-18h50v18M38 2v8h24V2M38 143v-8h24v8" stroke="white" strokeWidth="0.65" />
       <circle cx="50" cy="16" r="0.8" fill="white" /><circle cx="50" cy="129" r="0.8" fill="white" />
     </svg>
     {positions.map((entry) => <PitchPlayer key={`${entry.player.name}-${entry.player.number}`} entry={entry} accent={accent} />)}
   </div>;
 }
-
 function TacticalLineup({ lineups, match }) {
   const [side, setSide] = useState("home");
   const isHome = side === "home";
   const players = lineups[side] || [];
   const formation = isHome ? lineups.homeFormation : lineups.awayFormation;
   const accent = isHome ? HOME_C : AWAY_C;
-  const name = isHome ? match?.home : match?.away;
   const substitutes = players.filter((player) => !player.starter);
-  const selector = (value, club, clubLogo, clubFormation, clubAccent) => <button type="button" onClick={() => setSide(value)} className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-2 py-2 text-xs font-bold transition-colors" style={{ background: side === value ? `${clubAccent}33` : "rgba(255,255,255,0.05)", color: side === value ? "#fff" : "#9ca3af", border: `1px solid ${side === value ? clubAccent : "transparent"}` }}>
-    {clubLogo ? <img src={clubLogo} alt="" className="h-5 w-5 object-contain" /> : null}<span className="truncate">{club}</span><span className="text-[10px] opacity-80">{clubFormation || "—"}</span>
+  const selector = (value, club, clubLogo, clubFormation, clubAccent) => <button type="button" onClick={() => setSide(value)} aria-pressed={side === value} title={club} className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-semibold transition-colors" style={{ background: side === value ? `${clubAccent}33` : "rgba(255,255,255,0.05)", color: side === value ? "#fff" : "#9ca3af", border: `1px solid ${side === value ? clubAccent : "transparent"}` }}>
+    {clubLogo ? <img src={clubLogo} alt="" className="h-5 w-5 shrink-0 object-contain" /> : null}<span className="min-w-0 truncate">{club}</span><span className="shrink-0 whitespace-nowrap text-[10px] opacity-80">{clubFormation || "—"}</span>
   </button>;
-  return <div className="space-y-4">
-    <div className="text-center"><p className="text-base font-black text-white">Compositions</p><p className="mt-0.5 text-xs" style={{ color: "#9ca3af" }}>Choisis une équipe pour voir son onze sur le terrain.</p></div>
+  return <div className="space-y-3">
+    <h3 className="text-center text-base font-semibold text-white">Composition de départ</h3>
     <div className="flex gap-2">{selector("home", match?.home, match?.home_logo, lineups.homeFormation, HOME_C)}{selector("away", match?.away, match?.away_logo, lineups.awayFormation, AWAY_C)}</div>
-    <div className="flex items-center justify-between px-1"><span className="text-sm font-bold text-white">{name}</span><span className="rounded-full px-2 py-1 text-[10px] font-black" style={{ color: accent, background: `${accent}1f` }}>{formation || "Formation indisponible"}</span></div>
-    <TacticalPitch players={players} formation={formation} accent={accent} />
+    <TacticalPitch key={side} players={players} formation={formation} accent={accent} />
     {substitutes.length > 0 && <div><p className="mb-2 text-[11px] font-black uppercase tracking-wider" style={{ color: "#9ca3af" }}>Banc · Remplaçants</p><div className="grid grid-cols-1 gap-1 sm:grid-cols-2">{substitutes.map((player) => <div key={`${player.name}-${player.number}`} className="flex items-center gap-2 rounded-xl px-2 py-2" style={{ background: "rgba(255,255,255,0.045)" }}>{player.photo ? <img src={player.photo} alt="" className="h-7 w-7 rounded-full object-cover" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }} /> : <span className="h-7 w-7 rounded-full" style={{ background: `${accent}44` }} />}<span className="flex h-5 min-w-5 items-center justify-center rounded text-[10px] font-black" style={{ background: `${accent}22`, color: accent }}>{player.number || "·"}</span><span className="min-w-0 flex-1 truncate text-xs font-semibold text-white">{player.name}</span></div>)}</div></div>}
   </div>;
 }
-
 export default function MatchCenter({ match, onClose, currentUser }) {
   const [detail, setDetail] = useState(null);
   const [roomOpen, setRoomOpen] = useState(false);
-  const [tab, setTab] = useState("events"); // events | stats | lineup
+  const [tab, setTab] = useState("events");
   const contentRef = useRef(null);
   const eventId = match?.id;
   const slug = match?.league_slug;
-
-  // Verrouille le défilement de l'arrière-plan tant que la feuille est ouverte
-  // (sinon le fil d'accueil derrière défile en même temps que le contenu).
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev || ""; };
-  }, []);
-
+  useEffect(() => { const prev = document.body.style.overflow; document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = prev || ""; }; }, []);
   const load = useCallback(() => {
     if (!eventId || !slug) return;
-    // Résumé ESPN récupéré DIRECTEMENT dans le navigateur (l'endpoint summary est
-    // aussi bloqué depuis Cloud Run, comme les scoreboards).
-    fetchMatchDetailsFromEspn(eventId, slug)
-      .then((d) => setDetail(d || null))
-      .catch(() => {});
+    fetchMatchDetailsFromEspn(eventId, slug).then((d) => setDetail(d || null)).catch(() => {});
   }, [eventId, slug]);
-
-  useEffect(() => {
-    load();
-    const iv = setInterval(load, 60000); // s'actualise en fond, comme le score
-    return () => clearInterval(iv);
-  }, [load]);
-
-  // Chaque onglet doit commencer en haut : sans cela, la composition pouvait
-  // hériter du défilement des événements et se retrouver coupée sous les tabs.
+  useEffect(() => { load(); const iv = setInterval(load, 60000); return () => clearInterval(iv); }, [load]);
   useEffect(() => { contentRef.current?.scrollTo?.({ top: 0 }); }, [tab]);
-
   const h = { ...match, ...(detail?.header || {}) };
   const live = h.state === "in";
-  const matchStatus = live
-    ? (h.clock || i18n.t("matchcenter.in_progress"))
-    : h.state === "pre"
-      ? formatParisKickoff(h.date)
-      : (h.detail || "");
-  const events = detail?.events || [];
-  const ordered = [...events].reverse(); // le plus récent en haut
+  const matchStatus = live ? (h.clock || i18n.t("matchcenter.in_progress")) : h.state === "pre" ? formatParisKickoff(h.date) : (h.detail || "");
+  const ordered = [...(detail?.events || [])].reverse();
   const stats = detail?.stats || [];
   const lineups = detail?.lineups || null;
-
-  const TABS = [
-    { id: "events", label: i18n.t("matchcenter.tab_events") },
-    { id: "stats", label: i18n.t("matchcenter.tab_stats") },
-    { id: "lineup", label: i18n.t("matchcenter.tab_lineup") },
-  ];
-
-  return (
-    <>
-    <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center sm:p-4"
-      style={{ background: "rgba(2,6,20,0.82)", fontFamily: INTER }}
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full h-[100dvh] sm:h-auto sm:max-w-3xl rounded-none sm:rounded-3xl overflow-hidden flex flex-col"
-        style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "100dvh" }}>
-
-        {/* En-tête : équipes + score */}
+  const TABS = [{ id: "events", label: i18n.t("matchcenter.tab_events") }, { id: "stats", label: i18n.t("matchcenter.tab_stats") }, { id: "lineup", label: i18n.t("matchcenter.tab_lineup") }];
+  return <>
+    <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center sm:p-4" style={{ background: "rgba(2,6,20,0.82)", fontFamily: INTER }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full h-[100dvh] sm:h-auto sm:max-w-3xl rounded-none sm:rounded-3xl overflow-hidden flex flex-col" style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "100dvh" }}>
         <div className="nexus-safe-header px-5 pb-4 flex-shrink-0" style={{ background: "linear-gradient(180deg,#111a2e,#0b1220)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#6b7686" }}>{localizeLeagueName(match?.league_slug, match?.league)}</span>
-            <button onClick={onClose} className="w-8 h-8 -mr-1 flex items-center justify-center rounded-full active:scale-90 transition-transform" aria-label={i18n.t("matchcenter.close")}>
-              <span className="material-symbols-outlined" style={{ color: "#9fb0c8", fontSize: 22 }}>close</span>
-            </button>
-          </div>
+          <div className="flex items-center justify-between mb-3"><span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#6b7686" }}>{localizeLeagueName(match?.league_slug, match?.league)}</span><button onClick={onClose} className="w-8 h-8 -mr-1 flex items-center justify-center rounded-full active:scale-90 transition-transform" aria-label={i18n.t("matchcenter.close")}><span className="material-symbols-outlined" style={{ color: "#9fb0c8", fontSize: 22 }}>close</span></button></div>
           <div className="flex items-center justify-between gap-3">
-            <div className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
-              {h.home_logo ? <img src={h.home_logo} alt="" className="w-10 h-10 object-contain" /> : <span className="w-10 h-10 rounded-full" style={{ background: "#2a3446" }} />}
-              <span className="text-xs text-center truncate w-full" style={{ color: "#c7d0e0", fontWeight: 500 }}>{h.home}</span>
-            </div>
-            <div className="flex flex-col items-center px-2">
-              <div className="flex items-center gap-2">
-                <span className="text-3xl font-black tabular-nums" style={{ color: live ? NEON : "#f4f8ff", textShadow: live ? `0 0 12px ${NEON}55` : "none" }}>{h.home_score ?? "-"}</span>
-                <span className="text-xl font-light" style={{ color: "#5b6577" }}>:</span>
-                <span className="text-3xl font-black tabular-nums" style={{ color: live ? NEON : "#f4f8ff", textShadow: live ? `0 0 12px ${NEON}55` : "none" }}>{h.away_score ?? "-"}</span>
-              </div>
-              <span className="text-[11px] font-bold mt-1 flex items-center gap-1" style={{ color: live ? NEON : "#8b96a8" }}>
-                {live && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: NEON }} />}
-                {matchStatus}
-              </span>
-            </div>
-            <div className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
-              {h.away_logo ? <img src={h.away_logo} alt="" className="w-10 h-10 object-contain" /> : <span className="w-10 h-10 rounded-full" style={{ background: "#2a3446" }} />}
-              <span className="text-xs text-center truncate w-full" style={{ color: "#c7d0e0", fontWeight: 500 }}>{h.away}</span>
-            </div>
+            <div className="flex-1 flex flex-col items-center gap-1.5 min-w-0">{h.home_logo ? <img src={h.home_logo} alt="" className="w-10 h-10 object-contain" /> : <span className="w-10 h-10 rounded-full" style={{ background: "#2a3446" }} />}<span className="text-xs text-center truncate w-full" style={{ color: "#c7d0e0", fontWeight: 500 }}>{h.home}</span></div>
+            <div className="flex flex-col items-center px-2"><div className="flex items-center gap-2"><span className="text-3xl font-black tabular-nums" style={{ color: live ? NEON : "#f4f8ff", textShadow: live ? `0 0 12px ${NEON}55` : "none" }}>{h.home_score ?? "-"}</span><span className="text-xl font-light" style={{ color: "#5b6577" }}>:</span><span className="text-3xl font-black tabular-nums" style={{ color: live ? NEON : "#f4f8ff", textShadow: live ? `0 0 12px ${NEON}55` : "none" }}>{h.away_score ?? "-"}</span></div><span className="text-[11px] font-bold mt-1 flex items-center gap-1" style={{ color: live ? NEON : "#8b96a8" }}>{live && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: NEON }} />}{matchStatus}</span></div>
+            <div className="flex-1 flex flex-col items-center gap-1.5 min-w-0">{h.away_logo ? <img src={h.away_logo} alt="" className="w-10 h-10 object-contain" /> : <span className="w-10 h-10 rounded-full" style={{ background: "#2a3446" }} />}<span className="text-xs text-center truncate w-full" style={{ color: "#c7d0e0", fontWeight: 500 }}>{h.away}</span></div>
           </div>
         </div>
-
-        {/* Onglets soulignés (sans fond) : Événements · Statistiques · Composition */}
-        <div className="flex items-center px-2 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          {TABS.map((tb) => {
-            const active = tab === tb.id;
-            return (
-              <button key={tb.id} onClick={() => setTab(tb.id)}
-                className="relative flex-1 py-3 text-[12px] font-bold transition-colors"
-                style={{ color: active ? "#f4f8ff" : "#6b7686" }}>
-                {tb.label}
-                {active && <span className="absolute left-1/2 -translate-x-1/2 bottom-0 h-0.5 rounded-full" style={{ width: 26, background: "#22d3ee" }} />}
-              </button>
-            );
-          })}
+        <div className="flex items-center px-2 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{TABS.map((tb) => { const active = tab === tb.id; return <button key={tb.id} onClick={() => setTab(tb.id)} className="relative flex-1 py-3 text-[12px] font-bold transition-colors" style={{ color: active ? "#f4f8ff" : "#6b7686" }}>{tb.label}{active && <span className="absolute left-1/2 -translate-x-1/2 bottom-0 h-0.5 rounded-full" style={{ width: 26, background: "#22d3ee" }} />}</button>; })}</div>
+        <div ref={contentRef} className="nexus-safe-scroll relative min-h-0 overflow-y-auto no-scrollbar px-4 py-5" style={{ flex: 1, overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }} onTouchMove={(e) => e.stopPropagation()}>
+          {detail === null ? <div className="flex justify-center py-10"><span className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: `${NEON}44`, borderTopColor: NEON }} /></div> : tab === "events" ? (ordered.length === 0 ? <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_events")}</p> : <div className="relative"><div className="absolute top-0 bottom-0" style={{ left: "50%", width: 1.5, transform: "translateX(-50%)", background: "rgba(255,255,255,0.08)" }} /><div className="space-y-4 relative">{ordered.map((ev, i) => <div key={i} className="flex items-center"><div className="flex-1 pr-3">{ev.side === "home" && <Side ev={ev} align="right" />}</div><div className="flex flex-col items-center flex-shrink-0" style={{ width: 46 }}><span className="text-[10px] font-black tabular-nums mb-1 px-1.5 rounded-full" style={{ color: "#0b1220", background: "#c7d0e0" }}>{ev.minute || "·"}</span><span className="flex items-center justify-center rounded-full" style={{ width: 30, height: 30, background: "#111a2e", border: "1px solid rgba(255,255,255,0.08)" }}><EventIcon type={ev.type} /></span></div><div className="flex-1 pl-3">{ev.side === "away" && <Side ev={ev} align="left" />}</div></div>)}</div></div>) : tab === "stats" ? (stats.length === 0 ? <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_stats")}</p> : <div className="pt-1">{stats.map((s) => <StatBar key={s.key} label={i18n.t("matchcenter.stat_" + s.key)} home={s.home} away={s.away} />)}</div>) : (!lineups ? <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_lineup")}</p> : <TacticalLineup lineups={lineups} match={h} />)}
         </div>
-
-        {/* Contenu de l'onglet — seule cette zone défile (scroll confiné). */}
-        <div ref={contentRef} className="nexus-safe-scroll relative overflow-y-auto no-scrollbar px-4 py-5"
-          style={{ flex: 1, overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}
-          onTouchMove={(e) => e.stopPropagation()}>
-          {detail === null ? (
-            <div className="flex justify-center py-10"><span className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: `${NEON}44`, borderTopColor: NEON }} /></div>
-          ) : tab === "events" ? (
-            ordered.length === 0 ? (
-              <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_events")}</p>
-            ) : (
-              <div className="relative">
-                {/* Axe vertical central */}
-                <div className="absolute top-0 bottom-0" style={{ left: "50%", width: 1.5, transform: "translateX(-50%)", background: "rgba(255,255,255,0.08)" }} />
-                <div className="space-y-4 relative">
-                  {ordered.map((ev, i) => (
-                    <div key={i} className="flex items-center">
-                      <div className="flex-1 pr-3">{ev.side === "home" && <Side ev={ev} align="right" />}</div>
-                      <div className="flex flex-col items-center flex-shrink-0" style={{ width: 46 }}>
-                        <span className="text-[10px] font-black tabular-nums mb-1 px-1.5 rounded-full" style={{ color: "#0b1220", background: "#c7d0e0" }}>{ev.minute || "·"}</span>
-                        <span className="flex items-center justify-center rounded-full" style={{ width: 30, height: 30, background: "#111a2e", border: "1px solid rgba(255,255,255,0.08)" }}>
-                          <EventIcon type={ev.type} />
-                        </span>
-                      </div>
-                      <div className="flex-1 pl-3">{ev.side === "away" && <Side ev={ev} align="left" />}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          ) : tab === "stats" ? (
-            stats.length === 0 ? (
-              <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_stats")}</p>
-            ) : (
-              <div className="pt-1">
-                {stats.map((s) => (
-                  <StatBar key={s.key} label={i18n.t("matchcenter.stat_" + s.key)} home={s.home} away={s.away} />
-                ))}
-              </div>
-            )
-          ) : (
-            !lineups ? (
-              <p className="text-center text-sm py-10" style={{ color: "#6b7686", fontWeight: 300 }}>{i18n.t("matchcenter.no_lineup")}</p>
-            ) : (
-              <TacticalLineup lineups={lineups} match={h} />
-            )
-          )}
-        </div>
-
-        {/* Salle du match — chat léger dédié à la rencontre */}
-        <div className="px-4 pb-4 pt-1 flex-shrink-0">
-          <button type="button" onClick={() => setRoomOpen(true)}
-            className="w-full py-2.5 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
-            style={{ background: "linear-gradient(90deg,rgba(34,211,238,0.15),rgba(59,130,246,0.15))", border: "1px solid rgba(34,211,238,0.35)", color: "#67e8f9" }}>
-            <span className="material-symbols-outlined text-base">forum</span>
-            {i18n.t("match_room.open")}
-          </button>
-        </div>
+        <div className="px-4 pb-4 pt-1 flex-shrink-0"><button type="button" onClick={() => setRoomOpen(true)} className="w-full py-2.5 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform" style={{ background: "linear-gradient(90deg,rgba(34,211,238,0.15),rgba(59,130,246,0.15))", border: "1px solid rgba(34,211,238,0.35)", color: "#67e8f9" }}><span className="material-symbols-outlined text-base">forum</span>{i18n.t("match_room.open")}</button></div>
       </div>
     </div>
-    {roomOpen && (
-      <MatchRoom match={h} currentUser={currentUser} onClose={() => setRoomOpen(false)} />
-    )}
-    </>
-  );
+    {roomOpen && <MatchRoom match={h} currentUser={currentUser} onClose={() => setRoomOpen(false)} />}
+  </>;
 }
