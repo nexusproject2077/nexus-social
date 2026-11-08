@@ -32,5 +32,5 @@ EXPOSE 8080
 # 1 seul worker : l'app garde des états EN MÉMOIRE (salles de live, caches de
 # classement, rate-limit) qui supposent un unique process. Pour scaler au-delà,
 # il faudra déporter ces états (Redis) — voir MIGRATION.md.
-CMD exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 \
+CMD exec uvicorn search_app:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 \
     --proxy-headers --forwarded-allow-ips="*"
