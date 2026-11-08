@@ -95,25 +95,30 @@ function orderAcrossPitch(players) {
   return [...players].sort((a, b) => side(a) - side(b) || (a.formationPlace || 99) - (b.formationPlace || 99));
 }
 function playerLineups(players, formation) {
-  const placeOf = (player) => { const value = Number(player.formationPlace); return Number.isInteger(value) && value > 0 ? value : null; };
   const starters = players.filter((player) => player.starter);
   if (!starters.length) return [];
-  const goalkeeper = starters.find((player) => playerKind(player) === "goalkeeper");
-  const outfield = starters.filter((player) => player !== goalkeeper);
+  const goalkeepers = starters.filter((player) => playerKind(player) === "goalkeeper");
+  const group = (kind) => starters.filter((player) => playerKind(player) === kind);
+  const defense = group("defense");
+  const midfield = group("midfield");
+  const support = group("attackingMidfield");
+  const sweepers = group("sweeper");
+  const attack = group("attack");
   const shape = String(formation || "").trim().split(/[-–—]/).map((value) => Number(value.trim()));
   const validShape = shape.length >= 2 && shape.every((value) => Number.isInteger(value) && value > 0) && shape.reduce((sum, value) => sum + value, 0) === 10;
-  const places = outfield.map(placeOf);
-  const hasReliableOrder = places.every((value) => value !== null) && new Set(places).size === outfield.length;
-  let rows;
-  if (goalkeeper && outfield.length === 10 && validShape && hasReliableOrder) {
-    const ordered = [...outfield].sort((a, b) => placeOf(a) - placeOf(b));
-    let cursor = 0;
-    const defensiveToAttacking = shape.map((count) => { const row = ordered.slice(cursor, cursor + count); cursor += count; return row; });
-    rows = defensiveToAttacking.reverse();
-  } else {
-    rows = ["attack", "attackingMidfield", "midfield", "sweeper", "defense"].map((kind) => orderAcrossPitch(outfield.filter((player) => playerKind(player) === kind))).filter((row) => row.length);
-  }
-  if (goalkeeper) rows.push([goalkeeper]);
+  // A formationPlace is not a verified global defense-to-attack sequence.
+  // Keep role groups intact; use formation only when their counts agree.
+  const candidates = [
+    [defense, [...midfield, ...support], attack],
+    [defense, midfield, support, attack],
+    [defense, sweepers, [...midfield, ...support], attack],
+  ];
+  const matching = validShape && starters.length === 11 && goalkeepers.length === 1
+    ? candidates.find((rows) => rows.length === shape.length && rows.every((row, index) => row.length === shape[index]) && rows.flat().length === 10)
+    : null;
+  const defensiveToAttacking = matching || [defense, sweepers, midfield, support, attack].filter((row) => row.length);
+  const rows = [...defensiveToAttacking].reverse().map(orderAcrossPitch);
+  if (goalkeepers.length) rows.push(goalkeepers);
   const spacing = 74 / Math.max(1, rows.length - 1);
   return rows.flatMap((row, rowIndex) => row.map((player, index) => ({ player, left: `${((index + 0.5) / row.length) * 100}%`, top: `${14 + rowIndex * spacing}%`, width: `${100 / row.length}%` })));
 }
