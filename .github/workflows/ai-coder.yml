@@ -1,0 +1,93 @@
+name: AI Coder
+
+# Agent de correction autonome.
+#   • Se déclenche quand une issue reçoit le label "ai-fix" (posé par un
+#     mainteneur — voir la note de sécurité), chaque nuit à 03:00 UTC, ou
+#     manuellement.
+#   • Lit le rapport de bug (issue / Sentry), demande un correctif au LLM,
+#     lance les tests, et — si tout est VERT — ouvre une Pull Request.
+#     La fusion automatique est DÉSACTIVÉE par défaut (voir AI_AUTO_MERGE).
+
+on:
+  issues:
+    types: [labeled]
+  schedule:
+    - cron: "0 3 * * *"        # tous les jours à 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Numéro d'issue à corriger (vide = plus ancienne issue labellisée ai-fix)"
+        required: false
+
+permissions:
+  contents: write          # créer une branche / committer le correctif
+  pull-requests: write     # ouvrir la Pull Request
+  issues: write            # commenter l'issue avec le résultat
+
+# Empêche deux corrections concurrentes de se marcher dessus.
+concurrency:
+  group: ai-coder-${{ github.event.issue.number || github.event.inputs.issue_number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    # ── SÉCURITÉ ──────────────────────────────────────────────────────────────
+    # On n'agit QUE si : c'est le cron nocturne, un lancement manuel, ou une
+    # issue dont le label ajouté est "ai-fix". N'importe qui peut ouvrir une
+    # issue : exiger un label (que seuls les mainteneurs peuvent poser) empêche
+    # une issue arbitraire de déclencher une modification de code.
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' && github.event.label.name == 'ai-fix')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install patcher deps
+        run: pip install --quiet requests
+
+      # Installe les dépendances du projet pour pouvoir lancer les tests.
+      - name: Install project deps (Node)
+        if: ${{ hashFiles('package-lock.json', 'package.json') != '' }}
+        run: npm ci || npm install
+
+      - name: Install project deps (Python)
+        if: ${{ hashFiles('requirements.txt') != '' }}
+        run: pip install -r requirements.txt || true
+
+      - name: Run AI patcher
+        env:
+          # Jeton GitHub natif du workflow (aucun secret à créer pour ça).
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # ── Configuration LLM (compatible API OpenAI : Groq, OpenRouter,
+          #    Gemini via endpoint OpenAI-compat… — plusieurs ont un tier gratuit).
+          #    À définir dans Settings → Secrets and variables → Actions.
+          LLM_API_BASE: ${{ vars.LLM_API_BASE }}     # ex: https://api.groq.com/openai/v1
+          LLM_MODEL:    ${{ vars.LLM_MODEL }}        # ex: llama-3.3-70b-versatile
+          LLM_API_KEY:  ${{ secrets.LLM_API_KEY }}   # ta clé (SECRET, jamais en clair)
+
+          # ── Options ──
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.inputs.issue_number }}
+          AI_TEST_CMD:  ${{ vars.AI_TEST_CMD }}      # commande de test (auto-détectée si vide)
+          # "true" = fusionne la PR automatiquement si les tests passent.
+          # DÉCONSEILLÉ : laisse vide/false pour une relecture humaine.
+          AI_AUTO_MERGE: ${{ vars.AI_AUTO_MERGE }}
+        run: python scripts/ai_patcher.py
