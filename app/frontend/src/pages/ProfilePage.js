@@ -240,8 +240,9 @@ export default function ProfilePage({ user, setUser }) {
   };
 
   const canViewContent = isOwnProfile || !profile?.is_private || followStatus === "following";
-  // Un repost reste exclusivement dans son onglet dédié.
-  const mediaPosts     = posts.filter((p) => p.media_url && !p.repost_of);
+  // Protection côté interface : même si une ancienne réponse API contient un
+  // repost, il ne peut jamais apparaître dans l'onglet Médias.
+  const mediaPosts     = posts.filter((p) => (p.media_url || p.media_urls?.length) && !p.repost_of);
 
   // ── Follow button ──────────────────────────────────────────────────────────
   const FollowButton = () => {

@@ -124,6 +124,53 @@ function FeedVideo({ src }) {
   );
 }
 
+function PostImageGallery({ post, onMediaTap, onDoubleTapLike, heartBurst }) {
+  const images = Array.isArray(post.media_urls) && post.media_urls.length
+    ? post.media_urls
+    : post.media_url ? [post.media_url] : [];
+  const [activeIndex, setActiveIndex] = useState(0);
+  const touchStartX = useRef(null);
+
+  useEffect(() => setActiveIndex(0), [post.id]);
+  if (!images.length) return null;
+
+  const moveTo = (next) => setActiveIndex((current) => Math.max(0, Math.min(images.length - 1, typeof next === "function" ? next(current) : next)));
+  const finishSwipe = (event) => {
+    if (touchStartX.current === null) return;
+    const delta = event.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(delta) < 42) return;
+    moveTo((current) => current + (delta < 0 ? 1 : -1));
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border select-none" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <div
+        className="flex transition-transform duration-300 ease-out"
+        style={{ transform: `translateX(-${activeIndex * 100}%)` }}
+        onTouchStart={(event) => { touchStartX.current = event.touches[0].clientX; }}
+        onTouchEnd={finishSwipe}
+        onTouchCancel={() => { touchStartX.current = null; }}
+        onClick={onMediaTap}
+        onDoubleClick={onDoubleTapLike}
+      >
+        {images.map((src, index) => (
+          <img key={`${post.id}-${index}`} src={src} alt={`Photo ${index + 1} de la publication`} className="w-full h-auto max-h-[560px] shrink-0 object-contain bg-black" loading={index === 0 ? "eager" : "lazy"} draggable={false} />
+        ))}
+      </div>
+      {images.length > 1 && (
+        <>
+          <span className="absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-bold text-white" aria-live="polite">{activeIndex + 1}/{images.length}</span>
+          {activeIndex > 0 && <button type="button" aria-label="Photo précédente" onClick={(event) => { event.stopPropagation(); moveTo((index) => index - 1); }} className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white"><span className="material-symbols-outlined">chevron_left</span></button>}
+          {activeIndex < images.length - 1 && <button type="button" aria-label="Photo suivante" onClick={(event) => { event.stopPropagation(); moveTo((index) => index + 1); }} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white"><span className="material-symbols-outlined">chevron_right</span></button>}
+          <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5">{images.map((_, index) => <span key={index} className="h-1.5 rounded-full transition-all" style={{ width: index === activeIndex ? 18 : 6, background: index === activeIndex ? "#fff" : "rgba(255,255,255,.55)" }} />)}</div>
+        </>
+      )}
+      {heartBurst && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="material-symbols-outlined" style={{ fontSize: 110, color: "#fff", fontVariationSettings: "'FILL' 1", textShadow: "0 2px 16px rgba(0,0,0,0.45)", animation: "heartPop 0.7s ease-out" }}>favorite</span></div>}
+    </div>
+  );
+}
+
 export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -510,32 +557,8 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
         )}
 
         {/* Media */}
-        {post.media_url && post.media_type === "image" && (
-          <div
-            className="relative rounded-2xl overflow-hidden border select-none"
-            style={{ borderColor: "rgba(255,255,255,0.06)" }}
-            onClick={onMediaTap}
-            onDoubleClick={doubleTapLike}
-          >
-            <img src={post.media_url} alt="Post media" className="w-full h-auto object-contain max-h-[560px] rounded-2xl" loading="lazy" draggable={false} />
-            {/* Cœur animé au double-tap */}
-            {heartBurst && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <span
-                  className="material-symbols-outlined"
-                  style={{
-                    fontSize: 110,
-                    color: "#fff",
-                    fontVariationSettings: "'FILL' 1",
-                    textShadow: "0 2px 16px rgba(0,0,0,0.45)",
-                    animation: "heartPop 0.7s ease-out",
-                  }}
-                >
-                  favorite
-                </span>
-              </div>
-            )}
-          </div>
+        {post.media_type === "image" && (post.media_url || post.media_urls?.length) && (
+          <PostImageGallery post={post} onMediaTap={onMediaTap} onDoubleTapLike={doubleTapLike} heartBurst={heartBurst} />
         )}
         {post.media_url && post.media_type === "video" && (
           <FeedVideo src={post.media_url} />

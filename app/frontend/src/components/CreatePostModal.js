@@ -14,9 +14,9 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [content, setContent] = useState("");
-  const [media, setMedia] = useState(null);
-  const [mediaPreview, setMediaPreview] = useState(null);
-  const [mediaType, setMediaType] = useState(null);
+  // Un post peut contenir jusqu'à 4 images. Les stories et vidéos gardent un
+  // seul média pour conserver leur format de lecture plein écran.
+  const [mediaItems, setMediaItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState("post"); // "post" | "story" | "poll"
   const [pollOptions, setPollOptions] = useState(["", ""]);
@@ -31,28 +31,44 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
 
   const MAX_VIDEO_SECONDS = 60;   // Nexus Clips = vidéos courtes
   const MAX_FILE_MB = 25;
-
-  const readAndSet = (file, type) => {
-    setMedia(file);
-    setMediaType(type);
+  const MAX_IMAGES = 4;
+  // Les images sont encodées avant envoi. Cette limite cumulée évite de
+  // dépasser la taille d'une requête sur mobile / Worker.
+  const MAX_IMAGES_TOTAL_MB = 18;
+  const mediaPreview = mediaItems[0]?.preview || null;
+  const mediaType = mediaItems[0]?.type || null;
+  const readFile = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => setMediaPreview(reader.result);
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
     reader.readAsDataURL(file);
-  };
+  });
 
   const handleMediaChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const valid = files.filter((file) => file.size <= MAX_FILE_MB * 1024 * 1024);
+    if (valid.length !== files.length) toast.error(t("compose.err_file_too_big", { max: MAX_FILE_MB }));
+    if (!valid.length) { e.target.value = ""; return; }
 
-    if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      toast.error(t("compose.err_file_too_big", { max: MAX_FILE_MB }));
-      e.target.value = "";
-      return;
-    }
-
-    if (file.type.startsWith('image')) {
-      readAndSet(file, 'image');
-    } else if (file.type.startsWith('video')) {
+    if (valid.every((file) => file.type.startsWith("image"))) {
+      const availableSlots = MAX_IMAGES - mediaItems.filter((item) => item.type === "image").length;
+      const usedBytes = mediaItems.filter((item) => item.type === "image").reduce((total, item) => total + item.file.size, 0);
+      let bytes = usedBytes;
+      const withinTotalSize = valid.filter((file) => {
+        if (bytes + file.size > MAX_IMAGES_TOTAL_MB * 1024 * 1024) return false;
+        bytes += file.size;
+        return true;
+      });
+      const allowed = mode === "story" ? withinTotalSize.slice(0, 1) : withinTotalSize.slice(0, availableSlots);
+      if (!allowed.length) { toast.error(`Maximum ${MAX_IMAGES} photos par publication.`); e.target.value = ""; return; }
+      if (allowed.length < valid.length) toast.message(mode === "story" ? "Une story contient une seule image." : `Maximum ${MAX_IMAGES} photos et ${MAX_IMAGES_TOTAL_MB} Mo au total.`);
+      try {
+        const next = await Promise.all(allowed.map(async (file) => ({ file, type: "image", preview: await readFile(file) })));
+        setMediaItems((current) => mode === "story" ? next : [...current.filter((item) => item.type === "image"), ...next].slice(0, MAX_IMAGES));
+      } catch { toast.error("Impossible de lire cette image."); }
+    } else if (valid[0].type.startsWith('video')) {
+      const file = valid[0];
       // Vérifier la durée : on n'accepte que les vidéos courtes
       const url = URL.createObjectURL(file);
       const probe = document.createElement('video');
@@ -64,7 +80,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
           e.target.value = "";
           return;
         }
-        readAndSet(file, 'video');
+        readFile(file).then((preview) => setMediaItems([{ file, type: "video", preview }])).catch(() => toast.error(t("compose.err_video_unreadable")));
       };
       probe.onerror = () => {
         URL.revokeObjectURL(url);
@@ -75,17 +91,15 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     }
   };
 
-  const handleRemoveMedia = () => {
-    setMedia(null);
-    setMediaPreview(null);
-    setMediaType(null);
+  const handleRemoveMedia = (index) => setMediaItems((items) => items.filter((_, itemIndex) => itemIndex !== index));
+  const switchMode = (nextMode) => {
+    setMode(nextMode);
+    if (nextMode === "story") setMediaItems((items) => items.slice(0, 1));
   };
 
   const resetForm = () => {
     setContent("");
-    setMedia(null);
-    setMediaPreview(null);
-    setMediaType(null);
+    setMediaItems([]);
     setPollOptions(["", ""]);
     setAffiliateLink("");
     setMode("post");
@@ -119,7 +133,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     }
 
     // --- Post / Sondage ---
-    if (!content.trim()) {
+    if (!content.trim() && !mediaItems.length) {
       toast.error(mode === "poll" ? t("compose.err_poll_question") : t("compose.err_content_empty"));
       return;
     }
@@ -139,7 +153,8 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
       const postData = {
         content: content,
         media_type: mediaType || null,
-        media_url: mediaPreview || null, // Base64 string
+        media_url: mediaPreview || null, // Compatibilité avec les anciens clients
+        media_urls: mediaItems.filter((item) => item.type === "image").map((item) => item.preview),
         poll_options, // null pour un post simple
         affiliate_link: affiliateLink.trim() || null,
       };
@@ -174,12 +189,12 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
   if (!open) return null;
 
   const title = mode === "story" ? t("compose.title_story") : mode === "poll" ? t("compose.title_poll") : t("compose.title_default");
-  const canSubmit = mode === "story" ? !!mediaPreview : !!content.trim();
+  const canSubmit = mode === "story" ? !!mediaPreview : !!content.trim() || mediaItems.length > 0;
 
   return (
     // Plein écran sur mobile (vraie page), fenêtre centrée sur PC.
     <div
-      className="fixed inset-0 z-[60] flex sm:items-center sm:justify-center sm:p-4"
+      className="fixed inset-0 z-[80] flex sm:items-center sm:justify-center sm:p-4"
       style={{ background: "rgba(2,6,20,0.85)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
     >
@@ -188,8 +203,8 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                    h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-lg sm:rounded-2xl sm:border sm:border-slate-800"
       >
         {/* Barre supérieure : fermer · titre · Publier (façon X) */}
-        <div className="flex items-center gap-3 px-4 h-14 border-b border-slate-800 flex-shrink-0"
-             style={{ paddingTop: "env(safe-area-inset-top)" }}>
+        <div className="flex min-h-14 items-center gap-3 px-4 pb-2 border-b border-slate-800 flex-shrink-0"
+             style={{ paddingTop: "calc(var(--nexus-safe-top) + 0.5rem)" }}>
           <button type="button" onClick={onClose} data-testid="cancel-post-button"
                   className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full hover:bg-slate-800">
             <X className="w-5 h-5" />
@@ -206,7 +221,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
           </Button>
         </div>
 
-        <form id="create-post-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
+        <form id="create-post-form" onSubmit={handleSubmit} className="nexus-safe-scroll flex-1 overflow-y-auto p-4 space-y-4">
           {/* Mode selector : Post / Story / Sondage */}
           <div className="flex gap-2">
             {[
@@ -218,7 +233,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                 key={key}
                 type="button"
                 data-testid={`mode-${key}`}
-                onClick={() => setMode(key)}
+                onClick={() => switchMode(key)}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-bold transition-colors ${
                   mode === key
                     ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-900"
@@ -312,37 +327,22 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
             </div>
           )}
 
-          {mediaPreview && (
-            <div className="relative">
-              {mediaType === 'image' ? (
-                <img
-                  src={mediaPreview}
-                  alt="Preview"
-                  className="w-full rounded-lg max-h-64 object-cover"
-                />
-              ) : mediaType === 'video' ? (
-                <video
-                  src={mediaPreview}
-                  controls
-                  className="w-full rounded-lg max-h-64"
-                />
-              ) : null}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={handleRemoveMedia}
-                className="absolute top-2 left-2 bg-slate-900/80 hover:bg-slate-800"
-                data-testid="remove-media-button"
-                title={t("compose.remove_media")}
-              >
-                <X className="w-4 h-4" />
-              </Button>
+          {mediaItems.length > 0 && (
+            <div className={`grid gap-2 ${mediaItems.length === 1 ? "grid-cols-1" : "grid-cols-2"}`} aria-label="Aperçu des médias sélectionnés">
+              {mediaItems.map((item, index) => (
+                <div key={`${item.file.name}-${index}`} className="relative overflow-hidden rounded-xl border border-slate-700 bg-slate-900">
+                  {item.type === "image" ? <img src={item.preview} alt={`Photo ${index + 1}`} className="h-40 w-full object-cover" /> : <video src={item.preview} controls className="h-48 w-full object-cover" />}
+                  {mediaItems.length > 1 && <span className="absolute bottom-2 left-2 rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-bold text-white">{index + 1}/{mediaItems.length}</span>}
+                  <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveMedia(index)} className="absolute right-2 top-2 bg-slate-950/85 hover:bg-slate-800" data-testid={`remove-media-button-${index}`} title={t("compose.remove_media")}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
             </div>
           )}
 
           {/* Inputs fichiers cachés (déclenchés par la barre d'outils ci-dessous) */}
-          <Input id="image-upload" data-testid="upload-image-input" type="file" accept="image/*" onChange={handleMediaChange} className="hidden" />
+          <Input id="image-upload" data-testid="upload-image-input" type="file" accept="image/*" multiple={mode !== "story"} onChange={handleMediaChange} className="hidden" />
           <Input id="video-upload" data-testid="upload-video-input" type="file" accept="video/*" onChange={handleMediaChange} className="hidden" />
           <Input id="gif-upload" data-testid="upload-gif-input" type="file" accept="image/gif" onChange={handleMediaChange} className="hidden" />
         </form>
@@ -350,11 +350,11 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
         {/* Barre d'outils média (bas de page, façon « Quoi de neuf ? ») */}
         <div
           className="flex items-center gap-1 px-2 py-2 border-t border-slate-800 flex-shrink-0 overflow-x-auto no-scrollbar"
-          style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
+          style={{ paddingBottom: "max(var(--nexus-safe-bottom), 0.5rem)" }}
         >
           <Label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
             <Image className="w-5 h-5" />
-            <span className="text-[11px] font-medium">{t("compose.tool_photo")}</span>
+            <span className="text-[11px] font-medium">Photo{mode !== "story" ? "s" : ""}</span>
           </Label>
           <Label htmlFor="video-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
             <Video className="w-5 h-5" />
@@ -364,7 +364,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
             <span className="material-symbols-outlined text-[22px] leading-none">gif_box</span>
             <span className="text-[11px] font-medium">{t("compose.tool_gif")}</span>
           </Label>
-          <button type="button" onClick={() => setMode("poll")}
+          <button type="button" onClick={() => switchMode("poll")}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "poll" ? "text-cyan-300" : "text-cyan-400"}`}>
             <span className="material-symbols-outlined text-[22px] leading-none">bar_chart</span>
             <span className="text-[11px] font-medium">{t("compose.tool_poll")}</span>
@@ -374,7 +374,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
             <span className="material-symbols-outlined text-[22px] leading-none">sensors</span>
             <span className="text-[11px] font-medium">{t("compose.tool_live")}</span>
           </button>
-          <button type="button" onClick={() => setMode("story")}
+          <button type="button" onClick={() => switchMode("story")}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "story" ? "text-cyan-300" : "text-cyan-400"}`}>
             <span className="material-symbols-outlined text-[22px] leading-none">auto_stories</span>
             <span className="text-[11px] font-medium">{t("compose.tool_story")}</span>
