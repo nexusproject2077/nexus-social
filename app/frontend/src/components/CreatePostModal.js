@@ -221,30 +221,6 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
         </div>
 
         <form id="create-post-form" onSubmit={handleSubmit} className="nexus-safe-scroll flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Mode selector : Post / Story / Sondage */}
-          <div className="flex gap-2">
-            {[
-              { key: "post", label: t("compose.mode_post"), icon: "article" },
-              { key: "story", label: t("compose.mode_story"), icon: "auto_stories" },
-              { key: "poll", label: t("compose.mode_poll"), icon: "bar_chart" },
-            ].map(({ key, label, icon }) => (
-              <button
-                key={key}
-                type="button"
-                data-testid={`mode-${key}`}
-                onClick={() => switchMode(key)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-bold transition-colors ${
-                  mode === key
-                    ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-900"
-                    : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-                }`}
-              >
-                <span className="material-symbols-outlined text-base">{icon}</span>
-                {label}
-              </button>
-            ))}
-          </div>
-
           {mode !== "story" && (
             <div>
               <Label htmlFor="content">{mode === "poll" ? t("compose.label_question") : t("compose.label_content")}</Label>
@@ -353,7 +329,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
         >
           <Label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
             <Image className="w-5 h-5" />
-            <span className="text-[11px] font-medium">Photo{mode !== "story" ? "s" : ""}</span>
+            <span className="text-[11px] font-medium">Photos</span>
           </Label>
           <Label htmlFor="video-upload" className="cursor-pointer flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-cyan-400">
             <Video className="w-5 h-5" />
@@ -372,11 +348,6 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                   className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-rose-400">
             <span className="material-symbols-outlined text-[22px] leading-none">sensors</span>
             <span className="text-[11px] font-medium">{t("compose.tool_live")}</span>
-          </button>
-          <button type="button" onClick={() => switchMode("story")}
-                  className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 ${mode === "story" ? "text-cyan-300" : "text-cyan-400"}`}>
-            <span className="material-symbols-outlined text-[22px] leading-none">auto_stories</span>
-            <span className="text-[11px] font-medium">{t("compose.tool_story")}</span>
           </button>
         </div>
       </div>
