@@ -203,8 +203,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
                    h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-lg sm:rounded-2xl sm:border sm:border-slate-800"
       >
         {/* Barre supérieure : fermer · titre · Publier (façon X) */}
-        <div className="flex min-h-14 items-center gap-3 px-4 pb-2 border-b border-slate-800 flex-shrink-0"
-             style={{ paddingTop: "calc(var(--nexus-safe-top) + 0.5rem)" }}>
+        <div className="composer-safe-header flex min-h-14 items-center gap-3 px-4 pb-2 border-b border-slate-800 flex-shrink-0">
           <button type="button" onClick={onClose} data-testid="cancel-post-button"
                   className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full hover:bg-slate-800">
             <X className="w-5 h-5" />

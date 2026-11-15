@@ -61,8 +61,11 @@
 .nexus-safe-header { padding-top: calc(var(--nexus-safe-top) + 0.75rem); }
 .nexus-safe-footer { padding-bottom: calc(var(--nexus-safe-bottom) + 0.75rem); }
 .nexus-safe-scroll { padding-bottom: calc(var(--nexus-safe-bottom) + 1rem); }
+/* Le composeur garde ses commandes sous la Dynamic Island, même si iOS renvoie temporairement 0. */
+.composer-safe-header { padding-top: max(calc(env(safe-area-inset-top, 0px) + 0.5rem), 4.75rem); }
 @media screen and (min-width: 640px) {
     .nexus-safe-header { padding-top: 1rem; }
+    .composer-safe-header { padding-top: 0.5rem; }
 }
 
 /* Cœur « pop » du double-tap like (façon Instagram/TikTok). */
