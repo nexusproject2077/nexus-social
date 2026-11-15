@@ -44,7 +44,7 @@ export default function CreatePostModal({ open, onClose, onPostCreated }) {
     reader.readAsDataURL(file);
   });
 
-  const handleMediaChange = (e) => {
+  const handleMediaChange = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const valid = files.filter((file) => file.size <= MAX_FILE_MB * 1024 * 1024);
